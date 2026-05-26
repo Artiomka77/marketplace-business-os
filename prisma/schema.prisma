@@ -1,0 +1,126 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Company {
+  id          String   @id @default(cuid())
+  name        String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  marketplaceAccounts MarketplaceAccount[]
+}
+
+model Marketplace {
+  id          String   @id @default(cuid())
+  name        String
+  code        String   @unique
+  createdAt   DateTime @default(now())
+
+  marketplaceAccounts MarketplaceAccount[]
+}
+
+model MarketplaceAccount {
+  id             String   @id @default(cuid())
+  name           String
+  companyId      String
+  marketplaceId  String
+  createdAt      DateTime @default(now())
+
+  company       Company      @relation(fields: [companyId], references: [id])
+  marketplace   Marketplace  @relation(fields: [marketplaceId], references: [id])
+
+  @@index([companyId])
+  @@index([marketplaceId])
+}
+
+model Product {
+  id          String   @id @default(cuid())
+  name        String
+  vendorCode  String?
+  createdAt   DateTime @default(now())
+
+  variants ProductVariant[]
+}
+
+model ProductVariant {
+  id          String   @id @default(cuid())
+  productId   String
+  sku         String
+  barcode     String?
+  createdAt   DateTime @default(now())
+
+  product Product @relation(fields: [productId], references: [id])
+
+  costPrices CostPrice[]
+
+  @@unique([sku])
+  @@index([productId])
+}
+
+model CostPrice {
+  id              String   @id @default(cuid())
+  productVariantId String
+  cost            Decimal
+  validFrom       DateTime
+  validTo         DateTime?
+
+  productVariant ProductVariant @relation(fields: [productVariantId], references: [id])
+
+  @@index([productVariantId])
+}
+model ImportSession {
+  id             String   @id @default(cuid())
+
+  fileName       String
+  reportType     String
+  marketplace    String
+
+  rowsCount      Int
+
+  previewJson Json?
+
+  sheetName      String?
+  headerRow      Int?
+
+  status         String   @default("SUCCESS")
+
+  createdAt      DateTime @default(now())
+
+  @@index([reportType])
+  @@index([marketplace])
+  @@index([createdAt])
+}
+model WbSale {
+  id String @id @default(cuid())
+
+  importSessionId String?
+
+  reportNumber String?
+  supplyNumber String?
+  subject String?
+  nmId String?
+  vendorCode String?
+  barcode String?
+
+  documentType String?
+  saleDate DateTime?
+
+  quantity Int?
+  retailPrice Decimal?
+  wbRealizedAmount Decimal?
+  wbReward Decimal?
+  sellerPayout Decimal?
+  logisticsCost Decimal?
+
+  createdAt DateTime @default(now())
+
+  @@index([importSessionId])
+  @@index([vendorCode])
+  @@index([barcode])
+  @@index([saleDate])
+}
