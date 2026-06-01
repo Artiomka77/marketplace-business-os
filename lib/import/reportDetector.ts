@@ -1,6 +1,7 @@
 import * as XLSX from "xlsx";
 
 export type ReportType =
+  | "PRODUCT_COST"
   | "WB_FINANCE"
   | "WB_SALES"
   | "WB_ADS_FINANCE"
@@ -9,6 +10,10 @@ export type ReportType =
   | "OZON_FINANCE"
   | "OZON_ADS"
   | "OZON_STOCK"
+  | "OZON_PRODUCT"
+  | "FINANCE_TRANSACTIONS"
+  | "FINANCE_CATEGORIES"
+  | "LOANS"
   | "UNKNOWN";
 
 export type DetectionResult = {
@@ -39,6 +44,38 @@ const reportSignatures: {
   type: ReportType;
   columns: string[];
 }[] = [
+  {
+    type: "FINANCE_TRANSACTIONS",
+    columns: [
+      "Дата платежа",
+      "Дата выполнения обязательства",
+      "Статья",
+      "Сумма",
+      "Счет/наличка",
+      "Кому платим",
+      "За что платим",
+      "Комментарий",
+    ],
+  },
+  {
+    type: "FINANCE_CATEGORIES",
+    columns: ["Итого к оплате, руб", "Банки"],
+  },
+  {
+    type: "LOANS",
+    columns: [
+      "Наименование",
+      "Сумма долга",
+      "Ежемесячный платеж",
+      "Всего тело кредита",
+      "Всего % процентов",
+      "Общая сумма",
+    ],
+  },
+  {
+    type: "PRODUCT_COST",
+    columns: ["Артикул продавца", "Себестоимость"],
+  },
   {
     type: "WB_FINANCE",
     columns: [
@@ -134,12 +171,11 @@ const reportSignatures: {
   },
   {
     type: "OZON_STOCK",
-    columns: [
-      "Артикул",
-      "SKU",
-      "Название товара",
-      "Доступно к продаже",
-    ],
+    columns: ["Артикул", "SKU", "Название товара", "Доступно к продаже"],
+  },
+  {
+    type: "OZON_PRODUCT",
+    columns: ["Артикул", "Название товара", "SKU"],
   },
 ];
 
@@ -162,17 +198,68 @@ export function detectWorkbookReport(workbook: XLSX.WorkBook): DetectionResult {
 
     for (let rowIndex = 0; rowIndex < Math.min(matrix.length, 40); rowIndex++) {
       const row = matrix[rowIndex];
-if (
-  normalize(sheetName).includes("начисления") &&
-  rowHas(row, "SKU")
-) {
-  return {
-    reportType: "OZON_FINANCE",
-    sheetName,
-    headerRowIndex: rowIndex,
-    matchedColumns: ["sheet: Начисления", "SKU"],
-  };
-}
+
+      if (
+        normalize(sheetName).includes("операции") &&
+        rowHas(row, "Дата платежа") &&
+        rowHas(row, "Статья") &&
+        rowHas(row, "Сумма")
+      ) {
+        return {
+          reportType: "FINANCE_TRANSACTIONS",
+          sheetName,
+          headerRowIndex: rowIndex,
+          matchedColumns: ["sheet: Операции", "Дата платежа", "Статья", "Сумма"],
+        };
+      }
+
+      if (
+        normalize(sheetName).includes("справочник") &&
+        rowHas(row, "Итого к оплате, руб")
+      ) {
+        return {
+          reportType: "FINANCE_CATEGORIES",
+          sheetName,
+          headerRowIndex: rowIndex,
+          matchedColumns: ["sheet: Справочник", "Итого к оплате, руб"],
+        };
+      }
+
+      if (
+        normalize(sheetName).includes("кредиты") &&
+        rowHas(row, "Наименование") &&
+        rowHas(row, "Сумма долга")
+      ) {
+        return {
+          reportType: "LOANS",
+          sheetName,
+          headerRowIndex: rowIndex,
+          matchedColumns: ["sheet: Кредиты", "Наименование", "Сумма долга"],
+        };
+      }
+
+      if (normalize(sheetName).includes("начисления") && rowHas(row, "SKU")) {
+        return {
+          reportType: "OZON_FINANCE",
+          sheetName,
+          headerRowIndex: rowIndex,
+          matchedColumns: ["sheet: Начисления", "SKU"],
+        };
+      }
+
+      if (
+        normalize(sheetName).includes("товары") &&
+        rowHas(row, "Артикул") &&
+        rowHas(row, "Название товара") &&
+        rowHas(row, "SKU")
+      ) {
+        return {
+          reportType: "OZON_PRODUCT",
+          sheetName,
+          headerRowIndex: rowIndex,
+          matchedColumns: ["sheet: Товары", "Артикул", "Название товара", "SKU"],
+        };
+      }
 
       for (const signature of reportSignatures) {
         const matchedColumns = countMatches(row, signature.columns);
@@ -187,6 +274,15 @@ if (
         }
       }
     }
+  }
+
+  if (
+    bestResult.reportType === "PRODUCT_COST" ||
+    bestResult.reportType === "FINANCE_TRANSACTIONS" ||
+    bestResult.reportType === "FINANCE_CATEGORIES" ||
+    bestResult.reportType === "LOANS"
+  ) {
+    return bestResult;
   }
 
   if (bestResult.matchedColumns.length < 3) {

@@ -1,58 +1,56 @@
 generator client {
   provider = "prisma-client-js"
 }
-
 datasource db {
   provider = "postgresql"
 }
-
 model Company {
-  id          String   @id @default(cuid())
-  name        String
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id        String   @id @default(cuid())
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   marketplaceAccounts MarketplaceAccount[]
 }
 
 model Marketplace {
-  id          String   @id @default(cuid())
-  name        String
-  code        String   @unique
-  createdAt   DateTime @default(now())
+  id        String   @id @default(cuid())
+  name      String
+  code      String   @unique
+  createdAt DateTime @default(now())
 
   marketplaceAccounts MarketplaceAccount[]
 }
 
 model MarketplaceAccount {
-  id             String   @id @default(cuid())
-  name           String
-  companyId      String
-  marketplaceId  String
-  createdAt      DateTime @default(now())
+  id            String   @id @default(cuid())
+  name          String
+  companyId     String
+  marketplaceId String
+  createdAt     DateTime @default(now())
 
-  company       Company      @relation(fields: [companyId], references: [id])
-  marketplace   Marketplace  @relation(fields: [marketplaceId], references: [id])
+  company     Company     @relation(fields: [companyId], references: [id])
+  marketplace Marketplace @relation(fields: [marketplaceId], references: [id])
 
   @@index([companyId])
   @@index([marketplaceId])
 }
 
 model Product {
-  id          String   @id @default(cuid())
-  name        String
-  vendorCode  String?
-  createdAt   DateTime @default(now())
+  id         String   @id @default(cuid())
+  name       String
+  vendorCode String?
+  createdAt  DateTime @default(now())
 
   variants ProductVariant[]
 }
 
 model ProductVariant {
-  id          String   @id @default(cuid())
-  productId   String
-  sku         String
-  barcode     String?
-  createdAt   DateTime @default(now())
+  id        String   @id @default(cuid())
+  productId String
+  sku       String
+  barcode   String?
+  createdAt DateTime @default(now())
 
   product Product @relation(fields: [productId], references: [id])
 
@@ -63,38 +61,40 @@ model ProductVariant {
 }
 
 model CostPrice {
-  id              String   @id @default(cuid())
+  id               String   @id @default(cuid())
   productVariantId String
-  cost            Decimal
-  validFrom       DateTime
-  validTo         DateTime?
+  cost             Decimal
+  validFrom        DateTime
+  validTo          DateTime?
 
   productVariant ProductVariant @relation(fields: [productVariantId], references: [id])
 
   @@index([productVariantId])
 }
+
 model ImportSession {
-  id             String   @id @default(cuid())
+  id String @id @default(cuid())
 
-  fileName       String
-  reportType     String
-  marketplace    String
+  fileName    String
+  reportType  String
+  marketplace String
 
-  rowsCount      Int
+  rowsCount Int
 
   previewJson Json?
 
-  sheetName      String?
-  headerRow      Int?
+  sheetName String?
+  headerRow Int?
 
-  status         String   @default("SUCCESS")
+  status String @default("SUCCESS")
 
-  createdAt      DateTime @default(now())
+  createdAt DateTime @default(now())
 
   @@index([reportType])
   @@index([marketplace])
   @@index([createdAt])
 }
+
 model WbSale {
   id String @id @default(cuid())
 
@@ -102,25 +102,362 @@ model WbSale {
 
   reportNumber String?
   supplyNumber String?
-  subject String?
-  nmId String?
-  vendorCode String?
-  barcode String?
 
-  documentType String?
+  brand       String?
+  subject     String?
+  productName String?
+  size        String?
+
+  nmId       String?
+  vendorCode String?
+  barcode    String?
+
+  paymentReason String?
+  documentType  String?
+
   saleDate DateTime?
 
   quantity Int?
-  retailPrice Decimal?
+
+  retailPrice     Decimal?
   wbRealizedAmount Decimal?
+  sellerPayout     Decimal?
+
   wbReward Decimal?
-  sellerPayout Decimal?
+
   logisticsCost Decimal?
+
+  deliveriesCount Int?
+  returnsCount    Int?
+
+  storageCost    Decimal?
+  deductions     Decimal?
+  acceptanceCost Decimal?
+
+  penaltiesAmount Decimal?
+
+  paymentServiceCost Decimal?
+
+  pvzCompensation       Decimal?
+  transportCompensation Decimal?
+  wbRewardCorrection    Decimal?
 
   createdAt DateTime @default(now())
 
   @@index([importSessionId])
   @@index([vendorCode])
   @@index([barcode])
+  @@index([nmId])
   @@index([saleDate])
+  @@index([paymentReason])
+}
+
+model WbFinance {
+  id String @id @default(cuid())
+
+  importSessionId String?
+
+  reportNumber   String?
+  legalEntity    String?
+  dateFrom       DateTime?
+  dateTo         DateTime?
+  reportTypeName String?
+
+  salesAmount      Decimal?
+  payoutAmount     Decimal?
+  logisticsCost    Decimal?
+  storageCost      Decimal?
+  acceptanceCost   Decimal?
+  otherDeductions  Decimal?
+  penaltiesAmount  Decimal?
+  totalToPay       Decimal?
+
+  createdAt DateTime @default(now())
+
+  @@index([importSessionId])
+  @@index([reportNumber])
+  @@index([dateFrom])
+  @@index([dateTo])
+}
+
+model WbAds {
+  id String @id @default(cuid())
+
+  importSessionId String?
+
+  campaignId   String?
+  campaignName String?
+
+  dateFrom DateTime?
+  dateTo   DateTime?
+
+  impressions Int?
+  clicks      Int?
+
+  ctr Decimal?
+  cpc Decimal?
+
+  spend Decimal?
+
+  createdAt DateTime @default(now())
+
+  @@index([campaignId])
+  @@index([dateFrom])
+  @@index([dateTo])
+}
+
+model WbStock {
+  id String @id @default(cuid())
+
+  importSessionId String?
+
+  brand      String?
+  subject    String?
+  vendorCode String?
+  barcode    String?
+  size       String?
+
+  inTransitToCustomer Int?
+  inTransitReturns    Int?
+  totalStock          Int?
+
+  warehouseName String?
+  warehouseQty  Int?
+
+  createdAt DateTime @default(now())
+
+  @@index([vendorCode])
+  @@index([barcode])
+  @@index([warehouseName])
+}
+
+model ProductCost {
+  id String @id @default(cuid())
+
+  vendorCode String
+  nmId       String?
+
+  costPrice Decimal
+
+  name     String?
+  costDate DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@index([vendorCode])
+  @@index([nmId])
+  @@index([costDate])
+}
+model AdCampaignMap {
+  id String @id @default(cuid())
+
+  marketplace String
+  companyName String?
+
+  campaignName String
+  vendorCode String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([marketplace])
+  @@index([companyName])
+  @@index([campaignName])
+  @@index([vendorCode])
+}
+model OzonFinance {
+  id String @id @default(cuid())
+
+  importSessionId String?
+
+  accrualDate DateTime?
+
+  operationType String?
+
+  sku String?
+  vendorCode String?
+
+  quantity Int?
+
+  salesAmount Decimal?
+
+  ozonCommission Decimal?
+
+  logisticsCost Decimal?
+  reverseLogisticsCost Decimal?
+
+  totalAmount Decimal?
+
+  createdAt DateTime @default(now())
+
+  @@index([importSessionId])
+  @@index([sku])
+  @@index([vendorCode])
+  @@index([accrualDate])
+}
+model OzonAds {
+  id String @id @default(cuid())
+
+  importSessionId String?
+
+  reportDate DateTime?
+
+  sku String?
+
+  impressions Int?
+  clicks Int?
+
+  ctr Decimal?
+  cpc Decimal?
+
+  orders Int?
+
+  spend Decimal?
+
+  createdAt DateTime @default(now())
+
+  @@index([importSessionId])
+  @@index([reportDate])
+  @@index([sku])
+}
+model OzonStock {
+  id String @id @default(cuid())
+
+  importSessionId String?
+
+  sku String?
+  vendorCode String?
+
+  warehouseName String?
+  clusterName String?
+
+  availableQty Int?
+
+  preparingQty Int?
+
+  supplyQty Int?
+
+  inTransitQty Int?
+
+  returnQty Int?
+
+  createdAt DateTime @default(now())
+
+  @@index([sku])
+  @@index([vendorCode])
+  @@index([warehouseName])
+}
+model OzonProduct {
+  id String @id @default(cuid())
+
+  importSessionId String?
+
+  vendorCode String
+  sku String
+
+  productName String?
+
+  createdAt DateTime @default(now())
+
+  @@index([importSessionId])
+  @@index([vendorCode])
+  @@index([sku])
+}
+model FinanceCategory {
+  id String @id @default(cuid())
+
+  name String
+  parentName String?
+
+  categoryType String
+
+  sortOrder Int @default(0)
+  isActive Boolean @default(true)
+
+  createdAt DateTime @default(now())
+
+  @@index([categoryType])
+  @@index([name])
+}
+
+model FinanceTransaction {
+  id String @id @default(cuid())
+
+  companyId String?
+  companyName String
+
+  operationDate DateTime
+  obligationDate DateTime?
+
+  operationType String
+
+  category String
+  subcategory String?
+
+  counterparty String?
+
+  amount Decimal
+
+  bankAccount String?
+
+  comment String?
+
+  project String?
+
+  isInternalTransfer Boolean @default(false)
+
+  createdAt DateTime @default(now())
+
+  @@index([companyId])
+  @@index([companyName])
+  @@index([operationDate])
+  @@index([category])
+  @@index([operationType])
+}
+
+model Loan {
+  id String @id @default(cuid())
+
+  companyId String?
+  companyName String
+
+  bankName String
+  contractNumber String?
+
+  creditLimit Decimal?
+  currentDebt Decimal?
+  monthlyPayment Decimal?
+  interestRate Decimal?
+
+  startDate DateTime?
+  endDate DateTime?
+
+  createdAt DateTime @default(now())
+
+  payments LoanPayment[]
+
+  @@index([companyId])
+  @@index([companyName])
+  @@index([bankName])
+}
+
+model LoanPayment {
+  id String @id @default(cuid())
+
+  loanId String
+
+  paymentDate DateTime
+
+  principalAmount Decimal?
+  interestAmount Decimal?
+  totalAmount Decimal?
+
+  paid Boolean @default(false)
+
+  createdAt DateTime @default(now())
+
+  loan Loan @relation(fields: [loanId], references: [id])
+
+  @@index([loanId])
+  @@index([paymentDate])
 }

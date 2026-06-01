@@ -1,5 +1,62 @@
+import Link from "next/link";
 import { prisma } from "@/lib/prisma";
-export default async function HomePage() {
+
+type Props = {
+  searchParams?: Promise<{
+    period?: string;
+  }>;
+};
+
+const ACTIVE_COMPANY_NAME = "ИП Петров";
+const ACTIVE_MARKETPLACE_CODE = "WB";
+
+function formatCurrency(value: number) {
+  return new Intl.NumberFormat("ru-RU", {
+    style: "currency",
+    currency: "RUB",
+    maximumFractionDigits: 0,
+  }).format(value);
+}
+
+function formatDate(date?: Date | null) {
+  if (!date) return "Нет данных";
+  return date.toLocaleDateString("ru-RU");
+}
+
+function makePeriodKey(dateFrom: Date, dateTo: Date) {
+  return `${dateFrom.toISOString()}__${dateTo.toISOString()}`;
+}
+
+function extractStockDate(fileName?: string | null, fallback?: Date) {
+  const match = fileName?.match(/\d{4}_\d{1,2}_\d{1,2}/)?.[0];
+
+  if (match) {
+    const [year, month, day] = match.split("_");
+    return `${day}.${month}.${year}`;
+  }
+
+  return fallback ? fallback.toLocaleDateString("ru-RU") : "Нет данных";
+}
+
+function isActiveWbAccount(companyName: string, marketplaceCode: string) {
+  return (
+    companyName === ACTIVE_COMPANY_NAME &&
+    marketplaceCode === ACTIVE_MARKETPLACE_CODE
+  );
+}
+
+function metricCardClassName() {
+  return "min-w-0 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6 xl:p-7";
+}
+
+function metricValueClassName() {
+  return "break-words text-2xl font-bold tracking-tight text-slate-950 sm:text-3xl";
+}
+
+export default async function HomePage({ searchParams }: Props) {
+  const params = searchParams ? await searchParams : {};
+  const selectedPeriodKey = params.period;
+
   const companies = await prisma.company.findMany({
     include: {
       marketplaceAccounts: {
@@ -12,243 +69,380 @@ export default async function HomePage() {
       name: "asc",
     },
   });
-const wbSales = await prisma.wbSale.findMany();
 
-const totalRevenue = wbSales.reduce(
-  (sum, item) => sum + Number(item.wbRealizedAmount ?? 0),
-  0
-);
+  const financeRows = await prisma.wbFinance.findMany({
+    where: {
+      dateFrom: {
+        not: null,
+      },
+      dateTo: {
+        not: null,
+      },
+    },
+    orderBy: {
+      dateTo: "desc",
+    },
+  });
 
-const totalPayout = wbSales.reduce(
-  (sum, item) => sum + Number(item.sellerPayout ?? 0),
-  0
-);
+  const periodMap = new Map<
+    string,
+    {
+      key: string;
+      dateFrom: Date;
+      dateTo: Date;
+      label: string;
+    }
+  >();
 
-const totalLogistics = wbSales.reduce(
-  (sum, item) => sum + Number(item.logisticsCost ?? 0),
-  0
-);
+  for (const row of financeRows) {
+    if (!row.dateFrom || !row.dateTo) continue;
 
-const salesCount = wbSales.reduce(
-  (sum, item) => sum + Number(item.quantity ?? 0),
-  0
-);
+    const key = makePeriodKey(row.dateFrom, row.dateTo);
 
-const formatCurrency = (value: number) =>
-  new Intl.NumberFormat("ru-RU", {
-    style: "currency",
-    currency: "RUB",
-    maximumFractionDigits: 0,
-  }).format(value);
+    if (!periodMap.has(key)) {
+      periodMap.set(key, {
+        key,
+        dateFrom: row.dateFrom,
+        dateTo: row.dateTo,
+        label: `${formatDate(row.dateFrom)} — ${formatDate(row.dateTo)}`,
+      });
+    }
+  }
+
+  const periods = Array.from(periodMap.values());
+
+  const selectedPeriod =
+    periods.find((period) => period.key === selectedPeriodKey) ?? periods[0];
+
+  const wbFinance = selectedPeriod
+    ? await prisma.wbFinance.findMany({
+        where: {
+          dateFrom: selectedPeriod.dateFrom,
+          dateTo: selectedPeriod.dateTo,
+        },
+      })
+    : [];
+
+  const wbAds = selectedPeriod
+    ? await prisma.wbAds.findMany({
+        where: {
+          dateFrom: selectedPeriod.dateFrom,
+          dateTo: selectedPeriod.dateTo,
+        },
+      })
+    : [];
+
+  const latestStockImport = await prisma.importSession.findFirst({
+    where: {
+      reportType: "WB_STOCK",
+    },
+    orderBy: {
+      createdAt: "desc",
+    },
+  });
+
+  const wbStocks = latestStockImport
+    ? await prisma.wbStock.findMany({
+        where: {
+          importSessionId: latestStockImport.id,
+        },
+      })
+    : [];
+
+  const totalRevenue = wbFinance.reduce(
+    (sum, item) => sum + Number(item.salesAmount ?? 0),
+    0
+  );
+
+  const totalPayout = wbFinance.reduce(
+    (sum, item) => sum + Number(item.totalToPay ?? 0),
+    0
+  );
+
+  const totalAdSpend = wbAds.reduce(
+    (sum, item) => sum + Number(item.spend ?? 0),
+    0
+  );
+
+  const stockSummaryRows = wbStocks.filter(
+    (item) => item.warehouseName === "__TOTAL__"
+  );
+
+  const totalStock = stockSummaryRows.reduce(
+    (sum, item) =>
+      sum +
+      Number(item.inTransitToCustomer ?? 0) +
+      Number(item.inTransitReturns ?? 0) +
+      Number(item.totalStock ?? 0),
+    0
+  );
+
+  const hasFinanceData = wbFinance.length > 0;
+  const hasAdsData = wbAds.length > 0;
+  const hasStockData = stockSummaryRows.length > 0;
+
+  const drr =
+    hasFinanceData && hasAdsData && totalRevenue > 0
+      ? (totalAdSpend / totalRevenue) * 100
+      : null;
+
+  const stockDate = extractStockDate(
+    latestStockImport?.fileName,
+    latestStockImport?.createdAt
+  );
+
   return (
-    <main className="min-h-screen bg-slate-100 flex">
-      {/* Sidebar */}
-      <aside className="w-72 bg-white border-r border-slate-200 p-6 flex flex-col">
+    <main className="flex min-h-screen bg-slate-100">
+      <aside className="hidden w-72 shrink-0 flex-col border-r border-slate-200 bg-white p-6 lg:flex">
         <div className="mb-10">
-          <h1 className="text-3xl font-bold tracking-tight">
-            Marketplace OS
-          </h1>
+          <h1 className="text-3xl font-bold tracking-tight">Marketplace OS</h1>
 
-          <p className="text-slate-500 mt-2 text-sm">
-            Analytics Platform
-          </p>
+          <p className="mt-2 text-sm text-slate-500">Analytics Platform</p>
         </div>
 
-        <nav className="space-y-2">
-          <div className="bg-slate-900 text-white rounded-xl px-5 py-4 font-medium">
-            Dashboard
-          </div>
+<nav className="space-y-2">
+  <Link
+    href="/"
+    className="block rounded-xl bg-slate-900 px-5 py-4 font-medium text-white"
+  >
+    Dashboard
+  </Link>
 
-          <div className="hover:bg-slate-100 rounded-xl px-5 py-4 text-slate-700 cursor-pointer transition">
-            Финансы
-          </div>
+  <Link
+    href="/import"
+    className="block rounded-xl px-5 py-4 text-slate-700 transition hover:bg-slate-100"
+  >
+    Импорт отчетов
+  </Link>
 
-          <div className="hover:bg-slate-100 rounded-xl px-5 py-4 text-slate-700 cursor-pointer transition">
-            Реклама
-          </div>
+  <Link
+    href="/profit"
+    className="block rounded-xl px-5 py-4 text-slate-700 transition hover:bg-slate-100"
+  >
+    Прибыль WB по SKU
+  </Link>
 
-          <div className="hover:bg-slate-100 rounded-xl px-5 py-4 text-slate-700 cursor-pointer transition">
-            Остатки
-          </div>
+  <Link
+    href="/profit-ozon"
+    className="block rounded-xl px-5 py-4 text-slate-700 transition hover:bg-slate-100"
+  >
+    Прибыль Ozon по SKU
+  </Link>
 
-          <div className="hover:bg-slate-100 rounded-xl px-5 py-4 text-slate-700 cursor-pointer transition">
-            ABC-анализ
-          </div>
+  <Link
+    href="/stocks"
+    className="block rounded-xl px-5 py-4 text-slate-700 transition hover:bg-slate-100"
+  >
+    Остатки
+  </Link>
 
-          <div className="hover:bg-slate-100 rounded-xl px-5 py-4 text-slate-700 cursor-pointer transition">
-            Импорт отчетов
-          </div>
-        </nav>
+  <Link
+    href="/ads-mapping"
+    className="block rounded-xl px-5 py-4 text-slate-700 transition hover:bg-slate-100"
+  >
+    Связка рекламы WB
+  </Link>
+
+  <Link
+    href="/imports"
+    className="block rounded-xl px-5 py-4 text-slate-700 transition hover:bg-slate-100"
+  >
+    История импортов
+  </Link>
+</nav>
 
         <div className="mt-auto pt-10">
-          <div className="bg-slate-100 rounded-2xl p-5">
-            <div className="text-sm text-slate-500 mb-2">
-              Активная компания
-            </div>
+          <div className="rounded-2xl bg-slate-100 p-5">
+            <div className="mb-2 text-sm text-slate-500">Активная компания</div>
 
-            <div className="font-semibold">
-              ИП Петров
-            </div>
+            <div className="font-semibold">ИП Петров</div>
 
-            <div className="text-sm text-slate-500 mt-1">
+            <div className="mt-1 text-sm text-slate-500">
               Wildberries / Ozon
             </div>
           </div>
         </div>
       </aside>
 
-      {/* Main */}
-      <section className="flex-1 p-10">
-        {/* Header */}
-        <div className="flex items-center justify-between mb-10">
-          <div>
-            <h2 className="text-4xl font-bold tracking-tight">
+      <section className="min-w-0 flex-1 p-4 sm:p-6 xl:p-10">
+        <div className="mb-8 flex flex-col gap-5 xl:mb-10 xl:flex-row xl:items-start xl:justify-between">
+          <div className="min-w-0">
+            <h2 className="break-words text-3xl font-bold tracking-tight text-slate-950 sm:text-4xl">
               Dashboard
             </h2>
 
-            <p className="text-slate-500 mt-2">
+            <p className="mt-2 text-slate-500">
               Полная оцифровка бизнеса маркетплейсов
             </p>
           </div>
 
-          <button className="bg-slate-900 text-white px-6 py-3 rounded-xl font-medium hover:bg-slate-800 transition">
-            Импортировать отчет
-          </button>
-        </div>
+          <div className="flex min-w-0 flex-col gap-4 2xl:flex-row 2xl:items-center">
+            <form
+              action="/"
+              className="min-w-0 rounded-2xl border border-slate-200 bg-white px-4 py-4 shadow-sm sm:px-5"
+            >
+              <div className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-400">
+                Отчетный период
+              </div>
 
-        {/* KPI */}
-        <div className="grid grid-cols-4 gap-6 mb-10">
-          <div className="bg-white rounded-3xl p-7 shadow-sm border border-slate-200">
-            <div className="text-slate-500 text-sm mb-3">
-              Выручка
-            </div>
+              <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center">
+                <select
+                  name="period"
+                  defaultValue={selectedPeriod?.key}
+                  className="min-w-0 rounded-xl border border-slate-200 bg-slate-100 px-4 py-3 text-sm font-semibold"
+                >
+                  {periods.map((period) => (
+                    <option key={period.key} value={period.key}>
+                      {period.label}
+                    </option>
+                  ))}
+                </select>
 
-            <div className="text-4xl font-bold tracking-tight">
-              {formatCurrency(totalRevenue)}
-            </div>
+                <button
+                  type="submit"
+                  className="rounded-xl bg-slate-900 px-5 py-3 font-semibold text-white transition hover:bg-slate-800"
+                >
+                  Показать
+                </button>
+              </div>
+            </form>
 
-            <div className="text-green-600 text-sm mt-3">
-              +0% к прошлой неделе
-            </div>
-          </div>
-
-          <div className="bg-white rounded-3xl p-7 shadow-sm border border-slate-200">
-            <div className="text-slate-500 text-sm mb-3">
-              Чистая прибыль
-            </div>
-
-            <div className="text-4xl font-bold tracking-tight">
-              {formatCurrency(totalPayout)}
-            </div>
-
-            <div className="text-green-600 text-sm mt-3">
-              +0% к прошлой неделе
-            </div>
-          </div>
-
-          <div className="bg-white rounded-3xl p-7 shadow-sm border border-slate-200">
-            <div className="text-slate-500 text-sm mb-3">
-              ДРР
-            </div>
-
-            <div className="text-4xl font-bold tracking-tight">
-              0%
-            </div>
-
-            <div className="text-slate-500 text-sm mt-3">
-              Реклама
-            </div>
-          </div>
-
-          <div className="bg-white rounded-3xl p-7 shadow-sm border border-slate-200">
-            <div className="text-slate-500 text-sm mb-3">
-              Остатки
-            </div>
-
-            <div className="text-4xl font-bold tracking-tight">
-              {salesCount} шт
-            </div>
-
-            <div className="text-slate-500 text-sm mt-3">
-              На складах
-            </div>
+            <Link
+              href="/import"
+              className="rounded-2xl bg-slate-900 px-6 py-4 text-center font-semibold text-white transition hover:bg-slate-800"
+            >
+              Импортировать отчет
+            </Link>
           </div>
         </div>
 
-        {/* Reports */}
-        <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-8">
-          <div className="flex items-center justify-between mb-8">
+        <div className="mb-10 grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-4">
+          <div className={metricCardClassName()}>
+            <div className="mb-4 text-sm text-slate-500">Выручка</div>
+
+            <div className={metricValueClassName()}>
+              {hasFinanceData ? formatCurrency(totalRevenue) : "Нет данных"}
+            </div>
+
+            <div className="mt-3 break-words text-sm text-slate-500">
+              {selectedPeriod?.label ?? "Период не выбран"}
+            </div>
+          </div>
+
+          <div className={metricCardClassName()}>
+            <div className="mb-4 text-sm text-slate-500">Выплата WB</div>
+
+            <div className={metricValueClassName()}>
+              {hasFinanceData ? formatCurrency(totalPayout) : "Нет данных"}
+            </div>
+
+            <div className="mt-3 text-sm text-slate-500">
+              До себестоимости и налогов
+            </div>
+          </div>
+
+          <div className={metricCardClassName()}>
+            <div className="mb-4 text-sm text-slate-500">ДРР</div>
+
+            <div className={metricValueClassName()}>
+              {drr !== null ? `${drr.toFixed(1)}%` : "Нет данных"}
+            </div>
+
+            <div className="mt-3 text-sm text-slate-500">
+              {hasAdsData ? "Реклама за период" : "Нет рекламы за период"}
+            </div>
+          </div>
+
+          <div className={metricCardClassName()}>
+            <div className="mb-4 text-sm text-slate-500">Остатки WB</div>
+
+            <div className={metricValueClassName()}>
+              {hasStockData ? `${totalStock.toLocaleString("ru-RU")} шт` : "Нет данных"}
+            </div>
+
+            <div className="mt-3 break-words text-sm text-slate-500">
+              {hasStockData ? `Срез на дату: ${stockDate}` : "WB Остатки не загружены"}
+            </div>
+          </div>
+        </div>
+
+        <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-8">
+          <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <h3 className="text-2xl font-bold">
-                Последние отчеты
-              </h3>
+              <h3 className="text-2xl font-bold">Последние отчеты</h3>
 
-              <p className="text-slate-500 mt-2">
+              <p className="mt-2 text-slate-500">
                 Последние импортированные данные
               </p>
             </div>
 
-            <button className="border border-slate-300 px-5 py-3 rounded-xl hover:bg-slate-100 transition">
+            <Link
+              href="/imports"
+              className="rounded-xl border border-slate-300 px-5 py-3 text-center transition hover:bg-slate-100"
+            >
               Смотреть все
-            </button>
+            </Link>
           </div>
 
-          <table className="w-full">
-            <thead>
-              <tr className="border-b border-slate-200 text-slate-500">
-                <th className="text-left py-4 font-medium">
-                  Компания
-                </th>
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[850px] border-collapse">
+              <thead>
+                <tr className="border-b border-slate-200 text-slate-500">
+                  <th className="py-4 pr-4 text-left font-medium">Компания</th>
+                  <th className="py-4 pr-4 text-left font-medium">
+                    Маркетплейс
+                  </th>
+                  <th className="py-4 pr-4 text-left font-medium">Период</th>
+                  <th className="py-4 pr-4 text-left font-medium">Выручка</th>
+                  <th className="py-4 pr-4 text-left font-medium">Выплата</th>
+                </tr>
+              </thead>
 
-                <th className="text-left py-4 font-medium">
-                  Маркетплейс
-                </th>
+              <tbody>
+                {companies.map((company) =>
+                  company.marketplaceAccounts.map((account) => {
+                    const isActive = isActiveWbAccount(
+                      company.name,
+                      account.marketplace.code
+                    );
 
-                <th className="text-left py-4 font-medium">
-                  Период
-                </th>
+                    return (
+                      <tr
+                        key={account.id}
+                        className="border-b border-slate-100 transition hover:bg-slate-50"
+                      >
+                        <td className="py-5 pr-4 font-medium">
+                          {company.name}
+                        </td>
 
-                <th className="text-left py-4 font-medium">
-                  Выручка
-                </th>
+                        <td className="py-5 pr-4">
+                          {account.marketplace.name}
+                        </td>
 
-                <th className="text-left py-4 font-medium">
-                  Прибыль
-                </th>
-              </tr>
-            </thead>
+                        <td className="py-5 pr-4">
+                          {isActive
+                            ? selectedPeriod?.label ?? "Нет данных"
+                            : "Нет данных"}
+                        </td>
 
-<tbody>
-  {companies.map((company) =>
-    company.marketplaceAccounts.map((account) => (
-      <tr
-        key={account.id}
-        className="border-b border-slate-100 hover:bg-slate-50 transition"
-      >
-        <td className="py-5 font-medium">
-          {company.name}
-        </td>
+                        <td className="py-5 pr-4 font-semibold">
+                          {isActive && hasFinanceData
+                            ? formatCurrency(totalRevenue)
+                            : "Нет данных"}
+                        </td>
 
-        <td>
-          {account.marketplace.name}
-        </td>
-
-        <td>
-          Нет данных
-        </td>
-
-        <td className="font-semibold">
-          ₽ 0
-        </td>
-
-        <td className="font-semibold">
-          ₽ 0
-        </td>
-      </tr>
-    ))
-  )}
-</tbody>
-          </table>
+                        <td className="py-5 pr-4 font-semibold">
+                          {isActive && hasFinanceData
+                            ? formatCurrency(totalPayout)
+                            : "Нет данных"}
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
       </section>
     </main>
