@@ -21,13 +21,17 @@ function typeClassName(type: string) {
 
 export default async function FinanceCategoriesPage() {
   const categories = await prisma.financeCategory.findMany({
-    orderBy: [{ type: "asc" }, { sortOrder: "asc" }, { name: "asc" }],
+    orderBy: [
+      { categoryType: "asc" },
+      { sortOrder: "asc" },
+      { name: "asc" },
+    ],
   });
 
   const grouped = categories.reduce<Record<string, typeof categories>>(
     (acc, category) => {
-      acc[category.type] = acc[category.type] ?? [];
-      acc[category.type].push(category);
+      acc[category.categoryType] = acc[category.categoryType] ?? [];
+      acc[category.categoryType].push(category);
       return acc;
     },
     {}
@@ -101,7 +105,7 @@ export default async function FinanceCategoriesPage() {
                 <tr>
                   <th className="p-3">Тип</th>
                   <th className="p-3">Статья</th>
-                  <th className="p-3">Родительская статья</th>
+                  <th className="p-3">Группа</th>
                   <th className="p-3 text-right">Сортировка</th>
                   <th className="p-3">Активна</th>
                 </tr>
@@ -115,16 +119,16 @@ export default async function FinanceCategoriesPage() {
                   >
                     <td
                       className={`p-3 font-semibold ${typeClassName(
-                        category.type
+                        category.categoryType
                       )}`}
                     >
-                      {typeLabel(category.type)}
+                      {typeLabel(category.categoryType)}
                     </td>
 
                     <td className="p-3 font-medium">{category.name}</td>
 
                     <td className="p-3">
-                      {category.parentCategory || "—"}
+                      {category.parentName || "—"}
                     </td>
 
                     <td className="p-3 text-right">

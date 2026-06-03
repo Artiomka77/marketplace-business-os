@@ -1,5 +1,7 @@
 import Link from "next/link";
+import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
+import FinanceOperationForm from "./FinanceOperationForm";
 
 function formatMoney(value: unknown) {
   const number = Number(value ?? 0);
@@ -13,15 +15,33 @@ function formatMoney(value: unknown) {
 
 function formatDate(value?: Date | null) {
   if (!value) return "—";
-
   return value.toLocaleDateString("ru-RU");
+}
+
+function toDate(value: FormDataEntryValue | null) {
+  const text = String(value ?? "").trim();
+  if (!text) return null;
+
+  const date = new Date(`${text}T12:00:00.000Z`);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function toNumber(value: FormDataEntryValue | null) {
+  const number = Number(
+    String(value ?? "")
+      .replace(/\s/g, "")
+      .replace(",", ".")
+  );
+
+  return Number.isFinite(number) ? number : 0;
 }
 
 function operationTypeLabel(type: string) {
   if (type === "INCOME") return "Поступление";
   if (type === "EXPENSE") return "Расход";
   if (type === "TRANSFER") return "Перевод";
-
+  if (type === "FINANCING") return "Финансирование";
+  if (type === "PERSONAL") return "Личные";
   return type || "—";
 }
 
@@ -29,22 +49,69 @@ function operationTypeClassName(type: string) {
   if (type === "INCOME") return "text-emerald-600";
   if (type === "EXPENSE") return "text-red-600";
   if (type === "TRANSFER") return "text-slate-500";
-
+  if (type === "FINANCING") return "text-blue-600";
+  if (type === "PERSONAL") return "text-amber-600";
   return "text-slate-700";
+}
+
+async function createFinanceTransaction(formData: FormData) {
+  "use server";
+
+  const companyName = String(formData.get("companyName") ?? "").trim();
+  const operationType = String(formData.get("operationType") ?? "").trim();
+  const category = String(formData.get("category") ?? "").trim();
+  const amount = toNumber(formData.get("amount"));
+  const operationDate = toDate(formData.get("operationDate"));
+  const obligationDate = toDate(formData.get("obligationDate"));
+
+  if (!companyName || !operationType || !category || !operationDate || amount <= 0) {
+    return;
+  }
+
+  await prisma.financeTransaction.create({
+    data: {
+      companyName,
+      operationType,
+      category,
+      operationDate,
+      obligationDate,
+      amount,
+      subcategory: String(formData.get("subcategory") ?? "").trim() || null,
+      counterparty: String(formData.get("counterparty") ?? "").trim() || null,
+      bankAccount: String(formData.get("bankAccount") ?? "").trim() || null,
+      project: String(formData.get("project") ?? "").trim() || null,
+      comment: String(formData.get("comment") ?? "").trim() || null,
+      isInternalTransfer:
+        operationType === "TRANSFER" || formData.get("isInternalTransfer") === "on",
+    },
+  });
+
+  revalidatePath("/finance/operations");
 }
 
 export default async function FinanceOperationsPage({
   searchParams,
 }: {
-  searchParams?: Promise<{
+  searchParams?: {
     company?: string;
     operationType?: string;
-  }>;
+  };
 }) {
-  const params = await searchParams;
+  const params = searchParams;
 
   const company = params?.company ?? "ALL";
   const operationType = params?.operationType ?? "ALL";
+
+  const categories = await prisma.financeCategory.findMany({
+    where: {
+      isActive: true,
+    },
+    orderBy: [
+      { categoryType: "asc" },
+      { sortOrder: "asc" },
+      { name: "asc" },
+    ],
+  });
 
   const rows = await prisma.financeTransaction.findMany({
     where: {
@@ -56,6 +123,14 @@ export default async function FinanceOperationsPage({
     },
     take: 500,
   });
+
+  const bankAccounts = Array.from(
+    new Set(
+      rows
+        .map((row) => row.bankAccount)
+        .filter((value): value is string => Boolean(value))
+    )
+  ).sort();
 
   const incomeTotal = rows
     .filter((row) => row.operationType === "INCOME" && !row.isInternalTransfer)
@@ -86,10 +161,10 @@ export default async function FinanceOperationsPage({
           </div>
 
           <Link
-            href="/"
+            href="/finance/categories"
             className="rounded-xl bg-slate-900 px-5 py-3 font-semibold text-white"
           >
-            ← Dashboard
+            Справочник статей
           </Link>
         </div>
 
@@ -124,6 +199,8 @@ export default async function FinanceOperationsPage({
               <option value="INCOME">Поступления</option>
               <option value="EXPENSE">Расходы</option>
               <option value="TRANSFER">Переводы</option>
+              <option value="FINANCING">Финансирование</option>
+              <option value="PERSONAL">Личные</option>
             </select>
           </div>
 
@@ -134,13 +211,12 @@ export default async function FinanceOperationsPage({
           </div>
 
           <div className="flex items-end">
-            <button
-              type="button"
-              disabled
-              className="w-full rounded-xl bg-slate-200 px-4 py-2 font-medium text-slate-500"
+            <Link
+              href="/"
+              className="w-full rounded-xl border border-slate-300 px-4 py-2 text-center font-medium hover:bg-slate-100"
             >
-              + Добавить операцию
-            </button>
+              ← Dashboard
+            </Link>
           </div>
         </form>
 
@@ -177,6 +253,11 @@ export default async function FinanceOperationsPage({
             </div>
           </div>
         </section>
+
+        <FinanceOperationForm
+  categories={categories}
+  bankAccounts={bankAccounts}
+/>
 
         <section className="overflow-hidden rounded-2xl bg-white shadow-sm">
           <div className="border-b border-slate-200 p-6">
