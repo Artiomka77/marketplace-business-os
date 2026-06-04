@@ -438,6 +438,8 @@ model Loan {
   startDate DateTime?
   endDate DateTime?
 
+  paymentFrequency String @default("MONTHLY")
+
   createdAt DateTime @default(now())
 
   payments LoanPayment[]
