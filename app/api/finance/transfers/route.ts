@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { recalculateAccountBalances } from "@/lib/finance/recalculateAccountBalances";
 
 function toDate(value: FormDataEntryValue | null) {
   const text = String(value ?? "").trim();
@@ -84,6 +85,8 @@ export async function POST(req: Request) {
       },
     }),
   ]);
+
+await recalculateAccountBalances();
 
   return NextResponse.redirect(new URL("/finance/operations", req.url));
 }

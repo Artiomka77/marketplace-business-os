@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { recalculateAccountBalances } from "@/lib/finance/recalculateAccountBalances";
 
 function toDate(value: FormDataEntryValue | null) {
   const text = String(value ?? "").trim();
@@ -54,6 +55,8 @@ export async function POST(req: Request) {
           formData.get("isInternalTransfer") === "on",
       },
     });
+
+await recalculateAccountBalances();
 
     return NextResponse.json({
       success: true,
