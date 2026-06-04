@@ -406,6 +406,9 @@ model FinanceTransaction {
 
   isInternalTransfer Boolean @default(false)
 
+  transferGroupId String?
+  transferDirection String?
+
   createdAt DateTime @default(now())
 
   @@index([companyId])
@@ -413,6 +416,9 @@ model FinanceTransaction {
   @@index([operationDate])
   @@index([category])
   @@index([operationType])
+  @@index([bankAccount])
+  @@index([transferGroupId])
+  @@index([transferDirection])
 }
 
 model Loan {
@@ -460,4 +466,25 @@ model LoanPayment {
 
   @@index([loanId])
   @@index([paymentDate])
+}
+
+model FinanceAccount {
+  id String @id @default(cuid())
+
+  companyName String
+
+  name String
+  accountType String
+
+  openingBalance Decimal @default(0)
+  currentBalance Decimal @default(0)
+
+  isActive Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([companyName])
+  @@index([name])
+  @@index([isActive])
 }

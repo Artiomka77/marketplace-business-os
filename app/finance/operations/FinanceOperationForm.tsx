@@ -37,7 +37,7 @@ export default function FinanceOperationForm({
   const [operationType, setOperationType] = useState("EXPENSE");
   const [companyName, setCompanyName] = useState("ИП Петров");
   const [operationDate, setOperationDate] = useState(todayIsoDate());
-  const [bankAccount, setBankAccount] = useState("");
+  const [bankAccount, setBankAccount] = useState(bankAccounts[0] ?? "");
   const [comment, setComment] = useState("");
   const [amount, setAmount] = useState("");
 
@@ -125,7 +125,7 @@ export default function FinanceOperationForm({
           </h2>
 
           <p className="mt-1 text-sm text-slate-500">
-            Enter сохраняет. После выбора статьи курсор переходит в сумму.
+            Enter сохраняет. Счёт выбирается из справочника денежных счетов.
           </p>
         </div>
 
@@ -136,7 +136,7 @@ export default function FinanceOperationForm({
         )}
       </div>
 
-      <div className="grid gap-3 xl:grid-cols-[130px_150px_130px_1fr_170px_150px_1fr_140px]">
+      <div className="grid gap-3 xl:grid-cols-[130px_150px_130px_1fr_180px_150px_1fr_140px]">
         <input
           type="date"
           name="operationDate"
@@ -221,20 +221,23 @@ export default function FinanceOperationForm({
           )}
         </div>
 
-        <input
+        <select
           name="bankAccount"
-          list="bank-accounts"
+          required
           value={bankAccount}
           onChange={(event) => setBankAccount(event.target.value)}
           className="rounded-xl border border-slate-300 px-3 py-2"
-          placeholder="Счет / касса"
-        />
+        >
+          {bankAccounts.length === 0 && (
+            <option value="">Сначала создайте счёт</option>
+          )}
 
-        <datalist id="bank-accounts">
           {bankAccounts.map((account) => (
-            <option key={account} value={account} />
+            <option key={account} value={account}>
+              {account}
+            </option>
           ))}
-        </datalist>
+        </select>
 
         <input
           ref={amountRef}

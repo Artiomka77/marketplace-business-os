@@ -2,6 +2,7 @@ import Link from "next/link";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import FinanceOperationForm from "./FinanceOperationForm";
+import FinanceTransferForm from "./FinanceTransferForm";
 
 function formatMoney(value: unknown) {
   const number = Number(value ?? 0);
@@ -124,13 +125,21 @@ export default async function FinanceOperationsPage({
     take: 500,
   });
 
-  const bankAccounts = Array.from(
-    new Set(
-      rows
-        .map((row) => row.bankAccount)
-        .filter((value): value is string => Boolean(value))
-    )
-  ).sort();
+  const accounts = await prisma.financeAccount.findMany({
+  where: {
+    isActive: true,
+  },
+  orderBy: [
+    {
+      companyName: "asc",
+    },
+    {
+      name: "asc",
+    },
+  ],
+});
+
+const bankAccounts = accounts.map((account) => account.name);
 
   const incomeTotal = rows
     .filter((row) => row.operationType === "INCOME" && !row.isInternalTransfer)
@@ -258,6 +267,8 @@ export default async function FinanceOperationsPage({
   categories={categories}
   bankAccounts={bankAccounts}
 />
+
+<FinanceTransferForm accounts={bankAccounts} />
 
         <section className="overflow-hidden rounded-2xl bg-white shadow-sm">
           <div className="border-b border-slate-200 p-6">
