@@ -93,15 +93,67 @@ async function createFinanceTransaction(formData: FormData) {
 export default async function FinanceOperationsPage({
   searchParams,
 }: {
-  searchParams?: {
+  searchParams: Promise<{
     company?: string;
     operationType?: string;
-  };
+    category?: string;
+    search?: string;
+    rows?: string;
+    sortBy?: string;
+    sortDir?: string;
+  }>;
 }) {
-  const params = searchParams;
+  const params = await searchParams;
 
   const company = params?.company ?? "ALL";
   const operationType = params?.operationType ?? "ALL";
+  const selectedCategory = params?.category ?? "ALL";
+  const search = params?.search ?? "";
+  const rowsLimit = Number(params?.rows ?? 50);
+  const sortBy = params?.sortBy ?? "operationDate";
+  const sortDir = params?.sortDir ?? "desc";
+
+  const safeRowsLimit = [25, 50, 100, 250, 500].includes(rowsLimit)
+    ? rowsLimit
+    : 50;
+
+const safeSortBy = [
+  "operationDate",
+  "obligationDate",
+  "amount",
+  "companyName",
+  "operationType",
+  "category",
+  "subcategory",
+  "counterparty",
+  "bankAccount",
+  "project",
+].includes(sortBy)
+    ? sortBy
+    : "operationDate";
+
+  const safeSortDir = sortDir === "asc" ? "asc" : "desc";
+function sortHref(column: string) {
+  const nextSortDir =
+    safeSortBy === column && safeSortDir === "desc" ? "asc" : "desc";
+
+  const query = new URLSearchParams();
+
+  query.set("company", company);
+  query.set("operationType", operationType);
+  query.set("category", selectedCategory);
+  query.set("search", search);
+  query.set("rows", String(safeRowsLimit));
+  query.set("sortBy", column);
+  query.set("sortDir", nextSortDir);
+
+  return `/finance/operations?${query.toString()}`;
+}
+
+function sortIcon(column: string) {
+  if (safeSortBy !== column) return "↕";
+  return safeSortDir === "desc" ? "↓" : "↑";
+}
 
   const categories = await prisma.financeCategory.findMany({
     where: {
@@ -115,15 +167,28 @@ export default async function FinanceOperationsPage({
   });
 
   const rows = await prisma.financeTransaction.findMany({
-    where: {
-      ...(company !== "ALL" ? { companyName: company } : {}),
-      ...(operationType !== "ALL" ? { operationType } : {}),
-    },
-    orderBy: {
-      operationDate: "desc",
-    },
-    take: 500,
-  });
+  where: {
+    ...(company !== "ALL" ? { companyName: company } : {}),
+    ...(operationType !== "ALL" ? { operationType } : {}),
+    ...(selectedCategory !== "ALL" ? { category: selectedCategory } : {}),
+    ...(search
+      ? {
+          OR: [
+            { category: { contains: search, mode: "insensitive" } },
+            { subcategory: { contains: search, mode: "insensitive" } },
+            { counterparty: { contains: search, mode: "insensitive" } },
+            { bankAccount: { contains: search, mode: "insensitive" } },
+            { project: { contains: search, mode: "insensitive" } },
+            { comment: { contains: search, mode: "insensitive" } },
+          ],
+        }
+      : {}),
+  },
+  orderBy: {
+    [safeSortBy]: safeSortDir,
+  },
+  take: safeRowsLimit,
+});
 
   const accounts = await prisma.financeAccount.findMany({
   where: {
@@ -177,57 +242,81 @@ const bankAccounts = accounts.map((account) => account.name);
           </Link>
         </div>
 
-        <form className="grid gap-4 rounded-2xl bg-white p-6 shadow-sm md:grid-cols-4">
-          <div>
-            <label className="mb-2 block text-sm font-medium text-slate-700">
-              Компания
-            </label>
+<form className="grid gap-4 rounded-2xl bg-white p-6 shadow-sm lg:grid-cols-[1fr_1fr_1.4fr_180px_160px]">
+  <div>
+    <label className="mb-2 block text-sm font-medium text-slate-700">
+      Компания
+    </label>
 
-            <select
-              name="company"
-              defaultValue={company}
-              className="w-full rounded-xl border border-slate-300 px-4 py-2"
-            >
-              <option value="ALL">Все</option>
-              <option value="ИП Петров">ИП Петров</option>
-              <option value="ИП Лебедева">ИП Лебедева</option>
-            </select>
-          </div>
+    <select
+      name="company"
+      defaultValue={company}
+      className="w-full rounded-xl border border-slate-300 px-4 py-2"
+    >
+      <option value="ALL">Все</option>
+      <option value="ИП Петров">ИП Петров</option>
+      <option value="ИП Лебедева">ИП Лебедева</option>
+    </select>
+  </div>
 
-          <div>
-            <label className="mb-2 block text-sm font-medium text-slate-700">
-              Тип операции
-            </label>
+  <div>
+    <label className="mb-2 block text-sm font-medium text-slate-700">
+      Тип операции
+    </label>
 
-            <select
-              name="operationType"
-              defaultValue={operationType}
-              className="w-full rounded-xl border border-slate-300 px-4 py-2"
-            >
-              <option value="ALL">Все</option>
-              <option value="INCOME">Поступления</option>
-              <option value="EXPENSE">Расходы</option>
-              <option value="TRANSFER">Переводы</option>
-              <option value="FINANCING">Финансирование</option>
-              <option value="PERSONAL">Личные</option>
-            </select>
-          </div>
+    <select
+      name="operationType"
+      defaultValue={operationType}
+      className="w-full rounded-xl border border-slate-300 px-4 py-2"
+    >
+      <option value="ALL">Все</option>
+      <option value="INCOME">Поступления</option>
+      <option value="EXPENSE">Расходы</option>
+      <option value="TRANSFER">Переводы</option>
+      <option value="FINANCING">Финансирование</option>
+      <option value="PERSONAL">Личные</option>
+    </select>
+  </div>
 
-          <div className="flex items-end">
-            <button className="w-full rounded-xl bg-slate-900 px-4 py-2 font-medium text-white">
-              Применить
-            </button>
-          </div>
+  <div>
+    <label className="mb-2 block text-sm font-medium text-slate-700">
+      Статья
+    </label>
 
-          <div className="flex items-end">
-            <Link
-              href="/"
-              className="w-full rounded-xl border border-slate-300 px-4 py-2 text-center font-medium hover:bg-slate-100"
-            >
-              ← Dashboard
-            </Link>
-          </div>
-        </form>
+    <select
+      name="category"
+      defaultValue={selectedCategory}
+      className="w-full rounded-xl border border-slate-300 px-4 py-2"
+    >
+      <option value="ALL">Все статьи</option>
+      {categories.map((category) => (
+        <option key={category.id} value={category.name}>
+          {category.name}
+        </option>
+      ))}
+    </select>
+  </div>
+
+  <div className="flex items-end">
+    <button className="w-full rounded-xl bg-slate-900 px-4 py-2 font-medium text-white">
+      Применить
+    </button>
+  </div>
+
+  <div className="flex items-end">
+    <Link
+      href="/finance/operations"
+      className="w-full rounded-xl border border-slate-300 px-4 py-2 text-center font-medium hover:bg-slate-100"
+    >
+      Сброс
+    </Link>
+  </div>
+
+  <input type="hidden" name="search" value={search} />
+  <input type="hidden" name="rows" value={safeRowsLimit} />
+  <input type="hidden" name="sortBy" value={safeSortBy} />
+  <input type="hidden" name="sortDir" value={safeSortDir} />
+</form>
 
         <section className="grid gap-4 md:grid-cols-4">
           <div className="rounded-2xl bg-white p-6 shadow-sm">
@@ -272,33 +361,158 @@ const bankAccounts = accounts.map((account) => account.name);
 
         <section className="overflow-hidden rounded-2xl bg-white shadow-sm">
           <div className="border-b border-slate-200 p-6">
-            <h2 className="text-xl font-bold text-slate-900">
-              Журнал операций
-            </h2>
+  <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+    <div>
+      <h2 className="text-xl font-bold text-slate-900">
+        Журнал операций
+      </h2>
 
-            <p className="mt-2 text-sm text-slate-500">
-              Показано до 500 последних операций.
-            </p>
-          </div>
+      <p className="mt-2 text-sm text-slate-500">
+        Найдено операций: {rows.length}
+      </p>
+    </div>
+
+    <form className="flex flex-col gap-3 lg:flex-row">
+      <input
+        type="hidden"
+        name="company"
+        value={company}
+      />
+
+      <input
+        type="hidden"
+        name="operationType"
+        value={operationType}
+      />
+
+      <input
+        type="hidden"
+        name="category"
+        value={selectedCategory}
+      />
+
+      <input
+        type="hidden"
+        name="sortBy"
+        value={safeSortBy}
+      />
+
+      <input
+        type="hidden"
+        name="sortDir"
+        value={safeSortDir}
+      />
+
+      <div>
+        <label className="mb-2 block text-sm font-medium text-slate-700">
+          Поиск по журналу
+        </label>
+
+        <input
+          type="text"
+          name="search"
+          defaultValue={search}
+          placeholder="Кредит, поставщик, комментарий..."
+          className="w-[320px] rounded-xl border border-slate-300 px-4 py-2"
+        />
+      </div>
+
+      <div>
+        <label className="mb-2 block text-sm font-medium text-slate-700">
+          Строк
+        </label>
+
+        <select
+          name="rows"
+          defaultValue={safeRowsLimit}
+          className="w-[120px] rounded-xl border border-slate-300 px-4 py-2"
+        >
+          <option value="25">25</option>
+          <option value="50">50</option>
+          <option value="100">100</option>
+          <option value="250">250</option>
+          <option value="500">500</option>
+        </select>
+      </div>
+
+      <div className="flex items-end">
+        <button className="rounded-xl bg-slate-900 px-5 py-2 font-medium text-white">
+          Найти
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
 
           <div className="overflow-x-auto">
             <table className="w-full min-w-[1500px] border-collapse text-sm">
-              <thead className="bg-slate-100 text-left text-slate-700">
-                <tr>
-                  <th className="p-3">Дата платежа</th>
-                  <th className="p-3">Дата обязательства</th>
-                  <th className="p-3">Компания</th>
-                  <th className="p-3">Тип операции</th>
-                  <th className="p-3">Статья</th>
-                  <th className="p-3">Подстатья</th>
-                  <th className="p-3">Контрагент</th>
-                  <th className="p-3">Счёт / касса</th>
-                  <th className="p-3 text-right">Сумма</th>
-                  <th className="p-3">Внутр. перевод</th>
-                  <th className="p-3">Проект</th>
-                  <th className="p-3">Комментарий</th>
-                </tr>
-              </thead>
+<thead className="bg-slate-100 text-left text-slate-700">
+  <tr>
+    <th className="p-3">
+      <Link href={sortHref("operationDate")}>
+        Дата платежа {sortIcon("operationDate")}
+      </Link>
+    </th>
+
+    <th className="p-3">
+      <Link href={sortHref("obligationDate")}>
+        Дата обязательства {sortIcon("obligationDate")}
+      </Link>
+    </th>
+
+    <th className="p-3">
+      <Link href={sortHref("companyName")}>
+        Компания {sortIcon("companyName")}
+      </Link>
+    </th>
+
+    <th className="p-3">
+      <Link href={sortHref("operationType")}>
+        Тип операции {sortIcon("operationType")}
+      </Link>
+    </th>
+
+    <th className="p-3">
+      <Link href={sortHref("category")}>
+        Статья {sortIcon("category")}
+      </Link>
+    </th>
+
+    <th className="p-3">
+      <Link href={sortHref("subcategory")}>
+        Подстатья {sortIcon("subcategory")}
+      </Link>
+    </th>
+
+    <th className="p-3">
+      <Link href={sortHref("counterparty")}>
+        Контрагент {sortIcon("counterparty")}
+      </Link>
+    </th>
+
+    <th className="p-3">
+      <Link href={sortHref("bankAccount")}>
+        Счёт / касса {sortIcon("bankAccount")}
+      </Link>
+    </th>
+
+    <th className="p-3 text-right">
+      <Link href={sortHref("amount")}>
+        Сумма {sortIcon("amount")}
+      </Link>
+    </th>
+
+    <th className="p-3">Внутр. перевод</th>
+
+    <th className="p-3">
+      <Link href={sortHref("project")}>
+        Проект {sortIcon("project")}
+      </Link>
+    </th>
+
+    <th className="p-3">Комментарий</th>
+  </tr>
+</thead>
 
               <tbody>
                 {rows.map((row) => (

@@ -423,7 +423,7 @@ function remainingDebtAfterPayment(payment: (typeof payments)[number]) {
 
                         <div className="text-right">
                           <div className="text-xs text-slate-500">
-                            Остаток после
+                            Остаток по графику
                           </div>
                           <div className="font-bold text-emerald-700">
                             {formatMoney(debtAfterPayment)}

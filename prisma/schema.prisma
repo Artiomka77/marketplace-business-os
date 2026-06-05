@@ -409,6 +409,10 @@ model FinanceTransaction {
   transferGroupId String?
   transferDirection String?
 
+  transactionStatus String @default("FACT")
+  sourceType String?
+  sourceId String?
+
   createdAt DateTime @default(now())
 
   @@index([companyId])

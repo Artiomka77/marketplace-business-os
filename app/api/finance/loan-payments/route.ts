@@ -50,6 +50,74 @@ function buildFutureDate(
   return addDays(baseDate, fallbackDaysDelta * index);
 }
 
+function loanPaymentTransactionData(payment: {
+  id: string;
+  paymentDate: Date;
+  totalAmount: unknown;
+  principalAmount: unknown;
+  interestAmount: unknown;
+  loan: {
+    companyName: string;
+    bankName: string;
+  };
+}) {
+  return {
+    companyName: payment.loan.companyName,
+    operationDate: payment.paymentDate,
+    obligationDate: payment.paymentDate,
+    operationType: "FINANCING",
+    category: "Погашение кредита",
+    subcategory: payment.loan.bankName,
+    counterparty: payment.loan.bankName,
+    amount: toNumber(payment.totalAmount as FormDataEntryValue | null),
+    bankAccount: null,
+    project: "Кредиты",
+    comment: `Кредитный платеж: ${payment.loan.bankName}. Тело: ${toNumber(
+      payment.principalAmount as FormDataEntryValue | null
+    )}, проценты: ${toNumber(payment.interestAmount as FormDataEntryValue | null)}`,
+    isInternalTransfer: false,
+    transactionStatus: "PLAN",
+    sourceType: "LOAN_PAYMENT",
+    sourceId: payment.id,
+  };
+}
+
+async function upsertFinanceTransactionForLoanPayment(paymentId: string) {
+  const payment = await prisma.loanPayment.findUnique({
+    where: {
+      id: paymentId,
+    },
+    include: {
+      loan: true,
+    },
+  });
+
+  if (!payment) return;
+
+  const existingTransaction = await prisma.financeTransaction.findFirst({
+    where: {
+      sourceType: "LOAN_PAYMENT",
+      sourceId: payment.id,
+    },
+  });
+
+  const data = loanPaymentTransactionData(payment);
+
+  if (existingTransaction) {
+    await prisma.financeTransaction.update({
+      where: {
+        id: existingTransaction.id,
+      },
+      data,
+    });
+    return;
+  }
+
+  await prisma.financeTransaction.create({
+    data,
+  });
+}
+
 export async function POST(req: Request) {
   const formData = await req.formData();
 
@@ -109,6 +177,8 @@ export async function POST(req: Request) {
         )
       : 30;
 
+    const updatedPaymentIds = futurePayments.map((payment) => payment.id);
+
     await prisma.$transaction([
       prisma.loan.update({
         where: {
@@ -138,6 +208,10 @@ export async function POST(req: Request) {
         })
       ),
     ]);
+
+    for (const id of updatedPaymentIds) {
+      await upsertFinanceTransactionForLoanPayment(id);
+    }
   } else {
     await prisma.loanPayment.update({
       where: {
@@ -150,6 +224,8 @@ export async function POST(req: Request) {
         totalAmount,
       },
     });
+
+    await upsertFinanceTransactionForLoanPayment(paymentId);
   }
 
   return NextResponse.redirect(new URL("/finance/calendar", req.url));
