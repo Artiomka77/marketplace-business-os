@@ -21,11 +21,13 @@ function getByIndex(row: Record<string, unknown>, index: number) {
 
 export async function normalizeOzonProduct(
   rows: Record<string, unknown>[],
-  importSessionId: string
+  importSessionId: string,
+  companyName: string | null
 ) {
   const data = rows
     .map((row) => ({
       importSessionId,
+      companyName,
 
       vendorCode: cleanText(getByIndex(row, 0)),
 
@@ -36,6 +38,7 @@ export async function normalizeOzonProduct(
     .filter(
       (row): row is {
         importSessionId: string;
+        companyName: string | null;
         vendorCode: string;
         productName: string | null;
         sku: string;
@@ -51,6 +54,7 @@ export async function normalizeOzonProduct(
   await prisma.ozonProduct.deleteMany({
     where: {
       importSessionId,
+      companyName,
     },
   });
 

@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { AdsMappingTable } from "./AdsMappingForm";
+import MarketplaceNav from "@/components/marketplaces/MarketplaceNav";
 
 type Props = {
   searchParams?: Promise<{
@@ -207,7 +208,10 @@ export default async function AdsMappingPage({ searchParams }: Props) {
   const topCampaigns = [...campaigns].slice(0, 10);
 
   return (
-    <main className="min-h-screen bg-slate-50 p-8">
+    <main className="min-h-screen bg-slate-100">
+  <MarketplaceNav />
+
+  <div className="p-8">
       <div className="mx-auto max-w-[1700px] space-y-6">
         <div>
           <h1 className="text-3xl font-bold text-slate-900">
@@ -443,6 +447,8 @@ export default async function AdsMappingPage({ searchParams }: Props) {
           deleteCampaign={deleteCampaign}
         />
       </div>
+
+    </div>
     </main>
   );
 }

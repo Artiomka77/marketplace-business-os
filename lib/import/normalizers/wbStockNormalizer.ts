@@ -3,9 +3,7 @@ import { prisma } from "@/lib/prisma";
 function toNumber(value: unknown): number {
   if (value === null || value === undefined || value === "") return 0;
 
-  const number = Number(
-    String(value).replace(/\s/g, "").replace(",", ".")
-  );
+  const number = Number(String(value).replace(/\s/g, "").replace(",", "."));
 
   return Number.isNaN(number) ? 0 : number;
 }
@@ -18,7 +16,11 @@ function getValue(row: any, keys: string[]) {
   return null;
 }
 
-export async function normalizeWbStock(rows: any[], importSessionId: string) {
+export async function normalizeWbStock(
+  rows: any[],
+  importSessionId: string,
+  companyName: string | null
+) {
   const data: any[] = [];
 
   for (const row of rows) {
@@ -29,8 +31,11 @@ export async function normalizeWbStock(rows: any[], importSessionId: string) {
 
     const base = {
       importSessionId,
+      companyName,
       brand: getValue(row, ["Бренд"]) ? String(getValue(row, ["Бренд"])) : null,
-      subject: getValue(row, ["Предмет"]) ? String(getValue(row, ["Предмет"])) : null,
+      subject: getValue(row, ["Предмет"])
+        ? String(getValue(row, ["Предмет"]))
+        : null,
       vendorCode: vendorCode ? String(vendorCode) : null,
       barcode: barcode ? String(barcode) : null,
       size: getValue(row, ["Размер", "Размер вещи"])
@@ -51,6 +56,13 @@ export async function normalizeWbStock(rows: any[], importSessionId: string) {
   if (data.length === 0) {
     return { savedRows: 0 };
   }
+
+  await prisma.wbStock.deleteMany({
+    where: {
+      importSessionId,
+      companyName,
+    },
+  });
 
   await prisma.wbStock.createMany({
     data,

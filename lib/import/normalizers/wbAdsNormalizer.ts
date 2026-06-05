@@ -5,9 +5,7 @@ function toNumber(value: unknown): number | null {
     return null;
   }
 
-  const normalized = String(value)
-    .replace(/\s/g, "")
-    .replace(",", ".");
+  const normalized = String(value).replace(/\s/g, "").replace(",", ".");
 
   const number = Number(normalized);
 
@@ -18,11 +16,13 @@ export async function normalizeWbAds(
   rows: any[],
   importSessionId: string,
   dateFrom?: Date | null,
-  dateTo?: Date | null
+  dateTo?: Date | null,
+  companyName?: string | null
 ) {
   const data = rows
     .map((row) => ({
       importSessionId,
+      companyName: companyName ?? null,
       dateFrom,
       dateTo,
 
@@ -54,6 +54,14 @@ export async function normalizeWbAds(
       where: {
         dateFrom,
         dateTo,
+        companyName: companyName ?? null,
+      },
+    });
+  } else {
+    await prisma.wbAds.deleteMany({
+      where: {
+        importSessionId,
+        companyName: companyName ?? null,
       },
     });
   }

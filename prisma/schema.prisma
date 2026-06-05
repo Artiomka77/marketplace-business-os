@@ -78,6 +78,7 @@ model ImportSession {
   fileName    String
   reportType  String
   marketplace String
+  companyName String?
 
   rowsCount Int
 
@@ -92,6 +93,7 @@ model ImportSession {
 
   @@index([reportType])
   @@index([marketplace])
+  @@index([companyName])
   @@index([createdAt])
 }
 
@@ -99,6 +101,8 @@ model WbSale {
   id String @id @default(cuid())
 
   importSessionId String?
+  
+  companyName String?
 
   reportNumber String?
   supplyNumber String?
@@ -150,12 +154,15 @@ model WbSale {
   @@index([nmId])
   @@index([saleDate])
   @@index([paymentReason])
+  @@index([companyName])
 }
 
 model WbFinance {
   id String @id @default(cuid())
 
   importSessionId String?
+
+  companyName String?
 
   reportNumber   String?
   legalEntity    String?
@@ -178,12 +185,15 @@ model WbFinance {
   @@index([reportNumber])
   @@index([dateFrom])
   @@index([dateTo])
+  @@index([companyName])
 }
 
 model WbAds {
   id String @id @default(cuid())
 
   importSessionId String?
+
+  companyName String?
 
   campaignId   String?
   campaignName String?
@@ -204,12 +214,15 @@ model WbAds {
   @@index([campaignId])
   @@index([dateFrom])
   @@index([dateTo])
+  @@index([companyName])
 }
 
 model WbStock {
   id String @id @default(cuid())
 
   importSessionId String?
+
+  companyName String?
 
   brand      String?
   subject    String?
@@ -229,6 +242,7 @@ model WbStock {
   @@index([vendorCode])
   @@index([barcode])
   @@index([warehouseName])
+  @@index([companyName])
 }
 
 model ProductCost {
@@ -269,6 +283,7 @@ model OzonFinance {
   id String @id @default(cuid())
 
   importSessionId String?
+  companyName String?
 
   accrualDate DateTime?
 
@@ -294,14 +309,15 @@ model OzonFinance {
   @@index([sku])
   @@index([vendorCode])
   @@index([accrualDate])
+  @@index([companyName])
 }
 model OzonAds {
   id String @id @default(cuid())
 
   importSessionId String?
+  companyName String?
 
   reportDate DateTime?
-
   sku String?
 
   impressions Int?
@@ -318,12 +334,14 @@ model OzonAds {
 
   @@index([importSessionId])
   @@index([reportDate])
+  @@index([companyName])
   @@index([sku])
 }
 model OzonStock {
   id String @id @default(cuid())
 
   importSessionId String?
+  companyName String?
 
   sku String?
   vendorCode String?
@@ -345,12 +363,14 @@ model OzonStock {
 
   @@index([sku])
   @@index([vendorCode])
+  @@index([companyName])
   @@index([warehouseName])
 }
 model OzonProduct {
   id String @id @default(cuid())
 
   importSessionId String?
+  companyName String?
 
   vendorCode String
   sku String
@@ -361,6 +381,7 @@ model OzonProduct {
 
   @@index([importSessionId])
   @@index([vendorCode])
+  @@index([companyName])
   @@index([sku])
 }
 model FinanceCategory {

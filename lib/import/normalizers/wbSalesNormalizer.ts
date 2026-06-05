@@ -53,10 +53,12 @@ function toStringOrNull(value: unknown): string | null {
 
 export async function normalizeWbSales(
   rows: Record<string, unknown>[],
-  importSessionId: string
+  importSessionId: string,
+  companyName: string | null
 ) {
   const data = rows.map((row) => ({
     importSessionId,
+    companyName,
 
     reportNumber: toStringOrNull(row["Номер отчета"]),
     supplyNumber: toStringOrNull(row["Номер поставки"]),
@@ -94,7 +96,8 @@ export async function normalizeWbSales(
 
     logisticsCost: toNumber(row["Услуги по доставке товара покупателю"]),
     storageCost: toNumber(row["Хранение"]),
-    acceptanceCost: toNumber(row["Платная приемка"]) ?? toNumber(row["Операции на приемке"]),
+    acceptanceCost:
+      toNumber(row["Платная приемка"]) ?? toNumber(row["Операции на приемке"]),
     deductions: toNumber(row["Удержания"]),
     penaltiesAmount: toNumber(row["Общая сумма штрафов"]),
 
@@ -114,6 +117,13 @@ export async function normalizeWbSales(
   if (filteredData.length === 0) {
     return { savedRows: 0 };
   }
+
+  await prisma.wbSale.deleteMany({
+    where: {
+      importSessionId,
+      companyName,
+    },
+  });
 
   await prisma.wbSale.createMany({
     data: filteredData,

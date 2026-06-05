@@ -2,6 +2,16 @@ import Link from "next/link";
 
 const items = [
   {
+    title: "Dashboard",
+    description: "Главная финансовая панель и сводка по бизнесу.",
+    href: "/finance",
+  },
+  {
+    title: "Финансовые операции",
+    description: "Добавление и просмотр финансовых операций.",
+    href: "/finance/operations",
+  },
+  {
     title: "ОДДС",
     description: "Движение денежных средств по операциям.",
     href: "/finance/cashflow",
@@ -31,11 +41,7 @@ const items = [
     description: "Категории доходов, расходов и личных операций.",
     href: "/finance/categories",
   },
-  {
-    title: "Операции",
-    description: "Добавление и просмотр финансовых операций.",
-    href: "/finance/operations",
-  },
+  
 ];
 
 export default function FinancePage() {
@@ -60,9 +66,7 @@ export default function FinancePage() {
                 {item.title}
               </div>
 
-              <p className="mt-3 text-slate-500">
-                {item.description}
-              </p>
+              <p className="mt-3 text-slate-500">{item.description}</p>
 
               <div className="mt-5 font-semibold text-slate-900">
                 Открыть →

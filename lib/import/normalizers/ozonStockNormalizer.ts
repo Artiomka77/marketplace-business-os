@@ -39,7 +39,8 @@ function isServiceRow(sku: unknown, vendorCode: unknown) {
 
 export async function normalizeOzonStock(
   rows: Record<string, unknown>[],
-  importSessionId: string
+  importSessionId: string,
+  companyName: string | null
 ) {
   const data = rows
     .map((row) => {
@@ -48,6 +49,7 @@ export async function normalizeOzonStock(
 
       return {
         importSessionId,
+        companyName,
 
         vendorCode: vendorCode ? String(vendorCode) : null,
 
@@ -79,6 +81,7 @@ export async function normalizeOzonStock(
   await prisma.ozonStock.deleteMany({
     where: {
       importSessionId,
+      companyName,
     },
   });
 

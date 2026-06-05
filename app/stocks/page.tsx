@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
+import MarketplaceNav from "@/components/marketplaces/MarketplaceNav";
 
 function formatNumber(value: number) {
   return value.toLocaleString("ru-RU");
@@ -56,7 +57,10 @@ export default async function StocksPage() {
   );
 
   return (
-    <main className="min-h-screen bg-slate-100 p-10">
+    <main className="min-h-screen bg-slate-100">
+  <MarketplaceNav />
+
+  <div className="p-8">
       <div className="max-w-7xl mx-auto space-y-8">
         <div className="flex items-start justify-between">
           <div>
@@ -176,6 +180,8 @@ export default async function StocksPage() {
           </table>
         </div>
       </div>
+
+    </div>
     </main>
   );
 }

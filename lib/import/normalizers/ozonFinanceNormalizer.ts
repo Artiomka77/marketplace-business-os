@@ -84,11 +84,13 @@ function getByIndex(row: Record<string, unknown>, index: number) {
 
 export async function normalizeOzonFinance(
   rows: Record<string, unknown>[],
-  importSessionId: string
+  importSessionId: string,
+  companyName: string | null
 ) {
   const data = rows
     .map((row) => ({
       importSessionId,
+      companyName,
 
       accrualDate: toDate(getByIndex(row, 0)),
 
@@ -121,6 +123,7 @@ export async function normalizeOzonFinance(
   await prisma.ozonFinance.deleteMany({
     where: {
       importSessionId,
+      companyName,
     },
   });
 

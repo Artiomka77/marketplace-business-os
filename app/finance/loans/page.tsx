@@ -48,6 +48,13 @@ export default async function LoansPage() {
   const from = startOfMonth(now);
   const to = endOfYear(now);
 
+const companies = await prisma.$queryRaw<{ id: string; name: string }[]>`
+  select "id", "name"
+  from "Company"
+  where "isActive" = true
+  order by "name" asc
+`;
+
   const loans = await prisma.loan.findMany({
     include: {
       payments: {
@@ -384,13 +391,16 @@ export default async function LoansPage() {
             className="mt-6 grid gap-4 md:grid-cols-4"
           >
             <select
-              name="companyName"
-              className="rounded-xl border border-slate-300 px-4 py-2"
-              defaultValue="ИП Петров"
-            >
-              <option value="ИП Петров">ИП Петров</option>
-              <option value="ИП Лебедева">ИП Лебедева</option>
-            </select>
+  name="companyName"
+  className="rounded-xl border border-slate-300 px-4 py-2"
+  defaultValue={companies[0]?.name ?? ""}
+>
+  {companies.map((company) => (
+    <option key={company.id} value={company.name}>
+      {company.name}
+    </option>
+  ))}
+</select>
 
             <input
               name="bankName"

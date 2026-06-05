@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { getProfitAnalytics } from "@/lib/analytics/profitAnalytics";
 import { getProfitAnalyticsOzon } from "@/lib/analytics/profitAnalyticsOzon";
+import MarketplaceNav from "@/components/marketplaces/MarketplaceNav";
 
 type MarketplaceFilter = "ALL" | "WB" | "Ozon";
 type CompanyFilter = "ALL" | "ИП Петров" | "ИП Лебедева";
@@ -234,7 +235,10 @@ export default async function AbcPage({
   };
 
   return (
-    <main className="min-h-screen bg-slate-100 p-8">
+    <main className="min-h-screen bg-slate-100">
+  <MarketplaceNav />
+
+  <div className="p-8">
       <div className="mx-auto max-w-[1600px] space-y-6">
         <div>
           <h1 className="text-4xl font-bold text-slate-900">ABC-анализ</h1>
@@ -663,6 +667,8 @@ export default async function AbcPage({
           ← Назад в аналитику
         </Link>
       </div>
+
+    </div>
     </main>
   );
 }

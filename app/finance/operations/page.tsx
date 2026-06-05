@@ -190,7 +190,14 @@ function sortIcon(column: string) {
   take: safeRowsLimit,
 });
 
-  const accounts = await prisma.financeAccount.findMany({
+const companies = await prisma.$queryRaw<{ id: string; name: string }[]>`
+  select "id", "name"
+  from "Company"
+  where "isActive" = true
+  order by "name" asc
+`;
+
+const accounts = await prisma.financeAccount.findMany({
   where: {
     isActive: true,
   },
@@ -204,7 +211,10 @@ function sortIcon(column: string) {
   ],
 });
 
-const bankAccounts = accounts.map((account) => account.name);
+const bankAccounts = accounts.map((account) => ({
+  name: account.name,
+  companyName: account.companyName,
+}));
 
   const incomeTotal = rows
     .filter((row) => row.operationType === "INCOME" && !row.isInternalTransfer)
@@ -253,9 +263,12 @@ const bankAccounts = accounts.map((account) => account.name);
       defaultValue={company}
       className="w-full rounded-xl border border-slate-300 px-4 py-2"
     >
-      <option value="ALL">Все</option>
-      <option value="ИП Петров">ИП Петров</option>
-      <option value="ИП Лебедева">ИП Лебедева</option>
+<option value="ALL">Все</option>
+{companies.map((company) => (
+  <option key={company.id} value={company.name}>
+    {company.name}
+  </option>
+))}
     </select>
   </div>
 
@@ -352,12 +365,13 @@ const bankAccounts = accounts.map((account) => account.name);
           </div>
         </section>
 
-        <FinanceOperationForm
+      <FinanceOperationForm
   categories={categories}
+  companies={companies}
   bankAccounts={bankAccounts}
 />
 
-<FinanceTransferForm accounts={bankAccounts} />
+<FinanceTransferForm companies={companies} accounts={bankAccounts} />
 
         <section className="overflow-hidden rounded-2xl bg-white shadow-sm">
           <div className="border-b border-slate-200 p-6">

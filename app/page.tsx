@@ -10,6 +10,29 @@ type Props = {
 const ACTIVE_COMPANY_NAME = "ИП Петров";
 const ACTIVE_MARKETPLACE_CODE = "WB";
 
+const quickLinks = [
+  {
+    title: "Аналитика маркетплейсов",
+    description: "Прибыль WB/Ozon, ABC-анализ, остатки и связки рекламы.",
+    href: "/analytics",
+  },
+  {
+    title: "Финансы",
+    description: "Операции, ОДДС, счета, кредиты и прогноз ликвидности.",
+    href: "/finance",
+  },
+  {
+    title: "Импорт отчётов",
+    description: "Загрузка отчётов WB, Ozon, рекламы, остатков и себестоимости.",
+    href: "/import",
+  },
+  {
+    title: "Настройки компаний",
+    description: "Компании, реквизиты, налоговые режимы и ставки.",
+    href: "/settings/companies",
+  },
+];
+
 function formatCurrency(value: number) {
   return new Intl.NumberFormat("ru-RU", {
     style: "currency",
@@ -192,87 +215,16 @@ export default async function HomePage({ searchParams }: Props) {
   );
 
   return (
-    <main className="flex min-h-screen bg-slate-100">
-      <aside className="hidden w-72 shrink-0 flex-col border-r border-slate-200 bg-white p-6 lg:flex">
-        <div className="mb-10">
-          <h1 className="text-3xl font-bold tracking-tight">Marketplace OS</h1>
-
-          <p className="mt-2 text-sm text-slate-500">Analytics Platform</p>
-        </div>
-
-<nav className="space-y-2">
-  <Link
-    href="/"
-    className="block rounded-xl bg-slate-900 px-5 py-4 font-medium text-white"
-  >
-    Dashboard
-  </Link>
-
-  <Link
-    href="/import"
-    className="block rounded-xl px-5 py-4 text-slate-700 transition hover:bg-slate-100"
-  >
-    Импорт отчетов
-  </Link>
-
-  <Link
-    href="/profit"
-    className="block rounded-xl px-5 py-4 text-slate-700 transition hover:bg-slate-100"
-  >
-    Прибыль WB по SKU
-  </Link>
-
-  <Link
-    href="/profit-ozon"
-    className="block rounded-xl px-5 py-4 text-slate-700 transition hover:bg-slate-100"
-  >
-    Прибыль Ozon по SKU
-  </Link>
-
-  <Link
-    href="/stocks"
-    className="block rounded-xl px-5 py-4 text-slate-700 transition hover:bg-slate-100"
-  >
-    Остатки
-  </Link>
-
-  <Link
-    href="/ads-mapping"
-    className="block rounded-xl px-5 py-4 text-slate-700 transition hover:bg-slate-100"
-  >
-    Связка рекламы WB
-  </Link>
-
-  <Link
-    href="/imports"
-    className="block rounded-xl px-5 py-4 text-slate-700 transition hover:bg-slate-100"
-  >
-    История импортов
-  </Link>
-</nav>
-
-        <div className="mt-auto pt-10">
-          <div className="rounded-2xl bg-slate-100 p-5">
-            <div className="mb-2 text-sm text-slate-500">Активная компания</div>
-
-            <div className="font-semibold">ИП Петров</div>
-
-            <div className="mt-1 text-sm text-slate-500">
-              Wildberries / Ozon
-            </div>
-          </div>
-        </div>
-      </aside>
-
-      <section className="min-w-0 flex-1 p-4 sm:p-6 xl:p-10">
-        <div className="mb-8 flex flex-col gap-5 xl:mb-10 xl:flex-row xl:items-start xl:justify-between">
+    <main className="min-h-screen bg-slate-100 p-4 sm:p-6 xl:p-10">
+      <div className="mx-auto max-w-[1700px] space-y-8">
+        <section className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
           <div className="min-w-0">
-            <h2 className="break-words text-3xl font-bold tracking-tight text-slate-950 sm:text-4xl">
+            <h1 className="break-words text-3xl font-bold tracking-tight text-slate-950 sm:text-4xl">
               Dashboard
-            </h2>
+            </h1>
 
             <p className="mt-2 text-slate-500">
-              Полная оцифровка бизнеса маркетплейсов
+              Центральная панель Marketplace Business OS.
             </p>
           </div>
 
@@ -282,7 +234,7 @@ export default async function HomePage({ searchParams }: Props) {
               className="min-w-0 rounded-2xl border border-slate-200 bg-white px-4 py-4 shadow-sm sm:px-5"
             >
               <div className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-400">
-                Отчетный период
+                Отчётный период
               </div>
 
               <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center">
@@ -311,14 +263,14 @@ export default async function HomePage({ searchParams }: Props) {
               href="/import"
               className="rounded-2xl bg-slate-900 px-6 py-4 text-center font-semibold text-white transition hover:bg-slate-800"
             >
-              Импортировать отчет
+              Импортировать отчёт
             </Link>
           </div>
-        </div>
+        </section>
 
-        <div className="mb-10 grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-4">
+        <section className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-4">
           <div className={metricCardClassName()}>
-            <div className="mb-4 text-sm text-slate-500">Выручка</div>
+            <div className="mb-4 text-sm text-slate-500">Выручка WB</div>
 
             <div className={metricValueClassName()}>
               {hasFinanceData ? formatCurrency(totalRevenue) : "Нет данных"}
@@ -342,7 +294,7 @@ export default async function HomePage({ searchParams }: Props) {
           </div>
 
           <div className={metricCardClassName()}>
-            <div className="mb-4 text-sm text-slate-500">ДРР</div>
+            <div className="mb-4 text-sm text-slate-500">ДРР WB</div>
 
             <div className={metricValueClassName()}>
               {drr !== null ? `${drr.toFixed(1)}%` : "Нет данных"}
@@ -357,22 +309,46 @@ export default async function HomePage({ searchParams }: Props) {
             <div className="mb-4 text-sm text-slate-500">Остатки WB</div>
 
             <div className={metricValueClassName()}>
-              {hasStockData ? `${totalStock.toLocaleString("ru-RU")} шт` : "Нет данных"}
+              {hasStockData
+                ? `${totalStock.toLocaleString("ru-RU")} шт`
+                : "Нет данных"}
             </div>
 
             <div className="mt-3 break-words text-sm text-slate-500">
-              {hasStockData ? `Срез на дату: ${stockDate}` : "WB Остатки не загружены"}
+              {hasStockData
+                ? `Срез на дату: ${stockDate}`
+                : "WB Остатки не загружены"}
             </div>
           </div>
-        </div>
+        </section>
 
-        <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-8">
+        <section className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
+          {quickLinks.map((item) => (
+            <Link
+              key={item.href}
+              href={item.href}
+              className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
+            >
+              <h2 className="text-xl font-bold text-slate-900">{item.title}</h2>
+
+              <p className="mt-3 text-sm leading-6 text-slate-500">
+                {item.description}
+              </p>
+
+              <div className="mt-5 font-semibold text-slate-900">
+                Открыть →
+              </div>
+            </Link>
+          ))}
+        </section>
+
+        <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-8">
           <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <h3 className="text-2xl font-bold">Последние отчеты</h3>
+              <h2 className="text-2xl font-bold">Последние отчёты</h2>
 
               <p className="mt-2 text-slate-500">
-                Последние импортированные данные
+                Последние импортированные данные по кабинетам.
               </p>
             </div>
 
@@ -380,7 +356,7 @@ export default async function HomePage({ searchParams }: Props) {
               href="/imports"
               className="rounded-xl border border-slate-300 px-5 py-3 text-center transition hover:bg-slate-100"
             >
-              Смотреть все
+              История импортов
             </Link>
           </div>
 
@@ -440,11 +416,19 @@ export default async function HomePage({ searchParams }: Props) {
                     );
                   })
                 )}
+
+                {companies.length === 0 && (
+                  <tr>
+                    <td colSpan={5} className="py-8 text-center text-slate-500">
+                      Компании пока не настроены.
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>
-        </div>
-      </section>
+        </section>
+      </div>
     </main>
   );
 }

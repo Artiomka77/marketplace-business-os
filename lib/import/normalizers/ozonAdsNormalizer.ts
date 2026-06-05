@@ -44,13 +44,15 @@ function parseDateFromFileName(fileName: string): Date | null {
 export async function normalizeOzonAds(
   rows: any[],
   importSessionId: string,
-  fileName: string
+  fileName: string,
+  companyName: string | null
 ) {
   const reportDate = parseDateFromFileName(fileName);
 
   const data = rows
     .map((row) => ({
       importSessionId,
+      companyName,
       reportDate,
 
       sku: row["SKU"] ? String(row["SKU"]) : null,
@@ -90,12 +92,14 @@ export async function normalizeOzonAds(
     await prisma.ozonAds.deleteMany({
       where: {
         reportDate,
+        companyName,
       },
     });
   } else {
     await prisma.ozonAds.deleteMany({
       where: {
         importSessionId,
+        companyName,
       },
     });
   }

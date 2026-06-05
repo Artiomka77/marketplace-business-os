@@ -5,9 +5,7 @@ function toNumber(value: unknown): number | null {
     return null;
   }
 
-  const normalized = String(value)
-    .replace(/\s/g, "")
-    .replace(",", ".");
+  const normalized = String(value).replace(/\s/g, "").replace(",", ".");
 
   const number = Number(normalized);
 
@@ -26,11 +24,13 @@ function toDate(value: unknown): Date | null {
 
 export async function normalizeWbFinance(
   rows: any[],
-  importSessionId: string
+  importSessionId: string,
+  companyName: string | null
 ) {
   const data = rows
     .map((row) => ({
       importSessionId,
+      companyName,
 
       reportNumber: row["№ отчета"] ? String(row["№ отчета"]) : null,
       legalEntity: row["Юридическое лицо"]
@@ -57,6 +57,13 @@ export async function normalizeWbFinance(
       savedRows: 0,
     };
   }
+
+  await prisma.wbFinance.deleteMany({
+    where: {
+      importSessionId,
+      companyName,
+    },
+  });
 
   await prisma.wbFinance.createMany({
     data,

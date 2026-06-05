@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { getProfitAnalyticsOzon } from "@/lib/analytics/profitAnalyticsOzon";
+import { getProfitAnalytics } from "@/lib/analytics/profitAnalytics";
 import MarketplaceNav from "@/components/marketplaces/MarketplaceNav";
 
 type SortKey =
@@ -11,6 +11,7 @@ type SortKey =
   | "wbCommission"
   | "logisticsCost"
   | "penaltiesAndDeductions"
+  | "paymentServiceCost"
   | "adsCost"
   | "drrPercent"
   | "totalCost"
@@ -96,37 +97,35 @@ function getSortValue(row: any, sortKey: SortKey, totalMarginProfit: number) {
   return Number(row[sortKey] ?? 0);
 }
 
-export default async function ProfitOzonPage({
+export default async function ProfitPage({
   searchParams,
 }: {
-searchParams?: Promise<{
-  dateFrom?: string;
-  dateTo?: string;
-  usnRate?: string;
-  vatRate?: string;
-  companyName?: string;
-  sort?: string;
-  dir?: string;
-}>;
+  searchParams?: Promise<{
+    dateFrom?: string;
+    dateTo?: string;
+    usnRate?: string;
+    vatRate?: string;
+    sort?: string;
+    dir?: string;
+  }>;
 }) {
   const params = await searchParams;
 
   const usnRate = params?.usnRate ?? "1";
   const vatRate = params?.vatRate ?? "5";
-const companyName = params?.companyName ?? "ALL";
 
   const sort = (params?.sort ?? "marginProfit") as SortKey;
   const dir = (params?.dir === "asc" ? "asc" : "desc") as SortDir;
 
-  const { rows, totals, comparison } = await getProfitAnalyticsOzon({
-  dateFrom: params?.dateFrom,
-  dateTo: params?.dateTo,
-  usnRate,
-  vatRate,
-  companyName,
-});
+  const { rows, totals, comparison } = await getProfitAnalytics({
+    dateFrom: params?.dateFrom,
+    dateTo: params?.dateTo,
+    usnRate,
+    vatRate,
+  });
 
-  const otherDeductions = totals.penaltiesAmount + totals.deductions;
+  const storageAndAcceptance = totals.storageCost + totals.acceptanceCost;
+  const penaltiesAndDeductions = totals.penaltiesAmount + totals.deductions;
 
   const sortedRows = [...rows].sort((a, b) => {
     const aValue = getSortValue(a, sort, totals.marginProfit);
@@ -145,20 +144,20 @@ const companyName = params?.companyName ?? "ALL";
     query.set("dateTo", params?.dateTo ?? "2026-05-24");
     query.set("usnRate", usnRate);
     query.set("vatRate", vatRate);
-    query.set("companyName", companyName);
     query.set("sort", sortKey);
     query.set("dir", nextDir);
 
-    return `/profit-ozon?${query.toString()}`;
+    return `/profit?${query.toString()}`;
   }
 
   function SortHeader({
-    label,
-    sortKey,
-  }: {
-    label: string;
-    sortKey: SortKey;
-  }) {
+  label,
+  sortKey,
+}: {
+  label: string;
+  sortKey: SortKey;
+}) {
+  
     const active = sort === sortKey;
 
     return (
@@ -181,17 +180,15 @@ const companyName = params?.companyName ?? "ALL";
   <div className="p-8">
       <div className="mx-auto max-w-[1800px] space-y-6">
         <div>
-          <h1 className="text-3xl font-bold text-slate-900">
-            Прибыль Ozon по SKU
-          </h1>
+          <h1 className="text-3xl font-bold text-slate-900">Прибыль по SKU WB</h1>
 
           <p className="mt-2 text-slate-600">
-            Unit economics по Ozon с учетом начислений маркетплейса,
-            себестоимости, рекламы и налогов.
+            Unit economics по WB Sales с учетом себестоимости, логистики,
+            штрафов, рекламы и налогов.
           </p>
         </div>
 
-        <form className="grid gap-4 rounded-2xl bg-white p-6 shadow-sm md:grid-cols-6">
+        <form className="grid gap-4 rounded-2xl bg-white p-6 shadow-sm md:grid-cols-5">
           <input type="hidden" name="sort" value={sort} />
           <input type="hidden" name="dir" value={dir} />
 
@@ -257,22 +254,6 @@ const companyName = params?.companyName ?? "ALL";
             </select>
           </div>
 
-<div>
-  <label className="mb-2 block text-sm font-medium text-slate-700">
-    Компания
-  </label>
-
-  <select
-    name="companyName"
-    defaultValue={companyName}
-    className="w-full rounded-xl border border-slate-300 px-4 py-2"
-  >
-    <option value="ALL">Все компании</option>
-    <option value="ИП Петров">ИП Петров</option>
-    <option value="ИП Лебедева">ИП Лебедева</option>
-  </select>
-</div>
-
           <div className="flex items-end">
             <button className="w-full rounded-xl bg-slate-900 px-4 py-2 font-medium text-white">
               Применить
@@ -290,7 +271,7 @@ const companyName = params?.companyName ?? "ALL";
           </div>
 
           <div className={cardClassName()}>
-            <div className="text-sm text-slate-500">Итого Ozon</div>
+            <div className="text-sm text-slate-500">К перечислению</div>
             <div className={valueClassName()}>
               {formatMoney(totals.sellerPayout)}
             </div>
@@ -320,7 +301,7 @@ const companyName = params?.companyName ?? "ALL";
           </div>
 
           <div className={cardClassName()}>
-            <div className="text-sm text-slate-500">Комиссия Ozon</div>
+            <div className="text-sm text-slate-500">Комиссия WB</div>
             <div className={valueClassName()}>
               {formatMoney(totals.wbCommission)}
             </div>
@@ -352,23 +333,39 @@ const companyName = params?.companyName ?? "ALL";
           </div>
 
           <div className={cardClassName()}>
-            <div className="text-sm text-slate-500">Прочие удержания</div>
+            <div className="text-sm text-slate-500">Хранение + приемка</div>
             <div className={valueClassName()}>
-              {formatMoney(otherDeductions)}
+              {formatMoney(storageAndAcceptance)}
             </div>
             <div className={subTextClassName()}>
-              {formatShare(otherDeductions, totals.revenue)}
+              {formatShare(storageAndAcceptance, totals.revenue)}
             </div>
           </div>
 
           <div className={cardClassName()}>
-            <div className="text-sm text-slate-500">Реклама Ozon</div>
+            <div className="text-sm text-slate-500">Штрафы + удержания</div>
+            <div className={valueClassName()}>
+              {formatMoney(penaltiesAndDeductions)}
+            </div>
+            <div className={subTextClassName()}>
+              {formatShare(penaltiesAndDeductions, totals.revenue)}
+            </div>
+          </div>
+
+          <div className={cardClassName()}>
+            <div className="text-sm text-slate-500">Реклама WB</div>
             <div className={valueClassName()}>{formatMoney(totals.adsCost)}</div>
             <div className={subTextClassName()}>
               {formatShare(totals.adsCost, totals.revenue)}
             </div>
             <div className={deltaTextClassName(comparison.adsCost.diff, true)}>
               {formatDelta(comparison.adsCost.diff, comparison.adsCost.diffPercent)}
+            </div>
+            <div className="mt-1 text-xs text-slate-500">
+              Нераспр.:{" "}
+              <span className="font-semibold text-amber-600">
+                {formatMoney(totals.undistributedAdsCost)}
+              </span>
             </div>
           </div>
 
@@ -442,7 +439,7 @@ const companyName = params?.companyName ?? "ALL";
         <section className="overflow-hidden rounded-2xl bg-white shadow-sm">
           <div className="border-b border-slate-200 p-6">
             <h2 className="text-xl font-bold text-slate-900">
-              Сводная таблица Ozon по артикулам
+              Сводная таблица по артикулам
             </h2>
 
             <p className="mt-1 text-sm text-slate-500">
@@ -451,13 +448,13 @@ const companyName = params?.companyName ?? "ALL";
           </div>
 
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[1650px] border-collapse text-sm">
+            <table className="w-full min-w-[1750px] border-collapse text-sm">
               <thead className="sticky top-0 bg-slate-100 text-left text-slate-700">
                 <tr>
                   <th className="p-3">
                     <SortHeader label="ABC" sortKey="abcByProfit" />
                   </th>
-                  <th className="p-3">SKU Ozon</th>
+                  <th className="p-3">Код WB</th>
                   <th className="p-3">Артикул</th>
                   <th className="p-3 text-right">
                     <SortHeader label="Продажи" sortKey="netSalesQty" />
@@ -469,7 +466,7 @@ const companyName = params?.companyName ?? "ALL";
                     <SortHeader label="Доля выр." sortKey="revenueSharePercent" />
                   </th>
                   <th className="p-3 text-right">
-                    <SortHeader label="Итого Ozon" sortKey="sellerPayout" />
+                    <SortHeader label="К перечислению" sortKey="sellerPayout" />
                   </th>
                   <th className="p-3 text-right">
                     <SortHeader label="Комиссия" sortKey="wbCommission" />
@@ -479,9 +476,12 @@ const companyName = params?.companyName ?? "ALL";
                   </th>
                   <th className="p-3 text-right">
                     <SortHeader
-                      label="Прочие удерж."
+                      label="Штрафы + удерж."
                       sortKey="penaltiesAndDeductions"
                     />
+                  </th>
+                  <th className="p-3 text-right">
+                    <SortHeader label="Плат. услуги" sortKey="paymentServiceCost" />
                   </th>
                   <th className="p-3 text-right">
                     <SortHeader label="Реклама" sortKey="adsCost" />
@@ -546,6 +546,9 @@ const companyName = params?.companyName ?? "ALL";
                       <td className="p-3 text-right">
                         {formatMoney(row.penaltiesAmount + row.deductions)}
                       </td>
+                      <td className="p-3 text-right">
+                        {formatMoney(row.paymentServiceCost)}
+                      </td>
                       <td className="p-3 text-right font-medium">
                         {formatMoney(row.adsCost)}
                       </td>
@@ -592,9 +595,9 @@ const companyName = params?.companyName ?? "ALL";
 
                 {sortedRows.length === 0 && (
                   <tr>
-                    <td colSpan={18} className="p-8 text-center text-slate-500">
-                      Нет данных для расчета прибыли. Загрузите Ozon Finance,
-                      Ozon Ads и ProductCost.
+                    <td colSpan={19} className="p-8 text-center text-slate-500">
+                      Нет данных для расчета прибыли. Загрузите WB Sales,
+                      рекламу и ProductCost.
                     </td>
                   </tr>
                 )}
@@ -604,7 +607,7 @@ const companyName = params?.companyName ?? "ALL";
         </section>
       </div>
 
-     </div>
+    </div>
     </main>
   );
 }

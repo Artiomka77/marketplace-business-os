@@ -552,13 +552,15 @@ function calculateRowsAndTotals({
 async function findLatestOzonFinanceRowsByPeriod(params?: {
   dateFrom?: string | null;
   dateTo?: string | null;
+  companyName?: string | null;
 }) {
   const accrualDateWhere = createDateWhere(params?.dateFrom, params?.dateTo);
 
-  const latestRow = await prisma.ozonFinance.findFirst({
-    where: {
-      ...(accrualDateWhere ? { accrualDate: accrualDateWhere } : {}),
-    },
+const latestRow = await prisma.ozonFinance.findFirst({
+  where: {
+    ...(accrualDateWhere ? { accrualDate: accrualDateWhere } : {}),
+    ...(params?.companyName ? { companyName: params.companyName } : {}),
+  },
     orderBy: {
       createdAt: "desc",
     },
@@ -571,6 +573,7 @@ async function findLatestOzonFinanceRowsByPeriod(params?: {
       where: {
         importSessionId: latestRow.importSessionId,
         ...(accrualDateWhere ? { accrualDate: accrualDateWhere } : {}),
+...(params?.companyName ? { companyName: params.companyName } : {}),
       },
       orderBy: {
         accrualDate: "desc",
@@ -581,6 +584,7 @@ async function findLatestOzonFinanceRowsByPeriod(params?: {
   return prisma.ozonFinance.findMany({
     where: {
       ...(accrualDateWhere ? { accrualDate: accrualDateWhere } : {}),
+...(params?.companyName ? { companyName: params.companyName } : {}),
       createdAt: {
         gte: new Date(latestRow.createdAt.getTime() - 10 * 60 * 1000),
         lte: new Date(latestRow.createdAt.getTime() + 10 * 60 * 1000),
@@ -595,6 +599,7 @@ async function findLatestOzonFinanceRowsByPeriod(params?: {
 async function findLatestOzonFinanceRowsByDatePeriod(params?: {
   dateFrom?: Date | null;
   dateTo?: Date | null;
+  companyName?: string | null;
 }) {
   const accrualDateWhere = createDateWhereFromDates(
     params?.dateFrom,
@@ -604,6 +609,7 @@ async function findLatestOzonFinanceRowsByDatePeriod(params?: {
   const latestRow = await prisma.ozonFinance.findFirst({
     where: {
       ...(accrualDateWhere ? { accrualDate: accrualDateWhere } : {}),
+      ...(params?.companyName ? { companyName: params.companyName } : {}),
     },
     orderBy: {
       createdAt: "desc",
@@ -613,12 +619,13 @@ async function findLatestOzonFinanceRowsByDatePeriod(params?: {
   if (!latestRow) return [];
 
   if (latestRow.importSessionId) {
-    return prisma.ozonFinance.findMany({
-      where: {
-        importSessionId: latestRow.importSessionId,
-        ...(accrualDateWhere ? { accrualDate: accrualDateWhere } : {}),
-      },
-      orderBy: {
+return prisma.ozonFinance.findMany({
+  where: {
+    importSessionId: latestRow.importSessionId,
+    ...(accrualDateWhere ? { accrualDate: accrualDateWhere } : {}),
+    ...(params?.companyName ? { companyName: params.companyName } : {}),
+  },
+  orderBy: {
         accrualDate: "desc",
       },
     });
@@ -641,12 +648,14 @@ async function findLatestOzonFinanceRowsByDatePeriod(params?: {
 async function findLatestOzonAdsRowsByPeriod(params?: {
   dateFrom?: string | null;
   dateTo?: string | null;
+  companyName?: string | null;
 }) {
   const reportDateWhere = createDateWhere(params?.dateFrom, params?.dateTo);
 
   const datedRows = await prisma.ozonAds.findMany({
     where: {
       ...(reportDateWhere ? { reportDate: reportDateWhere } : {}),
+      ...(params?.companyName ? { companyName: params.companyName } : {}),
     },
     orderBy: {
       createdAt: "desc",
@@ -668,11 +677,12 @@ async function findLatestOzonAdsRowsByPeriod(params?: {
   if (!latestRow) return [];
 
   if (latestRow.importSessionId) {
-    return prisma.ozonAds.findMany({
-      where: {
-        importSessionId: latestRow.importSessionId,
-      },
-    });
+return prisma.ozonAds.findMany({
+  where: {
+    importSessionId: latestRow.importSessionId,
+    ...(params?.companyName ? { companyName: params.companyName } : {}),
+  },
+});
   }
 
   return prisma.ozonAds.findMany({
@@ -688,6 +698,7 @@ async function findLatestOzonAdsRowsByPeriod(params?: {
 async function findLatestOzonAdsRowsByDatePeriod(params?: {
   dateFrom?: Date | null;
   dateTo?: Date | null;
+  companyName?: string | null;
 }) {
   const reportDateWhere = createDateWhereFromDates(
     params?.dateFrom,
@@ -697,6 +708,7 @@ async function findLatestOzonAdsRowsByDatePeriod(params?: {
   const rows = await prisma.ozonAds.findMany({
     where: {
       ...(reportDateWhere ? { reportDate: reportDateWhere } : {}),
+    ...(params?.companyName ? { companyName: params.companyName } : {})
     },
     orderBy: {
       createdAt: "desc",
@@ -739,9 +751,14 @@ export async function getProfitAnalyticsOzon(params?: {
   dateTo?: string | null;
   usnRate?: string | number | null;
   vatRate?: string | number | null;
+  companyName?: string | null;
 }) {
   const usnRate = clampRate(params?.usnRate, [0, 1, 2, 3, 4, 5, 6], 1);
   const vatRate = clampRate(params?.vatRate, [0, 5, 7], 5);
+  const companyName =
+    params?.companyName && params.companyName !== "ALL"
+      ? params.companyName
+      : null;
 
   const costs = await prisma.productCost.findMany({
     orderBy: {
@@ -750,20 +767,25 @@ export async function getProfitAnalyticsOzon(params?: {
   });
 
   const ozonProducts = await prisma.ozonProduct.findMany({
-    select: {
-      vendorCode: true,
-      sku: true,
-    },
-  });
+  where: {
+    ...(companyName ? { companyName } : {}),
+  },
+  select: {
+    vendorCode: true,
+    sku: true,
+  },
+});
 
   const currentFinanceRows = await findLatestOzonFinanceRowsByPeriod({
     dateFrom: params?.dateFrom,
     dateTo: params?.dateTo,
+    companyName,
   });
 
   const currentAdsRows = await findLatestOzonAdsRowsByPeriod({
     dateFrom: params?.dateFrom,
     dateTo: params?.dateTo,
+    companyName,
   });
 
   const previousPeriod = calculatePreviousPeriod(
@@ -771,19 +793,21 @@ export async function getProfitAnalyticsOzon(params?: {
     params?.dateTo
   );
 
-  const previousFinanceRows = previousPeriod
-    ? await findLatestOzonFinanceRowsByDatePeriod({
-        dateFrom: previousPeriod.dateFrom,
-        dateTo: previousPeriod.dateTo,
-      })
-    : [];
+const previousFinanceRows = previousPeriod
+  ? await findLatestOzonFinanceRowsByDatePeriod({
+      dateFrom: previousPeriod.dateFrom,
+      dateTo: previousPeriod.dateTo,
+      companyName,
+    })
+  : [];
 
-  const previousAdsRows = previousPeriod
-    ? await findLatestOzonAdsRowsByDatePeriod({
-        dateFrom: previousPeriod.dateFrom,
-        dateTo: previousPeriod.dateTo,
-      })
-    : [];
+const previousAdsRows = previousPeriod
+  ? await findLatestOzonAdsRowsByDatePeriod({
+      dateFrom: previousPeriod.dateFrom,
+      dateTo: previousPeriod.dateTo,
+      companyName,
+    })
+  : [];
 
   const current = calculateRowsAndTotals({
     financeRows: currentFinanceRows,

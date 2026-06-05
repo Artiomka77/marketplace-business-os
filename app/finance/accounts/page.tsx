@@ -35,6 +35,12 @@ function getCashEffect(operation: {
 }
 
 export default async function FinanceAccountsPage() {
+const companies = await prisma.$queryRaw<{ id: string; name: string }[]>`
+  select "id", "name"
+  from "Company"
+  where "isActive" = true
+  order by "name" asc
+`;
   const accounts = await prisma.financeAccount.findMany({
     where: {
       isActive: true,
@@ -185,11 +191,14 @@ export default async function FinanceAccountsPage() {
 
               <select
                 name="companyName"
-                defaultValue="ИП Петров"
+                defaultValue={companies[0]?.name ?? ""}
                 className="w-full rounded-xl border border-slate-300 px-4 py-2"
               >
-                <option value="ИП Петров">ИП Петров</option>
-                <option value="ИП Лебедева">ИП Лебедева</option>
+                {companies.map((company) => (
+  <option key={company.id} value={company.name}>
+    {company.name}
+  </option>
+))}
               </select>
             </div>
 

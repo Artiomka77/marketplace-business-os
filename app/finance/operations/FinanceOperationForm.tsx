@@ -9,9 +9,20 @@ type Category = {
   parentName: string | null;
 };
 
+type Company = {
+  id: string;
+  name: string;
+};
+
+type BankAccount = {
+  name: string;
+  companyName: string;
+};
+
 type Props = {
   categories: Category[];
-  bankAccounts: string[];
+  companies: Company[];
+  bankAccounts: BankAccount[];
 };
 
 function typeLabel(type: string) {
@@ -29,15 +40,23 @@ function todayIsoDate() {
 
 export default function FinanceOperationForm({
   categories,
+  companies,
   bankAccounts,
 }: Props) {
   const formRef = useRef<HTMLFormElement | null>(null);
   const amountRef = useRef<HTMLInputElement | null>(null);
 
+  const defaultCompanyName = companies[0]?.name ?? "";
+  const defaultCompanyAccounts = bankAccounts.filter(
+    (account) => account.companyName === defaultCompanyName
+  );
+
   const [operationType, setOperationType] = useState("EXPENSE");
-  const [companyName, setCompanyName] = useState("ИП Петров");
+  const [companyName, setCompanyName] = useState(defaultCompanyName);
   const [operationDate, setOperationDate] = useState(todayIsoDate());
-  const [bankAccount, setBankAccount] = useState(bankAccounts[0] ?? "");
+  const [bankAccount, setBankAccount] = useState(
+    defaultCompanyAccounts[0]?.name ?? ""
+  );
   const [comment, setComment] = useState("");
   const [amount, setAmount] = useState("");
 
@@ -50,6 +69,10 @@ export default function FinanceOperationForm({
   const [showCategories, setShowCategories] = useState(false);
   const [showExtra, setShowExtra] = useState(false);
   const [savedMessage, setSavedMessage] = useState("");
+
+  const companyAccounts = useMemo(() => {
+    return bankAccounts.filter((account) => account.companyName === companyName);
+  }, [bankAccounts, companyName]);
 
   const filteredCategories = useMemo(() => {
     const query = categorySearch.toLowerCase().trim();
@@ -125,7 +148,7 @@ export default function FinanceOperationForm({
           </h2>
 
           <p className="mt-1 text-sm text-slate-500">
-            Enter сохраняет. Счёт выбирается из справочника денежных счетов.
+            Счета фильтруются по выбранной компании.
           </p>
         </div>
 
@@ -150,11 +173,22 @@ export default function FinanceOperationForm({
           name="companyName"
           required
           value={companyName}
-          onChange={(event) => setCompanyName(event.target.value)}
+          onChange={(event) => {
+            const nextCompanyName = event.target.value;
+            const nextAccounts = bankAccounts.filter(
+              (account) => account.companyName === nextCompanyName
+            );
+
+            setCompanyName(nextCompanyName);
+            setBankAccount(nextAccounts[0]?.name ?? "");
+          }}
           className="rounded-xl border border-slate-300 px-3 py-2"
         >
-          <option value="ИП Петров">ИП Петров</option>
-          <option value="ИП Лебедева">ИП Лебедева</option>
+          {companies.map((company) => (
+            <option key={company.id} value={company.name}>
+              {company.name}
+            </option>
+          ))}
         </select>
 
         <select
@@ -228,13 +262,13 @@ export default function FinanceOperationForm({
           onChange={(event) => setBankAccount(event.target.value)}
           className="rounded-xl border border-slate-300 px-3 py-2"
         >
-          {bankAccounts.length === 0 && (
+          {companyAccounts.length === 0 && (
             <option value="">Сначала создайте счёт</option>
           )}
 
-          {bankAccounts.map((account) => (
-            <option key={account} value={account}>
-              {account}
+          {companyAccounts.map((account) => (
+            <option key={`${account.companyName}-${account.name}`} value={account.name}>
+              {account.name}
             </option>
           ))}
         </select>
@@ -277,7 +311,6 @@ export default function FinanceOperationForm({
             name="obligationDate"
             type="date"
             className="rounded-xl border border-slate-300 px-3 py-2"
-            placeholder="Дата обязательства"
           />
 
           <input
