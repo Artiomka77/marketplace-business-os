@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 type Props = {
   searchParams?: Promise<{
     period?: string;
+    companyName?: string;
   }>;
 };
 
@@ -61,11 +62,16 @@ function extractStockDate(fileName?: string | null, fallback?: Date) {
   return fallback ? fallback.toLocaleDateString("ru-RU") : "Нет данных";
 }
 
-function isActiveWbAccount(companyName: string, marketplaceCode: string) {
-  return (
-    companyName === ACTIVE_COMPANY_NAME &&
-    marketplaceCode === ACTIVE_MARKETPLACE_CODE
-  );
+function isActiveWbAccount(
+  rowCompanyName: string,
+  marketplaceCode: string,
+  selectedCompanyName: string | null
+) {
+  const companyMatches = selectedCompanyName
+    ? rowCompanyName === selectedCompanyName
+    : true;
+
+  return companyMatches && marketplaceCode === ACTIVE_MARKETPLACE_CODE;
 }
 
 function metricCardClassName() {
@@ -79,6 +85,10 @@ function metricValueClassName() {
 export default async function HomePage({ searchParams }: Props) {
   const params = searchParams ? await searchParams : {};
   const selectedPeriodKey = params.period;
+const companyName =
+  params.companyName && params.companyName !== "ALL"
+    ? params.companyName
+    : null;
 
   const companies = await prisma.company.findMany({
     include: {
@@ -94,18 +104,19 @@ export default async function HomePage({ searchParams }: Props) {
   });
 
   const financeRows = await prisma.wbFinance.findMany({
-    where: {
-      dateFrom: {
-        not: null,
-      },
-      dateTo: {
-        not: null,
-      },
+  where: {
+    ...(companyName ? { companyName } : {}),
+    dateFrom: {
+      not: null,
     },
-    orderBy: {
-      dateTo: "desc",
+    dateTo: {
+      not: null,
     },
-  });
+  },
+  orderBy: {
+    dateTo: "desc",
+  },
+});
 
   const periodMap = new Map<
     string,
@@ -138,81 +149,107 @@ export default async function HomePage({ searchParams }: Props) {
     periods.find((period) => period.key === selectedPeriodKey) ?? periods[0];
 
   const wbFinance = selectedPeriod
-    ? await prisma.wbFinance.findMany({
-        where: {
-          dateFrom: selectedPeriod.dateFrom,
-          dateTo: selectedPeriod.dateTo,
-        },
-      })
-    : [];
+  ? await prisma.wbFinance.findMany({
+      where: {
+        dateFrom: selectedPeriod.dateFrom,
+        dateTo: selectedPeriod.dateTo,
+        ...(companyName ? { companyName } : {}),
+      },
+    })
+  : [];
 
-  const wbAds = selectedPeriod
-    ? await prisma.wbAds.findMany({
-        where: {
-          dateFrom: selectedPeriod.dateFrom,
-          dateTo: selectedPeriod.dateTo,
-        },
-      })
-    : [];
+const wbAds = selectedPeriod
+  ? await prisma.wbAds.findMany({
+      where: {
+        dateFrom: selectedPeriod.dateFrom,
+        dateTo: selectedPeriod.dateTo,
+        ...(companyName ? { companyName } : {}),
+      },
+    })
+  : [];
 
-  const latestStockImport = await prisma.importSession.findFirst({
-    where: {
-      reportType: "WB_STOCK",
-    },
-    orderBy: {
-      createdAt: "desc",
-    },
-  });
+const latestStockImport = await prisma.importSession.findFirst({
+  where: {
+    reportType: "WB_STOCK",
+    ...(companyName ? { companyName } : {}),
+  },
+  orderBy: {
+    createdAt: "desc",
+  },
+});
 
-  const wbStocks = latestStockImport
-    ? await prisma.wbStock.findMany({
-        where: {
-          importSessionId: latestStockImport.id,
-        },
-      })
-    : [];
+const wbStocks = latestStockImport
+  ? await prisma.wbStock.findMany({
+      where: {
+        importSessionId: latestStockImport.id,
+        ...(companyName ? { companyName } : {}),
+      },
+    })
+  : [];
 
-  const totalRevenue = wbFinance.reduce(
-    (sum, item) => sum + Number(item.salesAmount ?? 0),
-    0
-  );
+const totalRevenue = wbFinance.reduce(
+  (sum, item) => sum + Number(item.salesAmount ?? 0),
+  0
+);
 
-  const totalPayout = wbFinance.reduce(
-    (sum, item) => sum + Number(item.totalToPay ?? 0),
-    0
-  );
+const totalPayout = wbFinance.reduce(
+  (sum, item) => sum + Number(item.totalToPay ?? 0),
+  0
+);
 
-  const totalAdSpend = wbAds.reduce(
-    (sum, item) => sum + Number(item.spend ?? 0),
-    0
-  );
+const financeByCompany = new Map<
+  string,
+  {
+    revenue: number;
+    payout: number;
+  }
+>();
 
-  const stockSummaryRows = wbStocks.filter(
-    (item) => item.warehouseName === "__TOTAL__"
-  );
+for (const item of wbFinance) {
+  const itemCompanyName = item.companyName ?? "Без компании";
 
-  const totalStock = stockSummaryRows.reduce(
-    (sum, item) =>
-      sum +
-      Number(item.inTransitToCustomer ?? 0) +
-      Number(item.inTransitReturns ?? 0) +
-      Number(item.totalStock ?? 0),
-    0
-  );
+  const current = financeByCompany.get(itemCompanyName) ?? {
+    revenue: 0,
+    payout: 0,
+  };
 
-  const hasFinanceData = wbFinance.length > 0;
-  const hasAdsData = wbAds.length > 0;
-  const hasStockData = stockSummaryRows.length > 0;
+  current.revenue += Number(item.salesAmount ?? 0);
+  current.payout += Number(item.totalToPay ?? 0);
 
-  const drr =
-    hasFinanceData && hasAdsData && totalRevenue > 0
-      ? (totalAdSpend / totalRevenue) * 100
-      : null;
+  financeByCompany.set(itemCompanyName, current);
+}
 
-  const stockDate = extractStockDate(
-    latestStockImport?.fileName,
-    latestStockImport?.createdAt
-  );
+const totalAdSpend = wbAds.reduce(
+  (sum, item) => sum + Number(item.spend ?? 0),
+  0
+);
+
+const stockSummaryRows = wbStocks.filter(
+  (item) => item.warehouseName === "__TOTAL__"
+);
+
+const totalStock = stockSummaryRows.reduce(
+  (sum, item) =>
+    sum +
+    Number(item.inTransitToCustomer ?? 0) +
+    Number(item.inTransitReturns ?? 0) +
+    Number(item.totalStock ?? 0),
+  0
+);
+
+const hasFinanceData = wbFinance.length > 0;
+const hasAdsData = wbAds.length > 0;
+const hasStockData = stockSummaryRows.length > 0;
+
+const drr =
+  hasFinanceData && hasAdsData && totalRevenue > 0
+    ? (totalAdSpend / totalRevenue) * 100
+    : null;
+
+const stockDate = extractStockDate(
+  latestStockImport?.fileName,
+  latestStockImport?.createdAt
+);
 
   return (
     <main className="min-h-screen bg-slate-100 p-4 sm:p-6 xl:p-10">
@@ -230,34 +267,44 @@ export default async function HomePage({ searchParams }: Props) {
 
           <div className="flex min-w-0 flex-col gap-4 2xl:flex-row 2xl:items-center">
             <form
-              action="/"
-              className="min-w-0 rounded-2xl border border-slate-200 bg-white px-4 py-4 shadow-sm sm:px-5"
-            >
-              <div className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-400">
-                Отчётный период
-              </div>
+  action="/"
+  className="min-w-0 rounded-2xl border border-slate-200 bg-white px-4 py-4 shadow-sm sm:px-5"
+>
+  <div className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-400">
+    Фильтры Dashboard
+  </div>
 
-              <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center">
-                <select
-                  name="period"
-                  defaultValue={selectedPeriod?.key}
-                  className="min-w-0 rounded-xl border border-slate-200 bg-slate-100 px-4 py-3 text-sm font-semibold"
-                >
-                  {periods.map((period) => (
-                    <option key={period.key} value={period.key}>
-                      {period.label}
-                    </option>
-                  ))}
-                </select>
+  <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center">
+    <select
+      name="period"
+      defaultValue={selectedPeriod?.key}
+      className="min-w-0 rounded-xl border border-slate-200 bg-slate-100 px-4 py-3 text-sm font-semibold"
+    >
+      {periods.map((period) => (
+        <option key={period.key} value={period.key}>
+          {period.label}
+        </option>
+      ))}
+    </select>
 
-                <button
-                  type="submit"
-                  className="rounded-xl bg-slate-900 px-5 py-3 font-semibold text-white transition hover:bg-slate-800"
-                >
-                  Показать
-                </button>
-              </div>
-            </form>
+    <select
+      name="companyName"
+      defaultValue={params.companyName ?? "ALL"}
+      className="min-w-0 rounded-xl border border-slate-200 bg-slate-100 px-4 py-3 text-sm font-semibold"
+    >
+      <option value="ALL">Все компании</option>
+      <option value="ИП Петров">ИП Петров</option>
+      <option value="ИП Лебедева">ИП Лебедева</option>
+    </select>
+
+    <button
+      type="submit"
+      className="rounded-xl bg-slate-900 px-5 py-3 font-semibold text-white transition hover:bg-slate-800"
+    >
+      Показать
+    </button>
+  </div>
+</form>
 
             <Link
               href="/import"
@@ -378,9 +425,10 @@ export default async function HomePage({ searchParams }: Props) {
                 {companies.map((company) =>
                   company.marketplaceAccounts.map((account) => {
                     const isActive = isActiveWbAccount(
-                      company.name,
-                      account.marketplace.code
-                    );
+  		company.name,
+  		account.marketplace.code,
+ 		companyName
+		);
 
                     return (
                       <tr
@@ -402,16 +450,16 @@ export default async function HomePage({ searchParams }: Props) {
                         </td>
 
                         <td className="py-5 pr-4 font-semibold">
-                          {isActive && hasFinanceData
-                            ? formatCurrency(totalRevenue)
-                            : "Нет данных"}
-                        </td>
+  			{isActive && financeByCompany.get(company.name)
+    			? formatCurrency(financeByCompany.get(company.name)?.revenue ?? 0)
+    			: "Нет данных"}
+			</td>
 
-                        <td className="py-5 pr-4 font-semibold">
-                          {isActive && hasFinanceData
-                            ? formatCurrency(totalPayout)
-                            : "Нет данных"}
-                        </td>
+			<td className="py-5 pr-4 font-semibold">
+  			{isActive && financeByCompany.get(company.name)
+    			? formatCurrency(financeByCompany.get(company.name)?.payout ?? 0)
+    			: "Нет данных"}
+			</td>
                       </tr>
                     );
                   })

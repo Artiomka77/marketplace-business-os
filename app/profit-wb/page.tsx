@@ -100,29 +100,26 @@ function getSortValue(row: any, sortKey: SortKey, totalMarginProfit: number) {
 export default async function ProfitPage({
   searchParams,
 }: {
-  searchParams?: Promise<{
-    dateFrom?: string;
-    dateTo?: string;
-    usnRate?: string;
-    vatRate?: string;
-    sort?: string;
-    dir?: string;
-  }>;
+searchParams?: Promise<{
+  dateFrom?: string;
+  dateTo?: string;
+  companyName?: string;
+  sort?: string;
+  dir?: string;
+}>;
 }) {
   const params = await searchParams;
 
-  const usnRate = params?.usnRate ?? "1";
-  const vatRate = params?.vatRate ?? "5";
+const companyName = params?.companyName ?? "ALL";
 
   const sort = (params?.sort ?? "marginProfit") as SortKey;
   const dir = (params?.dir === "asc" ? "asc" : "desc") as SortDir;
 
   const { rows, totals, comparison } = await getProfitAnalytics({
-    dateFrom: params?.dateFrom,
-    dateTo: params?.dateTo,
-    usnRate,
-    vatRate,
-  });
+  dateFrom: params?.dateFrom,
+  dateTo: params?.dateTo,
+  companyName,
+});
 
   const storageAndAcceptance = totals.storageCost + totals.acceptanceCost;
   const penaltiesAndDeductions = totals.penaltiesAmount + totals.deductions;
@@ -142,12 +139,11 @@ export default async function ProfitPage({
 
     query.set("dateFrom", params?.dateFrom ?? "2026-05-18");
     query.set("dateTo", params?.dateTo ?? "2026-05-24");
-    query.set("usnRate", usnRate);
-    query.set("vatRate", vatRate);
+    query.set("companyName", companyName);
     query.set("sort", sortKey);
     query.set("dir", nextDir);
 
-    return `/profit?${query.toString()}`;
+    return `/profit-wb?${query.toString()}`;
   }
 
   function SortHeader({
@@ -188,78 +184,58 @@ export default async function ProfitPage({
           </p>
         </div>
 
-        <form className="grid gap-4 rounded-2xl bg-white p-6 shadow-sm md:grid-cols-5">
-          <input type="hidden" name="sort" value={sort} />
-          <input type="hidden" name="dir" value={dir} />
+        <form className="grid gap-4 rounded-2xl bg-white p-6 shadow-sm md:grid-cols-4">
+  <input type="hidden" name="sort" value={sort} />
+  <input type="hidden" name="dir" value={dir} />
 
-          <div>
-            <label className="mb-2 block text-sm font-medium text-slate-700">
-              Дата от
-            </label>
+  <div>
+    <label className="mb-2 block text-sm font-medium text-slate-700">
+      Дата от
+    </label>
 
-            <input
-              type="date"
-              name="dateFrom"
-              defaultValue={params?.dateFrom ?? "2026-05-18"}
-              className="w-full rounded-xl border border-slate-300 px-4 py-2"
-            />
-          </div>
+    <input
+      type="date"
+      name="dateFrom"
+      defaultValue={params?.dateFrom ?? "2026-05-18"}
+      className="w-full rounded-xl border border-slate-300 px-4 py-2"
+    />
+  </div>
 
-          <div>
-            <label className="mb-2 block text-sm font-medium text-slate-700">
-              Дата до
-            </label>
+  <div>
+    <label className="mb-2 block text-sm font-medium text-slate-700">
+      Дата до
+    </label>
 
-            <input
-              type="date"
-              name="dateTo"
-              defaultValue={params?.dateTo ?? "2026-05-24"}
-              className="w-full rounded-xl border border-slate-300 px-4 py-2"
-            />
-          </div>
+    <input
+      type="date"
+      name="dateTo"
+      defaultValue={params?.dateTo ?? "2026-05-24"}
+      className="w-full rounded-xl border border-slate-300 px-4 py-2"
+    />
+  </div>
 
-          <div>
-            <label className="mb-2 block text-sm font-medium text-slate-700">
-              УСН, %
-            </label>
+  <div>
+    <label className="mb-2 block text-sm font-medium text-slate-700">
+      Компания
+    </label>
 
-            <select
-              name="usnRate"
-              defaultValue={usnRate}
-              className="w-full rounded-xl border border-slate-300 px-4 py-2"
-            >
-              <option value="0">0%</option>
-              <option value="1">1%</option>
-              <option value="2">2%</option>
-              <option value="3">3%</option>
-              <option value="4">4%</option>
-              <option value="5">5%</option>
-              <option value="6">6%</option>
-            </select>
-          </div>
+    <select
+      name="companyName"
+      defaultValue={companyName}
+      className="w-full rounded-xl border border-slate-300 px-4 py-2"
+    >
+      <option value="ALL">Все компании</option>
+      <option value="ИП Петров">ИП Петров</option>
+      <option value="ИП Лебедева">ИП Лебедева</option>
+    </select>
+  </div>
 
-          <div>
-            <label className="mb-2 block text-sm font-medium text-slate-700">
-              НДС на УСН, %
-            </label>
-
-            <select
-              name="vatRate"
-              defaultValue={vatRate}
-              className="w-full rounded-xl border border-slate-300 px-4 py-2"
-            >
-              <option value="0">Без НДС</option>
-              <option value="5">5%</option>
-              <option value="7">7%</option>
-            </select>
-          </div>
-
-          <div className="flex items-end">
-            <button className="w-full rounded-xl bg-slate-900 px-4 py-2 font-medium text-white">
-              Применить
-            </button>
-          </div>
-        </form>
+  <div className="flex items-end">
+    <button className="w-full rounded-xl bg-slate-900 px-4 py-2 font-medium text-white">
+      Применить
+    </button>
+  </div>
+</form>
 
         <section className="grid gap-4 md:grid-cols-5 xl:grid-cols-10">
           <div className={cardClassName()}>
@@ -361,13 +337,7 @@ export default async function ProfitPage({
             <div className={deltaTextClassName(comparison.adsCost.diff, true)}>
               {formatDelta(comparison.adsCost.diff, comparison.adsCost.diffPercent)}
             </div>
-            <div className="mt-1 text-xs text-slate-500">
-              Нераспр.:{" "}
-              <span className="font-semibold text-amber-600">
-                {formatMoney(totals.undistributedAdsCost)}
-              </span>
             </div>
-          </div>
 
           <div className={cardClassName()}>
             <div className="text-sm text-slate-500">Маржинальная прибыль</div>
@@ -397,10 +367,7 @@ export default async function ProfitPage({
                 comparison.taxesAmount.diffPercent
               )}
             </div>
-            <div className="mt-1 text-xs text-slate-500">
-              УСН {usnRate}% + НДС {vatRate}%
             </div>
-          </div>
         </section>
 
         <section className="grid gap-4 md:grid-cols-2">

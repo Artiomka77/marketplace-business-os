@@ -6,6 +6,7 @@ type Props = {
   searchParams?: Promise<{
     dateFrom?: string;
     dateTo?: string;
+    companyName?: string;
   }>;
 };
 
@@ -33,6 +34,8 @@ async function saveAllMappings(formData: FormData) {
   "use server";
 
   const raw = String(formData.get("mappingsJson") ?? "[]");
+const companyName =
+  String(formData.get("companyName") ?? "").trim() || "ИП Петров";
 
   const mappings = JSON.parse(raw) as {
     campaignName: string;
@@ -43,7 +46,7 @@ async function saveAllMappings(formData: FormData) {
     await prisma.adCampaignMap.deleteMany({
       where: {
         marketplace: "WB",
-        companyName: "ИП Петров",
+        companyName,
         campaignName: mapping.campaignName,
       },
     });
@@ -52,7 +55,7 @@ async function saveAllMappings(formData: FormData) {
       await prisma.adCampaignMap.createMany({
         data: mapping.vendorCodes.map((vendorCode) => ({
           marketplace: "WB",
-          companyName: "ИП Петров",
+          companyName,
           campaignName: mapping.campaignName,
           vendorCode,
         })),
@@ -65,26 +68,33 @@ async function deleteCampaign(formData: FormData) {
   "use server";
 
   const campaignName = String(formData.get("deleteCampaignName") ?? "").trim();
+const companyName =
+  String(formData.get("companyName") ?? "").trim() || "ИП Петров";
 
   if (!campaignName) return;
 
   await prisma.adCampaignMap.deleteMany({
     where: {
       marketplace: "WB",
-      companyName: "ИП Петров",
+      companyName,
       campaignName,
     },
   });
 
   await prisma.wbAds.deleteMany({
-    where: {
-      campaignName,
-    },
-  });
+  where: {
+    campaignName,
+    companyName,
+  },
+});
 }
 
 export default async function AdsMappingPage({ searchParams }: Props) {
   const params = searchParams ? await searchParams : {};
+const companyName =
+  params.companyName && params.companyName !== "ALL"
+    ? params.companyName
+    : null;
 
   const dateFrom = params.dateFrom ?? "2026-05-18";
   const dateTo = params.dateTo ?? "2026-05-24";
@@ -101,8 +111,11 @@ export default async function AdsMappingPage({ searchParams }: Props) {
     },
   };
 
-  const latestAdsRow = await prisma.wbAds.findFirst({
-    where: periodFilter,
+ const latestAdsRow = await prisma.wbAds.findFirst({
+  where: {
+    ...periodFilter,
+    ...(companyName ? { companyName } : {}),
+  },
     orderBy: {
       createdAt: "desc",
     },
@@ -111,6 +124,7 @@ export default async function AdsMappingPage({ searchParams }: Props) {
   const adsRows = latestAdsRow
     ? await prisma.wbAds.findMany({
         where: {
+...(companyName ? { companyName } : {}),
           ...periodFilter,
           ...(latestAdsRow.importSessionId
             ? {
@@ -164,10 +178,10 @@ export default async function AdsMappingPage({ searchParams }: Props) {
   });
 
   const mappings = await prisma.adCampaignMap.findMany({
-    where: {
-      marketplace: "WB",
-      companyName: "ИП Петров",
-    },
+  where: {
+    marketplace: "WB",
+    ...(companyName ? { companyName } : {}),
+  },
     orderBy: [{ campaignName: "asc" }, { vendorCode: "asc" }],
   });
 
@@ -225,52 +239,68 @@ export default async function AdsMappingPage({ searchParams }: Props) {
         </div>
 
         <form
-          action="/ads-mapping"
-          className="rounded-2xl bg-white p-4 shadow-sm"
-        >
-          <div className="grid gap-3 sm:grid-cols-[180px_180px_120px_1fr] sm:items-end">
-            <div>
-              <label className="mb-1 block text-xs font-medium text-slate-500">
-                Дата от
-              </label>
+  action="/ads-mapping"
+  className="rounded-2xl bg-white p-4 shadow-sm"
+>
+  <div className="grid gap-3 sm:grid-cols-[180px_180px_220px_120px_1fr] sm:items-end">
+    <div>
+      <label className="mb-1 block text-xs font-medium text-slate-500">
+        Дата от
+      </label>
 
-              <input
-                type="date"
-                name="dateFrom"
-                defaultValue={dateFrom}
-                className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm"
-              />
-            </div>
+      <input
+        type="date"
+        name="dateFrom"
+        defaultValue={dateFrom}
+        className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm"
+      />
+    </div>
 
-            <div>
-              <label className="mb-1 block text-xs font-medium text-slate-500">
-                Дата до
-              </label>
+    <div>
+      <label className="mb-1 block text-xs font-medium text-slate-500">
+        Дата до
+      </label>
 
-              <input
-                type="date"
-                name="dateTo"
-                defaultValue={dateTo}
-                className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm"
-              />
-            </div>
+      <input
+        type="date"
+        name="dateTo"
+        defaultValue={dateTo}
+        className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm"
+      />
+    </div>
 
-            <button className="rounded-xl bg-slate-900 px-5 py-2 text-sm font-semibold text-white">
-              Применить
-            </button>
+    <div>
+      <label className="mb-1 block text-xs font-medium text-slate-500">
+        Компания
+      </label>
 
-            <div className="rounded-xl bg-slate-100 px-4 py-2 text-sm text-slate-600">
-              Расход:{" "}
-              <span className="font-bold text-slate-900">
-                {formatMoney(selectedPeriodTotal)}
-              </span>{" "}
-              · Кампаний:{" "}
-              <span className="font-bold text-slate-900">
-                {campaigns.length}
-              </span>
-            </div>
-          </div>
-        </form>
+      <select
+        name="companyName"
+        defaultValue={params.companyName ?? "ALL"}
+        className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm"
+      >
+        <option value="ALL">Все компании</option>
+        <option value="ИП Петров">ИП Петров</option>
+        <option value="ИП Лебедева">ИП Лебедева</option>
+      </select>
+    </div>
+
+    <button className="rounded-xl bg-slate-900 px-5 py-2 text-sm font-semibold text-white">
+      Применить
+    </button>
+
+    <div className="rounded-xl bg-slate-100 px-4 py-2 text-sm text-slate-600">
+      Расход:{" "}
+      <span className="font-bold text-slate-900">
+        {formatMoney(selectedPeriodTotal)}
+      </span>{" "}
+      · Кампаний:{" "}
+      <span className="font-bold text-slate-900">
+        {campaigns.length}
+      </span>
+    </div>
+  </div>
+</form>
 
         <section className="grid gap-4 md:grid-cols-4">
           <div className="rounded-2xl bg-white p-5 shadow-sm">
@@ -440,12 +470,13 @@ export default async function AdsMappingPage({ searchParams }: Props) {
             label: vendor.vendorCode,
           }))}
           savedMappings={mappings.map((mapping) => ({
-            campaignName: mapping.campaignName,
-            vendorCode: mapping.vendorCode,
-          }))}
-          saveAllMappings={saveAllMappings}
-          deleteCampaign={deleteCampaign}
-        />
+  campaignName: mapping.campaignName,
+  vendorCode: mapping.vendorCode,
+}))}
+saveAllMappings={saveAllMappings}
+deleteCampaign={deleteCampaign}
+companyName={companyName ?? "ИП Петров"}
+/>
       </div>
 
     </div>

@@ -606,10 +606,12 @@ function calculateRowsAndTotals({
 async function findWbSaleRowsByPeriod(params?: {
   dateFrom?: string | null;
   dateTo?: string | null;
+  companyName?: string | null;
 }) {
   const financeRows = await prisma.wbFinance.findMany({
-    where:
-      params?.dateFrom || params?.dateTo
+    where: {
+      ...(params?.companyName ? { companyName: params.companyName } : {}),
+      ...(params?.dateFrom || params?.dateTo
         ? {
             OR: [
               {
@@ -634,7 +636,8 @@ async function findWbSaleRowsByPeriod(params?: {
               },
             ],
           }
-        : undefined,
+        : {}),
+    },
   });
 
   const reportNumbers = Array.from(
@@ -651,6 +654,7 @@ async function findWbSaleRowsByPeriod(params?: {
 
   const importSessions = await prisma.importSession.findMany({
     where: {
+      ...(params?.companyName ? { companyName: params.companyName } : {}),
       OR: reportNumbers.map((reportNumber) => ({
         fileName: {
           contains: reportNumber,
@@ -663,6 +667,7 @@ async function findWbSaleRowsByPeriod(params?: {
 
   return prisma.wbSale.findMany({
     where: {
+      ...(params?.companyName ? { companyName: params.companyName } : {}),
       OR: [
         {
           reportNumber: {
@@ -676,16 +681,20 @@ async function findWbSaleRowsByPeriod(params?: {
         },
       ],
     },
-
     orderBy: {
       saleDate: "desc",
     },
   });
 }
-
-async function findAdsRowsByDateFilter(dateFilter: object) {
+async function findAdsRowsByDateFilter(
+  dateFilter: object,
+  companyName?: string | null
+) {
   const latestAdsRow = await prisma.wbAds.findFirst({
-    where: dateFilter,
+  where: {
+    ...dateFilter,
+    ...(companyName ? { companyName } : {}),
+  },
     orderBy: {
       createdAt: "desc",
     },
@@ -694,8 +703,9 @@ async function findAdsRowsByDateFilter(dateFilter: object) {
   if (!latestAdsRow) return [];
 
   return prisma.wbAds.findMany({
-    where: {
-      ...dateFilter,
+  where: {
+    ...dateFilter,
+    ...(companyName ? { companyName } : {}),
       ...(latestAdsRow.importSessionId
         ? {
             importSessionId: latestAdsRow.importSessionId,
@@ -713,11 +723,23 @@ async function findAdsRowsByDateFilter(dateFilter: object) {
 export async function getProfitAnalytics(params?: {
   dateFrom?: string | null;
   dateTo?: string | null;
-  usnRate?: string | number | null;
-  vatRate?: string | number | null;
+  companyName?: string | null;
 }) {
-  const usnRate = clampRate(params?.usnRate, [0, 1, 2, 3, 4, 5, 6], 1);
-  const vatRate = clampRate(params?.vatRate, [0, 5, 7], 5);
+const companyName =
+  params?.companyName && params.companyName !== "ALL"
+    ? params.companyName
+    : null;
+
+const companySettings = companyName
+  ? await prisma.company.findFirst({
+      where: {
+        name: companyName,
+      },
+    })
+  : null;
+
+const usnRate = clampRate(companySettings?.usnRate, [0, 1, 2, 3, 4, 5, 6], 1);
+const vatRate = clampRate(companySettings?.vatRate, [0, 5, 7], 5);
 
   const costs = await prisma.productCost.findMany({
     orderBy: {
@@ -726,15 +748,17 @@ export async function getProfitAnalytics(params?: {
   });
 
   const adMaps = await prisma.adCampaignMap.findMany({
-    where: {
-      marketplace: "WB",
-    },
-  });
+  where: {
+    marketplace: "WB",
+    ...(companyName ? { companyName } : {}),
+  },
+});
 
   const currentSalesRows = await findWbSaleRowsByPeriod({
-    dateFrom: params?.dateFrom,
-    dateTo: params?.dateTo,
-  });
+  dateFrom: params?.dateFrom,
+  dateTo: params?.dateTo,
+  companyName,
+});
 
   const currentAdsDateFilter = createDateFilterFromStrings(
     params?.dateFrom,
@@ -750,11 +774,14 @@ export async function getProfitAnalytics(params?: {
     ? createDateFilterFromDates(previousPeriod.dateFrom, previousPeriod.dateTo)
     : {};
 
-  const currentAdsRows = await findAdsRowsByDateFilter(currentAdsDateFilter);
+  const currentAdsRows = await findAdsRowsByDateFilter(
+  currentAdsDateFilter,
+  companyName
+);
 
   const previousAdsRows = previousPeriod
-    ? await findAdsRowsByDateFilter(previousAdsDateFilter)
-    : [];
+  ? await findAdsRowsByDateFilter(previousAdsDateFilter, companyName)
+  : [];
 
   const current = calculateRowsAndTotals({
     wbRows: currentSalesRows,
@@ -766,11 +793,12 @@ export async function getProfitAnalytics(params?: {
   });
 
   const previousSalesRows = previousPeriod
-    ? await findWbSaleRowsByPeriod({
-        dateFrom: previousPeriod.dateFrom.toISOString().slice(0, 10),
-        dateTo: previousPeriod.dateTo.toISOString().slice(0, 10),
-      })
-    : [];
+  ? await findWbSaleRowsByPeriod({
+      dateFrom: previousPeriod.dateFrom.toISOString().slice(0, 10),
+      dateTo: previousPeriod.dateTo.toISOString().slice(0, 10),
+      companyName,
+    })
+  : [];
 
   const previous = calculateRowsAndTotals({
     wbRows: previousSalesRows,

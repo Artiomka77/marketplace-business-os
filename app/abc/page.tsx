@@ -127,37 +127,58 @@ export default async function AbcPage({
   const candidatesLimit = Number(params?.candidatesLimit ?? 25);
   const abcLimit = Number(params?.abcLimit ?? 25);
 
-  const wb = await getProfitAnalytics({ dateFrom, dateTo, usnRate, vatRate });
-  const ozon = await getProfitAnalyticsOzon({
-    dateFrom,
-    dateTo,
-    usnRate,
-    vatRate,
-  });
+const selectedCompanies =
+  company === "ALL" ? ["ИП Петров", "ИП Лебедева"] : [company];
 
-  const rawRows = [
-    ...wb.rows.map((row) => ({
-      company: "ИП Петров",
-      marketplace: "WB",
-      sku: row.nmId,
-      vendorCode: row.vendorCode,
-      salesQty: row.netSalesQty,
-      revenue: row.revenue,
-      profit: row.marginProfit,
-      abc: row.abcByProfit,
-    })),
-    ...ozon.rows.map((row) => ({
-      company: "ИП Петров",
-      marketplace: "Ozon",
-      sku: row.nmId,
-      vendorCode: row.vendorCode,
-      salesQty: row.netSalesQty,
-      revenue: row.revenue,
-      profit: row.marginProfit,
-      abc: row.abcByProfit,
-    })),
-  ];
+const analyticsByCompany = await Promise.all(
+  selectedCompanies.map(async (companyName) => {
+    const [wb, ozon] = await Promise.all([
+      getProfitAnalytics({
+        dateFrom,
+        dateTo,
+        usnRate,
+        vatRate,
+        companyName,
+      }),
+      getProfitAnalyticsOzon({
+        dateFrom,
+        dateTo,
+        usnRate,
+        vatRate,
+        companyName,
+      }),
+    ]);
 
+    return {
+      companyName,
+      wb,
+      ozon,
+    };
+  })
+);
+
+const rawRows = analyticsByCompany.flatMap(({ companyName, wb, ozon }) => [
+  ...wb.rows.map((row) => ({
+    company: companyName,
+    marketplace: "WB",
+    sku: row.nmId,
+    vendorCode: row.vendorCode,
+    salesQty: row.netSalesQty,
+    revenue: row.revenue,
+    profit: row.marginProfit,
+    abc: row.abcByProfit,
+  })),
+  ...ozon.rows.map((row) => ({
+    company: companyName,
+    marketplace: "Ozon",
+    sku: row.nmId,
+    vendorCode: row.vendorCode,
+    salesQty: row.netSalesQty,
+    revenue: row.revenue,
+    profit: row.marginProfit,
+    abc: row.abcByProfit,
+  })),
+]);
   const rows = rawRows
     .filter((row) => marketplace === "ALL" || row.marketplace === marketplace)
     .filter((row) => company === "ALL" || row.company === company)
@@ -248,7 +269,7 @@ export default async function AbcPage({
           </p>
         </div>
 
-        <form className="grid gap-4 rounded-2xl bg-white p-6 shadow-sm md:grid-cols-7">
+        <form className="grid gap-4 rounded-2xl bg-white p-6 shadow-sm md:grid-cols-5">
           <div>
             <label className="mb-2 block text-sm font-medium text-slate-700">
               Дата от
@@ -307,43 +328,7 @@ export default async function AbcPage({
             </select>
           </div>
 
-          <div>
-            <label className="mb-2 block text-sm font-medium text-slate-700">
-              УСН, %
-            </label>
-
-            <select
-              name="usnRate"
-              defaultValue={usnRate}
-              className="w-full rounded-xl border border-slate-300 px-4 py-2"
-            >
-              <option value="0">0%</option>
-              <option value="1">1%</option>
-              <option value="2">2%</option>
-              <option value="3">3%</option>
-              <option value="4">4%</option>
-              <option value="5">5%</option>
-              <option value="6">6%</option>
-            </select>
-          </div>
-
-          <div>
-            <label className="mb-2 block text-sm font-medium text-slate-700">
-              НДС, %
-            </label>
-
-            <select
-              name="vatRate"
-              defaultValue={vatRate}
-              className="w-full rounded-xl border border-slate-300 px-4 py-2"
-            >
-              <option value="0">Без НДС</option>
-              <option value="5">5%</option>
-              <option value="7">7%</option>
-            </select>
-          </div>
-
-          <input type="hidden" name="candidatesLimit" value={candidatesLimit} />
+                 <input type="hidden" name="candidatesLimit" value={candidatesLimit} />
           <input type="hidden" name="abcLimit" value={abcLimit} />
 
           <div className="flex items-end">

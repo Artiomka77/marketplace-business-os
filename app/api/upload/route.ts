@@ -106,9 +106,10 @@ export async function POST(req: Request) {
                 ? "FINANCE"
                 : "UNKNOWN";
 
-    const needsCompanyName =
-      detection.reportType.startsWith("OZON") ||
-      detection.reportType === "FINANCE_TRANSACTIONS";
+const needsCompanyName =
+  detection.reportType.startsWith("WB") ||
+  detection.reportType.startsWith("OZON") ||
+  detection.reportType === "FINANCE_TRANSACTIONS";
 
     if (needsCompanyName && !companyName) {
       return NextResponse.json(

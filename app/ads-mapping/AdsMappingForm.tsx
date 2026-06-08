@@ -35,12 +35,14 @@ export function AdsMappingTable({
   savedMappings,
   saveAllMappings,
   deleteCampaign,
+  companyName,
 }: {
   campaigns: Campaign[];
   vendorCodes: VendorOption[];
   savedMappings: SavedMapping[];
   saveAllMappings: (formData: FormData) => Promise<void>;
   deleteCampaign: (formData: FormData) => Promise<void>;
+  companyName: string;
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -108,6 +110,8 @@ export function AdsMappingTable({
   function handleSaveAll() {
     const formData = new FormData();
 
+formData.set("companyName", companyName);
+
     formData.set(
       "mappingsJson",
       JSON.stringify(
@@ -126,6 +130,8 @@ export function AdsMappingTable({
 
   function handleDeleteCampaign(campaignName: string) {
     const formData = new FormData();
+
+    formData.set("companyName", companyName);
     formData.set("deleteCampaignName", campaignName);
 
     startTransition(async () => {

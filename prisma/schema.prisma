@@ -7,6 +7,13 @@ datasource db {
 model Company {
   id        String   @id @default(cuid())
   name      String
+
+  taxSystem String?  @default("УСН Доходы")
+  usnRate   Decimal? @default(1)
+  vatRate   Decimal? @default(5)
+
+  isActive  Boolean  @default(true)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

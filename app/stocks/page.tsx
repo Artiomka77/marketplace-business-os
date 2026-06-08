@@ -17,21 +17,38 @@ function extractStockDate(fileName?: string | null, fallback?: Date) {
   return fallback ? fallback.toLocaleDateString("ru-RU") : "Нет данных";
 }
 
-export default async function StocksPage() {
+export default async function StocksPage({
+  searchParams,
+}: {
+  searchParams?: Promise<{
+    companyName?: string;
+  }>;
+}) {
+  const params = searchParams ? await searchParams : {};
+
+  const companyName =
+    params.companyName && params.companyName !== "ALL"
+      ? params.companyName
+      : null;
+
   const latestStockImport = await prisma.importSession.findFirst({
-    where: { reportType: "WB_STOCK" },
+    where: {
+      reportType: "WB_STOCK",
+      ...(companyName ? { companyName } : {}),
+    },
     orderBy: { createdAt: "desc" },
   });
 
   const stocks = latestStockImport
-    ? await prisma.wbStock.findMany({
-        where: {
-          importSessionId: latestStockImport.id,
-          warehouseName: "__TOTAL__",
-        },
-        orderBy: [{ vendorCode: "asc" }, { size: "asc" }],
-      })
-    : [];
+  ? await prisma.wbStock.findMany({
+      where: {
+        importSessionId: latestStockImport.id,
+        warehouseName: "__TOTAL__",
+        ...(companyName ? { companyName } : {}),
+      },
+      orderBy: [{ vendorCode: "asc" }, { size: "asc" }],
+    })
+  : [];
 
   const totalStock = stocks.reduce(
     (sum, item) => sum + Number(item.totalStock ?? 0),
@@ -80,6 +97,32 @@ export default async function StocksPage() {
             Назад в Dashboard
           </Link>
         </div>
+
+<form className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+  <div className="grid gap-4 md:grid-cols-3">
+    <div>
+      <label className="mb-2 block text-sm font-medium text-slate-700">
+        Компания
+      </label>
+
+      <select
+        name="companyName"
+        defaultValue={params.companyName ?? "ALL"}
+        className="w-full rounded-xl border border-slate-300 px-4 py-2"
+      >
+        <option value="ALL">Все компании</option>
+        <option value="ИП Петров">ИП Петров</option>
+        <option value="ИП Лебедева">ИП Лебедева</option>
+      </select>
+    </div>
+
+    <div className="flex items-end">
+      <button className="w-full rounded-xl bg-slate-900 px-4 py-2 font-medium text-white">
+        Применить
+      </button>
+    </div>
+  </div>
+</form>
 
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
           <div className="bg-white rounded-3xl border border-slate-200 p-7 shadow-sm">
