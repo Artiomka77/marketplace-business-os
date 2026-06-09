@@ -90,18 +90,36 @@ async function createFinanceTransaction(formData: FormData) {
   revalidatePath("/finance/operations");
 }
 
+async function deleteFinanceTransaction(formData: FormData) {
+  "use server";
+
+  const id = String(formData.get("id") ?? "");
+
+  if (!id) return;
+
+  await prisma.financeTransaction.delete({
+    where: {
+      id,
+    },
+  });
+
+  revalidatePath("/finance/operations");
+}
+
 export default async function FinanceOperationsPage({
   searchParams,
 }: {
   searchParams: Promise<{
-    company?: string;
-    operationType?: string;
-    category?: string;
-    search?: string;
-    rows?: string;
-    sortBy?: string;
-    sortDir?: string;
-  }>;
+  company?: string;
+  operationType?: string;
+  category?: string;
+  search?: string;
+  rows?: string;
+  sortBy?: string;
+  sortDir?: string;
+  dateFrom?: string;
+  dateTo?: string;
+}>;
 }) {
   const params = await searchParams;
 
@@ -112,6 +130,8 @@ export default async function FinanceOperationsPage({
   const rowsLimit = Number(params?.rows ?? 50);
   const sortBy = params?.sortBy ?? "operationDate";
   const sortDir = params?.sortDir ?? "desc";
+const dateFrom = params?.dateFrom ?? "";
+const dateTo = params?.dateTo ?? "";
 
   const safeRowsLimit = [25, 50, 100, 250, 500].includes(rowsLimit)
     ? rowsLimit
@@ -143,6 +163,8 @@ function sortHref(column: string) {
   query.set("operationType", operationType);
   query.set("category", selectedCategory);
   query.set("search", search);
+query.set("dateFrom", dateFrom);
+query.set("dateTo", dateTo);
   query.set("rows", String(safeRowsLimit));
   query.set("sortBy", column);
   query.set("sortDir", nextSortDir);
@@ -183,6 +205,22 @@ function sortIcon(column: string) {
           ],
         }
       : {}),
+...(dateFrom || dateTo
+  ? {
+      operationDate: {
+        ...(dateFrom
+          ? {
+              gte: new Date(`${dateFrom}T00:00:00`),
+            }
+          : {}),
+        ...(dateTo
+          ? {
+              lte: new Date(`${dateTo}T23:59:59`),
+            }
+          : {}),
+      },
+    }
+  : {}),
   },
   orderBy: {
     [safeSortBy]: safeSortDir,
@@ -417,6 +455,32 @@ const bankAccounts = accounts.map((account) => ({
         value={safeSortDir}
       />
 
+<div>
+  <label className="mb-2 block text-sm font-medium text-slate-700">
+    Дата от
+  </label>
+
+  <input
+    type="date"
+    name="dateFrom"
+    defaultValue={dateFrom}
+    className="w-[180px] rounded-xl border border-slate-300 px-4 py-2"
+  />
+</div>
+
+<div>
+  <label className="mb-2 block text-sm font-medium text-slate-700">
+    Дата до
+  </label>
+
+  <input
+    type="date"
+    name="dateTo"
+    defaultValue={dateTo}
+    className="w-[180px] rounded-xl border border-slate-300 px-4 py-2"
+  />
+</div>
+
       <div>
         <label className="mb-2 block text-sm font-medium text-slate-700">
           Поиск по журналу
@@ -599,6 +663,7 @@ const bankAccounts = accounts.map((account) => ({
     </th>
 
     <th className="p-3">Комментарий</th>
+<th className="p-3 text-center">Действия</th>
   </tr>
 </thead>
 
@@ -634,12 +699,33 @@ const bankAccounts = accounts.map((account) => ({
                     </td>
                     <td className="p-3">{row.project || "—"}</td>
                     <td className="p-3">{row.comment || "—"}</td>
+<td className="p-3 text-center">
+  <div className="flex items-center justify-center gap-2">
+    <Link
+      href={`/finance/operations/edit/${row.id}`}
+      className="rounded-lg bg-slate-100 px-3 py-1 text-sm font-medium text-slate-700 hover:bg-slate-200"
+    >
+      Изменить
+    </Link>
+
+    <form action={deleteFinanceTransaction}>
+      <input type="hidden" name="id" value={row.id} />
+
+      <button
+        type="submit"
+        className="rounded-lg bg-red-50 px-3 py-1 text-sm font-medium text-red-600 hover:bg-red-100"
+      >
+        Удалить
+      </button>
+    </form>
+  </div>
+</td>
                   </tr>
                 ))}
 
                 {rows.length === 0 && (
                   <tr>
-                    <td colSpan={12} className="p-8 text-center text-slate-500">
+                    <td colSpan={13} className="p-8 text-center text-slate-500">
                       Операции пока не загружены.
                     </td>
                   </tr>
