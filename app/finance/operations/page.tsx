@@ -458,8 +458,82 @@ const bankAccounts = accounts.map((account) => ({
   </div>
 </div>
 
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[1500px] border-collapse text-sm">
+          <div className="divide-y divide-slate-100 lg:hidden">
+  {rows.map((row) => (
+    <div key={row.id} className="p-4">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <div className="text-sm text-slate-500">
+            {formatDate(row.operationDate)}
+          </div>
+
+          <div className="mt-1 font-bold text-slate-900">
+            {row.companyName}
+          </div>
+        </div>
+
+        <div
+          className={`text-right text-lg font-bold ${operationTypeClassName(
+            row.operationType
+          )}`}
+        >
+          {formatMoney(row.amount)}
+        </div>
+      </div>
+
+      <div className="mt-3">
+        <div
+          className={`font-semibold ${operationTypeClassName(
+            row.operationType
+          )}`}
+        >
+          {operationTypeLabel(row.operationType)}
+        </div>
+
+        <div className="mt-1 font-medium text-slate-900">
+          {row.category}
+        </div>
+
+        {row.subcategory && (
+          <div className="mt-1 text-sm text-slate-500">
+            {row.subcategory}
+          </div>
+        )}
+      </div>
+
+      <div className="mt-3 grid gap-2 text-sm text-slate-600">
+        <div>
+          <span className="text-slate-400">Счёт: </span>
+          {row.bankAccount || "—"}
+        </div>
+
+        <div>
+          <span className="text-slate-400">Контрагент: </span>
+          {row.counterparty || "—"}
+        </div>
+
+        <div>
+          <span className="text-slate-400">Проект: </span>
+          {row.project || "—"}
+        </div>
+
+        <div>
+          <span className="text-slate-400">Комментарий: </span>
+          {row.comment || "—"}
+        </div>
+      </div>
+    </div>
+  ))}
+
+  {rows.length === 0 && (
+    <div className="p-8 text-center text-slate-500">
+      Операции пока не загружены.
+    </div>
+  )}
+</div>
+
+<div className="hidden overflow-x-auto lg:block">
+  <table className="w-full min-w-[1500px] border-collapse text-sm">
 <thead className="bg-slate-100 text-left text-slate-700">
   <tr>
     <th className="p-3">

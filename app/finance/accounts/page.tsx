@@ -34,27 +34,43 @@ function getCashEffect(operation: {
   return 0;
 }
 
-export default async function FinanceAccountsPage() {
+export default async function FinanceAccountsPage({
+  searchParams,
+}: {
+  searchParams?: Promise<{
+    company?: string;
+  }>;
+}) {
 const companies = await prisma.$queryRaw<{ id: string; name: string }[]>`
   select "id", "name"
   from "Company"
   where "isActive" = true
   order by "name" asc
 `;
-  const accounts = await prisma.financeAccount.findMany({
-    where: {
-      isActive: true,
-    },
-    orderBy: [{ companyName: "asc" }, { name: "asc" }],
-  });
 
-  const transactions = await prisma.financeTransaction.findMany({
-    where: {
-      bankAccount: {
-        not: null,
-      },
+const params = searchParams ? await searchParams : {};
+
+const companyName =
+  params.company && params.company !== "ALL"
+    ? params.company
+    : null;
+
+const accounts = await prisma.financeAccount.findMany({
+  where: {
+    isActive: true,
+    ...(companyName ? { companyName } : {}),
+  },
+  orderBy: [{ companyName: "asc" }, { name: "asc" }],
+});
+
+const transactions = await prisma.financeTransaction.findMany({
+  where: {
+    bankAccount: {
+      not: null,
     },
-  });
+    ...(companyName ? { companyName } : {}),
+  },
+});
 
   const accountRows = accounts.map((account) => {
     const accountTransactions = transactions.filter(
@@ -264,6 +280,31 @@ const companies = await prisma.$queryRaw<{ id: string; name: string }[]>`
             <p className="mt-2 text-slate-500">
               Остатки считаются автоматически: начальный остаток + поступления − выбытия.
             </p>
+<form className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-end">
+  <div className="sm:w-[260px]">
+    <label className="mb-2 block text-sm font-medium text-slate-700">
+      Компания
+    </label>
+
+    <select
+      name="company"
+      defaultValue={params.company ?? "ALL"}
+      className="w-full rounded-xl border border-slate-300 px-4 py-2"
+    >
+      <option value="ALL">Все компании</option>
+
+      {companies.map((company) => (
+        <option key={company.id} value={company.name}>
+          {company.name}
+        </option>
+      ))}
+    </select>
+  </div>
+
+  <button className="rounded-xl bg-slate-900 px-6 py-2 font-semibold text-white">
+    Применить
+  </button>
+</form>
           </div>
 
           <div className="mt-6 overflow-x-auto">

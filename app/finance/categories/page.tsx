@@ -40,7 +40,7 @@ export default async function FinanceCategoriesPage() {
   return (
     <main className="min-h-screen bg-slate-100 p-8">
       <div className="mx-auto max-w-[1400px] space-y-6">
-        <div className="flex items-start justify-between gap-4">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div>
             <h1 className="text-4xl font-bold text-slate-900">
               Справочник статей
@@ -60,7 +60,7 @@ export default async function FinanceCategoriesPage() {
           </Link>
         </div>
 
-        <section className="grid gap-4 md:grid-cols-5">
+        <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
           <div className="rounded-2xl bg-white p-6 shadow-sm">
             <div className="text-sm text-slate-500">Всего статей</div>
             <div className="mt-2 text-3xl font-bold">

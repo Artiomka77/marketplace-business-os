@@ -80,51 +80,95 @@ function loanBadge(name: string) {
 export default async function FinanceCalendarPage({
   searchParams,
 }: {
-  searchParams?: {
-    month?: string;
-  };
+  searchParams?: Promise<{
+  month?: string;
+  company?: string;
+}>;
 }) {
-  const selectedMonth = toMonthDate(searchParams?.month);
+  const params = searchParams ? await searchParams : {};
+
+  const selectedMonth = toMonthDate(params.month);
   const monthStart = startOfMonth(selectedMonth);
   const monthEnd = endOfMonth(selectedMonth);
 
-  const payments = await prisma.loanPayment.findMany({
-    where: {
-      paymentDate: {
-        gte: monthStart,
-        lte: monthEnd,
+const companyName =
+  params.company && params.company !== "ALL"
+    ? params.company
+    : null;
+
+const companies = await prisma.company.findMany({
+  where: {
+    isActive: true,
+  },
+  orderBy: {
+    name: "asc",
+  },
+});
+
+const selectedLoans = companyName
+  ? await prisma.loan.findMany({
+      where: {
+        companyName,
       },
+      select: {
+        id: true,
+      },
+    })
+  : [];
+
+const selectedLoanIds = selectedLoans.map((loan) => loan.id);
+
+  const payments = await prisma.loanPayment.findMany({
+  where: {
+    paymentDate: {
+      gte: monthStart,
+      lte: monthEnd,
     },
-    include: {
-      loan: {
-        include: {
-          payments: {
-            orderBy: {
-              paymentDate: "asc",
-            },
+    ...(companyName
+  ? {
+      loanId: {
+        in: selectedLoanIds,
+      },
+    }
+  : {}),
+  },
+  include: {
+    loan: {
+      include: {
+        payments: {
+          orderBy: {
+            paymentDate: "asc",
           },
         },
       },
     },
-    orderBy: {
-      paymentDate: "asc",
-    },
-  });
+  },
+  orderBy: {
+    paymentDate: "asc",
+  },
+});
 
   const futurePayments = await prisma.loanPayment.findMany({
-    where: {
-      paymentDate: {
-        gte: new Date(),
+  where: {
+    paymentDate: {
+      gte: new Date(),
+    },
+    ...(companyName
+  ? {
+      loanId: {
+        in: selectedLoanIds,
       },
-    },
-    include: {
-      loan: true,
-    },
-    orderBy: {
-      paymentDate: "asc",
-    },
-    take: 20,
-  });
+    }
+  : {}),
+  },
+  include: {
+    loan: true,
+  },
+  orderBy: {
+    paymentDate: "asc",
+  },
+  take: 20,
+});
 
 function remainingDebtAfterPayment(payment: (typeof payments)[number]) {
   return payment.loan.payments
@@ -241,6 +285,34 @@ function remainingDebtAfterPayment(payment: (typeof payments)[number]) {
           </div>
         </div>
 
+<form className="flex flex-col gap-3 sm:flex-row sm:items-end">
+  <input type="hidden" name="month" value={monthKey(selectedMonth)} />
+
+  <div className="sm:w-[260px]">
+    <label className="mb-2 block text-sm font-medium text-slate-700">
+      Компания
+    </label>
+
+    <select
+      name="company"
+      defaultValue={params.company ?? "ALL"}
+      className="w-full rounded-xl border border-slate-300 px-4 py-2"
+    >
+      <option value="ALL">Все компании</option>
+
+      {companies.map((company) => (
+        <option key={company.id} value={company.name}>
+          {company.name}
+        </option>
+      ))}
+    </select>
+  </div>
+
+  <button className="rounded-xl bg-slate-900 px-6 py-2 font-semibold text-white">
+    Применить
+  </button>
+</form>
+
         <section className="grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
           <div className="rounded-2xl bg-white p-5 shadow-sm">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
@@ -280,21 +352,21 @@ function remainingDebtAfterPayment(payment: (typeof payments)[number]) {
 
               <div className="flex gap-2">
                 <Link
-                  href={`/finance/calendar?month=${previousMonth}`}
+                  href={`/finance/calendar?month=${previousMonth}&company=${params.company ?? "ALL"}`}
                   className="rounded-xl border border-slate-300 px-3 py-2 text-sm font-semibold"
                 >
                   ←
                 </Link>
 
                 <Link
-                  href="/finance/calendar"
+                  href={`/finance/calendar?company=${params.company ?? "ALL"}`}
                   className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white"
                 >
                   Текущий
                 </Link>
 
                 <Link
-                  href={`/finance/calendar?month=${nextMonth}`}
+                  href={`/finance/calendar?month=${nextMonth}&company=${params.company ?? "ALL"}`}
                   className="rounded-xl border border-slate-300 px-3 py-2 text-sm font-semibold"
                 >
                   →

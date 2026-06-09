@@ -43,7 +43,13 @@ function getAmount(value: unknown) {
   return Number(value ?? 0);
 }
 
-export default async function LoansPage() {
+export default async function LoansPage({
+  searchParams,
+}: {
+  searchParams?: Promise<{
+    company?: string;
+  }>;
+}) {
   const now = new Date();
   const from = startOfMonth(now);
   const to = endOfYear(now);
@@ -55,7 +61,17 @@ const companies = await prisma.$queryRaw<{ id: string; name: string }[]>`
   order by "name" asc
 `;
 
+const params = searchParams ? await searchParams : {};
+
+const companyName =
+  params.company && params.company !== "ALL"
+    ? params.company
+    : null;
+
   const loans = await prisma.loan.findMany({
+  where: {
+    ...(companyName ? { companyName } : {}),
+  },
     include: {
       payments: {
         orderBy: {
@@ -67,19 +83,26 @@ const companies = await prisma.$queryRaw<{ id: string; name: string }[]>`
   });
 
   const paymentsUntilYearEnd = await prisma.loanPayment.findMany({
-    where: {
-      paymentDate: {
-        gte: from,
-        lte: to,
-      },
+  where: {
+    paymentDate: {
+      gte: from,
+      lte: to,
     },
-    include: {
-      loan: true,
-    },
-    orderBy: {
-      paymentDate: "asc",
-    },
-  });
+    ...(companyName
+      ? {
+          loan: {
+            companyName,
+          },
+        }
+      : {}),
+  },
+  include: {
+    loan: true,
+  },
+  orderBy: {
+    paymentDate: "asc",
+  },
+});
 
   const totalDebt = loans.reduce(
     (sum, loan) => sum + getAmount(loan.currentDebt),
@@ -190,6 +213,32 @@ const companies = await prisma.$queryRaw<{ id: string; name: string }[]>`
             </Link>
           </div>
         </div>
+
+<form className="flex flex-col gap-3 sm:flex-row sm:items-end">
+  <div className="sm:w-[260px]">
+    <label className="mb-2 block text-sm font-medium text-slate-700">
+      Компания
+    </label>
+
+    <select
+      name="company"
+      defaultValue={params.company ?? "ALL"}
+      className="w-full rounded-xl border border-slate-300 px-4 py-2"
+    >
+      <option value="ALL">Все компании</option>
+
+      {companies.map((company) => (
+        <option key={company.id} value={company.name}>
+          {company.name}
+        </option>
+      ))}
+    </select>
+  </div>
+
+  <button className="rounded-xl bg-slate-900 px-6 py-2 font-semibold text-white">
+    Применить
+  </button>
+</form>
 
         <section className="grid gap-4 md:grid-cols-5">
           <div className="rounded-2xl bg-white p-6 shadow-sm">

@@ -93,7 +93,7 @@ function buildHref(params: {
 export default async function CashFlowPage({
   searchParams,
 }: {
-  searchParams?: {
+  searchParams?: Promise<{
     company?: string;
     category?: string;
     bankAccount?: string;
@@ -101,15 +101,16 @@ export default async function CashFlowPage({
     dateFrom?: string;
     dateTo?: string;
     rows?: string;
-  };
+  }>;
 }) {
-  const company = searchParams?.company ?? "ALL";
-  const selectedCategory = searchParams?.category ?? "ALL";
-  const bankAccount = searchParams?.bankAccount ?? "ALL";
-  const operationType = searchParams?.operationType ?? "ALL";
-  const dateFrom = searchParams?.dateFrom ?? "";
-  const dateTo = searchParams?.dateTo ?? "";
-  const rowsLimit = Number(searchParams?.rows ?? 25);
+  const params = searchParams ? await searchParams : {};
+  const company = params.company ?? "ALL";
+const selectedCategory = params.category ?? "ALL";
+const bankAccount = params.bankAccount ?? "ALL";
+const operationType = params.operationType ?? "ALL";
+const dateFrom = params.dateFrom ?? "";
+const dateTo = params.dateTo ?? "";
+const rowsLimit = Number(params.rows ?? 25);
 
   const startDate = toDate(dateFrom);
   const endDate = toDateEnd(dateTo);
@@ -409,7 +410,7 @@ export default async function CashFlowPage({
   return (
     <main className="min-h-screen bg-slate-100 p-8">
       <div className="mx-auto max-w-[1600px] space-y-6">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
           <div>
             <h1 className="text-4xl font-bold text-slate-900">ОДДС</h1>
             <p className="mt-3 text-slate-500">
@@ -417,7 +418,7 @@ export default async function CashFlowPage({
             </p>
           </div>
 
-          <div className="flex gap-3">
+          <div className="flex flex-wrap gap-3">
             <Link
               href="/finance/accounts"
               className="rounded-xl border border-slate-300 px-5 py-3 font-semibold"
@@ -442,7 +443,7 @@ export default async function CashFlowPage({
         </div>
 
         <form className="rounded-2xl bg-white p-6 shadow-sm">
-          <div className="grid gap-4 md:grid-cols-[1fr_1fr_1fr_180px_160px_160px_120px]">
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-[1fr_1fr_1fr_180px_160px_160px_120px]">
             <div>
               <label className="mb-2 block text-sm font-medium text-slate-700">
                 Компания
@@ -546,7 +547,7 @@ export default async function CashFlowPage({
           <input type="hidden" name="rows" value={rowsLimit} />
         </form>
 
-        <section className="grid gap-4 md:grid-cols-5">
+        <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
           <div className="rounded-2xl bg-white p-6 shadow-sm">
             <div className="text-sm text-slate-500">Начальный остаток</div>
             <div className="mt-2 text-2xl font-bold text-slate-900">
@@ -591,7 +592,7 @@ export default async function CashFlowPage({
           </div>
         </section>
 
-        <section className="grid gap-4 md:grid-cols-6">
+        <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-6">
           <div className="rounded-2xl bg-white p-6 shadow-sm">
             <div className="text-sm text-slate-500">Опер. поступления</div>
             <div className="mt-2 text-xl font-bold text-emerald-600">

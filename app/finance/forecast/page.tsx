@@ -22,50 +22,101 @@ function endOfMonth(date: Date) {
   return new Date(date.getFullYear(), date.getMonth() + 1, 0, 23, 59, 59, 999);
 }
 
-export default async function FinanceForecastPage() {
+export default async function FinanceForecastPage({
+  searchParams,
+}: {
+  searchParams?: Promise<{
+    company?: string;
+  }>;
+}) {
+const params = searchParams ? await searchParams : {};
+
+const companyName =
+  params.company && params.company !== "ALL"
+    ? params.company
+    : null;
+
   const today = startOfToday();
   const in30Days = addDays(today, 30);
   const monthEnd = endOfMonth(today);
 
+const companies = await prisma.company.findMany({
+  where: {
+    isActive: true,
+  },
+  orderBy: {
+    name: "asc",
+  },
+});
+
+const selectedLoans = companyName
+  ? await prisma.loan.findMany({
+      where: {
+        companyName,
+      },
+      select: {
+        id: true,
+      },
+    })
+  : [];
+
+const selectedLoanIds = selectedLoans.map((loan) => loan.id);
+
   const accounts = await prisma.financeAccount.findMany({
     where: {
-      isActive: true,
-    },
+  isActive: true,
+  ...(companyName ? { companyName } : {}),
+},
     orderBy: [{ companyName: "asc" }, { name: "asc" }],
   });
 
   const loanPayments30Days = await prisma.loanPayment.findMany({
-    where: {
-      paymentDate: {
-        gte: today,
-        lte: in30Days,
-      },
+  where: {
+    paymentDate: {
+      gte: today,
+      lte: in30Days,
     },
-    include: {
-      loan: true,
-    },
-    orderBy: {
-      paymentDate: "asc",
-    },
-  });
+    ...(companyName
+      ? {
+          loanId: {
+            in: selectedLoanIds,
+          },
+        }
+      : {}),
+  },
+  include: {
+    loan: true,
+  },
+  orderBy: {
+    paymentDate: "asc",
+  },
+});
 
   const loanPaymentsUntilMonthEnd = await prisma.loanPayment.findMany({
-    where: {
-      paymentDate: {
-        gte: today,
-        lte: monthEnd,
-      },
+  where: {
+    paymentDate: {
+      gte: today,
+      lte: monthEnd,
     },
-    include: {
-      loan: true,
-    },
-    orderBy: {
-      paymentDate: "asc",
-    },
-  });
+    ...(companyName
+      ? {
+          loanId: {
+            in: selectedLoanIds,
+          },
+        }
+      : {}),
+  },
+  include: {
+    loan: true,
+  },
+  orderBy: {
+    paymentDate: "asc",
+  },
+});
 
   const futureTransactions30Days = await prisma.financeTransaction.findMany({
     where: {
+...(companyName ? { companyName } : {}),
       operationDate: {
         gte: today,
         lte: in30Days,
@@ -142,6 +193,32 @@ export default async function FinanceForecastPage() {
             </Link>
           </div>
         </div>
+
+<form className="flex flex-col gap-3 sm:flex-row sm:items-end">
+  <div className="sm:w-[260px]">
+    <label className="mb-2 block text-sm font-medium text-slate-700">
+      Компания
+    </label>
+
+    <select
+      name="company"
+      defaultValue={params.company ?? "ALL"}
+      className="w-full rounded-xl border border-slate-300 px-4 py-2"
+    >
+      <option value="ALL">Все компании</option>
+
+      {companies.map((company) => (
+        <option key={company.id} value={company.name}>
+          {company.name}
+        </option>
+      ))}
+    </select>
+  </div>
+
+  <button className="rounded-xl bg-slate-900 px-6 py-2 font-semibold text-white">
+    Применить
+  </button>
+</form>
 
         <section className="grid gap-4 md:grid-cols-4">
           <div className="rounded-2xl bg-white p-6 shadow-sm">
