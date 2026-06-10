@@ -52,6 +52,11 @@ function normalize(value: unknown) {
   return String(value ?? "").toLowerCase().replaceAll("ё", "е").trim();
 }
 
+function isReturn(value: unknown) {
+  const text = normalize(value);
+  return text.includes("возврат") || text.includes("return");
+}
+
 function isAdsCategory(category: string) {
   const text = normalize(category);
   return text.includes("реклам") || text.includes("продвиж");
@@ -106,10 +111,18 @@ function MetricCard({
   return (
     <div className="min-w-0 rounded-2xl bg-white p-5 shadow-sm">
       <div className="text-sm text-slate-500">{title}</div>
-      <div className={`mt-2 break-words text-2xl font-bold tabular-nums leading-tight sm:text-3xl ${className}`}>
+
+      <div
+        className={`mt-2 break-words text-2xl font-bold tabular-nums leading-tight sm:text-3xl ${className}`}
+      >
         {value}
       </div>
-      {subValue && <div className="mt-2 text-sm font-semibold text-slate-500">{subValue}</div>}
+
+      {subValue && (
+        <div className="mt-2 text-sm font-semibold text-slate-500">
+          {subValue}
+        </div>
+      )}
     </div>
   );
 }
@@ -135,7 +148,12 @@ function BarCompare({
     <div className="rounded-2xl border border-slate-200 p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="font-bold text-slate-900">{title}</div>
-        <div className={`rounded-full px-3 py-1 text-sm font-bold ${statusClass(execution)}`}>
+
+        <div
+          className={`rounded-full px-3 py-1 text-sm font-bold ${statusClass(
+            execution
+          )}`}
+        >
           {plan ? formatPercent(execution) : "без плана"}
         </div>
       </div>
@@ -146,8 +164,12 @@ function BarCompare({
             <span>План</span>
             <span>{formatMoney(plan)}</span>
           </div>
+
           <div className="h-3 rounded-full bg-slate-100">
-            <div className="h-3 rounded-full bg-slate-400" style={{ width: `${planWidth}%` }} />
+            <div
+              className="h-3 rounded-full bg-slate-400"
+              style={{ width: `${planWidth}%` }}
+            />
           </div>
         </div>
 
@@ -156,8 +178,12 @@ function BarCompare({
             <span>Факт</span>
             <span>{formatMoney(fact)}</span>
           </div>
+
           <div className="h-3 rounded-full bg-slate-100">
-            <div className="h-3 rounded-full bg-slate-900" style={{ width: `${factWidth}%` }} />
+            <div
+              className="h-3 rounded-full bg-slate-900"
+              style={{ width: `${factWidth}%` }}
+            />
           </div>
         </div>
       </div>
@@ -186,30 +212,165 @@ async function getTransactions(params: {
   });
 }
 
-function calculateFact(transactions: Awaited<ReturnType<typeof getTransactions>>) {
-  const factRevenue = transactions
+async function getMarketplaceFact(params: {
+  year: number;
+  month: number;
+  company: string;
+}) {
+  const dateFrom = startOfMonth(params.year, params.month);
+  const dateTo = endOfMonth(params.year, params.month);
+  const companyWhere =
+    params.company !== "ALL" ? { companyName: params.company } : {};
+
+  const wbSales = await prisma.wbSale.findMany({
+    where: {
+      saleDate: {
+        gte: dateFrom,
+        lte: dateTo,
+      },
+      ...companyWhere,
+    },
+  });
+
+  const wbAds = await prisma.wbAds.findMany({
+    where: {
+      ...companyWhere,
+      OR: [
+        {
+          dateFrom: {
+            gte: dateFrom,
+            lte: dateTo,
+          },
+        },
+        {
+          dateTo: {
+            gte: dateFrom,
+            lte: dateTo,
+          },
+        },
+        {
+          dateFrom: {
+            lte: dateFrom,
+          },
+          dateTo: {
+            gte: dateTo,
+          },
+        },
+      ],
+    },
+  });
+
+  const ozonFinance = await prisma.ozonFinance.findMany({
+    where: {
+      accrualDate: {
+        gte: dateFrom,
+        lte: dateTo,
+      },
+      ...companyWhere,
+    },
+  });
+
+  const ozonAds = await prisma.ozonAds.findMany({
+    where: {
+      reportDate: {
+        gte: dateFrom,
+        lte: dateTo,
+      },
+      ...companyWhere,
+    },
+  });
+
+  const wbRevenue = wbSales.reduce((sum, row) => {
+    const amount =
+      getAmount(row.wbRealizedAmount) ||
+      getAmount(row.retailPrice) ||
+      getAmount(row.sellerPayout);
+
+    return sum + (isReturn(row.paymentReason) ? -amount : amount);
+  }, 0);
+
+  const wbLogistics = wbSales.reduce(
+    (sum, row) => sum + Math.abs(getAmount(row.logisticsCost)),
+    0
+  );
+
+  const wbAdsSpend = wbAds.reduce(
+    (sum, row) => sum + Math.abs(getAmount(row.spend)),
+    0
+  );
+
+  const ozonRevenue = ozonFinance.reduce(
+    (sum, row) => sum + getAmount(row.salesAmount),
+    0
+  );
+
+  const ozonLogistics = ozonFinance.reduce(
+    (sum, row) =>
+      sum +
+      Math.abs(getAmount(row.logisticsCost)) +
+      Math.abs(getAmount(row.reverseLogisticsCost)),
+    0
+  );
+
+  const ozonAdsSpend = ozonAds.reduce(
+    (sum, row) => sum + Math.abs(getAmount(row.spend)),
+    0
+  );
+
+  return {
+    wbRevenue,
+    wbAdsSpend,
+    wbLogistics,
+    ozonRevenue,
+    ozonAdsSpend,
+    ozonLogistics,
+    marketplaceRevenue: wbRevenue + ozonRevenue,
+    marketplaceAds: wbAdsSpend + ozonAdsSpend,
+    marketplaceLogistics: wbLogistics + ozonLogistics,
+    hasMarketplaceRevenue: wbSales.length > 0 || ozonFinance.length > 0,
+    hasMarketplaceAds: wbAds.length > 0 || ozonAds.length > 0,
+    hasMarketplaceLogistics: wbSales.length > 0 || ozonFinance.length > 0,
+  };
+}
+
+function calculateFinanceFact(
+  transactions: Awaited<ReturnType<typeof getTransactions>>
+) {
+  const financeRevenue = transactions
     .filter((row) => row.operationType === "INCOME")
     .reduce((sum, row) => sum + getAmount(row.amount), 0);
 
-  const expenseTransactions = transactions.filter((row) => row.operationType === "EXPENSE");
-  const financingTransactions = transactions.filter((row) => row.operationType === "FINANCING");
+  const expenseTransactions = transactions.filter(
+    (row) => row.operationType === "EXPENSE"
+  );
 
-  const factExpenses = expenseTransactions.reduce((sum, row) => sum + getAmount(row.amount), 0);
-  const factFinancing = financingTransactions.reduce((sum, row) => sum + getAmount(row.amount), 0);
+  const financingTransactions = transactions.filter(
+    (row) => row.operationType === "FINANCING"
+  );
 
-  const factAds = expenseTransactions
+  const financeExpenses = expenseTransactions.reduce(
+    (sum, row) => sum + getAmount(row.amount),
+    0
+  );
+
+  const financeFinancing = financingTransactions.reduce(
+    (sum, row) => sum + getAmount(row.amount),
+    0
+  );
+
+  const financeAds = expenseTransactions
     .filter((row) => isAdsCategory(row.category))
     .reduce((sum, row) => sum + getAmount(row.amount), 0);
 
-  const factLogistics = expenseTransactions
+  const financeLogistics = expenseTransactions
     .filter((row) => isLogisticsCategory(row.category))
     .reduce((sum, row) => sum + getAmount(row.amount), 0);
 
-  const factTax = expenseTransactions
+  const financeTax = expenseTransactions
     .filter((row) => isTaxCategory(row.category))
     .reduce((sum, row) => sum + getAmount(row.amount), 0);
 
-  const factSalary = expenseTransactions
+  const financeSalary = expenseTransactions
     .filter((row) => isSalaryCategory(row.category))
     .reduce((sum, row) => sum + getAmount(row.amount), 0);
 
@@ -225,21 +386,21 @@ function calculateFact(transactions: Awaited<ReturnType<typeof getTransactions>>
       .map((row) => row.id)
   );
 
-  const factOther = expenseTransactions
+  const financeOther = expenseTransactions
     .filter((row) => !knownExpenseIds.has(row.id))
     .reduce((sum, row) => sum + getAmount(row.amount), 0);
 
   return {
-    factRevenue,
-    factExpenses,
-    factFinancing,
-    factProfit: factRevenue - factExpenses,
-    cashFlowMonth: factRevenue - factExpenses - factFinancing,
-    factAds,
-    factLogistics,
-    factTax,
-    factSalary,
-    factOther,
+    financeRevenue,
+    financeExpenses,
+    financeFinancing,
+    financeProfit: financeRevenue - financeExpenses,
+    financeCashFlow: financeRevenue - financeExpenses - financeFinancing,
+    financeAds,
+    financeLogistics,
+    financeTax,
+    financeSalary,
+    financeOther,
   };
 }
 
@@ -285,32 +446,142 @@ export default async function PlanFactPage({
     company: selectedCompany,
   });
 
-  const fact = calculateFact(transactions);
-  const prevFact = calculateFact(prevTransactions);
+  const marketplaceFact = await getMarketplaceFact({
+    year: selectedYear,
+    month: selectedMonth,
+    company: selectedCompany,
+  });
 
-  const planRevenue = plans.reduce((sum, plan) => sum + getAmount(plan.revenuePlan), 0);
-  const planProfit = plans.reduce((sum, plan) => sum + getAmount(plan.profitPlan), 0);
+  const prevMarketplaceFact = await getMarketplaceFact({
+    year: prev.year,
+    month: prev.month,
+    company: selectedCompany,
+  });
+
+  const financeFact = calculateFinanceFact(transactions);
+  const prevFinanceFact = calculateFinanceFact(prevTransactions);
+
+  const factRevenue = marketplaceFact.hasMarketplaceRevenue
+    ? marketplaceFact.marketplaceRevenue
+    : financeFact.financeRevenue;
+
+  const prevRevenue = prevMarketplaceFact.hasMarketplaceRevenue
+    ? prevMarketplaceFact.marketplaceRevenue
+    : prevFinanceFact.financeRevenue;
+
+  const factAds = marketplaceFact.hasMarketplaceAds
+    ? marketplaceFact.marketplaceAds
+    : financeFact.financeAds;
+
+  const factLogistics = marketplaceFact.hasMarketplaceLogistics
+    ? marketplaceFact.marketplaceLogistics
+    : financeFact.financeLogistics;
+
+  const factExpenses =
+    financeFact.financeExpenses -
+    financeFact.financeAds -
+    financeFact.financeLogistics +
+    factAds +
+    factLogistics;
+
+  const factProfit = factRevenue - factExpenses;
+  const cashFlowMonth =
+    financeFact.financeRevenue -
+    financeFact.financeExpenses -
+    financeFact.financeFinancing;
+
+  const planRevenue = plans.reduce(
+    (sum, plan) => sum + getAmount(plan.revenuePlan),
+    0
+  );
+
+  const planProfit = plans.reduce(
+    (sum, plan) => sum + getAmount(plan.profitPlan),
+    0
+  );
+
   const planAds = plans.reduce((sum, plan) => sum + getAmount(plan.adsPlan), 0);
-  const planLogistics = plans.reduce((sum, plan) => sum + getAmount(plan.logisticsPlan), 0);
+
+  const planLogistics = plans.reduce(
+    (sum, plan) => sum + getAmount(plan.logisticsPlan),
+    0
+  );
+
   const planTax = plans.reduce((sum, plan) => sum + getAmount(plan.taxPlan), 0);
-  const planSalary = plans.reduce((sum, plan) => sum + getAmount(plan.salaryPlan), 0);
-  const planOther = plans.reduce((sum, plan) => sum + getAmount(plan.otherPlan), 0);
 
-  const revenueExecution = getExecution(planRevenue, fact.factRevenue);
-  const profitExecution = getExecution(planProfit, fact.factProfit);
+  const planSalary = plans.reduce(
+    (sum, plan) => sum + getAmount(plan.salaryPlan),
+    0
+  );
 
-  const revenueMoM = fact.factRevenue - prevFact.factRevenue;
-  const profitMoM = fact.factProfit - prevFact.factProfit;
+  const planOther = plans.reduce(
+    (sum, plan) => sum + getAmount(plan.otherPlan),
+    0
+  );
+
+  const revenueExecution = getExecution(planRevenue, factRevenue);
+  const profitExecution = getExecution(planProfit, factProfit);
+
+  const revenueMoM = factRevenue - prevRevenue;
+  const profitMoM = factProfit - prevFinanceFact.financeProfit;
 
   const rows = [
-    { title: "Выручка", plan: planRevenue, fact: fact.factRevenue, lowerIsBetter: false },
-    { title: "Прибыль", plan: planProfit, fact: fact.factProfit, lowerIsBetter: false },
-    { title: "Реклама", plan: planAds, fact: fact.factAds, lowerIsBetter: true },
-    { title: "Логистика", plan: planLogistics, fact: fact.factLogistics, lowerIsBetter: true },
-    { title: "Налоги", plan: planTax, fact: fact.factTax, lowerIsBetter: true },
-    { title: "Зарплата", plan: planSalary, fact: fact.factSalary, lowerIsBetter: true },
-    { title: "Прочие расходы", plan: planOther, fact: fact.factOther, lowerIsBetter: true },
-    { title: "Кредиты и займы", plan: 0, fact: fact.factFinancing, lowerIsBetter: true },
+    {
+      title: "Выручка",
+      plan: planRevenue,
+      fact: factRevenue,
+      lowerIsBetter: false,
+      source: marketplaceFact.hasMarketplaceRevenue ? "WB/Ozon" : "Финансы",
+    },
+    {
+      title: "Прибыль",
+      plan: planProfit,
+      fact: factProfit,
+      lowerIsBetter: false,
+      source: "Гибрид",
+    },
+    {
+      title: "Реклама",
+      plan: planAds,
+      fact: factAds,
+      lowerIsBetter: true,
+      source: marketplaceFact.hasMarketplaceAds ? "WB/Ozon" : "Финансы",
+    },
+    {
+      title: "Логистика",
+      plan: planLogistics,
+      fact: factLogistics,
+      lowerIsBetter: true,
+      source: marketplaceFact.hasMarketplaceLogistics ? "WB/Ozon" : "Финансы",
+    },
+    {
+      title: "Налоги",
+      plan: planTax,
+      fact: financeFact.financeTax,
+      lowerIsBetter: true,
+      source: "Финансы",
+    },
+    {
+      title: "Зарплата",
+      plan: planSalary,
+      fact: financeFact.financeSalary,
+      lowerIsBetter: true,
+      source: "Финансы",
+    },
+    {
+      title: "Прочие расходы",
+      plan: planOther,
+      fact: financeFact.financeOther,
+      lowerIsBetter: true,
+      source: "Финансы",
+    },
+    {
+      title: "Кредиты и займы",
+      plan: 0,
+      fact: financeFact.financeFinancing,
+      lowerIsBetter: true,
+      source: "Финансы",
+    },
   ];
 
   const topDeviations = [...rows]
@@ -324,14 +595,18 @@ export default async function PlanFactPage({
         <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
           <div>
             <h1 className="text-3xl font-bold text-slate-900 sm:text-4xl">
-              План-Факт анализ 2.1
+              План-Факт анализ 2.2
             </h1>
+
             <p className="mt-3 text-slate-500">
-              Выполнение бюджета, отклонения по статьям и сравнение с прошлым месяцем.
+              Выполнение бюджета с фактом WB/Ozon по выручке, рекламе и логистике.
             </p>
           </div>
 
-          <Link href="/finance/budget" className="rounded-xl bg-slate-900 px-5 py-3 text-center font-semibold text-white">
+          <Link
+            href="/finance/budget"
+            className="rounded-xl bg-slate-900 px-5 py-3 text-center font-semibold text-white"
+          >
             Планирование бюджета
           </Link>
         </div>
@@ -339,25 +614,49 @@ export default async function PlanFactPage({
         <form className="rounded-2xl bg-white p-5 shadow-sm sm:p-6">
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
             <div>
-              <label className="mb-1 block text-sm text-slate-500">Компания</label>
-              <select name="company" defaultValue={selectedCompany} className="w-full rounded-xl border border-slate-300 px-4 py-2">
+              <label className="mb-1 block text-sm text-slate-500">
+                Компания
+              </label>
+
+              <select
+                name="company"
+                defaultValue={selectedCompany}
+                className="w-full rounded-xl border border-slate-300 px-4 py-2"
+              >
                 <option value="ALL">Все компании</option>
+
                 {companies.map((company) => (
-                  <option key={company.id} value={company.name}>{company.name}</option>
+                  <option key={company.id} value={company.name}>
+                    {company.name}
+                  </option>
                 ))}
               </select>
             </div>
 
             <div>
               <label className="mb-1 block text-sm text-slate-500">Год</label>
-              <input name="year" defaultValue={selectedYear} className="w-full rounded-xl border border-slate-300 px-4 py-2" />
+
+              <input
+                name="year"
+                defaultValue={selectedYear}
+                className="w-full rounded-xl border border-slate-300 px-4 py-2"
+              />
             </div>
 
             <div>
-              <label className="mb-1 block text-sm text-slate-500">Месяц</label>
-              <select name="month" defaultValue={selectedMonth} className="w-full rounded-xl border border-slate-300 px-4 py-2">
+              <label className="mb-1 block text-sm text-slate-500">
+                Месяц
+              </label>
+
+              <select
+                name="month"
+                defaultValue={selectedMonth}
+                className="w-full rounded-xl border border-slate-300 px-4 py-2"
+              >
                 {months.map((month) => (
-                  <option key={month.value} value={month.value}>{month.label}</option>
+                  <option key={month.value} value={month.value}>
+                    {month.label}
+                  </option>
                 ))}
               </select>
             </div>
@@ -372,44 +671,133 @@ export default async function PlanFactPage({
 
         {plans.length === 0 && (
           <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5 text-amber-800 sm:p-6">
-            На выбранный период бюджет не найден. Сначала создай бюджет в разделе “Планирование бюджета”.
+            На выбранный период бюджет не найден. Сначала создай бюджет в разделе
+            “Планирование бюджета”.
           </div>
         )}
 
         <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
           <MetricCard title="План выручки" value={formatMoney(planRevenue)} />
-          <MetricCard title="Факт выручки" value={formatMoney(fact.factRevenue)} subValue={`${formatPercent(revenueExecution)} · к прошлому: ${formatMoney(revenueMoM)}`} className="text-emerald-600" />
+
+          <MetricCard
+            title="Факт выручки"
+            value={formatMoney(factRevenue)}
+            subValue={`${formatPercent(revenueExecution)} · источник: ${
+              marketplaceFact.hasMarketplaceRevenue ? "WB/Ozon" : "Финансы"
+            }`}
+            className="text-emerald-600"
+          />
+
           <MetricCard title="План прибыли" value={formatMoney(planProfit)} />
-          <MetricCard title="Факт прибыли" value={formatMoney(fact.factProfit)} subValue={`${formatPercent(profitExecution)} · к прошлому: ${formatMoney(profitMoM)}`} className={fact.factProfit >= 0 ? "text-emerald-600" : "text-red-600"} />
-          <MetricCard title="Отклонение прибыли" value={formatMoney(fact.factProfit - planProfit)} className={diffClass(fact.factProfit - planProfit)} />
+
+          <MetricCard
+            title="Факт прибыли"
+            value={formatMoney(factProfit)}
+            subValue={`${formatPercent(profitExecution)} · к прошлому: ${formatMoney(
+              profitMoM
+            )}`}
+            className={factProfit >= 0 ? "text-emerald-600" : "text-red-600"}
+          />
+
+          <MetricCard
+            title="Отклонение прибыли"
+            value={formatMoney(factProfit - planProfit)}
+            className={diffClass(factProfit - planProfit)}
+          />
         </section>
 
         <section className="grid gap-4 md:grid-cols-3">
-          <MetricCard title="Операционные расходы" value={formatMoney(fact.factExpenses)} className="text-red-600" />
-          <MetricCard title="Кредиты и займы" value={formatMoney(fact.factFinancing)} subValue="Не входит в операционную прибыль" className="text-red-600" />
-          <MetricCard title="Денежный поток месяца" value={formatMoney(fact.cashFlowMonth)} className={fact.cashFlowMonth >= 0 ? "text-emerald-600" : "text-red-600"} />
+          <MetricCard
+            title="Операционные расходы"
+            value={formatMoney(factExpenses)}
+            className="text-red-600"
+          />
+
+          <MetricCard
+            title="Кредиты и займы"
+            value={formatMoney(financeFact.financeFinancing)}
+            subValue="Не входит в операционную прибыль"
+            className="text-red-600"
+          />
+
+          <MetricCard
+            title="Денежный поток месяца"
+            value={formatMoney(cashFlowMonth)}
+            className={cashFlowMonth >= 0 ? "text-emerald-600" : "text-red-600"}
+          />
+        </section>
+
+        <section className="grid gap-4 xl:grid-cols-3">
+          <MetricCard
+            title="WB выручка"
+            value={formatMoney(marketplaceFact.wbRevenue)}
+            className="text-emerald-600"
+          />
+
+          <MetricCard
+            title="Ozon выручка"
+            value={formatMoney(marketplaceFact.ozonRevenue)}
+            className="text-emerald-600"
+          />
+
+          <MetricCard
+            title="WB/Ozon реклама"
+            value={formatMoney(marketplaceFact.marketplaceAds)}
+            className="text-red-600"
+          />
         </section>
 
         <section className="grid gap-4 xl:grid-cols-2">
           <div className="rounded-2xl bg-white p-5 shadow-sm sm:p-6">
-            <h2 className="text-2xl font-bold text-slate-900">Выполнение бюджета по статьям</h2>
+            <h2 className="text-2xl font-bold text-slate-900">
+              Выполнение бюджета по статьям
+            </h2>
+
             <div className="mt-6 space-y-4">
-              {rows.filter((row) => row.title !== "Кредиты и займы").map((row) => (
-                <BarCompare key={row.title} title={row.title} plan={row.plan} fact={row.fact} lowerIsBetter={row.lowerIsBetter} />
-              ))}
+              {rows
+                .filter((row) => row.title !== "Кредиты и займы")
+                .map((row) => (
+                  <BarCompare
+                    key={row.title}
+                    title={`${row.title} · ${row.source}`}
+                    plan={row.plan}
+                    fact={row.fact}
+                    lowerIsBetter={row.lowerIsBetter}
+                  />
+                ))}
             </div>
           </div>
 
           <div className="rounded-2xl bg-white p-5 shadow-sm sm:p-6">
-            <h2 className="text-2xl font-bold text-slate-900">ТОП отклонений</h2>
+            <h2 className="text-2xl font-bold text-slate-900">
+              ТОП отклонений
+            </h2>
+
             <div className="mt-6 space-y-3">
               {topDeviations.map((row, index) => {
                 const diff = row.fact - row.plan;
+
                 return (
-                  <div key={row.title} className="rounded-2xl border border-slate-200 p-4">
+                  <div
+                    key={row.title}
+                    className="rounded-2xl border border-slate-200 p-4"
+                  >
                     <div className="text-sm text-slate-500">#{index + 1}</div>
-                    <div className="mt-1 font-bold text-slate-900">{row.title}</div>
-                    <div className={`mt-2 text-xl font-bold ${diffClass(diff, row.lowerIsBetter)}`}>
+
+                    <div className="mt-1 font-bold text-slate-900">
+                      {row.title}
+                    </div>
+
+                    <div className="mt-1 text-sm text-slate-500">
+                      Источник: {row.source}
+                    </div>
+
+                    <div
+                      className={`mt-2 text-xl font-bold ${diffClass(
+                        diff,
+                        row.lowerIsBetter
+                      )}`}
+                    >
                       {formatMoney(diff)}
                     </div>
                   </div>
@@ -426,13 +814,16 @@ export default async function PlanFactPage({
         </section>
 
         <section className="rounded-2xl bg-white p-5 shadow-sm sm:p-6">
-          <h2 className="text-2xl font-bold text-slate-900">План-Факт по статьям</h2>
+          <h2 className="text-2xl font-bold text-slate-900">
+            План-Факт по статьям
+          </h2>
 
           <div className="mt-6 overflow-x-auto">
-            <table className="w-full min-w-[1000px] text-sm">
+            <table className="w-full min-w-[1100px] text-sm">
               <thead className="bg-slate-100 text-left text-slate-700">
                 <tr>
                   <th className="p-3">Статья</th>
+                  <th className="p-3">Источник</th>
                   <th className="p-3 text-right">План</th>
                   <th className="p-3 text-right">Факт</th>
                   <th className="p-3 text-right">Выполнение</th>
@@ -450,11 +841,30 @@ export default async function PlanFactPage({
                   return (
                     <tr key={row.title} className="border-t border-slate-100">
                       <td className="p-3 font-semibold">{row.title}</td>
+                      <td className="p-3 text-slate-500">{row.source}</td>
                       <td className="p-3 text-right">{formatMoney(row.plan)}</td>
-                      <td className="p-3 text-right font-semibold">{formatMoney(row.fact)}</td>
-                      <td className="p-3 text-right font-bold">{row.plan ? formatPercent(execution) : "—"}</td>
-                      <td className={`p-3 text-right font-bold ${diffClass(diff, row.lowerIsBetter)}`}>{formatMoney(diff)}</td>
-                      <td className={`p-3 text-right font-bold ${diffClass(diff, row.lowerIsBetter)}`}>{formatPercent(diffPercent)}</td>
+                      <td className="p-3 text-right font-semibold">
+                        {formatMoney(row.fact)}
+                      </td>
+                      <td className="p-3 text-right font-bold">
+                        {row.plan ? formatPercent(execution) : "—"}
+                      </td>
+                      <td
+                        className={`p-3 text-right font-bold ${diffClass(
+                          diff,
+                          row.lowerIsBetter
+                        )}`}
+                      >
+                        {formatMoney(diff)}
+                      </td>
+                      <td
+                        className={`p-3 text-right font-bold ${diffClass(
+                          diff,
+                          row.lowerIsBetter
+                        )}`}
+                      >
+                        {formatPercent(diffPercent)}
+                      </td>
                     </tr>
                   );
                 })}
@@ -464,9 +874,15 @@ export default async function PlanFactPage({
         </section>
 
         <section className="rounded-2xl bg-white p-5 shadow-sm sm:p-6">
-          <h2 className="text-2xl font-bold text-slate-900">Источник факта</h2>
+          <h2 className="text-2xl font-bold text-slate-900">
+            Источник факта
+          </h2>
+
           <p className="mt-3 text-slate-500">
-            Операционный факт считается по финансовым операциям: поступления = выручка, расходы = выбытия. Кредиты и займы вынесены отдельно и не входят в операционную прибыль.
+            В версии 2.2 выручка, реклама и логистика берутся из WB/Ozon, если
+            по выбранному периоду есть маркетплейс-отчёты. Остальные статьи
+            берутся из финансовых операций. Кредиты и займы вынесены отдельно и
+            не входят в операционную прибыль.
           </p>
         </section>
       </div>
