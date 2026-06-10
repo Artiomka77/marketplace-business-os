@@ -21,17 +21,64 @@ function formatMonth(date: Date) {
   });
 }
 
+function formatPercent(value: number) {
+  if (!Number.isFinite(value)) return "—";
+  return `${value.toFixed(1)}%`;
+}
+
+function formatDateInput(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
+}
+
+function startOfDay(date: Date) {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+}
+
+function endOfDay(date: Date) {
+  return new Date(
+    date.getFullYear(),
+    date.getMonth(),
+    date.getDate(),
+    23,
+    59,
+    59
+  );
+}
+
+function addDays(date: Date, days: number) {
+  const result = new Date(date);
+  result.setDate(result.getDate() + days);
+  return result;
+}
+
+function startOfMonth(date: Date) {
+  return new Date(date.getFullYear(), date.getMonth(), 1);
+}
+
+function startOfQuarter(date: Date) {
+  const quarterStartMonth = Math.floor(date.getMonth() / 3) * 3;
+  return new Date(date.getFullYear(), quarterStartMonth, 1);
+}
+
+function startOfYear(date: Date) {
+  return new Date(date.getFullYear(), 0, 1);
+}
+
 function toDate(value?: string) {
   if (!value) return null;
 
-  const date = new Date(`${value}T00:00:00.000Z`);
+  const date = new Date(`${value}T00:00:00`);
   return Number.isNaN(date.getTime()) ? null : date;
 }
 
 function toDateEnd(value?: string) {
   if (!value) return null;
 
-  const date = new Date(`${value}T23:59:59.999Z`);
+  const date = new Date(`${value}T23:59:59`);
   return Number.isNaN(date.getTime()) ? null : date;
 }
 
@@ -65,6 +112,28 @@ function operationClass(type: string) {
   if (type === "FINANCING") return "text-blue-600";
   if (type === "PERSONAL") return "text-amber-600";
   return "text-slate-700";
+}
+
+function isFinancingCategory(category: string) {
+  const text = String(category ?? "").toLowerCase();
+
+  return (
+    text.includes("кредит") ||
+    text.includes("займ") ||
+    text.includes("процент") ||
+    text.includes("погашение")
+  );
+}
+
+function isFinancingIncomeCategory(category: string) {
+  const text = String(category ?? "").toLowerCase();
+
+  return (
+    text.includes("получение кредита") ||
+    text.includes("получение займа") ||
+    text.includes("получено кредит") ||
+    text.includes("получено займ")
+  );
 }
 
 function buildHref(params: {
@@ -104,16 +173,35 @@ export default async function CashFlowPage({
   }>;
 }) {
   const params = searchParams ? await searchParams : {};
+
   const company = params.company ?? "ALL";
-const selectedCategory = params.category ?? "ALL";
-const bankAccount = params.bankAccount ?? "ALL";
-const operationType = params.operationType ?? "ALL";
-const dateFrom = params.dateFrom ?? "";
-const dateTo = params.dateTo ?? "";
-const rowsLimit = Number(params.rows ?? 25);
+  const selectedCategory = params.category ?? "ALL";
+  const bankAccount = params.bankAccount ?? "ALL";
+  const operationType = params.operationType ?? "ALL";
+  const dateFrom = params.dateFrom ?? "";
+  const dateTo = params.dateTo ?? "";
+  const rowsLimit = Number(params.rows ?? 25);
+
+  const today = startOfDay(new Date());
+  const todayText = formatDateInput(today);
+
+  const weekStartText = formatDateInput(addDays(today, -6));
+  const days30StartText = formatDateInput(addDays(today, -29));
+  const monthStartText = formatDateInput(startOfMonth(today));
+  const quarterStartText = formatDateInput(startOfQuarter(today));
+  const yearStartText = formatDateInput(startOfYear(today));
 
   const startDate = toDate(dateFrom);
   const endDate = toDateEnd(dateTo);
+
+  const companies = await prisma.company.findMany({
+    where: {
+      isActive: true,
+    },
+    orderBy: {
+      name: "asc",
+    },
+  });
 
   const categories = await prisma.financeCategory.findMany({
     where: {
@@ -180,7 +268,12 @@ const rowsLimit = Number(params.rows ?? 25);
   });
 
   function categoryTypeOf(row: { category: string; operationType: string }) {
-    return categoryMap.get(row.category)?.categoryType ?? row.operationType;
+    const categoryType = categoryMap.get(row.category)?.categoryType;
+
+    if (categoryType) return categoryType;
+    if (isFinancingCategory(row.category)) return "FINANCING";
+
+    return row.operationType;
   }
 
   function cashEffectForCashflow(row: {
@@ -199,7 +292,7 @@ const rowsLimit = Number(params.rows ?? 25);
     if (categoryType === "PERSONAL") return -amount;
 
     if (categoryType === "FINANCING") {
-      return row.category === "Получение кредита" ? amount : -amount;
+      return isFinancingIncomeCategory(row.category) ? amount : -amount;
     }
 
     if (row.operationType === "INCOME") return amount;
@@ -231,12 +324,22 @@ const rowsLimit = Number(params.rows ?? 25);
     0
   );
 
-  const income = transactions
-    .filter((row) => categoryTypeOf(row) === "INCOME" && !row.isInternalTransfer)
+  const operatingIncome = transactions
+    .filter(
+      (row) =>
+        categoryTypeOf(row) === "INCOME" &&
+        !row.isInternalTransfer &&
+        !isFinancingCategory(row.category)
+    )
     .reduce((sum, row) => sum + getAmount(row.amount), 0);
 
-  const expense = transactions
-    .filter((row) => categoryTypeOf(row) === "EXPENSE" && !row.isInternalTransfer)
+  const operatingExpense = transactions
+    .filter(
+      (row) =>
+        categoryTypeOf(row) === "EXPENSE" &&
+        !row.isInternalTransfer &&
+        !isFinancingCategory(row.category)
+    )
     .reduce((sum, row) => sum + getAmount(row.amount), 0);
 
   const personalExpense = transactions
@@ -248,7 +351,7 @@ const rowsLimit = Number(params.rows ?? 25);
       (row) =>
         categoryTypeOf(row) === "FINANCING" &&
         !row.isInternalTransfer &&
-        row.category === "Получение кредита"
+        isFinancingIncomeCategory(row.category)
     )
     .reduce((sum, row) => sum + getAmount(row.amount), 0);
 
@@ -257,31 +360,23 @@ const rowsLimit = Number(params.rows ?? 25);
       (row) =>
         categoryTypeOf(row) === "FINANCING" &&
         !row.isInternalTransfer &&
-        row.category !== "Получение кредита"
+        !isFinancingIncomeCategory(row.category)
     )
     .reduce((sum, row) => sum + getAmount(row.amount), 0);
 
-  const transferIn = transactions
-    .filter(
-      (row) =>
-        row.isInternalTransfer && row.transferDirection === "TRANSFER_IN"
-    )
-    .reduce((sum, row) => sum + getAmount(row.amount), 0);
-
-  const transferOut = transactions
-    .filter(
-      (row) =>
-        row.isInternalTransfer && row.transferDirection === "TRANSFER_OUT"
-    )
-    .reduce((sum, row) => sum + getAmount(row.amount), 0);
-
-  const totalInflow = income + financingIncome;
-  const totalOutflow = expense + personalExpense + financingExpense;
-  const netCashFlow = totalInflow - totalOutflow;
-  const closingBalance = openingBalance + netCashFlow;
+  const operatingFlow = operatingIncome - operatingExpense - personalExpense;
   const financialFlow = financingIncome - financingExpense;
 
-  const categoryRowsMap = new Map<
+  const totalInflow = operatingIncome + financingIncome;
+  const totalOutflow = operatingExpense + personalExpense + financingExpense;
+  const netCashFlow = totalInflow - totalOutflow;
+  const closingBalance = openingBalance + netCashFlow;
+
+  const cashFlowMargin =
+    totalInflow > 0 ? (netCashFlow / totalInflow) * 100 : null;
+
+  const incomeRowsMap = new Map<string, number>();
+  const expenseRowsMap = new Map<
     string,
     {
       parentName: string;
@@ -293,30 +388,52 @@ const rowsLimit = Number(params.rows ?? 25);
   for (const row of transactions) {
     if (row.isInternalTransfer) continue;
 
-    const category = categoryMap.get(row.category);
+    const amount = getAmount(row.amount);
     const categoryType = categoryTypeOf(row);
 
-    if (categoryType === "INCOME") continue;
-    if (categoryType === "FINANCING" && row.category === "Получение кредита") {
+    if (categoryType === "INCOME" && !isFinancingCategory(row.category)) {
+      incomeRowsMap.set(row.category, (incomeRowsMap.get(row.category) ?? 0) + amount);
       continue;
     }
 
-    const parentName = parentLabel(category?.parentName);
-    const key = `${parentName}|||${row.category}`;
+    if (
+      categoryType === "EXPENSE" ||
+      categoryType === "PERSONAL" ||
+      categoryType === "FINANCING"
+    ) {
+      if (categoryType === "FINANCING" && isFinancingIncomeCategory(row.category)) {
+        continue;
+      }
 
-    const current =
-      categoryRowsMap.get(key) ??
-      {
-        parentName,
-        categoryName: row.category,
-        amount: 0,
-      };
+      const category = categoryMap.get(row.category);
+      const parentName =
+        categoryType === "FINANCING"
+          ? "Финансовая деятельность"
+          : parentLabel(category?.parentName);
 
-    current.amount += getAmount(row.amount);
-    categoryRowsMap.set(key, current);
+      const key = `${parentName}|||${row.category}`;
+
+      const current =
+        expenseRowsMap.get(key) ??
+        {
+          parentName,
+          categoryName: row.category,
+          amount: 0,
+        };
+
+      current.amount += amount;
+      expenseRowsMap.set(key, current);
+    }
   }
 
-  const categoryExpenseRows = Array.from(categoryRowsMap.values()).sort(
+  const incomeRows = Array.from(incomeRowsMap.entries())
+    .map(([categoryName, amount]) => ({
+      categoryName,
+      amount,
+    }))
+    .sort((a, b) => b.amount - a.amount);
+
+  const categoryExpenseRows = Array.from(expenseRowsMap.values()).sort(
     (a, b) =>
       a.parentName.localeCompare(b.parentName, "ru") || b.amount - a.amount
   );
@@ -407,6 +524,39 @@ const rowsLimit = Number(params.rows ?? 25);
     };
   });
 
+  const quickLinks = [
+    {
+      label: "Сегодня",
+      dateFrom: todayText,
+      dateTo: todayText,
+    },
+    {
+      label: "7 дней",
+      dateFrom: weekStartText,
+      dateTo: todayText,
+    },
+    {
+      label: "30 дней",
+      dateFrom: days30StartText,
+      dateTo: todayText,
+    },
+    {
+      label: "Месяц",
+      dateFrom: monthStartText,
+      dateTo: todayText,
+    },
+    {
+      label: "Квартал",
+      dateFrom: quarterStartText,
+      dateTo: todayText,
+    },
+    {
+      label: "Год",
+      dateFrom: yearStartText,
+      dateTo: todayText,
+    },
+  ];
+
   return (
     <main className="min-h-screen bg-slate-100 p-8">
       <div className="mx-auto max-w-[1600px] space-y-6">
@@ -448,14 +598,19 @@ const rowsLimit = Number(params.rows ?? 25);
               <label className="mb-2 block text-sm font-medium text-slate-700">
                 Компания
               </label>
+
               <select
                 name="company"
                 defaultValue={company}
                 className="w-full rounded-xl border border-slate-300 px-4 py-2"
               >
                 <option value="ALL">Все</option>
-                <option value="ИП Петров">ИП Петров</option>
-                <option value="ИП Лебедева">ИП Лебедева</option>
+
+                {companies.map((item) => (
+                  <option key={item.id} value={item.name}>
+                    {item.name}
+                  </option>
+                ))}
               </select>
             </div>
 
@@ -463,6 +618,7 @@ const rowsLimit = Number(params.rows ?? 25);
               <label className="mb-2 block text-sm font-medium text-slate-700">
                 Статья
               </label>
+
               <select
                 name="category"
                 defaultValue={selectedCategory}
@@ -481,6 +637,7 @@ const rowsLimit = Number(params.rows ?? 25);
               <label className="mb-2 block text-sm font-medium text-slate-700">
                 Счёт
               </label>
+
               <select
                 name="bankAccount"
                 defaultValue={bankAccount}
@@ -499,6 +656,7 @@ const rowsLimit = Number(params.rows ?? 25);
               <label className="mb-2 block text-sm font-medium text-slate-700">
                 Тип
               </label>
+
               <select
                 name="operationType"
                 defaultValue={operationType}
@@ -517,6 +675,7 @@ const rowsLimit = Number(params.rows ?? 25);
               <label className="mb-2 block text-sm font-medium text-slate-700">
                 Дата от
               </label>
+
               <input
                 type="date"
                 name="dateFrom"
@@ -529,6 +688,7 @@ const rowsLimit = Number(params.rows ?? 25);
               <label className="mb-2 block text-sm font-medium text-slate-700">
                 Дата до
               </label>
+
               <input
                 type="date"
                 name="dateTo"
@@ -547,7 +707,44 @@ const rowsLimit = Number(params.rows ?? 25);
           <input type="hidden" name="rows" value={rowsLimit} />
         </form>
 
-        <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+        <section className="rounded-2xl bg-white p-5 shadow-sm">
+          <div className="flex flex-wrap gap-2">
+            {quickLinks.map((link) => (
+              <Link
+                key={link.label}
+                href={buildHref({
+                  company,
+                  category: selectedCategory,
+                  bankAccount,
+                  operationType,
+                  dateFrom: link.dateFrom,
+                  dateTo: link.dateTo,
+                  rows: rowsLimit,
+                })}
+                className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold hover:bg-slate-50"
+              >
+                {link.label}
+              </Link>
+            ))}
+
+            <Link
+              href={buildHref({
+                company,
+                category: selectedCategory,
+                bankAccount,
+                operationType,
+                dateFrom: "",
+                dateTo: "",
+                rows: rowsLimit,
+              })}
+              className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold hover:bg-slate-50"
+            >
+              Все
+            </Link>
+          </div>
+        </section>
+
+        <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <div className="rounded-2xl bg-white p-6 shadow-sm">
             <div className="text-sm text-slate-500">Начальный остаток</div>
             <div className="mt-2 text-2xl font-bold text-slate-900">
@@ -578,143 +775,176 @@ const rowsLimit = Number(params.rows ?? 25);
             >
               {formatMoney(netCashFlow)}
             </div>
-          </div>
 
-          <div className="rounded-2xl bg-white p-6 shadow-sm">
-            <div className="text-sm text-slate-500">Конечный остаток</div>
-            <div
-              className={`mt-2 text-2xl font-bold ${
-                closingBalance >= 0 ? "text-emerald-600" : "text-red-600"
-              }`}
-            >
-              {formatMoney(closingBalance)}
+            <div className="mt-2 text-sm text-slate-500">
+              Рентабельность ДДС:{" "}
+              <span className="font-semibold text-slate-900">
+                {cashFlowMargin === null ? "—" : formatPercent(cashFlowMargin)}
+              </span>
             </div>
           </div>
         </section>
 
-        <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-6">
+        <section className="grid gap-4 lg:grid-cols-3">
           <div className="rounded-2xl bg-white p-6 shadow-sm">
-            <div className="text-sm text-slate-500">Опер. поступления</div>
-            <div className="mt-2 text-xl font-bold text-emerald-600">
-              {formatMoney(income)}
+            <h2 className="text-xl font-bold text-slate-900">
+              Операционная деятельность
+            </h2>
+
+            <div className="mt-5 space-y-3 text-sm">
+              <div className="flex justify-between">
+                <span className="text-slate-500">Поступления</span>
+                <span className="font-bold text-emerald-600">
+                  {formatMoney(operatingIncome)}
+                </span>
+              </div>
+
+              <div className="flex justify-between">
+                <span className="text-slate-500">Расходы</span>
+                <span className="font-bold text-red-600">
+                  {formatMoney(operatingExpense)}
+                </span>
+              </div>
+
+              <div className="flex justify-between">
+                <span className="text-slate-500">Личные расходы</span>
+                <span className="font-bold text-amber-600">
+                  {formatMoney(personalExpense)}
+                </span>
+              </div>
+
+              <div className="border-t border-slate-200 pt-3">
+                <div className="flex justify-between">
+                  <span className="font-semibold text-slate-900">
+                    Операционный поток
+                  </span>
+                  <span
+                    className={`font-bold ${
+                      operatingFlow >= 0 ? "text-emerald-600" : "text-red-600"
+                    }`}
+                  >
+                    {formatMoney(operatingFlow)}
+                  </span>
+                </div>
+              </div>
             </div>
           </div>
 
           <div className="rounded-2xl bg-white p-6 shadow-sm">
-            <div className="text-sm text-slate-500">Опер. расходы</div>
-            <div className="mt-2 text-xl font-bold text-red-600">
-              {formatMoney(expense)}
+            <h2 className="text-xl font-bold text-slate-900">
+              Финансовая деятельность
+            </h2>
+
+            <div className="mt-5 space-y-3 text-sm">
+              <div className="flex justify-between">
+                <span className="text-slate-500">Получено кредитов / займов</span>
+                <span className="font-bold text-blue-600">
+                  {formatMoney(financingIncome)}
+                </span>
+              </div>
+
+              <div className="flex justify-between">
+                <span className="text-slate-500">Платежи по кредитам / займам</span>
+                <span className="font-bold text-red-600">
+                  {formatMoney(financingExpense)}
+                </span>
+              </div>
+
+              <div className="border-t border-slate-200 pt-3">
+                <div className="flex justify-between">
+                  <span className="font-semibold text-slate-900">
+                    Финансовый поток
+                  </span>
+                  <span
+                    className={`font-bold ${
+                      financialFlow >= 0 ? "text-blue-600" : "text-red-600"
+                    }`}
+                  >
+                    {formatMoney(financialFlow)}
+                  </span>
+                </div>
+              </div>
             </div>
           </div>
 
           <div className="rounded-2xl bg-white p-6 shadow-sm">
-            <div className="text-sm text-slate-500">Личные расходы</div>
-            <div className="mt-2 text-xl font-bold text-amber-600">
-              {formatMoney(personalExpense)}
+            <h2 className="text-xl font-bold text-slate-900">Итог</h2>
+
+            <div className="mt-5 space-y-3 text-sm">
+              <div className="flex justify-between">
+                <span className="text-slate-500">Начальный остаток</span>
+                <span className="font-bold text-slate-900">
+                  {formatMoney(openingBalance)}
+                </span>
+              </div>
+
+              <div className="flex justify-between">
+                <span className="text-slate-500">Чистый денежный поток</span>
+                <span
+                  className={`font-bold ${
+                    netCashFlow >= 0 ? "text-emerald-600" : "text-red-600"
+                  }`}
+                >
+                  {formatMoney(netCashFlow)}
+                </span>
+              </div>
+
+              <div className="border-t border-slate-200 pt-3">
+                <div className="flex justify-between">
+                  <span className="font-semibold text-slate-900">
+                    Конечный остаток
+                  </span>
+                  <span
+                    className={`font-bold ${
+                      closingBalance >= 0 ? "text-emerald-600" : "text-red-600"
+                    }`}
+                  >
+                    {formatMoney(closingBalance)}
+                  </span>
+                </div>
+              </div>
             </div>
-          </div>
-
-          <div className="rounded-2xl bg-white p-6 shadow-sm">
-            <div className="text-sm text-slate-500">Получено кредитов</div>
-            <div className="mt-2 text-xl font-bold text-blue-600">
-              {formatMoney(financingIncome)}
-            </div>
-          </div>
-
-          <div className="rounded-2xl bg-white p-6 shadow-sm">
-            <div className="text-sm text-slate-500">Платежи по кредитам</div>
-            <div className="mt-2 text-xl font-bold text-red-600">
-              {formatMoney(financingExpense)}
-            </div>
-          </div>
-
-          <div className="rounded-2xl bg-white p-6 shadow-sm">
-            <div className="text-sm text-slate-500">Фин. поток</div>
-            <div
-              className={`mt-2 text-xl font-bold ${
-                financialFlow >= 0 ? "text-blue-600" : "text-red-600"
-              }`}
-            >
-              {formatMoney(financialFlow)}
-            </div>
-          </div>
-        </section>
-
-        <section className="rounded-2xl bg-white p-6 shadow-sm">
-          <div className="flex items-center justify-between gap-4">
-            <div>
-              <h2 className="text-xl font-bold text-slate-900">
-                Денежные средства по счетам
-              </h2>
-
-              <p className="mt-2 text-sm text-slate-500">
-                Внутренние переводы меняют остатки счетов, но не меняют общий ОДДС.
-              </p>
-            </div>
-
-            <Link
-              href="/finance/accounts"
-              className="rounded-xl border border-slate-300 px-4 py-2 font-semibold"
-            >
-              Управлять счетами
-            </Link>
-          </div>
-
-          <div className="mt-5 overflow-x-auto">
-            <table className="w-full min-w-[1000px] text-sm">
-              <thead className="bg-slate-100 text-left text-slate-700">
-                <tr>
-                  <th className="p-3">Компания</th>
-                  <th className="p-3">Счёт</th>
-                  <th className="p-3 text-right">Поступления</th>
-                  <th className="p-3 text-right">Выбытия</th>
-                  <th className="p-3 text-right">Расчётный остаток</th>
-                  <th className="p-3 text-right">Операций</th>
-                </tr>
-              </thead>
-
-              <tbody>
-                {accountBalanceRows.map((row) => (
-                  <tr key={row.account.id} className="border-t border-slate-100">
-                    <td className="p-3 font-medium">
-                      {row.account.companyName}
-                    </td>
-
-                    <td className="p-3">{row.account.name}</td>
-
-                    <td className="p-3 text-right font-bold text-emerald-600">
-                      {formatMoney(row.inflow)}
-                    </td>
-
-                    <td className="p-3 text-right font-bold text-red-600">
-                      {formatMoney(row.outflow)}
-                    </td>
-
-                    <td
-                      className={`p-3 text-right font-bold ${
-                        row.balance >= 0 ? "text-emerald-600" : "text-red-600"
-                      }`}
-                    >
-                      {formatMoney(row.balance)}
-                    </td>
-
-                    <td className="p-3 text-right">{row.operationsCount}</td>
-                  </tr>
-                ))}
-
-                {accountBalanceRows.length === 0 && (
-                  <tr>
-                    <td colSpan={6} className="p-6 text-center text-slate-500">
-                      Денежные счета пока не заведены.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
           </div>
         </section>
 
         <section className="grid gap-6 lg:grid-cols-2">
+          <div className="rounded-2xl bg-white p-6 shadow-sm">
+            <h2 className="text-xl font-bold text-slate-900">
+              Поступления по статьям
+            </h2>
+
+            <div className="mt-5 space-y-3">
+              {incomeRows.map((row) => (
+                <div
+                  key={row.categoryName}
+                  className="flex items-center justify-between gap-4 rounded-xl border border-slate-200 p-4"
+                >
+                  <div className="font-semibold text-slate-900">
+                    {row.categoryName}
+                  </div>
+
+                  <div className="text-right">
+                    <div className="font-bold text-emerald-600">
+                      {formatMoney(row.amount)}
+                    </div>
+
+                    <div className="mt-1 text-sm font-semibold text-slate-500">
+                      {operatingIncome > 0
+                        ? formatPercent((row.amount / operatingIncome) * 100)
+                        : "—"}
+                    </div>
+                  </div>
+                </div>
+              ))}
+
+              {incomeRows.length === 0 && (
+                <div className="rounded-xl border border-slate-200 p-4 text-slate-500">
+                  Поступлений за период нет.
+                </div>
+              )}
+            </div>
+          </div>
+
           <div className="rounded-2xl bg-white p-6 shadow-sm">
             <h2 className="text-xl font-bold text-slate-900">
               Расшифровка расходов по статьям
@@ -728,8 +958,15 @@ const rowsLimit = Number(params.rows ?? 25);
                   <div key={group}>
                     <div className="flex items-center justify-between">
                       <h3 className="font-bold text-slate-900">{group}</h3>
-                      <div className="font-bold text-red-600">
-                        {formatMoney(groupTotal)}
+                      <div className="text-right">
+                        <div className="font-bold text-red-600">
+                          {formatMoney(groupTotal)}
+                        </div>
+                        <div className="mt-1 text-sm font-semibold text-slate-500">
+                          {totalOutflow > 0
+                            ? formatPercent((groupTotal / totalOutflow) * 100)
+                            : "—"}
+                        </div>
                       </div>
                     </div>
 
@@ -744,8 +981,17 @@ const rowsLimit = Number(params.rows ?? 25);
                               <td className="p-3 font-medium">
                                 ├ {row.categoryName}
                               </td>
-                              <td className="p-3 text-right font-bold text-red-600">
-                                {formatMoney(row.amount)}
+
+                              <td className="p-3 text-right">
+                                <div className="font-bold text-red-600">
+                                  {formatMoney(row.amount)}
+                                </div>
+
+                                <div className="mt-1 text-sm font-semibold text-slate-500">
+                                  {totalOutflow > 0
+                                    ? formatPercent((row.amount / totalOutflow) * 100)
+                                    : "—"}
+                                </div>
                               </td>
                             </tr>
                           ))}
@@ -759,6 +1005,71 @@ const rowsLimit = Number(params.rows ?? 25);
               {categoryExpenseRows.length === 0 && (
                 <div className="p-6 text-center text-slate-500">Нет данных.</div>
               )}
+            </div>
+          </div>
+        </section>
+
+        <section className="grid gap-6 lg:grid-cols-2">
+          <div className="rounded-2xl bg-white p-6 shadow-sm">
+            <h2 className="text-xl font-bold text-slate-900">
+              Денежные средства по счетам
+            </h2>
+
+            <p className="mt-2 text-sm text-slate-500">
+              Внутренние переводы меняют остатки счетов, но не меняют общий ОДДС.
+            </p>
+
+            <div className="mt-5 overflow-x-auto">
+              <table className="w-full min-w-[900px] text-sm">
+                <thead className="bg-slate-100 text-left text-slate-700">
+                  <tr>
+                    <th className="p-3">Компания</th>
+                    <th className="p-3">Счёт</th>
+                    <th className="p-3 text-right">Поступления</th>
+                    <th className="p-3 text-right">Выбытия</th>
+                    <th className="p-3 text-right">Расчётный остаток</th>
+                    <th className="p-3 text-right">Операций</th>
+                  </tr>
+                </thead>
+
+                <tbody>
+                  {accountBalanceRows.map((row) => (
+                    <tr key={row.account.id} className="border-t border-slate-100">
+                      <td className="p-3 font-medium">
+                        {row.account.companyName}
+                      </td>
+
+                      <td className="p-3">{row.account.name}</td>
+
+                      <td className="p-3 text-right font-bold text-emerald-600">
+                        {formatMoney(row.inflow)}
+                      </td>
+
+                      <td className="p-3 text-right font-bold text-red-600">
+                        {formatMoney(row.outflow)}
+                      </td>
+
+                      <td
+                        className={`p-3 text-right font-bold ${
+                          row.balance >= 0 ? "text-emerald-600" : "text-red-600"
+                        }`}
+                      >
+                        {formatMoney(row.balance)}
+                      </td>
+
+                      <td className="p-3 text-right">{row.operationsCount}</td>
+                    </tr>
+                  ))}
+
+                  {accountBalanceRows.length === 0 && (
+                    <tr>
+                      <td colSpan={6} className="p-6 text-center text-slate-500">
+                        Денежные счета пока не заведены.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
             </div>
           </div>
 
