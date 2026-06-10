@@ -20,6 +20,15 @@ function formatDate(value: Date | null) {
   return value.toLocaleDateString("ru-RU");
 }
 
+function frequencyLabel(value: string | null | undefined) {
+  if (value === "MONTHLY") return "Ежемесячно";
+  if (value === "WEEKLY") return "Еженедельно";
+  if (value === "BIWEEKLY") return "Раз в 2 недели";
+  if (value === "TWICE_MONTHLY_15_25") return "15 и 25 числа";
+  if (value === "CUSTOM") return "Ручной график";
+  return "Ежемесячно";
+}
+
 function monthLabel(date: Date) {
   return date.toLocaleDateString("ru-RU", {
     month: "long",
@@ -54,24 +63,22 @@ export default async function LoansPage({
   const from = startOfMonth(now);
   const to = endOfYear(now);
 
-const companies = await prisma.$queryRaw<{ id: string; name: string }[]>`
-  select "id", "name"
-  from "Company"
-  where "isActive" = true
-  order by "name" asc
-`;
+  const companies = await prisma.$queryRaw<{ id: string; name: string }[]>`
+    select "id", "name"
+    from "Company"
+    where "isActive" = true
+    order by "name" asc
+  `;
 
-const params = searchParams ? await searchParams : {};
+  const params = searchParams ? await searchParams : {};
 
-const companyName =
-  params.company && params.company !== "ALL"
-    ? params.company
-    : null;
+  const companyName =
+    params.company && params.company !== "ALL" ? params.company : null;
 
   const loans = await prisma.loan.findMany({
-  where: {
-    ...(companyName ? { companyName } : {}),
-  },
+    where: {
+      ...(companyName ? { companyName } : {}),
+    },
     include: {
       payments: {
         orderBy: {
@@ -83,26 +90,26 @@ const companyName =
   });
 
   const paymentsUntilYearEnd = await prisma.loanPayment.findMany({
-  where: {
-    paymentDate: {
-      gte: from,
-      lte: to,
+    where: {
+      paymentDate: {
+        gte: from,
+        lte: to,
+      },
+      ...(companyName
+        ? {
+            loan: {
+              companyName,
+            },
+          }
+        : {}),
     },
-    ...(companyName
-      ? {
-          loan: {
-            companyName,
-          },
-        }
-      : {}),
-  },
-  include: {
-    loan: true,
-  },
-  orderBy: {
-    paymentDate: "asc",
-  },
-});
+    include: {
+      loan: true,
+    },
+    orderBy: {
+      paymentDate: "asc",
+    },
+  });
 
   const totalDebt = loans.reduce(
     (sum, loan) => sum + getAmount(loan.currentDebt),
@@ -206,6 +213,13 @@ const companyName =
             </Link>
 
             <Link
+              href="/finance/calendar"
+              className="rounded-xl bg-slate-900 px-5 py-3 font-semibold text-white"
+            >
+              Платёжный календарь
+            </Link>
+
+            <Link
               href="/finance/accounts"
               className="rounded-xl border border-slate-300 px-5 py-3 font-semibold"
             >
@@ -214,31 +228,31 @@ const companyName =
           </div>
         </div>
 
-<form className="flex flex-col gap-3 sm:flex-row sm:items-end">
-  <div className="sm:w-[260px]">
-    <label className="mb-2 block text-sm font-medium text-slate-700">
-      Компания
-    </label>
+        <form className="flex flex-col gap-3 sm:flex-row sm:items-end">
+          <div className="sm:w-[260px]">
+            <label className="mb-2 block text-sm font-medium text-slate-700">
+              Компания
+            </label>
 
-    <select
-      name="company"
-      defaultValue={params.company ?? "ALL"}
-      className="w-full rounded-xl border border-slate-300 px-4 py-2"
-    >
-      <option value="ALL">Все компании</option>
+            <select
+              name="company"
+              defaultValue={params.company ?? "ALL"}
+              className="w-full rounded-xl border border-slate-300 px-4 py-2"
+            >
+              <option value="ALL">Все компании</option>
 
-      {companies.map((company) => (
-        <option key={company.id} value={company.name}>
-          {company.name}
-        </option>
-      ))}
-    </select>
-  </div>
+              {companies.map((company) => (
+                <option key={company.id} value={company.name}>
+                  {company.name}
+                </option>
+              ))}
+            </select>
+          </div>
 
-  <button className="rounded-xl bg-slate-900 px-6 py-2 font-semibold text-white">
-    Применить
-  </button>
-</form>
+          <button className="rounded-xl bg-slate-900 px-6 py-2 font-semibold text-white">
+            Применить
+          </button>
+        </form>
 
         <section className="grid gap-4 md:grid-cols-5">
           <div className="rounded-2xl bg-white p-6 shadow-sm">
@@ -440,16 +454,16 @@ const companyName =
             className="mt-6 grid gap-4 md:grid-cols-4"
           >
             <select
-  name="companyName"
-  className="rounded-xl border border-slate-300 px-4 py-2"
-  defaultValue={companies[0]?.name ?? ""}
->
-  {companies.map((company) => (
-    <option key={company.id} value={company.name}>
-      {company.name}
-    </option>
-  ))}
-</select>
+              name="companyName"
+              className="rounded-xl border border-slate-300 px-4 py-2"
+              defaultValue={companies[0]?.name ?? ""}
+            >
+              {companies.map((company) => (
+                <option key={company.id} value={company.name}>
+                  {company.name}
+                </option>
+              ))}
+            </select>
 
             <input
               name="bankName"
@@ -463,6 +477,18 @@ const companyName =
               placeholder="Номер договора"
               className="rounded-xl border border-slate-300 px-4 py-2"
             />
+
+            <select
+              name="paymentFrequency"
+              defaultValue="MONTHLY"
+              className="rounded-xl border border-slate-300 px-4 py-2"
+            >
+              <option value="MONTHLY">Ежемесячно</option>
+              <option value="WEEKLY">Еженедельно</option>
+              <option value="BIWEEKLY">Раз в 2 недели</option>
+              <option value="TWICE_MONTHLY_15_25">15 и 25 числа</option>
+              <option value="CUSTOM">Ручной график</option>
+            </select>
 
             <input
               name="interestRate"
@@ -490,6 +516,12 @@ const companyName =
 
             <input
               type="date"
+              name="startDate"
+              className="rounded-xl border border-slate-300 px-4 py-2"
+            />
+
+            <input
+              type="date"
               name="endDate"
               className="rounded-xl border border-slate-300 px-4 py-2"
             />
@@ -498,6 +530,12 @@ const companyName =
               Добавить кредит
             </button>
           </form>
+
+          <p className="mt-3 text-sm text-slate-500">
+            Для кредитов с оплатой 15 и 25 числа выбери периодичность
+            “15 и 25 числа”. График платежей будем редактировать отдельно на
+            странице графика.
+          </p>
         </section>
 
         <section className="rounded-2xl bg-white p-6 shadow-sm">
@@ -506,7 +544,7 @@ const companyName =
           </h2>
 
           <div className="mt-6 overflow-x-auto">
-            <table className="w-full min-w-[1200px] text-sm">
+            <table className="w-full min-w-[1400px] text-sm">
               <thead className="bg-slate-100 text-left text-slate-700">
                 <tr>
                   <th className="p-3">Компания</th>
@@ -515,8 +553,10 @@ const companyName =
                   <th className="p-3 text-right">Долг</th>
                   <th className="p-3 text-right">Платеж</th>
                   <th className="p-3 text-right">Ставка</th>
+                  <th className="p-3">Периодичность</th>
                   <th className="p-3">Дата окончания</th>
                   <th className="p-3 text-right">Платежей</th>
+                  <th className="p-3 text-center">График</th>
                 </tr>
               </thead>
 
@@ -541,17 +581,30 @@ const companyName =
                       {formatPercent(loan.interestRate)}
                     </td>
 
+                    <td className="p-3">
+                      {frequencyLabel(loan.paymentFrequency)}
+                    </td>
+
                     <td className="p-3">{formatDate(loan.endDate)}</td>
 
                     <td className="p-3 text-right">
                       {loan.payments.length}
+                    </td>
+
+                    <td className="p-3 text-center">
+                      <Link
+                        href={`/finance/loans/${loan.id}/schedule`}
+                        className="rounded-lg bg-slate-900 px-3 py-1 text-sm font-medium text-white"
+                      >
+                        График →
+                      </Link>
                     </td>
                   </tr>
                 ))}
 
                 {loans.length === 0 && (
                   <tr>
-                    <td colSpan={8} className="p-8 text-center text-slate-500">
+                    <td colSpan={10} className="p-8 text-center text-slate-500">
                       Кредиты пока не заведены.
                     </td>
                   </tr>
