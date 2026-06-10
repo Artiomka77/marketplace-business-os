@@ -31,7 +31,6 @@ function toDate(value: unknown): Date | null {
   }
 
   const text = String(value).trim();
-
   const ruDate = text.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
 
   if (ruDate) {
@@ -53,6 +52,25 @@ function cleanText(value: unknown): string | null {
   const text = String(value).trim();
 
   return text || null;
+}
+
+function normalizeBankAccount(value: unknown): string | null {
+  const text = cleanText(value);
+
+  if (!text) return null;
+
+  const normalized = text.toLowerCase().replaceAll("ё", "е").trim();
+
+  if (
+    normalized === "карта сбербанка" ||
+    normalized === "сбербанк карта" ||
+    normalized === "сбер карта" ||
+    normalized === "карта сбер"
+  ) {
+    return "Сбербанк карта";
+  }
+
+  return text;
 }
 
 function getByIndex(row: Record<string, unknown>, index: number) {
@@ -108,39 +126,40 @@ export async function normalizeFinanceTransactions(
 
       const rawCategory = cleanText(getValue(row, "Статья", 3));
       const amountRaw = toNumber(getValue(row, "Сумма", 4));
+      const movementType = cleanText(getValue(row, "За что платим", 7));
 
       if (!operationDate || amountRaw === null) return null;
 
-      const operationType = detectOperationType(rawCategory, amountRaw);
+      const movementText = String(movementType ?? "").toLowerCase();
+
+      const operationType =
+        movementText.includes("поступ")
+          ? "INCOME"
+          : movementText.includes("выбыт")
+            ? "EXPENSE"
+            : detectOperationType(rawCategory, amountRaw);
+
       const amount = Math.abs(amountRaw);
 
       return {
         companyName,
         operationDate,
         obligationDate,
-
         operationType,
-
         category: cleanCategory(rawCategory),
         subcategory: null,
-
         counterparty: cleanText(getValue(row, "Кому платим", 6)),
-
         amount,
-
-        bankAccount: cleanText(getValue(row, "Счет/наличка", 5)),
-
-        comment:
-          cleanText(getValue(row, "Комментарий", 8)) ??
-          cleanText(getValue(row, "За что платим", 7)),
-
+        bankAccount: normalizeBankAccount(getValue(row, "Счет/наличка", 5)),
+        comment: cleanText(getValue(row, "Комментарий", 8)),
         project: null,
-
         isInternalTransfer:
           operationType === "TRANSFER" ||
           String(rawCategory ?? "")
             .toLowerCase()
             .includes("перевод между счетами"),
+        sourceType: "GOOGLE_SHEETS_IMPORT",
+        sourceId: importSessionId,
       };
     })
     .filter((row): row is NonNullable<typeof row> => Boolean(row));
@@ -154,6 +173,7 @@ export async function normalizeFinanceTransactions(
   await prisma.financeTransaction.deleteMany({
     where: {
       companyName,
+      sourceType: "GOOGLE_SHEETS_IMPORT",
     },
   });
 

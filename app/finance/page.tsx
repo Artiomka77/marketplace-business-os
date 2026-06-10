@@ -1,78 +1,608 @@
 import Link from "next/link";
+import { prisma } from "@/lib/prisma";
+
+function formatMoney(value: unknown) {
+  const number = Number(value ?? 0);
+
+  return new Intl.NumberFormat("ru-RU", {
+    style: "currency",
+    currency: "RUB",
+    maximumFractionDigits: 0,
+  }).format(Number.isFinite(number) ? number : 0);
+}
+
+function formatPercent(value: number) {
+  if (!Number.isFinite(value)) return "—";
+
+  return `${value > 0 ? "+" : ""}${value.toFixed(1)}%`;
+}
+
+function formatDateInput(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
+}
+
+function startOfDay(date: Date) {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+}
+
+function endOfDay(date: Date) {
+  return new Date(
+    date.getFullYear(),
+    date.getMonth(),
+    date.getDate(),
+    23,
+    59,
+    59
+  );
+}
+
+function addDays(date: Date, days: number) {
+  const result = new Date(date);
+  result.setDate(result.getDate() + days);
+  return result;
+}
+
+function startOfMonth(date: Date) {
+  return new Date(date.getFullYear(), date.getMonth(), 1);
+}
+
+function endOfMonth(date: Date) {
+  return new Date(date.getFullYear(), date.getMonth() + 1, 0, 23, 59, 59);
+}
+
+function startOfQuarter(date: Date) {
+  const quarterStartMonth = Math.floor(date.getMonth() / 3) * 3;
+  return new Date(date.getFullYear(), quarterStartMonth, 1);
+}
+
+function startOfYear(date: Date) {
+  return new Date(date.getFullYear(), 0, 1);
+}
+
+function buildFinanceHref(company: string, dateFrom?: string, dateTo?: string) {
+  const query = new URLSearchParams();
+
+  query.set("company", company);
+
+  if (dateFrom) query.set("dateFrom", dateFrom);
+  if (dateTo) query.set("dateTo", dateTo);
+
+  return `/finance?${query.toString()}`;
+}
+
+function calcDelta(current: number, previous: number) {
+  const absolute = current - previous;
+  const percent = previous === 0 ? null : (absolute / Math.abs(previous)) * 100;
+
+  return {
+    absolute,
+    percent,
+  };
+}
+
+function groupByCategory(
+  rows: {
+    category: string;
+    amount: unknown;
+    operationType: string;
+    isInternalTransfer: boolean;
+  }[],
+  operationType: string
+) {
+  const map = new Map<string, number>();
+
+  for (const row of rows) {
+    if (row.operationType !== operationType || row.isInternalTransfer) continue;
+
+    const category = row.category || "Без статьи";
+    const amount = Number(row.amount ?? 0);
+
+    map.set(category, (map.get(category) ?? 0) + amount);
+  }
+
+  return Array.from(map.entries())
+    .map(([category, amount]) => ({
+      category,
+      amount,
+    }))
+    .sort((a, b) => b.amount - a.amount);
+}
 
 const items = [
-  {
-    title: "Dashboard",
-    description: "Главная финансовая панель и сводка по бизнесу.",
-    href: "/finance",
-  },
-  {
-    title: "Финансовые операции",
-    description: "Добавление и просмотр финансовых операций.",
-    href: "/finance/operations",
-  },
-  {
-    title: "ОДДС",
-    description: "Движение денежных средств по операциям.",
-    href: "/finance/cashflow",
-  },
-  {
-    title: "Денежные счета",
-    description: "Карты, расчётные счета, наличные и остатки.",
-    href: "/finance/accounts",
-  },
-  {
-    title: "Кредиты и займы",
-    description: "Долги, платежи, проценты и график погашения.",
-    href: "/finance/loans",
-  },
-  {
-    title: "Платёжный календарь",
-    description: "Будущие платежи по датам.",
-    href: "/finance/calendar",
-  },
-  {
-    title: "Прогноз ликвидности",
-    description: "Остатки денег, будущие платежи и кассовые разрывы.",
-    href: "/finance/forecast",
-  },
-  {
-    title: "Справочник статей",
-    description: "Категории доходов, расходов и личных операций.",
-    href: "/finance/categories",
-  },
-  
+  { title: "Финансовые операции", href: "/finance/operations" },
+  { title: "ОДДС", href: "/finance/cashflow" },
+  { title: "Денежные счета", href: "/finance/accounts" },
+  { title: "Кредиты и займы", href: "/finance/loans" },
+  { title: "Платёжный календарь", href: "/finance/calendar" },
+  { title: "Прогноз ликвидности", href: "/finance/forecast" },
+  { title: "Справочник статей", href: "/finance/categories" },
 ];
 
-export default function FinancePage() {
+export default async function FinancePage({
+  searchParams,
+}: {
+  searchParams?: Promise<{
+    company?: string;
+    dateFrom?: string;
+    dateTo?: string;
+  }>;
+}) {
+  const params = searchParams ? await searchParams : {};
+
+  const company = params.company ?? "ALL";
+  const companyName = company !== "ALL" ? company : null;
+
+  const dateFrom = params.dateFrom ?? "";
+  const dateTo = params.dateTo ?? "";
+
+  const today = startOfDay(new Date());
+  const in30Days = endOfDay(addDays(today, 30));
+
+  const defaultPeriodStart = startOfMonth(today);
+  const defaultPeriodEnd = endOfMonth(today);
+
+  const periodStart = dateFrom
+    ? new Date(`${dateFrom}T00:00:00`)
+    : defaultPeriodStart;
+
+  const periodEnd = dateTo
+    ? new Date(`${dateTo}T23:59:59`)
+    : defaultPeriodEnd;
+
+  const periodDays = Math.max(
+    1,
+    Math.ceil(
+      (endOfDay(periodEnd).getTime() - startOfDay(periodStart).getTime()) /
+        (24 * 60 * 60 * 1000)
+    ) + 1
+  );
+
+  const previousPeriodEnd = endOfDay(addDays(periodStart, -1));
+  const previousPeriodStart = startOfDay(addDays(previousPeriodEnd, -periodDays + 1));
+
+  const companies = await prisma.company.findMany({
+    where: { isActive: true },
+    orderBy: { name: "asc" },
+  });
+
+  const accounts = await prisma.financeAccount.findMany({
+    where: {
+      isActive: true,
+      ...(companyName ? { companyName } : {}),
+    },
+  });
+
+  const periodTransactions = await prisma.financeTransaction.findMany({
+    where: {
+      operationDate: {
+        gte: periodStart,
+        lte: periodEnd,
+      },
+      ...(companyName ? { companyName } : {}),
+    },
+  });
+
+  const previousPeriodTransactions = await prisma.financeTransaction.findMany({
+    where: {
+      operationDate: {
+        gte: previousPeriodStart,
+        lte: previousPeriodEnd,
+      },
+      ...(companyName ? { companyName } : {}),
+    },
+  });
+
+  const loans = await prisma.loan.findMany({
+    where: {
+      ...(companyName ? { companyName } : {}),
+    },
+  });
+
+  const selectedLoanIds = loans.map((loan) => loan.id);
+
+  const loanPayments30Days = await prisma.loanPayment.findMany({
+    where: {
+      paymentDate: {
+        gte: today,
+        lte: in30Days,
+      },
+      ...(companyName
+        ? {
+            loanId: {
+              in: selectedLoanIds,
+            },
+          }
+        : {}),
+    },
+  });
+
+  const totalCash = accounts.reduce(
+    (sum, account) => sum + Number(account.currentBalance ?? 0),
+    0
+  );
+
+  const incomePeriod = periodTransactions
+    .filter((row) => row.operationType === "INCOME" && !row.isInternalTransfer)
+    .reduce((sum, row) => sum + Number(row.amount ?? 0), 0);
+
+  const expensePeriod = periodTransactions
+    .filter((row) => row.operationType === "EXPENSE" && !row.isInternalTransfer)
+    .reduce((sum, row) => sum + Number(row.amount ?? 0), 0);
+
+  const netCashFlowPeriod = incomePeriod - expensePeriod;
+
+  const incomePreviousPeriod = previousPeriodTransactions
+    .filter((row) => row.operationType === "INCOME" && !row.isInternalTransfer)
+    .reduce((sum, row) => sum + Number(row.amount ?? 0), 0);
+
+  const expensePreviousPeriod = previousPeriodTransactions
+    .filter((row) => row.operationType === "EXPENSE" && !row.isInternalTransfer)
+    .reduce((sum, row) => sum + Number(row.amount ?? 0), 0);
+
+  const netCashFlowPreviousPeriod = incomePreviousPeriod - expensePreviousPeriod;
+
+  const incomeDelta = calcDelta(incomePeriod, incomePreviousPeriod);
+  const expenseDelta = calcDelta(expensePeriod, expensePreviousPeriod);
+  const netCashFlowDelta = calcDelta(
+    netCashFlowPeriod,
+    netCashFlowPreviousPeriod
+  );
+
+  const totalDebt = loans.reduce(
+    (sum, loan) => sum + Number(loan.currentDebt ?? 0),
+    0
+  );
+
+  const payments30Days = loanPayments30Days.reduce((sum, payment) => {
+    const total =
+      Number(payment.totalAmount ?? 0) ||
+      Number(payment.principalAmount ?? 0) + Number(payment.interestAmount ?? 0);
+
+    return sum + total;
+  }, 0);
+
+  const cashAfter30Days = totalCash - payments30Days;
+
+  const averageDailyExpense = expensePeriod / periodDays;
+  const liquidityDays =
+    averageDailyExpense > 0 ? Math.floor(totalCash / averageDailyExpense) : null;
+
+  const incomeByCategory = groupByCategory(periodTransactions, "INCOME");
+  const expenseByCategory = groupByCategory(periodTransactions, "EXPENSE");
+
+  const todayText = formatDateInput(today);
+  const weekStartText = formatDateInput(addDays(today, -6));
+  const days30StartText = formatDateInput(addDays(today, -29));
+  const monthStartText = formatDateInput(startOfMonth(today));
+  const quarterStartText = formatDateInput(startOfQuarter(today));
+  const yearStartText = formatDateInput(startOfYear(today));
+
   return (
     <main className="min-h-screen bg-slate-100 p-8">
-      <div className="mx-auto max-w-[1400px] space-y-6">
-        <div>
-          <h1 className="text-4xl font-bold text-slate-900">Финансы</h1>
-          <p className="mt-3 text-slate-500">
-            Управленческий финансовый модуль Marketplace Business OS.
-          </p>
+      <div className="mx-auto max-w-[1500px] space-y-6">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <h1 className="text-4xl font-bold text-slate-900">
+              Финансовый Dashboard
+            </h1>
+
+            <p className="mt-3 text-slate-500">
+              Деньги, долги, платежи и прогноз ликвидности бизнеса.
+            </p>
+          </div>
+
+          <form className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[260px_180px_180px_150px] lg:items-end">
+            <div>
+              <label className="mb-2 block text-sm font-medium text-slate-700">
+                Компания
+              </label>
+
+              <select
+                name="company"
+                defaultValue={company}
+                className="w-full rounded-xl border border-slate-300 px-4 py-2"
+              >
+                <option value="ALL">Все компании</option>
+
+                {companies.map((item) => (
+                  <option key={item.id} value={item.name}>
+                    {item.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="mb-2 block text-sm font-medium text-slate-700">
+                Дата от
+              </label>
+
+              <input
+                type="date"
+                name="dateFrom"
+                defaultValue={dateFrom}
+                className="w-full rounded-xl border border-slate-300 px-4 py-2"
+              />
+            </div>
+
+            <div>
+              <label className="mb-2 block text-sm font-medium text-slate-700">
+                Дата до
+              </label>
+
+              <input
+                type="date"
+                name="dateTo"
+                defaultValue={dateTo}
+                className="w-full rounded-xl border border-slate-300 px-4 py-2"
+              />
+            </div>
+
+            <button className="rounded-xl bg-slate-900 px-6 py-2 font-semibold text-white">
+              Применить
+            </button>
+          </form>
         </div>
 
-        <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {items.map((item) => (
+        <section className="rounded-2xl bg-white p-5 shadow-sm">
+          <div className="flex flex-wrap gap-2">
             <Link
-              key={item.href}
-              href={item.href}
-              className="rounded-2xl bg-white p-6 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
+              href={buildFinanceHref(company, todayText, todayText)}
+              className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold hover:bg-slate-50"
             >
-              <div className="text-2xl font-bold text-slate-900">
-                {item.title}
-              </div>
-
-              <p className="mt-3 text-slate-500">{item.description}</p>
-
-              <div className="mt-5 font-semibold text-slate-900">
-                Открыть →
-              </div>
+              Сегодня
             </Link>
-          ))}
+
+            <Link
+              href={buildFinanceHref(company, weekStartText, todayText)}
+              className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold hover:bg-slate-50"
+            >
+              7 дней
+            </Link>
+
+            <Link
+              href={buildFinanceHref(company, days30StartText, todayText)}
+              className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold hover:bg-slate-50"
+            >
+              30 дней
+            </Link>
+
+            <Link
+              href={buildFinanceHref(company, monthStartText, todayText)}
+              className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold hover:bg-slate-50"
+            >
+              Месяц
+            </Link>
+
+            <Link
+              href={buildFinanceHref(company, quarterStartText, todayText)}
+              className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold hover:bg-slate-50"
+            >
+              Квартал
+            </Link>
+
+            <Link
+              href={buildFinanceHref(company, yearStartText, todayText)}
+              className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold hover:bg-slate-50"
+            >
+              Год
+            </Link>
+
+            <Link
+              href={buildFinanceHref(company)}
+              className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold hover:bg-slate-50"
+            >
+              Текущий месяц
+            </Link>
+          </div>
+        </section>
+
+        <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="rounded-2xl bg-white p-6 shadow-sm">
+            <div className="text-sm text-slate-500">Денег на счетах</div>
+            <div className="mt-2 text-3xl font-bold text-emerald-600">
+              {formatMoney(totalCash)}
+            </div>
+          </div>
+
+          <div className="rounded-2xl bg-white p-6 shadow-sm">
+            <div className="text-sm text-slate-500">Поступления за период</div>
+            <div className="mt-2 text-3xl font-bold text-emerald-600">
+              {formatMoney(incomePeriod)}
+            </div>
+            <div
+              className={`mt-2 text-sm font-semibold ${
+                incomeDelta.absolute >= 0 ? "text-emerald-600" : "text-red-600"
+              }`}
+            >
+              {formatMoney(incomeDelta.absolute)} /{" "}
+              {incomeDelta.percent === null
+                ? "—"
+                : formatPercent(incomeDelta.percent)}
+            </div>
+          </div>
+
+          <div className="rounded-2xl bg-white p-6 shadow-sm">
+            <div className="text-sm text-slate-500">Выбытия за период</div>
+            <div className="mt-2 text-3xl font-bold text-red-600">
+              {formatMoney(expensePeriod)}
+            </div>
+            <div
+              className={`mt-2 text-sm font-semibold ${
+                expenseDelta.absolute <= 0 ? "text-emerald-600" : "text-red-600"
+              }`}
+            >
+              {formatMoney(expenseDelta.absolute)} /{" "}
+              {expenseDelta.percent === null
+                ? "—"
+                : formatPercent(expenseDelta.percent)}
+            </div>
+          </div>
+
+          <div className="rounded-2xl bg-white p-6 shadow-sm">
+            <div className="text-sm text-slate-500">Чистый ДДС за период</div>
+            <div
+              className={`mt-2 text-3xl font-bold ${
+                netCashFlowPeriod >= 0 ? "text-emerald-600" : "text-red-600"
+              }`}
+            >
+              {formatMoney(netCashFlowPeriod)}
+            </div>
+            <div
+              className={`mt-2 text-sm font-semibold ${
+                netCashFlowDelta.absolute >= 0
+                  ? "text-emerald-600"
+                  : "text-red-600"
+              }`}
+            >
+              {formatMoney(netCashFlowDelta.absolute)} /{" "}
+              {netCashFlowDelta.percent === null
+                ? "—"
+                : formatPercent(netCashFlowDelta.percent)}
+            </div>
+          </div>
+        </section>
+
+        <section className="grid gap-4 lg:grid-cols-4">
+          <div className="rounded-2xl bg-white p-6 shadow-sm">
+            <div className="text-sm text-slate-500">Общий долг</div>
+            <div className="mt-2 text-3xl font-bold text-red-600">
+              {formatMoney(totalDebt)}
+            </div>
+          </div>
+
+          <div className="rounded-2xl bg-white p-6 shadow-sm">
+            <div className="text-sm text-slate-500">
+              Платежи по кредитам 30 дней
+            </div>
+            <div className="mt-2 text-3xl font-bold text-red-600">
+              {formatMoney(payments30Days)}
+            </div>
+          </div>
+
+          <div className="rounded-2xl bg-white p-6 shadow-sm">
+            <div className="text-sm text-slate-500">
+              Остаток после платежей 30 дней
+            </div>
+            <div
+              className={`mt-2 text-3xl font-bold ${
+                cashAfter30Days >= 0 ? "text-emerald-600" : "text-red-600"
+              }`}
+            >
+              {formatMoney(cashAfter30Days)}
+            </div>
+          </div>
+
+          <div className="rounded-2xl bg-white p-6 shadow-sm">
+            <div className="text-sm text-slate-500">Запас ликвидности</div>
+            <div
+              className={`mt-2 text-3xl font-bold ${
+                liquidityDays === null || liquidityDays >= 30
+                  ? "text-emerald-600"
+                  : liquidityDays >= 14
+                    ? "text-amber-600"
+                    : "text-red-600"
+              }`}
+            >
+              {liquidityDays === null ? "∞" : `${liquidityDays} дн.`}
+            </div>
+            <div className="mt-2 text-sm text-slate-500">
+              По среднему расходу за выбранный период
+            </div>
+          </div>
+        </section>
+
+        <section className="grid gap-4 lg:grid-cols-2">
+          <div className="rounded-2xl bg-white p-6 shadow-sm">
+            <h2 className="text-2xl font-bold text-slate-900">
+              Поступления по статьям
+            </h2>
+
+            <div className="mt-5 space-y-3">
+              {incomeByCategory.slice(0, 8).map((item) => (
+                <div
+                  key={item.category}
+                  className="flex items-center justify-between gap-4 rounded-xl border border-slate-200 p-4"
+                >
+                  <div className="font-semibold text-slate-900">
+                    {item.category}
+                  </div>
+
+                  <div className="font-bold text-emerald-600">
+                    {formatMoney(item.amount)}
+                  </div>
+                </div>
+              ))}
+
+              {incomeByCategory.length === 0 && (
+                <div className="rounded-xl border border-slate-200 p-4 text-slate-500">
+                  Поступлений за период нет.
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="rounded-2xl bg-white p-6 shadow-sm">
+            <h2 className="text-2xl font-bold text-slate-900">
+              Выбытия по статьям
+            </h2>
+
+            <div className="mt-5 space-y-3">
+              {expenseByCategory.slice(0, 8).map((item) => (
+                <div
+                  key={item.category}
+                  className="flex items-center justify-between gap-4 rounded-xl border border-slate-200 p-4"
+                >
+                  <div className="font-semibold text-slate-900">
+                    {item.category}
+                  </div>
+
+                  <div className="text-right">
+  <div className="font-bold text-red-600">
+    {formatMoney(item.amount)}
+  </div>
+
+  <div className="mt-1 text-sm font-semibold text-slate-500">
+    {expensePeriod > 0
+      ? `${((item.amount / expensePeriod) * 100).toFixed(1)}%`
+      : "—"}
+  </div>
+</div>
+                </div>
+              ))}
+
+              {expenseByCategory.length === 0 && (
+                <div className="rounded-xl border border-slate-200 p-4 text-slate-500">
+                  Выбытий за период нет.
+                </div>
+              )}
+            </div>
+          </div>
+        </section>
+
+        <section className="rounded-2xl bg-white p-6 shadow-sm">
+          <h2 className="text-2xl font-bold text-slate-900">
+            Быстрые разделы
+          </h2>
+
+          <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            {items.map((item) => (
+              <Link
+                key={item.href}
+                href={item.href}
+                className="rounded-2xl border border-slate-200 p-5 transition hover:border-slate-300 hover:bg-slate-50"
+              >
+                <div className="font-bold text-slate-900">{item.title}</div>
+                <div className="mt-3 text-sm font-semibold text-slate-700">
+                  Открыть →
+                </div>
+              </Link>
+            ))}
+          </div>
         </section>
       </div>
     </main>
