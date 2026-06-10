@@ -9,6 +9,12 @@ function formatMoney(value: unknown) {
   }).format(Number(value ?? 0));
 }
 
+function formatNumber(value: unknown) {
+  return new Intl.NumberFormat("ru-RU", {
+    maximumFractionDigits: 2,
+  }).format(Number(value ?? 0));
+}
+
 function formatPercent(value: number) {
   if (!Number.isFinite(value)) return "—";
   return `${value.toFixed(1)}%`;
@@ -28,7 +34,26 @@ function previousMonth(year: number, month: number) {
 }
 
 function getAmount(value: unknown) {
-  return Number(value ?? 0);
+  const number = Number(value ?? 0);
+  return Number.isFinite(number) ? number : 0;
+}
+
+function normalize(value: unknown) {
+  return String(value ?? "")
+    .toLowerCase()
+    .replaceAll("ё", "е")
+    .trim();
+}
+
+function isReturn(value: unknown) {
+  const text = normalize(value);
+  return text.includes("возврат") || text.includes("return");
+}
+
+function expense(value: unknown) {
+  const amount = getAmount(value);
+  if (amount === 0) return 0;
+  return Math.abs(amount);
 }
 
 function getExecution(plan: number, fact: number) {
@@ -46,30 +71,6 @@ function statusClass(execution: number) {
   if (execution >= 95) return "bg-emerald-100 text-emerald-700";
   if (execution >= 80) return "bg-amber-100 text-amber-700";
   return "bg-red-100 text-red-700";
-}
-
-function normalize(value: unknown) {
-  return String(value ?? "").toLowerCase().replaceAll("ё", "е").trim();
-}
-
-function isReturn(value: unknown) {
-  const text = normalize(value);
-  return text.includes("возврат") || text.includes("return");
-}
-
-function isAdsCategory(category: string) {
-  const text = normalize(category);
-  return text.includes("реклам") || text.includes("продвиж");
-}
-
-function isLogisticsCategory(category: string) {
-  const text = normalize(category);
-  return (
-    text.includes("логист") ||
-    text.includes("достав") ||
-    text.includes("фулфилмент") ||
-    text.includes("хранен")
-  );
 }
 
 function isTaxCategory(category: string) {
@@ -96,6 +97,11 @@ const months = [
   { value: 11, label: "Ноябрь" },
   { value: 12, label: "Декабрь" },
 ];
+
+type SplitValue = {
+  label: string;
+  value: string;
+};
 
 function MetricCard({
   title,
@@ -127,6 +133,42 @@ function MetricCard({
   );
 }
 
+function SplitMetricCard({
+  title,
+  total,
+  items,
+  className = "text-slate-900",
+}: {
+  title: string;
+  total: string;
+  items: SplitValue[];
+  className?: string;
+}) {
+  return (
+    <div className="min-w-0 rounded-2xl bg-white p-5 shadow-sm">
+      <div className="text-sm text-slate-500">{title}</div>
+
+      <div
+        className={`mt-2 break-words text-2xl font-bold tabular-nums leading-tight sm:text-3xl ${className}`}
+      >
+        {total}
+      </div>
+
+      <div className="mt-4 space-y-2 border-t border-slate-100 pt-3">
+        {items.map((item) => (
+          <div
+            key={item.label}
+            className="flex items-center justify-between gap-3 text-sm"
+          >
+            <span className="text-slate-500">{item.label}</span>
+            <span className="font-bold text-slate-900">{item.value}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function BarCompare({
   title,
   plan,
@@ -138,9 +180,9 @@ function BarCompare({
   fact: number;
   lowerIsBetter: boolean;
 }) {
-  const max = Math.max(plan, fact, 1);
-  const planWidth = Math.min(100, (plan / max) * 100);
-  const factWidth = Math.min(100, (fact / max) * 100);
+  const max = Math.max(Math.abs(plan), Math.abs(fact), 1);
+  const planWidth = Math.min(100, (Math.abs(plan) / max) * 100);
+  const factWidth = Math.min(100, (Math.abs(fact) / max) * 100);
   const diff = fact - plan;
   const execution = getExecution(plan, fact);
 
@@ -164,7 +206,6 @@ function BarCompare({
             <span>План</span>
             <span>{formatMoney(plan)}</span>
           </div>
-
           <div className="h-3 rounded-full bg-slate-100">
             <div
               className="h-3 rounded-full bg-slate-400"
@@ -178,7 +219,6 @@ function BarCompare({
             <span>Факт</span>
             <span>{formatMoney(fact)}</span>
           </div>
-
           <div className="h-3 rounded-full bg-slate-100">
             <div
               className="h-3 rounded-full bg-slate-900"
@@ -195,7 +235,7 @@ function BarCompare({
   );
 }
 
-async function getTransactions(params: {
+async function getFinanceTransactions(params: {
   year: number;
   month: number;
   company: string;
@@ -212,7 +252,32 @@ async function getTransactions(params: {
   });
 }
 
-async function getMarketplaceFact(params: {
+type WbSaleRow = Awaited<ReturnType<typeof prisma.wbSale.findMany>>[number];
+
+function dedupeWbSalesByLatestImport(rows: WbSaleRow[]) {
+  const latestImportByReport = new Map<string, string>();
+
+  const sortedRows = [...rows].sort(
+    (a, b) => b.createdAt.getTime() - a.createdAt.getTime()
+  );
+
+  for (const row of sortedRows) {
+    const reportKey = row.reportNumber || row.importSessionId || row.id;
+    if (!latestImportByReport.has(reportKey)) {
+      latestImportByReport.set(reportKey, row.importSessionId || row.id);
+    }
+  }
+
+  return rows.filter((row) => {
+    const reportKey = row.reportNumber || row.importSessionId || row.id;
+    const latestImportId = latestImportByReport.get(reportKey);
+
+    if (!row.importSessionId) return row.id === latestImportId;
+    return row.importSessionId === latestImportId;
+  });
+}
+
+async function getPnlFact(params: {
   year: number;
   month: number;
   company: string;
@@ -222,185 +287,245 @@ async function getMarketplaceFact(params: {
   const companyWhere =
     params.company !== "ALL" ? { companyName: params.company } : {};
 
-  const wbSales = await prisma.wbSale.findMany({
-    where: {
-      saleDate: {
-        gte: dateFrom,
-        lte: dateTo,
+  const [
+    rawWbSales,
+    wbAds,
+    ozonFinance,
+    ozonAds,
+    productCosts,
+    financeTransactions,
+  ] = await Promise.all([
+    prisma.wbSale.findMany({
+      where: {
+        saleDate: { gte: dateFrom, lte: dateTo },
+        ...companyWhere,
       },
-      ...companyWhere,
-    },
-  });
+    }),
 
-  const wbAds = await prisma.wbAds.findMany({
-    where: {
-      ...companyWhere,
-      OR: [
-        {
-          dateFrom: {
-            gte: dateFrom,
-            lte: dateTo,
-          },
-        },
-        {
-          dateTo: {
-            gte: dateFrom,
-            lte: dateTo,
-          },
-        },
-        {
-          dateFrom: {
-            lte: dateFrom,
-          },
-          dateTo: {
-            gte: dateTo,
-          },
-        },
-      ],
-    },
-  });
-
-  const ozonFinance = await prisma.ozonFinance.findMany({
-    where: {
-      accrualDate: {
-        gte: dateFrom,
-        lte: dateTo,
+    prisma.wbAds.findMany({
+      where: {
+        ...companyWhere,
+        OR: [
+          { dateFrom: { gte: dateFrom, lte: dateTo } },
+          { dateTo: { gte: dateFrom, lte: dateTo } },
+          { dateFrom: { lte: dateFrom }, dateTo: { gte: dateTo } },
+        ],
       },
-      ...companyWhere,
-    },
-  });
+    }),
 
-  const ozonAds = await prisma.ozonAds.findMany({
-    where: {
-      reportDate: {
-        gte: dateFrom,
-        lte: dateTo,
+    prisma.ozonFinance.findMany({
+      where: {
+        accrualDate: { gte: dateFrom, lte: dateTo },
+        ...companyWhere,
       },
-      ...companyWhere,
-    },
-  });
+    }),
 
-  const wbRevenue = wbSales.reduce((sum, row) => {
-    const amount =
+    prisma.ozonAds.findMany({
+      where: {
+        reportDate: { gte: dateFrom, lte: dateTo },
+        ...companyWhere,
+      },
+    }),
+
+    prisma.productCost.findMany({
+      orderBy: [{ costDate: "desc" }, { createdAt: "desc" }],
+    }),
+
+    getFinanceTransactions(params),
+  ]);
+
+  const wbSales = dedupeWbSalesByLatestImport(rawWbSales);
+
+  const costByVendorCode = new Map<string, number>();
+
+  for (const cost of productCosts) {
+    if (!costByVendorCode.has(cost.vendorCode)) {
+      costByVendorCode.set(cost.vendorCode, getAmount(cost.costPrice));
+    }
+  }
+
+  let wbRevenue = 0;
+  let wbReward = 0;
+  let wbLogistics = 0;
+  let wbStorage = 0;
+  let wbAcceptance = 0;
+  let wbDeductions = 0;
+  let wbPenalties = 0;
+  let wbPaymentService = 0;
+  let wbCogs = 0;
+  let wbQty = 0;
+  let wbRowsWithCost = 0;
+  let wbRowsWithoutCost = 0;
+
+  for (const row of wbSales) {
+    const sign = isReturn(row.paymentReason) ? -1 : 1;
+
+    const revenue =
       getAmount(row.wbRealizedAmount) ||
       getAmount(row.retailPrice) ||
       getAmount(row.sellerPayout);
 
-    return sum + (isReturn(row.paymentReason) ? -amount : amount);
-  }, 0);
+    const rawQty = Math.abs(Number(row.quantity ?? 0));
+    const unitCost = row.vendorCode ? costByVendorCode.get(row.vendorCode) ?? 0 : 0;
 
-  const wbLogistics = wbSales.reduce(
-    (sum, row) => sum + Math.abs(getAmount(row.logisticsCost)),
-    0
-  );
+    wbRevenue += sign * revenue;
 
-  const wbAdsSpend = wbAds.reduce(
-    (sum, row) => sum + Math.abs(getAmount(row.spend)),
-    0
-  );
+    wbReward += expense(row.wbReward);
+    wbLogistics += expense(row.logisticsCost);
+    wbStorage += expense(row.storageCost);
+    wbAcceptance += expense(row.acceptanceCost);
+    wbDeductions += getAmount(row.deductions);
+    wbPenalties += getAmount(row.penaltiesAmount);
+    wbPaymentService += expense(row.paymentServiceCost);
 
-  const ozonRevenue = ozonFinance.reduce(
-    (sum, row) => sum + getAmount(row.salesAmount),
-    0
-  );
+    if (revenue > 0 && rawQty > 0) {
+      wbQty += sign * rawQty;
 
-  const ozonLogistics = ozonFinance.reduce(
-    (sum, row) =>
-      sum +
-      Math.abs(getAmount(row.logisticsCost)) +
-      Math.abs(getAmount(row.reverseLogisticsCost)),
-    0
-  );
+      if (unitCost > 0) {
+        wbRowsWithCost += 1;
+        wbCogs += sign * unitCost * rawQty;
+      } else {
+        wbRowsWithoutCost += 1;
+      }
+    }
+  }
 
-  const ozonAdsSpend = ozonAds.reduce(
-    (sum, row) => sum + Math.abs(getAmount(row.spend)),
-    0
-  );
+  const wbAdsSpend = wbAds.reduce((sum, row) => sum + expense(row.spend), 0);
 
-  return {
-    wbRevenue,
-    wbAdsSpend,
-    wbLogistics,
-    ozonRevenue,
-    ozonAdsSpend,
-    ozonLogistics,
-    marketplaceRevenue: wbRevenue + ozonRevenue,
-    marketplaceAds: wbAdsSpend + ozonAdsSpend,
-    marketplaceLogistics: wbLogistics + ozonLogistics,
-    hasMarketplaceRevenue: wbSales.length > 0 || ozonFinance.length > 0,
-    hasMarketplaceAds: wbAds.length > 0 || ozonAds.length > 0,
-    hasMarketplaceLogistics: wbSales.length > 0 || ozonFinance.length > 0,
-  };
-}
+  const wbMarketplaceCosts =
+    wbReward +
+    wbLogistics +
+    wbStorage +
+    wbAcceptance +
+    wbPenalties +
+    wbPaymentService;
 
-function calculateFinanceFact(
-  transactions: Awaited<ReturnType<typeof getTransactions>>
-) {
-  const financeRevenue = transactions
-    .filter((row) => row.operationType === "INCOME")
-    .reduce((sum, row) => sum + getAmount(row.amount), 0);
+  let ozonRevenue = 0;
+  let ozonCommission = 0;
+  let ozonLogistics = 0;
+  let ozonReverseLogistics = 0;
+  let ozonCogs = 0;
+  let ozonQty = 0;
+  let ozonRowsWithCost = 0;
+  let ozonRowsWithoutCost = 0;
 
-  const expenseTransactions = transactions.filter(
+  for (const row of ozonFinance) {
+    const revenue = getAmount(row.salesAmount);
+    const rawQty = Math.abs(Number(row.quantity ?? 0));
+    const unitCost = row.vendorCode ? costByVendorCode.get(row.vendorCode) ?? 0 : 0;
+
+    ozonRevenue += revenue;
+
+    ozonCommission += expense(row.ozonCommission);
+    ozonLogistics += expense(row.logisticsCost);
+    ozonReverseLogistics += expense(row.reverseLogisticsCost);
+
+    if (revenue > 0 && rawQty > 0) {
+      ozonQty += rawQty;
+
+      if (unitCost > 0) {
+        ozonRowsWithCost += 1;
+        ozonCogs += unitCost * rawQty;
+      } else {
+        ozonRowsWithoutCost += 1;
+      }
+    }
+  }
+
+  const ozonAdsSpend = ozonAds.reduce((sum, row) => sum + expense(row.spend), 0);
+
+  const ozonMarketplaceCosts =
+    ozonCommission + ozonLogistics + ozonReverseLogistics;
+
+  const financeExpenseTransactions = financeTransactions.filter(
     (row) => row.operationType === "EXPENSE"
   );
 
-  const financingTransactions = transactions.filter(
-    (row) => row.operationType === "FINANCING"
-  );
-
-  const financeExpenses = expenseTransactions.reduce(
-    (sum, row) => sum + getAmount(row.amount),
-    0
-  );
-
-  const financeFinancing = financingTransactions.reduce(
-    (sum, row) => sum + getAmount(row.amount),
-    0
-  );
-
-  const financeAds = expenseTransactions
-    .filter((row) => isAdsCategory(row.category))
+  const financeFinancing = financeTransactions
+    .filter((row) => row.operationType === "FINANCING")
     .reduce((sum, row) => sum + getAmount(row.amount), 0);
 
-  const financeLogistics = expenseTransactions
-    .filter((row) => isLogisticsCategory(row.category))
-    .reduce((sum, row) => sum + getAmount(row.amount), 0);
-
-  const financeTax = expenseTransactions
+  const financeTax = financeExpenseTransactions
     .filter((row) => isTaxCategory(row.category))
     .reduce((sum, row) => sum + getAmount(row.amount), 0);
 
-  const financeSalary = expenseTransactions
+  const financeSalary = financeExpenseTransactions
     .filter((row) => isSalaryCategory(row.category))
     .reduce((sum, row) => sum + getAmount(row.amount), 0);
 
-  const knownExpenseIds = new Set(
-    expenseTransactions
-      .filter(
-        (row) =>
-          isAdsCategory(row.category) ||
-          isLogisticsCategory(row.category) ||
-          isTaxCategory(row.category) ||
-          isSalaryCategory(row.category)
-      )
-      .map((row) => row.id)
-  );
-
-  const financeOther = expenseTransactions
-    .filter((row) => !knownExpenseIds.has(row.id))
+  const financeIncome = financeTransactions
+    .filter((row) => row.operationType === "INCOME")
     .reduce((sum, row) => sum + getAmount(row.amount), 0);
 
+  const financeExpenseTotal = financeExpenseTransactions.reduce(
+    (sum, row) => sum + getAmount(row.amount),
+    0
+  );
+
+  const marketplaceRevenue = wbRevenue + ozonRevenue;
+  const marketplaceAds = wbAdsSpend + ozonAdsSpend;
+  const marketplaceCosts = wbMarketplaceCosts + ozonMarketplaceCosts;
+  const cogs = wbCogs + ozonCogs;
+
+  const grossProfit = marketplaceRevenue - cogs;
+  const contributionProfit =
+    marketplaceRevenue - cogs - marketplaceCosts - marketplaceAds;
+
+  const operatingProfit = contributionProfit - financeTax - financeSalary;
+  const cashFlow = financeIncome - financeExpenseTotal - financeFinancing;
+
   return {
-    financeRevenue,
-    financeExpenses,
-    financeFinancing,
-    financeProfit: financeRevenue - financeExpenses,
-    financeCashFlow: financeRevenue - financeExpenses - financeFinancing,
-    financeAds,
-    financeLogistics,
+    wbRows: wbSales.length,
+    wbRawRows: rawWbSales.length,
+    wbAdsRows: wbAds.length,
+    wbRevenue,
+    wbReward,
+    wbLogistics,
+    wbStorage,
+    wbAcceptance,
+    wbDeductions,
+    wbPenalties,
+    wbPaymentService,
+    wbMarketplaceCosts,
+    wbAdsSpend,
+    wbCogs,
+    wbQty,
+    wbRowsWithCost,
+    wbRowsWithoutCost,
+
+    ozonRows: ozonFinance.length,
+    ozonAdsRows: ozonAds.length,
+    ozonRevenue,
+    ozonCommission,
+    ozonLogistics,
+    ozonReverseLogistics,
+    ozonMarketplaceCosts,
+    ozonAdsSpend,
+    ozonCogs,
+    ozonQty,
+    ozonRowsWithCost,
+    ozonRowsWithoutCost,
+
+    marketplaceRevenue,
+    marketplaceAds,
+    marketplaceCosts,
+    cogs,
+
+    grossProfit,
+    contributionProfit,
+
     financeTax,
     financeSalary,
-    financeOther,
+    financeFinancing,
+    financeIncome,
+    financeExpenseTotal,
+
+    operatingProfit,
+    cashFlow,
+
+    productCostCount: productCosts.length,
+    productCostSkuCount: costByVendorCode.size,
+    hasMarketplaceData: wbSales.length > 0 || ozonFinance.length > 0,
   };
 }
 
@@ -421,74 +546,32 @@ export default async function PlanFactPage({
   const selectedMonth = Number(params.month ?? now.getMonth() + 1);
   const prev = previousMonth(selectedYear, selectedMonth);
 
-  const companies = await prisma.company.findMany({
-    where: { isActive: true },
-    orderBy: { name: "asc" },
-  });
+  const [companies, plans, fact, prevFact] = await Promise.all([
+    prisma.company.findMany({
+      where: { isActive: true },
+      orderBy: { name: "asc" },
+    }),
 
-  const plans = await prisma.budgetPlan.findMany({
-    where: {
-      periodYear: selectedYear,
-      periodMonth: selectedMonth,
-      ...(selectedCompany !== "ALL" ? { companyName: selectedCompany } : {}),
-    },
-  });
+    prisma.budgetPlan.findMany({
+      where: {
+        periodYear: selectedYear,
+        periodMonth: selectedMonth,
+        ...(selectedCompany !== "ALL" ? { companyName: selectedCompany } : {}),
+      },
+    }),
 
-  const transactions = await getTransactions({
-    year: selectedYear,
-    month: selectedMonth,
-    company: selectedCompany,
-  });
+    getPnlFact({
+      year: selectedYear,
+      month: selectedMonth,
+      company: selectedCompany,
+    }),
 
-  const prevTransactions = await getTransactions({
-    year: prev.year,
-    month: prev.month,
-    company: selectedCompany,
-  });
-
-  const marketplaceFact = await getMarketplaceFact({
-    year: selectedYear,
-    month: selectedMonth,
-    company: selectedCompany,
-  });
-
-  const prevMarketplaceFact = await getMarketplaceFact({
-    year: prev.year,
-    month: prev.month,
-    company: selectedCompany,
-  });
-
-  const financeFact = calculateFinanceFact(transactions);
-  const prevFinanceFact = calculateFinanceFact(prevTransactions);
-
-  const factRevenue = marketplaceFact.hasMarketplaceRevenue
-    ? marketplaceFact.marketplaceRevenue
-    : financeFact.financeRevenue;
-
-  const prevRevenue = prevMarketplaceFact.hasMarketplaceRevenue
-    ? prevMarketplaceFact.marketplaceRevenue
-    : prevFinanceFact.financeRevenue;
-
-  const factAds = marketplaceFact.hasMarketplaceAds
-    ? marketplaceFact.marketplaceAds
-    : financeFact.financeAds;
-
-  const factLogistics = marketplaceFact.hasMarketplaceLogistics
-    ? marketplaceFact.marketplaceLogistics
-    : financeFact.financeLogistics;
-
-  const factExpenses =
-    financeFact.financeExpenses -
-    financeFact.financeAds -
-    financeFact.financeLogistics +
-    factAds +
-    factLogistics;
-
-  const factProfit = factRevenue - factExpenses;
-  const cashFlowMonth =
-    financeFact.financeRevenue -
-    financeFact.financeExpenses -
-    financeFact.financeFinancing;
+    getPnlFact({
+      year: prev.year,
+      month: prev.month,
+      company: selectedCompany,
+    }),
+  ]);
 
   const planRevenue = plans.reduce(
     (sum, plan) => sum + getAmount(plan.revenuePlan),
@@ -519,68 +602,84 @@ export default async function PlanFactPage({
     0
   );
 
-  const revenueExecution = getExecution(planRevenue, factRevenue);
-  const profitExecution = getExecution(planProfit, factProfit);
+  const revenueExecution = getExecution(planRevenue, fact.marketplaceRevenue);
+  const profitExecution = getExecution(planProfit, fact.operatingProfit);
 
-  const revenueMoM = factRevenue - prevRevenue;
-  const profitMoM = factProfit - prevFinanceFact.financeProfit;
+  const cogsShare = fact.marketplaceRevenue
+    ? (fact.cogs / fact.marketplaceRevenue) * 100
+    : 0;
+
+  const marketplaceCostsShare = fact.marketplaceRevenue
+    ? (fact.marketplaceCosts / fact.marketplaceRevenue) * 100
+    : 0;
+
+  const adsShare = fact.marketplaceRevenue
+    ? (fact.marketplaceAds / fact.marketplaceRevenue) * 100
+    : 0;
 
   const rows = [
     {
-      title: "Выручка",
+      title: "Выручка WB/Ozon",
       plan: planRevenue,
-      fact: factRevenue,
+      fact: fact.marketplaceRevenue,
       lowerIsBetter: false,
-      source: marketplaceFact.hasMarketplaceRevenue ? "WB/Ozon" : "Финансы",
+      source: "WB/Ozon",
     },
     {
-      title: "Прибыль",
+      title: "Операционная прибыль",
       plan: planProfit,
-      fact: factProfit,
+      fact: fact.operatingProfit,
       lowerIsBetter: false,
-      source: "Гибрид",
+      source: "P&L",
     },
     {
-      title: "Реклама",
-      plan: planAds,
-      fact: factAds,
+      title: "Себестоимость",
+      plan: 0,
+      fact: fact.cogs,
       lowerIsBetter: true,
-      source: marketplaceFact.hasMarketplaceAds ? "WB/Ozon" : "Финансы",
+      source: "ProductCost",
     },
     {
-      title: "Логистика",
+      title: "Комиссии / логистика МП",
       plan: planLogistics,
-      fact: factLogistics,
+      fact: fact.marketplaceCosts,
       lowerIsBetter: true,
-      source: marketplaceFact.hasMarketplaceLogistics ? "WB/Ozon" : "Финансы",
+      source: "WB/Ozon",
+    },
+    {
+      title: "Реклама WB/Ozon",
+      plan: planAds,
+      fact: fact.marketplaceAds,
+      lowerIsBetter: true,
+      source: "WB/Ozon",
     },
     {
       title: "Налоги",
       plan: planTax,
-      fact: financeFact.financeTax,
+      fact: fact.financeTax,
       lowerIsBetter: true,
       source: "Финансы",
     },
     {
       title: "Зарплата",
       plan: planSalary,
-      fact: financeFact.financeSalary,
+      fact: fact.financeSalary,
       lowerIsBetter: true,
       source: "Финансы",
     },
     {
       title: "Прочие расходы",
       plan: planOther,
-      fact: financeFact.financeOther,
+      fact: 0,
       lowerIsBetter: true,
       source: "Финансы",
     },
     {
       title: "Кредиты и займы",
       plan: 0,
-      fact: financeFact.financeFinancing,
+      fact: fact.financeFinancing,
       lowerIsBetter: true,
-      source: "Финансы",
+      source: "Финансы / ДДС",
     },
   ];
 
@@ -595,11 +694,11 @@ export default async function PlanFactPage({
         <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
           <div>
             <h1 className="text-3xl font-bold text-slate-900 sm:text-4xl">
-              План-Факт анализ 2.2
+              План-Факт P&amp;L WB/Ozon
             </h1>
 
             <p className="mt-3 text-slate-500">
-              Выполнение бюджета с фактом WB/Ozon по выручке, рекламе и логистике.
+              Управленческий P&amp;L: план, факт и разбивка WB/Ozon по ключевым статьям.
             </p>
           </div>
 
@@ -635,7 +734,6 @@ export default async function PlanFactPage({
 
             <div>
               <label className="mb-1 block text-sm text-slate-500">Год</label>
-
               <input
                 name="year"
                 defaultValue={selectedYear}
@@ -681,68 +779,124 @@ export default async function PlanFactPage({
 
           <MetricCard
             title="Факт выручки"
-            value={formatMoney(factRevenue)}
-            subValue={`${formatPercent(revenueExecution)} · источник: ${
-              marketplaceFact.hasMarketplaceRevenue ? "WB/Ozon" : "Финансы"
-            }`}
+            value={formatMoney(fact.marketplaceRevenue)}
+            subValue={`${formatPercent(revenueExecution)} · WB/Ozon`}
             className="text-emerald-600"
           />
 
           <MetricCard title="План прибыли" value={formatMoney(planProfit)} />
 
           <MetricCard
-            title="Факт прибыли"
-            value={formatMoney(factProfit)}
+            title="Опер. прибыль"
+            value={formatMoney(fact.operatingProfit)}
             subValue={`${formatPercent(profitExecution)} · к прошлому: ${formatMoney(
-              profitMoM
+              fact.operatingProfit - prevFact.operatingProfit
             )}`}
-            className={factProfit >= 0 ? "text-emerald-600" : "text-red-600"}
+            className={
+              fact.operatingProfit >= 0 ? "text-emerald-600" : "text-red-600"
+            }
           />
 
           <MetricCard
             title="Отклонение прибыли"
-            value={formatMoney(factProfit - planProfit)}
-            className={diffClass(factProfit - planProfit)}
+            value={formatMoney(fact.operatingProfit - planProfit)}
+            className={diffClass(fact.operatingProfit - planProfit)}
+          />
+        </section>
+
+        <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <SplitMetricCard
+            title="Выручка"
+            total={formatMoney(fact.marketplaceRevenue)}
+            className="text-emerald-600"
+            items={[
+              {
+                label: `WB (${formatNumber(fact.wbQty)} шт.)`,
+                value: formatMoney(fact.wbRevenue),
+              },
+              {
+                label: `Ozon (${formatNumber(fact.ozonQty)} шт.)`,
+                value: formatMoney(fact.ozonRevenue),
+              },
+            ]}
+          />
+
+          <SplitMetricCard
+            title="Себестоимость"
+            total={formatMoney(fact.cogs)}
+            className="text-red-600"
+            items={[
+              { label: "WB", value: formatMoney(fact.wbCogs) },
+              { label: "Ozon", value: formatMoney(fact.ozonCogs) },
+              { label: "Доля", value: formatPercent(cogsShare) },
+            ]}
+          />
+
+          <SplitMetricCard
+            title="Комиссии / логистика МП"
+            total={formatMoney(fact.marketplaceCosts)}
+            className="text-red-600"
+            items={[
+              { label: "WB", value: formatMoney(fact.wbMarketplaceCosts) },
+              { label: "Ozon", value: formatMoney(fact.ozonMarketplaceCosts) },
+              { label: "Доля", value: formatPercent(marketplaceCostsShare) },
+            ]}
+          />
+
+          <SplitMetricCard
+            title="Реклама"
+            total={formatMoney(fact.marketplaceAds)}
+            className="text-red-600"
+            items={[
+              { label: "WB", value: formatMoney(fact.wbAdsSpend) },
+              { label: "Ozon", value: formatMoney(fact.ozonAdsSpend) },
+              { label: "ДРР", value: formatPercent(adsShare) },
+            ]}
           />
         </section>
 
         <section className="grid gap-4 md:grid-cols-3">
           <MetricCard
-            title="Операционные расходы"
-            value={formatMoney(factExpenses)}
+            title="Валовая прибыль"
+            value={formatMoney(fact.grossProfit)}
+            subValue={`Выручка − себестоимость`}
+            className={fact.grossProfit >= 0 ? "text-emerald-600" : "text-red-600"}
+          />
+
+          <MetricCard
+            title="Маржинальная прибыль"
+            value={formatMoney(fact.contributionProfit)}
+            subValue="После комиссий, логистики и рекламы"
+            className={
+              fact.contributionProfit >= 0 ? "text-emerald-600" : "text-red-600"
+            }
+          />
+
+          <MetricCard
+            title="Денежный поток"
+            value={formatMoney(fact.cashFlow)}
+            subValue="По финансовым операциям"
+            className={fact.cashFlow >= 0 ? "text-emerald-600" : "text-red-600"}
+          />
+        </section>
+
+        <section className="grid gap-4 md:grid-cols-3">
+          <MetricCard
+            title="Налоги"
+            value={formatMoney(fact.financeTax)}
+            className="text-red-600"
+          />
+
+          <MetricCard
+            title="Зарплата"
+            value={formatMoney(fact.financeSalary)}
             className="text-red-600"
           />
 
           <MetricCard
             title="Кредиты и займы"
-            value={formatMoney(financeFact.financeFinancing)}
-            subValue="Не входит в операционную прибыль"
-            className="text-red-600"
-          />
-
-          <MetricCard
-            title="Денежный поток месяца"
-            value={formatMoney(cashFlowMonth)}
-            className={cashFlowMonth >= 0 ? "text-emerald-600" : "text-red-600"}
-          />
-        </section>
-
-        <section className="grid gap-4 xl:grid-cols-3">
-          <MetricCard
-            title="WB выручка"
-            value={formatMoney(marketplaceFact.wbRevenue)}
-            className="text-emerald-600"
-          />
-
-          <MetricCard
-            title="Ozon выручка"
-            value={formatMoney(marketplaceFact.ozonRevenue)}
-            className="text-emerald-600"
-          />
-
-          <MetricCard
-            title="WB/Ozon реклама"
-            value={formatMoney(marketplaceFact.marketplaceAds)}
+            value={formatMoney(fact.financeFinancing)}
+            subValue="Не входит в P&L"
             className="text-red-600"
           />
         </section>
@@ -783,15 +937,12 @@ export default async function PlanFactPage({
                     className="rounded-2xl border border-slate-200 p-4"
                   >
                     <div className="text-sm text-slate-500">#{index + 1}</div>
-
                     <div className="mt-1 font-bold text-slate-900">
                       {row.title}
                     </div>
-
                     <div className="mt-1 text-sm text-slate-500">
                       Источник: {row.source}
                     </div>
-
                     <div
                       className={`mt-2 text-xl font-bold ${diffClass(
                         diff,
@@ -803,19 +954,13 @@ export default async function PlanFactPage({
                   </div>
                 );
               })}
-
-              {topDeviations.length === 0 && (
-                <div className="rounded-xl bg-slate-50 p-8 text-center text-slate-500">
-                  Нет плановых статей для анализа отклонений.
-                </div>
-              )}
             </div>
           </div>
         </section>
 
         <section className="rounded-2xl bg-white p-5 shadow-sm sm:p-6">
           <h2 className="text-2xl font-bold text-slate-900">
-            План-Факт по статьям
+            План-Факт P&amp;L по статьям
           </h2>
 
           <div className="mt-6 overflow-x-auto">
@@ -875,14 +1020,15 @@ export default async function PlanFactPage({
 
         <section className="rounded-2xl bg-white p-5 shadow-sm sm:p-6">
           <h2 className="text-2xl font-bold text-slate-900">
-            Источник факта
+            Формула P&amp;L
           </h2>
 
           <p className="mt-3 text-slate-500">
-            В версии 2.2 выручка, реклама и логистика берутся из WB/Ozon, если
-            по выбранному периоду есть маркетплейс-отчёты. Остальные статьи
-            берутся из финансовых операций. Кредиты и займы вынесены отдельно и
-            не входят в операционную прибыль.
+            Операционная прибыль = Выручка WB/Ozon − Себестоимость − Комиссии и
+            логистика маркетплейсов − Реклама WB/Ozon − Налоги − Зарплата.
+            Повторные загрузки одного и того же WB-отчёта исключаются: берётся
+            последняя импорт-сессия по каждому отчёту. Кредиты и займы не входят
+            в P&amp;L и показываются отдельно как денежный поток.
           </p>
         </section>
       </div>
