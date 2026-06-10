@@ -11,6 +11,10 @@ const items = [
   { title: "Кредиты", href: "/finance/loans" },
   { title: "Платёжный календарь", href: "/finance/calendar" },
   { title: "Прогноз ликвидности", href: "/finance/forecast" },
+
+  { title: "Планирование бюджета", href: "/finance/budget" },
+  { title: "План-Факт анализ", href: "/finance/plan-fact" },
+
   { title: "Справочник статей", href: "/finance/categories" },
 ];
 

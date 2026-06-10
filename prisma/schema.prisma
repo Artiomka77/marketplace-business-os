@@ -522,3 +522,25 @@ model FinanceAccount {
   @@index([name])
   @@index([isActive])
 }
+
+model BudgetPlan {
+  id            String   @id @default(cuid())
+
+  companyName   String
+  periodYear    Int
+  periodMonth   Int
+
+  revenuePlan   Float?   @default(0)
+  profitPlan    Float?   @default(0)
+
+  adsPlan       Float?   @default(0)
+  logisticsPlan Float?   @default(0)
+  taxPlan       Float?   @default(0)
+  salaryPlan    Float?   @default(0)
+  otherPlan     Float?   @default(0)
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([companyName, periodYear, periodMonth])
+}
