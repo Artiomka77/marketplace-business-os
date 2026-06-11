@@ -345,6 +345,9 @@ function dedupeWbSalesByLatestImport(rows: WbSaleRow[]) {
   >();
 
   for (const row of rows) {
+    if (!row.saleDate) {
+      continue;
+    }
     const importSessionId = row.importSessionId || row.id;
     const current = sessions.get(importSessionId);
 

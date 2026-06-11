@@ -37,8 +37,6 @@ function buildLimitHref({
   dateTo,
   company,
   marketplace,
-  usnRate,
-  vatRate,
   candidatesLimit,
   abcLimit,
 }: {
@@ -46,8 +44,6 @@ function buildLimitHref({
   dateTo: string;
   company: string;
   marketplace: string;
-  usnRate: string;
-  vatRate: string;
   candidatesLimit: number;
   abcLimit: number;
 }) {
@@ -57,9 +53,7 @@ function buildLimitHref({
   query.set("dateTo", dateTo);
   query.set("company", company);
   query.set("marketplace", marketplace);
-  query.set("usnRate", usnRate);
-  query.set("vatRate", vatRate);
-  query.set("candidatesLimit", String(candidatesLimit));
+    query.set("candidatesLimit", String(candidatesLimit));
   query.set("abcLimit", String(abcLimit));
 
   return `/abc?${query.toString()}`;
@@ -105,22 +99,18 @@ export default async function AbcPage({
   searchParams,
 }: {
   searchParams?: Promise<{
-    dateFrom?: string;
-    dateTo?: string;
-    usnRate?: string;
-    vatRate?: string;
-    marketplace?: MarketplaceFilter;
-    company?: CompanyFilter;
-    candidatesLimit?: string;
-    abcLimit?: string;
-  }>;
+  dateFrom?: string;
+  dateTo?: string;
+  marketplace?: MarketplaceFilter;
+  company?: CompanyFilter;
+  candidatesLimit?: string;
+  abcLimit?: string;
+}>;
 }) {
   const params = await searchParams;
 
   const dateFrom = params?.dateFrom ?? "2026-05-18";
   const dateTo = params?.dateTo ?? "2026-05-24";
-  const usnRate = params?.usnRate ?? "1";
-  const vatRate = params?.vatRate ?? "5";
   const marketplace = params?.marketplace ?? "ALL";
   const company = params?.company ?? "ALL";
 
@@ -134,19 +124,15 @@ const analyticsByCompany = await Promise.all(
   selectedCompanies.map(async (companyName) => {
     const [wb, ozon] = await Promise.all([
       getProfitAnalytics({
-        dateFrom,
-        dateTo,
-        usnRate,
-        vatRate,
-        companyName,
-      }),
+  dateFrom,
+  dateTo,
+  companyName,
+}),
       getProfitAnalyticsOzon({
-        dateFrom,
-        dateTo,
-        usnRate,
-        vatRate,
-        companyName,
-      }),
+  dateFrom,
+  dateTo,
+  companyName,
+}),
     ]);
 
     return {
@@ -247,13 +233,11 @@ const rawRows = analyticsByCompany.flatMap(({ companyName, wb, ozon }) => [
   const visibleRows = limitRows(enrichedRows, abcLimit);
 
   const baseHrefParams = {
-    dateFrom,
-    dateTo,
-    company,
-    marketplace,
-    usnRate,
-    vatRate,
-  };
+  dateFrom,
+  dateTo,
+  company,
+  marketplace,
+};
 
   return (
     <main className="min-h-screen bg-slate-100">

@@ -259,28 +259,23 @@ export default async function FinanceForecastPage({
   }
 
   let runningBalance = totalCash;
-  let minBalance = totalCash;
-  let firstCashGap: { date: Date; balance: number } | null = null;
+let minBalance = totalCash;
 
-  const dailyRows = Array.from(dailyMap.values()).map((row) => {
-    runningBalance = runningBalance + row.inflow - row.outflow;
-    row.balanceAfterDay = runningBalance;
+const dailyRows = Array.from(dailyMap.values()).map((row) => {
+  runningBalance = runningBalance + row.inflow - row.outflow;
+  row.balanceAfterDay = runningBalance;
 
-    if (runningBalance < minBalance) {
-      minBalance = runningBalance;
-    }
+  if (runningBalance < minBalance) {
+    minBalance = runningBalance;
+  }
 
-    if (!firstCashGap && runningBalance < 0) {
-      firstCashGap = {
-        date: row.date,
-        balance: runningBalance,
-      };
-    }
+  return row;
+});
 
-    return row;
-  });
+const firstCashGap =
+  dailyRows.find((row) => row.balanceAfterDay < 0) ?? null;
 
-  const needToCover = Math.max(0, Math.abs(Math.min(0, minBalance)));
+const needToCover = Math.max(0, Math.abs(Math.min(0, minBalance)));
 
   const typeMap = new Map<
     string,
@@ -474,7 +469,7 @@ export default async function FinanceForecastPage({
             </div>
 
             <div className="mt-2 text-3xl font-bold text-red-700">
-              {formatDate(firstCashGap.date)}: {formatMoney(firstCashGap.balance)}
+              {formatDate(firstCashGap.date)} · {formatMoney(firstCashGap.balanceAfterDay)}
             </div>
 
             <p className="mt-2 text-sm text-red-700">

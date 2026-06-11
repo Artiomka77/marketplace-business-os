@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { Prisma } from "@prisma/client";
 import * as XLSX from "xlsx";
 
 import { detectWorkbookReport } from "@/lib/import/reportDetector";
@@ -129,7 +130,7 @@ const needsCompanyName =
         marketplace,
         companyName,
         rowsCount: data.length,
-        previewJson: data.slice(0, 10),
+        previewJson: data.slice(0, 10) as Prisma.InputJsonValue[],
         sheetName: detection.sheetName,
         headerRow: detection.headerRowIndex + 1,
         status: "SUCCESS",
