@@ -45,6 +45,15 @@ function normalize(value: unknown) {
     .trim();
 }
 
+function normalizeVendorCode(value: unknown) {
+  return String(value ?? "")
+    .toLowerCase()
+    .replaceAll("ё", "е")
+    .replace(/[‐-‒–—−]/g, "-")
+    .replace(/\s+/g, "")
+    .trim();
+}
+
 function isReturn(value: unknown) {
   const text = normalize(value);
   return text.includes("возврат") || text.includes("return");
@@ -54,6 +63,11 @@ function expense(value: unknown) {
   const amount = getAmount(value);
   if (amount === 0) return 0;
   return Math.abs(amount);
+}
+
+function safePercent(part: number, total: number) {
+  if (!total) return 0;
+  return (part / total) * 100;
 }
 
 function getExecution(plan: number, fact: number) {
@@ -169,6 +183,70 @@ function SplitMetricCard({
   );
 }
 
+function MarketplaceProfitCard({
+  title,
+  revenue,
+  cogs,
+  costs,
+  ads,
+}: {
+  title: string;
+  revenue: number;
+  cogs: number;
+  costs: number;
+  ads: number;
+}) {
+  const marginalProfit = revenue - cogs - costs - ads;
+  const margin = safePercent(marginalProfit, revenue);
+
+  return (
+    <div className="rounded-2xl bg-white p-5 shadow-sm">
+      <div className="text-sm text-slate-500">{title}</div>
+
+      <div
+        className={`mt-2 text-3xl font-bold ${
+          marginalProfit >= 0 ? "text-emerald-600" : "text-red-600"
+        }`}
+      >
+        {formatMoney(marginalProfit)}
+      </div>
+
+      <div className="mt-4 space-y-2 border-t border-slate-100 pt-3 text-sm">
+        <div className="flex justify-between gap-3">
+          <span className="text-slate-500">Выручка</span>
+          <span className="font-bold">{formatMoney(revenue)}</span>
+        </div>
+
+        <div className="flex justify-between gap-3">
+          <span className="text-slate-500">Себестоимость</span>
+          <span className="font-bold">{formatMoney(cogs)}</span>
+        </div>
+
+        <div className="flex justify-between gap-3">
+          <span className="text-slate-500">Комиссии / логистика</span>
+          <span className="font-bold">{formatMoney(costs)}</span>
+        </div>
+
+        <div className="flex justify-between gap-3">
+          <span className="text-slate-500">Реклама</span>
+          <span className="font-bold">{formatMoney(ads)}</span>
+        </div>
+
+        <div className="flex justify-between gap-3 border-t border-slate-100 pt-2">
+          <span className="text-slate-500">Маржа</span>
+          <span
+            className={`font-bold ${
+              margin >= 0 ? "text-emerald-600" : "text-red-600"
+            }`}
+          >
+            {formatPercent(margin)}
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function BarCompare({
   title,
   plan,
@@ -255,26 +333,76 @@ async function getFinanceTransactions(params: {
 type WbSaleRow = Awaited<ReturnType<typeof prisma.wbSale.findMany>>[number];
 
 function dedupeWbSalesByLatestImport(rows: WbSaleRow[]) {
-  const latestImportByReport = new Map<string, string>();
+  const sessions = new Map<
+    string,
+    {
+      importSessionId: string;
+      dateFrom: Date;
+      dateTo: Date;
+      createdAt: Date;
+      rowsCount: number;
+    }
+  >();
 
-  const sortedRows = [...rows].sort(
-    (a, b) => b.createdAt.getTime() - a.createdAt.getTime()
-  );
+  for (const row of rows) {
+    const importSessionId = row.importSessionId || row.id;
+    const current = sessions.get(importSessionId);
 
-  for (const row of sortedRows) {
-    const reportKey = row.reportNumber || row.importSessionId || row.id;
-    if (!latestImportByReport.has(reportKey)) {
-      latestImportByReport.set(reportKey, row.importSessionId || row.id);
+    if (!current) {
+      sessions.set(importSessionId, {
+        importSessionId,
+        dateFrom: row.saleDate,
+        dateTo: row.saleDate,
+        createdAt: row.createdAt,
+        rowsCount: 1,
+      });
+      continue;
+    }
+
+    if (row.saleDate < current.dateFrom) current.dateFrom = row.saleDate;
+    if (row.saleDate > current.dateTo) current.dateTo = row.saleDate;
+    if (row.createdAt > current.createdAt) current.createdAt = row.createdAt;
+
+    current.rowsCount += 1;
+  }
+
+  const orderedSessions = [...sessions.values()].sort((a, b) => {
+    const aDays =
+      Math.ceil(
+        (a.dateTo.getTime() - a.dateFrom.getTime()) / (24 * 60 * 60 * 1000)
+      ) + 1;
+
+    const bDays =
+      Math.ceil(
+        (b.dateTo.getTime() - b.dateFrom.getTime()) / (24 * 60 * 60 * 1000)
+      ) + 1;
+
+    if (bDays !== aDays) return bDays - aDays;
+    if (b.rowsCount !== a.rowsCount) return b.rowsCount - a.rowsCount;
+
+    return b.createdAt.getTime() - a.createdAt.getTime();
+  });
+
+  const selectedSessions: typeof orderedSessions = [];
+
+  for (const session of orderedSessions) {
+    const isCoveredBySelected = selectedSessions.some(
+      (selected) =>
+        session.dateFrom >= selected.dateFrom && session.dateTo <= selected.dateTo
+    );
+
+    if (!isCoveredBySelected) {
+      selectedSessions.push(session);
     }
   }
 
-  return rows.filter((row) => {
-    const reportKey = row.reportNumber || row.importSessionId || row.id;
-    const latestImportId = latestImportByReport.get(reportKey);
+  const selectedSessionIds = new Set(
+    selectedSessions.map((session) => session.importSessionId)
+  );
 
-    if (!row.importSessionId) return row.id === latestImportId;
-    return row.importSessionId === latestImportId;
-  });
+  return rows.filter((row) =>
+    selectedSessionIds.has(row.importSessionId || row.id)
+  );
 }
 
 async function getPnlFact(params: {
@@ -339,8 +467,10 @@ async function getPnlFact(params: {
   const costByVendorCode = new Map<string, number>();
 
   for (const cost of productCosts) {
-    if (!costByVendorCode.has(cost.vendorCode)) {
-      costByVendorCode.set(cost.vendorCode, getAmount(cost.costPrice));
+    const normalizedVendorCode = normalizeVendorCode(cost.vendorCode);
+
+    if (!costByVendorCode.has(normalizedVendorCode)) {
+      costByVendorCode.set(normalizedVendorCode, getAmount(cost.costPrice));
     }
   }
 
@@ -366,7 +496,9 @@ async function getPnlFact(params: {
       getAmount(row.sellerPayout);
 
     const rawQty = Math.abs(Number(row.quantity ?? 0));
-    const unitCost = row.vendorCode ? costByVendorCode.get(row.vendorCode) ?? 0 : 0;
+    const unitCost = row.vendorCode
+      ? costByVendorCode.get(normalizeVendorCode(row.vendorCode)) ?? 0
+      : 0;
 
     wbRevenue += sign * revenue;
 
@@ -412,7 +544,9 @@ async function getPnlFact(params: {
   for (const row of ozonFinance) {
     const revenue = getAmount(row.salesAmount);
     const rawQty = Math.abs(Number(row.quantity ?? 0));
-    const unitCost = row.vendorCode ? costByVendorCode.get(row.vendorCode) ?? 0 : 0;
+    const unitCost = row.vendorCode
+      ? costByVendorCode.get(normalizeVendorCode(row.vendorCode)) ?? 0
+      : 0;
 
     ozonRevenue += revenue;
 
@@ -436,6 +570,12 @@ async function getPnlFact(params: {
 
   const ozonMarketplaceCosts =
     ozonCommission + ozonLogistics + ozonReverseLogistics;
+
+  const wbMarginalProfit =
+    wbRevenue - wbCogs - wbMarketplaceCosts - wbAdsSpend;
+
+  const ozonMarginalProfit =
+    ozonRevenue - ozonCogs - ozonMarketplaceCosts - ozonAdsSpend;
 
   const financeExpenseTransactions = financeTransactions.filter(
     (row) => row.operationType === "EXPENSE"
@@ -468,8 +608,7 @@ async function getPnlFact(params: {
   const cogs = wbCogs + ozonCogs;
 
   const grossProfit = marketplaceRevenue - cogs;
-  const contributionProfit =
-    marketplaceRevenue - cogs - marketplaceCosts - marketplaceAds;
+  const contributionProfit = wbMarginalProfit + ozonMarginalProfit;
 
   const operatingProfit = contributionProfit - financeTax - financeSalary;
   const cashFlow = financeIncome - financeExpenseTotal - financeFinancing;
@@ -492,6 +631,7 @@ async function getPnlFact(params: {
     wbQty,
     wbRowsWithCost,
     wbRowsWithoutCost,
+    wbMarginalProfit,
 
     ozonRows: ozonFinance.length,
     ozonAdsRows: ozonAds.length,
@@ -505,6 +645,7 @@ async function getPnlFact(params: {
     ozonQty,
     ozonRowsWithCost,
     ozonRowsWithoutCost,
+    ozonMarginalProfit,
 
     marketplaceRevenue,
     marketplaceAds,
@@ -605,17 +746,12 @@ export default async function PlanFactPage({
   const revenueExecution = getExecution(planRevenue, fact.marketplaceRevenue);
   const profitExecution = getExecution(planProfit, fact.operatingProfit);
 
-  const cogsShare = fact.marketplaceRevenue
-    ? (fact.cogs / fact.marketplaceRevenue) * 100
-    : 0;
-
-  const marketplaceCostsShare = fact.marketplaceRevenue
-    ? (fact.marketplaceCosts / fact.marketplaceRevenue) * 100
-    : 0;
-
-  const adsShare = fact.marketplaceRevenue
-    ? (fact.marketplaceAds / fact.marketplaceRevenue) * 100
-    : 0;
+  const cogsShare = safePercent(fact.cogs, fact.marketplaceRevenue);
+  const marketplaceCostsShare = safePercent(
+    fact.marketplaceCosts,
+    fact.marketplaceRevenue
+  );
+  const adsShare = safePercent(fact.marketplaceAds, fact.marketplaceRevenue);
 
   const rows = [
     {
@@ -698,7 +834,8 @@ export default async function PlanFactPage({
             </h1>
 
             <p className="mt-3 text-slate-500">
-              Управленческий P&amp;L: план, факт и разбивка WB/Ozon по ключевым статьям.
+              Управленческий P&amp;L: план, факт и разбивка WB/Ozon по ключевым
+              статьям.
             </p>
           </div>
 
@@ -812,11 +949,15 @@ export default async function PlanFactPage({
             items={[
               {
                 label: `WB (${formatNumber(fact.wbQty)} шт.)`,
-                value: formatMoney(fact.wbRevenue),
+                value: `${formatMoney(fact.wbRevenue)} · ${formatPercent(
+                  safePercent(fact.wbRevenue, fact.marketplaceRevenue)
+                )}`,
               },
               {
                 label: `Ozon (${formatNumber(fact.ozonQty)} шт.)`,
-                value: formatMoney(fact.ozonRevenue),
+                value: `${formatMoney(fact.ozonRevenue)} · ${formatPercent(
+                  safePercent(fact.ozonRevenue, fact.marketplaceRevenue)
+                )}`,
               },
             ]}
           />
@@ -826,8 +967,18 @@ export default async function PlanFactPage({
             total={formatMoney(fact.cogs)}
             className="text-red-600"
             items={[
-              { label: "WB", value: formatMoney(fact.wbCogs) },
-              { label: "Ozon", value: formatMoney(fact.ozonCogs) },
+              {
+                label: "WB",
+                value: `${formatMoney(fact.wbCogs)} · ${formatPercent(
+                  safePercent(fact.wbCogs, fact.wbRevenue)
+                )}`,
+              },
+              {
+                label: "Ozon",
+                value: `${formatMoney(fact.ozonCogs)} · ${formatPercent(
+                  safePercent(fact.ozonCogs, fact.ozonRevenue)
+                )}`,
+              },
               { label: "Доля", value: formatPercent(cogsShare) },
             ]}
           />
@@ -837,8 +988,20 @@ export default async function PlanFactPage({
             total={formatMoney(fact.marketplaceCosts)}
             className="text-red-600"
             items={[
-              { label: "WB", value: formatMoney(fact.wbMarketplaceCosts) },
-              { label: "Ozon", value: formatMoney(fact.ozonMarketplaceCosts) },
+              {
+                label: "WB",
+                value: `${formatMoney(fact.wbMarketplaceCosts)} · ${formatPercent(
+                  safePercent(fact.wbMarketplaceCosts, fact.wbRevenue)
+                )}`,
+              },
+              {
+                label: "Ozon",
+                value: `${formatMoney(
+                  fact.ozonMarketplaceCosts
+                )} · ${formatPercent(
+                  safePercent(fact.ozonMarketplaceCosts, fact.ozonRevenue)
+                )}`,
+              },
               { label: "Доля", value: formatPercent(marketplaceCostsShare) },
             ]}
           />
@@ -848,8 +1011,18 @@ export default async function PlanFactPage({
             total={formatMoney(fact.marketplaceAds)}
             className="text-red-600"
             items={[
-              { label: "WB", value: formatMoney(fact.wbAdsSpend) },
-              { label: "Ozon", value: formatMoney(fact.ozonAdsSpend) },
+              {
+                label: "WB",
+                value: `${formatMoney(fact.wbAdsSpend)} · ${formatPercent(
+                  safePercent(fact.wbAdsSpend, fact.wbRevenue)
+                )}`,
+              },
+              {
+                label: "Ozon",
+                value: `${formatMoney(fact.ozonAdsSpend)} · ${formatPercent(
+                  safePercent(fact.ozonAdsSpend, fact.ozonRevenue)
+                )}`,
+              },
               { label: "ДРР", value: formatPercent(adsShare) },
             ]}
           />
@@ -859,14 +1032,16 @@ export default async function PlanFactPage({
           <MetricCard
             title="Валовая прибыль"
             value={formatMoney(fact.grossProfit)}
-            subValue={`Выручка − себестоимость`}
+            subValue="Выручка − себестоимость"
             className={fact.grossProfit >= 0 ? "text-emerald-600" : "text-red-600"}
           />
 
           <MetricCard
             title="Маржинальная прибыль"
             value={formatMoney(fact.contributionProfit)}
-            subValue="После комиссий, логистики и рекламы"
+            subValue={`WB: ${formatMoney(fact.wbMarginalProfit)} · Ozon: ${formatMoney(
+              fact.ozonMarginalProfit
+            )}`}
             className={
               fact.contributionProfit >= 0 ? "text-emerald-600" : "text-red-600"
             }
@@ -877,6 +1052,24 @@ export default async function PlanFactPage({
             value={formatMoney(fact.cashFlow)}
             subValue="По финансовым операциям"
             className={fact.cashFlow >= 0 ? "text-emerald-600" : "text-red-600"}
+          />
+        </section>
+
+        <section className="grid gap-4 md:grid-cols-2">
+          <MarketplaceProfitCard
+            title="WB маржинальность"
+            revenue={fact.wbRevenue}
+            cogs={fact.wbCogs}
+            costs={fact.wbMarketplaceCosts}
+            ads={fact.wbAdsSpend}
+          />
+
+          <MarketplaceProfitCard
+            title="Ozon маржинальность"
+            revenue={fact.ozonRevenue}
+            cogs={fact.ozonCogs}
+            costs={fact.ozonMarketplaceCosts}
+            ads={fact.ozonAdsSpend}
           />
         </section>
 
@@ -1027,8 +1220,8 @@ export default async function PlanFactPage({
             Операционная прибыль = Выручка WB/Ozon − Себестоимость − Комиссии и
             логистика маркетплейсов − Реклама WB/Ozon − Налоги − Зарплата.
             Повторные загрузки одного и того же WB-отчёта исключаются: берётся
-            последняя импорт-сессия по каждому отчёту. Кредиты и займы не входят
-            в P&amp;L и показываются отдельно как денежный поток.
+            наиболее полный отчёт по периоду. Кредиты и займы не входят в
+            P&amp;L и показываются отдельно как денежный поток.
           </p>
         </section>
       </div>
