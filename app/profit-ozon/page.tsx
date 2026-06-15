@@ -254,7 +254,7 @@ const companyName = params?.companyName ?? "ALL";
           </div>
 
           <div className={cardClassName()}>
-            <div className="text-sm text-slate-500">Итого Ozon</div>
+            <div className="text-sm text-slate-500">Начислено продавцу</div>
             <div className={valueClassName()}>
               {formatMoney(totals.sellerPayout)}
             </div>
@@ -316,10 +316,21 @@ const companyName = params?.companyName ?? "ALL";
           </div>
 
           <div className={cardClassName()}>
-            <div className="text-sm text-slate-500">Прочие удержания</div>
-            <div className={valueClassName()}>
-              {formatMoney(otherDeductions)}
-            </div>
+            <div className="text-sm text-slate-500">
+  Прочие удержания / сторно
+</div>
+
+<div
+  className={`${valueClassName()} ${
+    otherDeductions < 0
+      ? "text-emerald-600"
+      : "text-red-600"
+  }`}
+>
+  {otherDeductions < 0
+    ? `+${formatMoney(Math.abs(otherDeductions))}`
+    : formatMoney(otherDeductions)}
+</div>
             <div className={subTextClassName()}>
               {formatShare(otherDeductions, totals.revenue)}
             </div>
@@ -430,7 +441,7 @@ const companyName = params?.companyName ?? "ALL";
                     <SortHeader label="Доля выр." sortKey="revenueSharePercent" />
                   </th>
                   <th className="p-3 text-right">
-                    <SortHeader label="Итого Ozon" sortKey="sellerPayout" />
+                    <SortHeader label="Начислено" sortKey="sellerPayout" />
                   </th>
                   <th className="p-3 text-right">
                     <SortHeader label="Комиссия" sortKey="wbCommission" />
@@ -440,7 +451,7 @@ const companyName = params?.companyName ?? "ALL";
                   </th>
                   <th className="p-3 text-right">
                     <SortHeader
-                      label="Прочие удерж."
+                      label="Удерж./сторно"
                       sortKey="penaltiesAndDeductions"
                     />
                   </th>
