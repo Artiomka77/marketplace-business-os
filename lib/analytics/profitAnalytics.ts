@@ -246,6 +246,12 @@ type WbAdsRecord = {
   spend: unknown;
 };
 
+type WbFinanceExpenseTotals = {
+  storageCost: number;
+  acceptanceCost: number;
+  penaltiesAmount: number;
+};
+
 function buildCostByVendorCode(costs: CostRecord[]) {
   const costByVendorCode = new Map<string, number>();
 
@@ -686,15 +692,16 @@ async function findWbSaleRowsByPeriod(params?: {
     },
   });
 }
+
 async function findAdsRowsByDateFilter(
   dateFilter: object,
   companyName?: string | null
 ) {
   const latestAdsRow = await prisma.wbAds.findFirst({
-  where: {
-    ...dateFilter,
-    ...(companyName ? { companyName } : {}),
-  },
+    where: {
+      ...dateFilter,
+      ...(companyName ? { companyName } : {}),
+    },
     orderBy: {
       createdAt: "desc",
     },
@@ -703,9 +710,9 @@ async function findAdsRowsByDateFilter(
   if (!latestAdsRow) return [];
 
   return prisma.wbAds.findMany({
-  where: {
-    ...dateFilter,
-    ...(companyName ? { companyName } : {}),
+    where: {
+      ...dateFilter,
+      ...(companyName ? { companyName } : {}),
       ...(latestAdsRow.importSessionId
         ? {
             importSessionId: latestAdsRow.importSessionId,
@@ -720,26 +727,96 @@ async function findAdsRowsByDateFilter(
   });
 }
 
+async function findWbFinanceExpenseTotalsByPeriod(params?: {
+  dateFrom?: string | null;
+  dateTo?: string | null;
+  companyName?: string | null;
+}): Promise<WbFinanceExpenseTotals> {
+  const dateFilter = createDateFilterFromStrings(params?.dateFrom, params?.dateTo);
+
+  const rows = await prisma.wbFinance.findMany({
+    where: {
+      ...dateFilter,
+      ...(params?.companyName ? { companyName: params.companyName } : {}),
+    },
+    select: {
+      storageCost: true,
+      acceptanceCost: true,
+      penaltiesAmount: true,
+    },
+  });
+
+  return rows.reduce(
+    (acc, row) => {
+      acc.storageCost += toNumber(row.storageCost);
+      acc.acceptanceCost += toNumber(row.acceptanceCost);
+      acc.penaltiesAmount += toNumber(row.penaltiesAmount);
+
+      return acc;
+    },
+    {
+      storageCost: 0,
+      acceptanceCost: 0,
+      penaltiesAmount: 0,
+    }
+  );
+}
+
+function applyWbFinanceExpenseTotals(
+  result: {
+    rows: ProfitAnalyticsRow[];
+    totals: ProfitTotals;
+  },
+  financeExpenses: WbFinanceExpenseTotals
+) {
+  const storageDiff = financeExpenses.storageCost - result.totals.storageCost;
+  const acceptanceDiff =
+    financeExpenses.acceptanceCost - result.totals.acceptanceCost;
+  const penaltiesDiff =
+    financeExpenses.penaltiesAmount - result.totals.penaltiesAmount;
+
+  const totalExpenseDiff = storageDiff + acceptanceDiff + penaltiesDiff;
+
+  result.totals.storageCost = financeExpenses.storageCost;
+  result.totals.acceptanceCost = financeExpenses.acceptanceCost;
+  result.totals.penaltiesAmount = financeExpenses.penaltiesAmount;
+
+  result.totals.marginProfit -= totalExpenseDiff;
+  result.totals.netProfitAfterTax -= totalExpenseDiff;
+
+  result.totals.marginProfitPercent =
+    result.totals.revenue > 0
+      ? (result.totals.marginProfit / result.totals.revenue) * 100
+      : 0;
+
+  result.totals.marginAfterTaxPercent =
+    result.totals.revenue > 0
+      ? (result.totals.netProfitAfterTax / result.totals.revenue) * 100
+      : 0;
+
+  return result;
+}
+
 export async function getProfitAnalytics(params?: {
   dateFrom?: string | null;
   dateTo?: string | null;
   companyName?: string | null;
 }) {
-const companyName =
-  params?.companyName && params.companyName !== "ALL"
-    ? params.companyName
+  const companyName =
+    params?.companyName && params.companyName !== "ALL"
+      ? params.companyName
+      : null;
+
+  const companySettings = companyName
+    ? await prisma.company.findFirst({
+        where: {
+          name: companyName,
+        },
+      })
     : null;
 
-const companySettings = companyName
-  ? await prisma.company.findFirst({
-      where: {
-        name: companyName,
-      },
-    })
-  : null;
-
-const usnRate = clampRate(companySettings?.usnRate, [0, 1, 2, 3, 4, 5, 6], 1);
-const vatRate = clampRate(companySettings?.vatRate, [0, 5, 7], 5);
+  const usnRate = clampRate(companySettings?.usnRate, [0, 1, 2, 3, 4, 5, 6], 1);
+  const vatRate = clampRate(companySettings?.vatRate, [0, 5, 7], 5);
 
   const costs = await prisma.productCost.findMany({
     orderBy: {
@@ -748,17 +825,17 @@ const vatRate = clampRate(companySettings?.vatRate, [0, 5, 7], 5);
   });
 
   const adMaps = await prisma.adCampaignMap.findMany({
-  where: {
-    marketplace: "WB",
-    ...(companyName ? { companyName } : {}),
-  },
-});
+    where: {
+      marketplace: "WB",
+      ...(companyName ? { companyName } : {}),
+    },
+  });
 
   const currentSalesRows = await findWbSaleRowsByPeriod({
-  dateFrom: params?.dateFrom,
-  dateTo: params?.dateTo,
-  companyName,
-});
+    dateFrom: params?.dateFrom,
+    dateTo: params?.dateTo,
+    companyName,
+  });
 
   const currentAdsDateFilter = createDateFilterFromStrings(
     params?.dateFrom,
@@ -775,39 +852,63 @@ const vatRate = clampRate(companySettings?.vatRate, [0, 5, 7], 5);
     : {};
 
   const currentAdsRows = await findAdsRowsByDateFilter(
-  currentAdsDateFilter,
-  companyName
-);
+    currentAdsDateFilter,
+    companyName
+  );
+
+  const currentFinanceExpenses = await findWbFinanceExpenseTotalsByPeriod({
+    dateFrom: params?.dateFrom,
+    dateTo: params?.dateTo,
+    companyName,
+  });
 
   const previousAdsRows = previousPeriod
-  ? await findAdsRowsByDateFilter(previousAdsDateFilter, companyName)
-  : [];
+    ? await findAdsRowsByDateFilter(previousAdsDateFilter, companyName)
+    : [];
 
-  const current = calculateRowsAndTotals({
-    wbRows: currentSalesRows,
-    costs,
-    adsRows: currentAdsRows,
-    adMaps,
-    usnRate,
-    vatRate,
-  });
+  const previousFinanceExpenses = previousPeriod
+    ? await findWbFinanceExpenseTotalsByPeriod({
+        dateFrom: previousPeriod.dateFrom.toISOString().slice(0, 10),
+        dateTo: previousPeriod.dateTo.toISOString().slice(0, 10),
+        companyName,
+      })
+    : {
+        storageCost: 0,
+        acceptanceCost: 0,
+        penaltiesAmount: 0,
+      };
+
+  const current = applyWbFinanceExpenseTotals(
+    calculateRowsAndTotals({
+      wbRows: currentSalesRows,
+      costs,
+      adsRows: currentAdsRows,
+      adMaps,
+      usnRate,
+      vatRate,
+    }),
+    currentFinanceExpenses
+  );
 
   const previousSalesRows = previousPeriod
-  ? await findWbSaleRowsByPeriod({
-      dateFrom: previousPeriod.dateFrom.toISOString().slice(0, 10),
-      dateTo: previousPeriod.dateTo.toISOString().slice(0, 10),
-      companyName,
-    })
-  : [];
+    ? await findWbSaleRowsByPeriod({
+        dateFrom: previousPeriod.dateFrom.toISOString().slice(0, 10),
+        dateTo: previousPeriod.dateTo.toISOString().slice(0, 10),
+        companyName,
+      })
+    : [];
 
-  const previous = calculateRowsAndTotals({
-    wbRows: previousSalesRows,
-    costs,
-    adsRows: previousAdsRows,
-    adMaps,
-    usnRate,
-    vatRate,
-  });
+  const previous = applyWbFinanceExpenseTotals(
+    calculateRowsAndTotals({
+      wbRows: previousSalesRows,
+      costs,
+      adsRows: previousAdsRows,
+      adMaps,
+      usnRate,
+      vatRate,
+    }),
+    previousFinanceExpenses
+  );
 
   const comparison = {
     revenue: createComparison(current.totals.revenue, previous.totals.revenue),
