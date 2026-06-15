@@ -5,7 +5,10 @@ function toNumber(value: unknown): number | null {
     return null;
   }
 
-  const normalized = String(value).replace(/\s/g, "").replace(",", ".");
+  const normalized = String(value)
+    .replace(/\s/g, "")
+    .replace(",", ".")
+    .replace(/[^\d.-]/g, "");
 
   const number = Number(normalized);
 
@@ -17,9 +20,36 @@ function toDate(value: unknown): Date | null {
     return null;
   }
 
-  const date = new Date(String(value));
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return value;
+  }
+
+  if (typeof value === "number") {
+    const excelEpoch = new Date(Date.UTC(1899, 11, 30));
+    const date = new Date(excelEpoch.getTime() + value * 86400000);
+    return Number.isNaN(date.getTime()) ? null : date;
+  }
+
+  const raw = String(value).trim();
+  const ddmmyyyy = raw.match(/^(\d{1,2})[./-](\d{1,2})[./-](\d{2,4})$/);
+
+  if (ddmmyyyy) {
+    const day = Number(ddmmyyyy[1]);
+    const month = Number(ddmmyyyy[2]) - 1;
+    const yearRaw = Number(ddmmyyyy[3]);
+    const year = yearRaw < 100 ? 2000 + yearRaw : yearRaw;
+    const date = new Date(year, month, day);
+    return Number.isNaN(date.getTime()) ? null : date;
+  }
+
+  const date = new Date(raw);
 
   return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function toStringOrNull(value: unknown): string | null {
+  const text = String(value ?? "").trim();
+  return text ? text : null;
 }
 
 export async function normalizeWbFinance(
@@ -32,14 +62,12 @@ export async function normalizeWbFinance(
       importSessionId,
       companyName,
 
-      reportNumber: row["№ отчета"] ? String(row["№ отчета"]) : null,
-      legalEntity: row["Юридическое лицо"]
-        ? String(row["Юридическое лицо"])
-        : null,
+      reportNumber: toStringOrNull(row["№ отчета"]),
+      legalEntity: toStringOrNull(row["Юридическое лицо"]),
 
       dateFrom: toDate(row["Дата начала"]),
       dateTo: toDate(row["Дата конца"]),
-      reportTypeName: row["Тип отчета"] ? String(row["Тип отчета"]) : null,
+      reportTypeName: toStringOrNull(row["Тип отчета"]),
 
       salesAmount: toNumber(row["Продажа"]),
       payoutAmount: toNumber(row["К перечислению за товар"]),
@@ -58,12 +86,31 @@ export async function normalizeWbFinance(
     };
   }
 
-  await prisma.wbFinance.deleteMany({
-    where: {
-      importSessionId,
-      companyName,
-    },
-  });
+  const reportNumbers = Array.from(
+    new Set(
+      data
+        .map((row) => String(row.reportNumber ?? "").trim())
+        .filter(Boolean)
+    )
+  );
+
+  if (reportNumbers.length > 0) {
+    await prisma.wbFinance.deleteMany({
+      where: {
+        companyName,
+        reportNumber: {
+          in: reportNumbers,
+        },
+      },
+    });
+  } else {
+    await prisma.wbFinance.deleteMany({
+      where: {
+        importSessionId,
+        companyName,
+      },
+    });
+  }
 
   await prisma.wbFinance.createMany({
     data,
