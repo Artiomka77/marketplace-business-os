@@ -191,7 +191,7 @@ const companyName = params?.companyName ?? "ALL";
           </p>
         </div>
 
-        <form className="grid gap-4 rounded-2xl bg-white p-6 shadow-sm md:grid-cols-6">
+        <form className="grid gap-4 rounded-2xl bg-white p-6 shadow-sm md:grid-cols-4">
           <input type="hidden" name="sort" value={sort} />
           <input type="hidden" name="dir" value={dir} />
 
@@ -219,42 +219,6 @@ const companyName = params?.companyName ?? "ALL";
               defaultValue={params?.dateTo ?? "2026-05-24"}
               className="w-full rounded-xl border border-slate-300 px-4 py-2"
             />
-          </div>
-
-          <div>
-            <label className="mb-2 block text-sm font-medium text-slate-700">
-              УСН, %
-            </label>
-
-            <select
-              name="usnRate"
-              defaultValue={usnRate}
-              className="w-full rounded-xl border border-slate-300 px-4 py-2"
-            >
-              <option value="0">0%</option>
-              <option value="1">1%</option>
-              <option value="2">2%</option>
-              <option value="3">3%</option>
-              <option value="4">4%</option>
-              <option value="5">5%</option>
-              <option value="6">6%</option>
-            </select>
-          </div>
-
-          <div>
-            <label className="mb-2 block text-sm font-medium text-slate-700">
-              НДС на УСН, %
-            </label>
-
-            <select
-              name="vatRate"
-              defaultValue={vatRate}
-              className="w-full rounded-xl border border-slate-300 px-4 py-2"
-            >
-              <option value="0">Без НДС</option>
-              <option value="5">5%</option>
-              <option value="7">7%</option>
-            </select>
           </div>
 
 <div>
@@ -399,9 +363,6 @@ const companyName = params?.companyName ?? "ALL";
                 comparison.taxesAmount.diff,
                 comparison.taxesAmount.diffPercent
               )}
-            </div>
-            <div className="mt-1 text-xs text-slate-500">
-              УСН {usnRate}% + НДС {vatRate}%
             </div>
           </div>
         </section>
