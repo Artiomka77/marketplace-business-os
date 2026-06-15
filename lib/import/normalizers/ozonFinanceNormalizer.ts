@@ -23,14 +23,7 @@ function normalizeDateOnly(date: Date): Date | null {
   if (Number.isNaN(date.getTime())) return null;
 
   const normalized = new Date(
-    Date.UTC(
-      date.getUTCHours() >= 12 ? date.getUTCFullYear() : date.getUTCFullYear(),
-      date.getUTCMonth(),
-      date.getUTCDate() + (date.getUTCHours() >= 12 ? 1 : 0),
-      12,
-      0,
-      0
-    )
+    Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate(), 12, 0, 0)
   );
 
   return Number.isNaN(normalized.getTime()) ? null : normalized;
@@ -120,12 +113,33 @@ export async function normalizeOzonFinance(
     };
   }
 
-  await prisma.ozonFinance.deleteMany({
-    where: {
-      importSessionId,
-      companyName,
-    },
-  });
+  const dates = data
+    .map((row) => row.accrualDate)
+    .filter((date): date is Date => Boolean(date));
+
+  if (dates.length > 0) {
+    const minDate = new Date(Math.min(...dates.map((date) => date.getTime())));
+    const maxDate = new Date(Math.max(...dates.map((date) => date.getTime())));
+    const maxDateExclusive = new Date(maxDate);
+    maxDateExclusive.setDate(maxDateExclusive.getDate() + 1);
+
+    await prisma.ozonFinance.deleteMany({
+      where: {
+        companyName,
+        accrualDate: {
+          gte: minDate,
+          lt: maxDateExclusive,
+        },
+      },
+    });
+  } else {
+    await prisma.ozonFinance.deleteMany({
+      where: {
+        importSessionId,
+        companyName,
+      },
+    });
+  }
 
   await prisma.ozonFinance.createMany({
     data,
