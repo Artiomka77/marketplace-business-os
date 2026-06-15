@@ -43,6 +43,54 @@ function parseWbAdsPeriodFromFileName(fileName: string) {
   };
 }
 
+function makeUtcNoonDate(day: number, month: number, year: number) {
+  const date = new Date(Date.UTC(year, month - 1, day, 12, 0, 0));
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function parseRussianDateFromText(value: string): Date | null {
+  const match = value.match(/(\d{2})[.\-_](\d{2})[.\-_](\d{4})/);
+
+  if (!match) {
+    return null;
+  }
+
+  const [, day, month, year] = match;
+
+  return makeUtcNoonDate(Number(day), Number(month), Number(year));
+}
+
+function parseOzonAdsReportDateFromWorksheet(
+  worksheet: XLSX.WorkSheet
+): Date | null {
+  const rawRows = XLSX.utils.sheet_to_json<unknown[]>(worksheet, {
+    header: 1,
+    defval: "",
+    blankrows: false,
+  });
+
+  for (const row of rawRows.slice(0, 30)) {
+    const text = row
+      .map((cell) => String(cell ?? "").trim())
+      .filter(Boolean)
+      .join(" ");
+
+    const lowerText = text.toLowerCase();
+
+    if (!lowerText.includes("период")) {
+      continue;
+    }
+
+    const date = parseRussianDateFromText(text);
+
+    if (date) {
+      return date;
+    }
+  }
+
+  return null;
+}
+
 export async function POST(req: Request) {
   try {
     const formData = await req.formData();
@@ -58,9 +106,9 @@ export async function POST(req: Request) {
     const buffer = Buffer.from(bytes);
 
     const workbook = XLSX.read(buffer, {
-  type: "buffer",
-  cellDates: false,
-});
+      type: "buffer",
+      cellDates: false,
+    });
 
     const detection = detectWorkbookReport(workbook);
 
@@ -107,10 +155,10 @@ export async function POST(req: Request) {
                 ? "FINANCE"
                 : "UNKNOWN";
 
-const needsCompanyName =
-  detection.reportType.startsWith("WB") ||
-  detection.reportType.startsWith("OZON") ||
-  detection.reportType === "FINANCE_TRANSACTIONS";
+    const needsCompanyName =
+      detection.reportType.startsWith("WB") ||
+      detection.reportType.startsWith("OZON") ||
+      detection.reportType === "FINANCE_TRANSACTIONS";
 
     if (needsCompanyName && !companyName) {
       return NextResponse.json(
@@ -146,7 +194,11 @@ const needsCompanyName =
     }
 
     if (detection.reportType === "WB_FINANCE") {
-      const result = await normalizeWbFinance(data, importSession.id, companyName);
+      const result = await normalizeWbFinance(
+        data,
+        importSession.id,
+        companyName
+      );
       normalizedRows = result.savedRows;
     }
 
@@ -157,12 +209,12 @@ const needsCompanyName =
       const adsPeriod = parseWbAdsPeriodFromFileName(file.name);
 
       const result = await normalizeWbAds(
-  data,
-  importSession.id,
-  adsPeriod.dateFrom,
-  adsPeriod.dateTo,
-  companyName
-);
+        data,
+        importSession.id,
+        adsPeriod.dateFrom,
+        adsPeriod.dateTo,
+        companyName
+      );
 
       normalizedRows = result.savedRows;
     }
@@ -182,12 +234,16 @@ const needsCompanyName =
     }
 
     if (detection.reportType === "OZON_ADS") {
+      const ozonAdsReportDate = parseOzonAdsReportDateFromWorksheet(worksheet);
+
       const result = await normalizeOzonAds(
         data,
         importSession.id,
         file.name,
-        companyName
+        companyName,
+        ozonAdsReportDate
       );
+
       normalizedRows = result.savedRows;
     }
 

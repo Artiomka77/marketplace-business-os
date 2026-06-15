@@ -45,9 +45,10 @@ export async function normalizeOzonAds(
   rows: any[],
   importSessionId: string,
   fileName: string,
-  companyName: string | null
+  companyName: string | null,
+  reportDateFromFileContent?: Date | null
 ) {
-  const reportDate = parseDateFromFileName(fileName);
+  const reportDate = reportDateFromFileContent ?? parseDateFromFileName(fileName);
 
   const data = rows
     .map((row) => ({
