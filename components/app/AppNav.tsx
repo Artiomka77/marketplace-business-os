@@ -9,6 +9,10 @@ const items = [
     href: "/",
   },
   {
+    title: "Центр прибыли",
+    href: "/insights",
+  },
+  {
     title: "Аналитика",
     href: "/analytics",
   },
