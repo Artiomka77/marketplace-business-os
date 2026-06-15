@@ -164,14 +164,15 @@ export async function normalizeFinanceTransactions(
 ) {
   const data = rows
     .map((row) => {
-      const operationDate = toDate(getValue(row, "Дата платежа", 1));
-      const obligationDate = toDate(
-        getValue(row, "Дата выполнения обязательства", 2)
-      );
+      const rawOperationDate = getValue(row, "Дата платежа", 0);
+const rawObligationDate = getValue(row, "Дата выполнения обязательства", 1);
 
-      const rawCategory = cleanText(getValue(row, "Статья", 3));
-      const amountRaw = toNumber(getValue(row, "Сумма", 4));
-      const movementType = cleanText(getValue(row, "За что платим", 7));
+const operationDate = toDate(rawOperationDate);
+const obligationDate = toDate(rawObligationDate);
+
+const rawCategory = cleanText(getValue(row, "Статья", 2));
+const amountRaw = toNumber(getValue(row, "Сумма", 3));
+const movementType = cleanText(getValue(row, "За что платим", 6));
 
       if (!operationDate || amountRaw === null) return null;
 

@@ -58,9 +58,9 @@ export async function POST(req: Request) {
     const buffer = Buffer.from(bytes);
 
     const workbook = XLSX.read(buffer, {
-      type: "buffer",
-      cellDates: true,
-    });
+  type: "buffer",
+  cellDates: false,
+});
 
     const detection = detectWorkbookReport(workbook);
 
