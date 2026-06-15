@@ -332,8 +332,10 @@ const companyName = params?.companyName ?? "ALL";
     : formatMoney(otherDeductions)}
 </div>
             <div className={subTextClassName()}>
-              {formatShare(otherDeductions, totals.revenue)}
-            </div>
+  {otherDeductions < 0
+    ? `+${formatShare(Math.abs(otherDeductions), totals.revenue)}`
+    : formatShare(otherDeductions, totals.revenue)}
+</div>
           </div>
 
           <div className={cardClassName()}>
