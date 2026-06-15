@@ -52,21 +52,15 @@ export async function normalizeOzonStock(
         companyName,
 
         vendorCode: vendorCode ? String(vendorCode) : null,
-
         sku: sku ? String(sku) : null,
 
         clusterName: getByIndex(row, 5) ? String(getByIndex(row, 5)) : null,
-
         warehouseName: getByIndex(row, 6) ? String(getByIndex(row, 6)) : null,
 
         availableQty: toNumber(getByIndex(row, 7)),
-
         preparingQty: toNumber(getByIndex(row, 8)),
-
         supplyQty: toNumber(getByIndex(row, 16)),
-
         inTransitQty: toNumber(getByIndex(row, 17)),
-
         returnQty: toNumber(getByIndex(row, 18)),
       };
     })
@@ -80,8 +74,10 @@ export async function normalizeOzonStock(
 
   await prisma.ozonStock.deleteMany({
     where: {
-      importSessionId,
-      companyName,
+      OR: [
+        companyName ? { companyName } : {},
+        { companyName: null },
+      ],
     },
   });
 
