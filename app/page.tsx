@@ -12,6 +12,12 @@ type Props = {
   }>;
 };
 
+type AbcCounts = {
+  A: number;
+  B: number;
+  C: number;
+};
+
 type CompanyDashboardRow = {
   companyName: string;
   wbRevenue: number;
@@ -44,21 +50,25 @@ const quickLinks = [
     title: "Центр прибыли",
     description: "Прибыль WB/Ozon, проблемные SKU, реклама и маржинальность.",
     href: "/analytics",
+    icon: "📊",
   },
   {
     title: "Кредиты",
     description: "Графики платежей, факт/план и долговая нагрузка.",
     href: "/finance/loans",
+    icon: "🏦",
   },
   {
     title: "Платёжный календарь",
     description: "Ближайшие обязательства и контроль кассовых разрывов.",
     href: "/finance/payment-calendar",
+    icon: "📅",
   },
   {
     title: "Импорт отчётов",
     description: "Загрузка WB, Ozon, рекламы, остатков и себестоимости.",
     href: "/import",
+    icon: "📥",
   },
 ];
 
@@ -122,17 +132,6 @@ function startOfQuarter(date: Date) {
   const quarterStartMonth = Math.floor(date.getUTCMonth() / 3) * 3;
 
   return makeUtcDate(date.getUTCFullYear(), quarterStartMonth, 1);
-}
-
-function endOfQuarter(date: Date) {
-  const quarterStartMonth = Math.floor(date.getUTCMonth() / 3) * 3;
-  const nextQuarterStart = makeUtcDate(
-    date.getUTCFullYear(),
-    quarterStartMonth + 3,
-    1
-  );
-
-  return addDays(nextQuarterStart, -1);
 }
 
 function createPeriodOptions(): PeriodOption[] {
@@ -256,18 +255,6 @@ function isLoanCategory(category?: string | null) {
   return value.includes("кредит") || value.includes("займ");
 }
 
-function metricCardClassName(extra = "") {
-  return `min-w-0 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6 ${extra}`;
-}
-
-function metricValueClassName(extra = "") {
-  return `break-words text-2xl font-bold tracking-tight sm:text-3xl ${extra}`;
-}
-
-function subTextClassName() {
-  return "mt-3 break-words text-sm leading-6 text-slate-500";
-}
-
 function valueColor(value: number) {
   return value >= 0 ? "text-emerald-600" : "text-red-600";
 }
@@ -286,22 +273,17 @@ function countAbc(rows: { abcByProfit: "A" | "B" | "C" }[]) {
   );
 }
 
-function abcTotal(abc: { A: number; B: number; C: number }) {
+function abcTotal(abc: AbcCounts) {
   return abc.A + abc.B + abc.C;
 }
 
-function abcPercent(count: number, total: number) {
-  if (total <= 0) return "0.0%";
-  return formatPercent((count / total) * 100);
+function abcPercentNumber(count: number, total: number) {
+  if (total <= 0) return 0;
+  return (count / total) * 100;
 }
 
-function abcLabel(abc: { A: number; B: number; C: number }) {
-  const total = abcTotal(abc);
-
-  return `A ${abc.A} (${abcPercent(abc.A, total)}) · B ${abc.B} (${abcPercent(
-    abc.B,
-    total
-  )}) · C ${abc.C} (${abcPercent(abc.C, total)})`;
+function abcPercent(count: number, total: number) {
+  return formatPercent(abcPercentNumber(count, total));
 }
 
 function hasAnyCompanyMetric(row: CompanyDashboardRow) {
@@ -321,6 +303,124 @@ function hasAnyCompanyMetric(row: CompanyDashboardRow) {
     row.ozonAbcA !== 0 ||
     row.ozonAbcB !== 0 ||
     row.ozonAbcC !== 0
+  );
+}
+
+function KpiIcon({ children, tone }: { children: React.ReactNode; tone: string }) {
+  return (
+    <div
+      className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl text-lg ${tone}`}
+    >
+      {children}
+    </div>
+  );
+}
+
+function KpiCard({
+  title,
+  value,
+  subtitle,
+  icon,
+  tone,
+  valueClassName = "text-slate-950",
+}: {
+  title: string;
+  value: string;
+  subtitle: string;
+  icon: React.ReactNode;
+  tone: string;
+  valueClassName?: string;
+}) {
+  return (
+    <article className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
+      <div className="flex items-start gap-4">
+        <KpiIcon tone={tone}>{icon}</KpiIcon>
+
+        <div className="min-w-0">
+          <div className="text-sm font-medium text-slate-500">{title}</div>
+
+          <div className={`mt-4 break-words text-3xl font-bold tracking-tight ${valueClassName}`}>
+            {value}
+          </div>
+
+          <div className="mt-3 text-sm leading-6 text-slate-500">{subtitle}</div>
+        </div>
+      </div>
+    </article>
+  );
+}
+
+function AbcPill({
+  label,
+  count,
+  total,
+  tone,
+}: {
+  label: "A" | "B" | "C";
+  count: number;
+  total: number;
+  tone: string;
+}) {
+  return (
+    <span
+      className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-bold ${tone}`}
+    >
+      {label} {count} ({abcPercent(count, total)})
+    </span>
+  );
+}
+
+function AbcPills({ abc }: { abc: AbcCounts }) {
+  const total = abcTotal(abc);
+
+  return (
+    <div className="flex flex-wrap gap-2">
+      <AbcPill label="A" count={abc.A} total={total} tone="bg-emerald-50 text-emerald-700" />
+      <AbcPill label="B" count={abc.B} total={total} tone="bg-amber-50 text-amber-700" />
+      <AbcPill label="C" count={abc.C} total={total} tone="bg-red-50 text-red-700" />
+    </div>
+  );
+}
+
+function AbcBar({ abc }: { abc: AbcCounts }) {
+  const total = abcTotal(abc);
+  const a = abcPercentNumber(abc.A, total);
+  const b = abcPercentNumber(abc.B, total);
+  const c = abcPercentNumber(abc.C, total);
+
+  return (
+    <div className="mt-4 h-3 overflow-hidden rounded-full bg-slate-100">
+      <div className="flex h-full w-full">
+        <div className="h-full bg-emerald-400" style={{ width: `${a}%` }} />
+        <div className="h-full bg-amber-400" style={{ width: `${b}%` }} />
+        <div className="h-full bg-red-400" style={{ width: `${c}%` }} />
+      </div>
+    </div>
+  );
+}
+
+function AbcCard({ title, abc }: { title: string; abc: AbcCounts }) {
+  const total = abcTotal(abc);
+
+  return (
+    <article className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h3 className="font-bold text-slate-950">{title}</h3>
+          <p className="mt-1 text-sm text-slate-500">{formatNumber(total)} SKU</p>
+        </div>
+
+        <div className="rounded-2xl bg-slate-100 px-3 py-2 text-sm font-bold text-slate-700">
+          ABC
+        </div>
+      </div>
+
+      <AbcBar abc={abc} />
+
+      <div className="mt-4">
+        <AbcPills abc={abc} />
+      </div>
+    </article>
   );
 }
 
@@ -597,10 +697,11 @@ export default async function HomePage({ searchParams }: Props) {
               operatingProfitAfterTax
             )}.`,
       href: "/analytics",
+      icon: "⚠️",
     },
     {
       level: freeCashResult < 0 ? "danger" : "ok",
-      title: "Свободный денежный результат",
+      title: "Свободный результат",
       text:
         freeCashResult < 0
           ? `После всех расходов минус ${formatCurrency(
@@ -608,15 +709,17 @@ export default async function HomePage({ searchParams }: Props) {
             )}. Нужно смотреть ДДС.`
           : `После всех расходов осталось ${formatCurrency(freeCashResult)}.`,
       href: "/finance/cash-flow",
+      icon: "💸",
     },
     {
-      level: drr !== null && drr > 12 ? "danger" : "ok",
+      level: drr !== null && drr > 12 ? "warning" : "ok",
       title: "Реклама",
       text:
         drr !== null && drr > 12
           ? `ДРР ${formatPercent(drr)}. Нужно проверить кампании.`
           : "ДРР в пределах контроля или данных недостаточно.",
       href: "/ads-mapping",
+      icon: "📣",
     },
     {
       level: loanPayments > 0 ? "warning" : "ok",
@@ -626,38 +729,39 @@ export default async function HomePage({ searchParams }: Props) {
           ? `Платежи по кредитам за период: ${formatCurrency(loanPayments)}.`
           : "В выбранном периоде платежей по кредитам не найдено.",
       href: "/finance/loans",
+      icon: "🏦",
     },
   ];
 
   return (
     <main className="min-h-screen bg-slate-100 p-4 sm:p-6 xl:p-10">
       <div className="mx-auto max-w-[1800px] space-y-8">
-        <section className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
-          <div className="min-w-0">
-            <h1 className="break-words text-3xl font-bold tracking-tight text-slate-950 sm:text-4xl">
+        <section className="grid gap-6 xl:grid-cols-[1fr_760px] xl:items-start">
+          <div className="min-w-0 pt-2">
+            <h1 className="break-words text-4xl font-bold tracking-tight text-slate-950">
               Dashboard
             </h1>
 
-            <p className="mt-2 text-slate-500">
+            <p className="mt-4 max-w-2xl text-lg leading-8 text-slate-500">
               Главный экран собственника: прибыль, денежный результат, реклама,
               остатки, ABC и кредитная нагрузка.
             </p>
           </div>
 
-          <div className="flex min-w-0 flex-col gap-4 2xl:flex-row 2xl:items-center">
+          <div className="grid gap-4">
             <form
               action="/"
-              className="min-w-0 rounded-2xl border border-slate-200 bg-white px-4 py-4 shadow-sm sm:px-5"
+              className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm"
             >
-              <div className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-400">
+              <div className="mb-4 text-xs font-bold uppercase tracking-wide text-slate-400">
                 Фильтры Dashboard
               </div>
 
-              <div className="grid min-w-0 grid-cols-1 gap-3 md:grid-cols-[minmax(280px,420px)_minmax(190px,240px)_auto] md:items-center">
+              <div className="grid gap-3 lg:grid-cols-[1fr_250px_140px]">
                 <select
                   name="period"
                   defaultValue={selectedPeriodOption.key}
-                  className="w-full min-w-0 rounded-xl border border-slate-200 bg-slate-100 px-4 py-3 text-sm font-semibold"
+                  className="h-12 w-full rounded-2xl border border-slate-200 bg-slate-100 px-4 text-sm font-semibold text-slate-950 outline-none"
                 >
                   {periodOptions.map((period) => (
                     <option key={period.key} value={period.key}>
@@ -669,7 +773,7 @@ export default async function HomePage({ searchParams }: Props) {
                 <select
                   name="companyName"
                   defaultValue={params.companyName ?? "ALL"}
-                  className="w-full min-w-0 rounded-xl border border-slate-200 bg-slate-100 px-4 py-3 text-sm font-semibold"
+                  className="h-12 w-full rounded-2xl border border-slate-200 bg-slate-100 px-4 text-sm font-semibold text-slate-950 outline-none"
                 >
                   <option value="ALL">Все компании</option>
 
@@ -682,200 +786,190 @@ export default async function HomePage({ searchParams }: Props) {
 
                 <button
                   type="submit"
-                  className="rounded-xl bg-slate-900 px-5 py-3 font-semibold text-white transition hover:bg-slate-800"
+                  className="h-12 rounded-2xl bg-slate-950 px-5 text-sm font-bold text-white transition hover:bg-slate-800"
                 >
                   Показать
                 </button>
               </div>
 
-              <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
-                <label className="text-sm text-slate-500">
+              <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                <label className="text-sm font-medium text-slate-500">
                   Дата от
                   <input
                     type="date"
                     name="dateFrom"
                     defaultValue={selectedPeriod.dateFrom}
-                    className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-100 px-4 py-3 font-semibold text-slate-900"
+                    className="mt-1 h-12 w-full rounded-2xl border border-slate-200 bg-slate-100 px-4 font-semibold text-slate-950 outline-none"
                   />
                 </label>
 
-                <label className="text-sm text-slate-500">
+                <label className="text-sm font-medium text-slate-500">
                   Дата до
                   <input
                     type="date"
                     name="dateTo"
                     defaultValue={selectedPeriod.dateTo}
-                    className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-100 px-4 py-3 font-semibold text-slate-900"
+                    className="mt-1 h-12 w-full rounded-2xl border border-slate-200 bg-slate-100 px-4 font-semibold text-slate-950 outline-none"
                   />
                 </label>
               </div>
             </form>
 
-            <Link
-              href="/import"
-              className="rounded-2xl bg-slate-900 px-5 py-3 text-center text-sm font-semibold text-white transition hover:bg-slate-800"
-            >
-              Импортировать отчёт
-            </Link>
-          </div>
-        </section>
-
-        <section className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-4">
-          <div className={metricCardClassName()}>
-            <div className="mb-4 text-sm text-slate-500">Выручка всего</div>
-
-            <div className={metricValueClassName("text-slate-950")}>
-              {totalRevenue > 0 ? formatCurrency(totalRevenue) : "Нет данных"}
-            </div>
-
-            <div className={subTextClassName()}>
-              WB: {formatCurrency(wbRevenue)} · Ozon: {formatCurrency(ozonRevenue)}
-            </div>
-          </div>
-
-          <div className={metricCardClassName()}>
-            <div className="mb-4 text-sm text-slate-500">
-              Операционная прибыль после налогов
-            </div>
-
-            <div className={metricValueClassName(valueColor(operatingProfitAfterTax))}>
-              {formatCurrency(operatingProfitAfterTax)}
-            </div>
-
-            <div className={subTextClassName()}>
-              После себестоимости, рекламы, логистики, хранения и налогов.
-            </div>
-          </div>
-
-          <div className={metricCardClassName()}>
-            <div className="mb-4 text-sm text-slate-500">
-              Свободный денежный результат
-            </div>
-
-            <div className={metricValueClassName(valueColor(freeCashResult))}>
-              {formatCurrency(freeCashResult)}
-            </div>
-
-            <div className={subTextClassName()}>
-              После всех финансовых операций, расходов и кредитных платежей.
-            </div>
-          </div>
-
-          <div className={metricCardClassName()}>
-            <div className="mb-4 text-sm text-slate-500">ДРР общий</div>
-
-            <div
-              className={metricValueClassName(
-                drr !== null && drr > 12 ? "text-red-600" : "text-slate-950"
-              )}
-            >
-              {drr !== null ? formatPercent(drr) : "Нет данных"}
-            </div>
-
-            <div className={subTextClassName()}>
-              Реклама всего: {formatCurrency(adsCost)}
+            <div className="flex justify-end">
+              <Link
+                href="/import"
+                className="inline-flex items-center gap-2 rounded-2xl bg-slate-950 px-5 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-slate-800"
+              >
+                <span>📥</span>
+                Импортировать отчёт
+              </Link>
             </div>
           </div>
         </section>
 
         <section className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-4">
-          <div className={metricCardClassName()}>
-            <div className="mb-4 text-sm text-slate-500">Кредитные платежи</div>
+          <KpiCard
+            title="Выручка всего"
+            value={totalRevenue > 0 ? formatCurrency(totalRevenue) : "Нет данных"}
+            subtitle={`WB: ${formatCurrency(wbRevenue)} · Ozon: ${formatCurrency(
+              ozonRevenue
+            )}`}
+            icon="💼"
+            tone="bg-blue-50 text-blue-600"
+          />
 
-            <div
-              className={metricValueClassName(
-                loanPayments > 0 ? "text-red-600" : "text-slate-950"
-              )}
-            >
-              {loanPayments > 0 ? formatCurrency(loanPayments) : "Нет данных"}
+          <KpiCard
+            title="Операционная прибыль после налогов"
+            value={formatCurrency(operatingProfitAfterTax)}
+            subtitle="После себестоимости, рекламы, логистики, хранения и налогов."
+            icon="↗"
+            tone="bg-emerald-50 text-emerald-600"
+            valueClassName={valueColor(operatingProfitAfterTax)}
+          />
+
+          <KpiCard
+            title="Свободный денежный результат"
+            value={formatCurrency(freeCashResult)}
+            subtitle="После всех расходов, кредитов, процентов и личных трат."
+            icon="₽"
+            tone="bg-red-50 text-red-600"
+            valueClassName={valueColor(freeCashResult)}
+          />
+
+          <KpiCard
+            title="ДРР общий"
+            value={drr !== null ? formatPercent(drr) : "Нет данных"}
+            subtitle={`Реклама всего: ${formatCurrency(adsCost)}`}
+            icon="📣"
+            tone="bg-violet-50 text-violet-600"
+          />
+        </section>
+
+        <section className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-4">
+          <KpiCard
+            title="Кредитные платежи"
+            value={loanPayments > 0 ? formatCurrency(loanPayments) : "Нет данных"}
+            subtitle="Факт по финансовым операциям за выбранный период."
+            icon="💳"
+            tone="bg-orange-50 text-orange-600"
+            valueClassName={loanPayments > 0 ? "text-red-600" : "text-slate-950"}
+          />
+
+          <article className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
+            <div className="flex items-start gap-4">
+              <KpiIcon tone="bg-blue-50 text-blue-600">▣</KpiIcon>
+              <div>
+                <div className="text-sm font-medium text-slate-500">Остатки WB</div>
+                <div className="mt-4 text-3xl font-bold tracking-tight text-slate-950">
+                  {wbStockQty > 0 ? `${formatNumber(wbStockQty)} шт` : "Нет данных"}
+                </div>
+              </div>
             </div>
 
-            <div className={subTextClassName()}>
-              Факт по финансовым операциям за выбранный период.
+            <div className="mt-5">
+              <AbcPills abc={wbAbc} />
             </div>
-          </div>
+          </article>
 
-          <div className={metricCardClassName()}>
-            <div className="mb-4 text-sm text-slate-500">Остатки WB</div>
-
-            <div className={metricValueClassName("text-slate-950")}>
-              {wbStockQty > 0 ? `${formatNumber(wbStockQty)} шт` : "Нет данных"}
-            </div>
-
-            <div className={subTextClassName()}>ABC WB: {abcLabel(wbAbc)}</div>
-          </div>
-
-          <div className={metricCardClassName()}>
-            <div className="mb-4 text-sm text-slate-500">Остатки Ozon</div>
-
-            <div className={metricValueClassName("text-slate-950")}>
-              {ozonStockQty > 0
-                ? `${formatNumber(ozonStockQty)} шт`
-                : "Нет данных"}
+          <article className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
+            <div className="flex items-start gap-4">
+              <KpiIcon tone="bg-indigo-50 text-indigo-600">▣</KpiIcon>
+              <div>
+                <div className="text-sm font-medium text-slate-500">Остатки Ozon</div>
+                <div className="mt-4 text-3xl font-bold tracking-tight text-slate-950">
+                  {ozonStockQty > 0
+                    ? `${formatNumber(ozonStockQty)} шт`
+                    : "Нет данных"}
+                </div>
+              </div>
             </div>
 
-            <div className={subTextClassName()}>ABC Ozon: {abcLabel(ozonAbc)}</div>
-          </div>
+            <div className="mt-5">
+              <AbcPills abc={ozonAbc} />
+            </div>
+          </article>
 
-          <div className={metricCardClassName()}>
-            <div className="mb-4 text-sm text-slate-500">ABC всего</div>
-
-            <div className="break-words text-xl font-bold tracking-tight text-slate-950 sm:text-2xl">
-              {abcLabel(totalAbc)}
+          <article className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
+            <div className="flex items-start gap-4">
+              <KpiIcon tone="bg-violet-50 text-violet-600">◔</KpiIcon>
+              <div>
+                <div className="text-sm font-medium text-slate-500">ABC всего</div>
+                <div className="mt-4 text-2xl font-bold tracking-tight text-slate-950">
+                  {formatNumber(abcTotal(totalAbc))} SKU
+                </div>
+              </div>
             </div>
 
-            <div className={subTextClassName()}>
-              WB и Ozon по выбранному периоду.
+            <div className="mt-5">
+              <AbcPills abc={totalAbc} />
             </div>
+          </article>
+        </section>
+
+        <section className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+          <h2 className="text-xl font-bold text-slate-950">Структура ABC по штукам</h2>
+
+          <div className="mt-5 grid gap-5 xl:grid-cols-3">
+            <AbcCard title="WB" abc={wbAbc} />
+            <AbcCard title="Ozon" abc={ozonAbc} />
+            <AbcCard title="Всего WB + Ozon" abc={totalAbc} />
           </div>
         </section>
 
-        <section className="grid gap-5 xl:grid-cols-4">
-          {attentionItems.map((item) => (
-            <Link
-              key={item.title}
-              href={item.href}
-              className={`rounded-3xl border bg-white p-6 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md ${
-                item.level === "danger"
-                  ? "border-red-200"
-                  : item.level === "warning"
-                    ? "border-amber-200"
-                    : "border-slate-200"
-              }`}
-            >
-              <div
-                className={`text-sm font-semibold uppercase tracking-wide ${
+        <section className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+          <h2 className="text-xl font-bold text-slate-950">Что требует внимания</h2>
+
+          <div className="mt-5 grid gap-5 xl:grid-cols-4">
+            {attentionItems.map((item) => (
+              <Link
+                key={item.title}
+                href={item.href}
+                className={`rounded-3xl border p-5 transition hover:-translate-y-0.5 hover:shadow-md ${
                   item.level === "danger"
-                    ? "text-red-500"
+                    ? "border-red-200 bg-red-50/40"
                     : item.level === "warning"
-                      ? "text-amber-500"
-                      : "text-slate-400"
+                      ? "border-amber-200 bg-amber-50/40"
+                      : "border-slate-200 bg-white"
                 }`}
               >
-                Что требует внимания
-              </div>
+                <div className="text-2xl">{item.icon}</div>
 
-              <h2 className="mt-3 text-xl font-bold text-slate-900">
-                {item.title}
-              </h2>
+                <h3 className="mt-4 font-bold text-slate-950">{item.title}</h3>
 
-              <p className="mt-3 text-sm leading-6 text-slate-500">
-                {item.text}
-              </p>
+                <p className="mt-3 text-sm leading-6 text-slate-600">{item.text}</p>
 
-              <div className="mt-5 font-semibold text-slate-900">
-                Открыть →
-              </div>
-            </Link>
-          ))}
+                <div className="mt-4 text-sm font-bold text-slate-950">Открыть →</div>
+              </Link>
+            ))}
+          </div>
         </section>
 
-        <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-8">
-          <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <section className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+          <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <h2 className="text-2xl font-bold">Компании</h2>
+              <h2 className="text-xl font-bold text-slate-950">Компании</h2>
 
-              <p className="mt-2 text-slate-500">
+              <p className="mt-1 text-sm text-slate-500">
                 Только компании, у которых есть показатели за выбранный период
                 или актуальные остатки.
               </p>
@@ -883,14 +977,14 @@ export default async function HomePage({ searchParams }: Props) {
 
             <Link
               href="/settings/companies"
-              className="rounded-xl border border-slate-300 px-5 py-3 text-center transition hover:bg-slate-100"
+              className="rounded-2xl border border-slate-300 px-5 py-3 text-center text-sm font-semibold transition hover:bg-slate-100"
             >
               Настройки компаний
             </Link>
           </div>
 
           {companyRows.length > 0 ? (
-            <div className="grid gap-5 lg:grid-cols-2 2xl:grid-cols-3">
+            <div className="grid gap-5 xl:grid-cols-2">
               {companyRows.map((row) => {
                 const rowWbAbc = {
                   A: row.wbAbcA,
@@ -907,11 +1001,11 @@ export default async function HomePage({ searchParams }: Props) {
                 return (
                   <article
                     key={row.companyName}
-                    className="rounded-2xl border border-slate-200 bg-slate-50 p-5"
+                    className="rounded-3xl border border-slate-200 bg-slate-50 p-5"
                   >
-                    <div className="mb-5 flex items-start justify-between gap-4">
+                    <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                       <div>
-                        <h3 className="text-xl font-bold text-slate-950">
+                        <h3 className="text-2xl font-bold text-slate-950">
                           {row.companyName}
                         </h3>
 
@@ -921,7 +1015,7 @@ export default async function HomePage({ searchParams }: Props) {
                       </div>
 
                       <div
-                        className={`rounded-full px-3 py-1 text-sm font-semibold ${
+                        className={`w-fit rounded-full px-4 py-2 text-sm font-bold ${
                           row.operatingProfitAfterTax >= 0
                             ? "bg-emerald-50 text-emerald-700"
                             : "bg-red-50 text-red-700"
@@ -931,45 +1025,45 @@ export default async function HomePage({ searchParams }: Props) {
                       </div>
                     </div>
 
-                    <div className="grid gap-4 sm:grid-cols-2">
+                    <div className="mt-6 grid gap-x-8 gap-y-5 sm:grid-cols-3">
                       <div>
-                        <div className="text-sm text-slate-500">Выручка WB</div>
-                        <div className="mt-1 font-bold">
+                        <div className="text-sm text-slate-500">WB</div>
+                        <div className="mt-1 font-bold text-slate-950">
                           {formatCurrency(row.wbRevenue)}
                         </div>
                       </div>
 
                       <div>
-                        <div className="text-sm text-slate-500">Выручка Ozon</div>
-                        <div className="mt-1 font-bold">
+                        <div className="text-sm text-slate-500">Ozon</div>
+                        <div className="mt-1 font-bold text-slate-950">
                           {formatCurrency(row.ozonRevenue)}
                         </div>
                       </div>
 
                       <div>
                         <div className="text-sm text-slate-500">Всего</div>
-                        <div className="mt-1 font-bold">
+                        <div className="mt-1 font-bold text-slate-950">
                           {formatCurrency(row.totalRevenue)}
                         </div>
                       </div>
 
                       <div>
                         <div className="text-sm text-slate-500">Реклама</div>
-                        <div className="mt-1 font-bold">
+                        <div className="mt-1 font-bold text-slate-950">
                           {formatCurrency(row.adsCost)}
                         </div>
                       </div>
 
                       <div>
                         <div className="text-sm text-slate-500">ДРР</div>
-                        <div className="mt-1 font-bold">
+                        <div className="mt-1 font-bold text-slate-950">
                           {row.drr !== null ? formatPercent(row.drr) : "—"}
                         </div>
                       </div>
 
                       <div>
                         <div className="text-sm text-slate-500">Кредиты</div>
-                        <div className="mt-1 font-bold">
+                        <div className="mt-1 font-bold text-slate-950">
                           {formatCurrency(row.loanPayments)}
                         </div>
                       </div>
@@ -978,43 +1072,41 @@ export default async function HomePage({ searchParams }: Props) {
                         <div className="text-sm text-slate-500">
                           Свободный результат
                         </div>
-                        <div
-                          className={`mt-1 font-bold ${valueColor(
-                            row.freeCashResult
-                          )}`}
-                        >
+                        <div className={`mt-1 font-bold ${valueColor(row.freeCashResult)}`}>
                           {formatCurrency(row.freeCashResult)}
                         </div>
                       </div>
 
                       <div>
-                        <div className="text-sm text-slate-500">Остатки</div>
-                        <div className="mt-1 font-bold">
-                          WB {formatNumber(row.wbStockQty)} / Ozon{" "}
+                        <div className="text-sm text-slate-500">Остатки WB</div>
+                        <div className="mt-1 font-bold text-slate-950">
+                          {formatNumber(row.wbStockQty)} шт
+                        </div>
+                      </div>
+
+                      <div>
+                        <div className="text-sm text-slate-500">Остатки Ozon</div>
+                        <div className="mt-1 font-bold text-slate-950">
                           {formatNumber(row.ozonStockQty)} шт
                         </div>
                       </div>
                     </div>
 
-                    <div className="mt-5 grid gap-3 border-t border-slate-200 pt-4 sm:grid-cols-2">
+                    <div className="mt-6 grid gap-4 border-t border-slate-200 pt-5 sm:grid-cols-2">
                       <div>
-                        <div className="text-sm font-semibold text-slate-700">
+                        <div className="mb-3 text-sm font-bold text-slate-700">
                           ABC WB
                         </div>
 
-                        <div className="mt-1 text-sm text-slate-500">
-                          {abcLabel(rowWbAbc)}
-                        </div>
+                        <AbcPills abc={rowWbAbc} />
                       </div>
 
                       <div>
-                        <div className="text-sm font-semibold text-slate-700">
+                        <div className="mb-3 text-sm font-bold text-slate-700">
                           ABC Ozon
                         </div>
 
-                        <div className="mt-1 text-sm text-slate-500">
-                          {abcLabel(rowOzonAbc)}
-                        </div>
+                        <AbcPills abc={rowOzonAbc} />
                       </div>
                     </div>
                   </article>
@@ -1028,24 +1120,36 @@ export default async function HomePage({ searchParams }: Props) {
           )}
         </section>
 
-        <section className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
-          {quickLinks.map((item) => (
-            <Link
-              key={item.href}
-              href={item.href}
-              className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
-            >
-              <h2 className="text-xl font-bold text-slate-900">{item.title}</h2>
+        <section className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+          <h2 className="text-xl font-bold text-slate-950">Быстрый доступ</h2>
 
-              <p className="mt-3 text-sm leading-6 text-slate-500">
-                {item.description}
-              </p>
+          <div className="mt-5 grid gap-5 md:grid-cols-2 xl:grid-cols-4">
+            {quickLinks.map((item) => (
+              <Link
+                key={item.href}
+                href={item.href}
+                className="rounded-3xl border border-slate-200 bg-white p-5 transition hover:-translate-y-0.5 hover:shadow-md"
+              >
+                <div className="flex items-start gap-4">
+                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-blue-50 text-xl">
+                    {item.icon}
+                  </div>
 
-              <div className="mt-5 font-semibold text-slate-900">
-                Открыть →
-              </div>
-            </Link>
-          ))}
+                  <div>
+                    <h3 className="font-bold text-slate-950">{item.title}</h3>
+
+                    <p className="mt-2 text-sm leading-6 text-slate-500">
+                      {item.description}
+                    </p>
+
+                    <div className="mt-3 text-sm font-bold text-slate-950">
+                      Открыть →
+                    </div>
+                  </div>
+                </div>
+              </Link>
+            ))}
+          </div>
         </section>
       </div>
     </main>
