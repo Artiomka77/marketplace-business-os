@@ -196,6 +196,15 @@ export function detectWorkbookReport(workbook: XLSX.WorkBook): DetectionResult {
   for (const sheetName of workbook.SheetNames) {
     const sheet = workbook.Sheets[sheetName];
 
+    if (normalize(sheetName).includes("товар-склад")) {
+      return {
+        reportType: "OZON_STOCK",
+        sheetName,
+        headerRowIndex: 0,
+        matchedColumns: ["sheet: Товар-склад"],
+      };
+    }
+
     const matrix = XLSX.utils.sheet_to_json<unknown[]>(sheet, {
       header: 1,
       defval: "",
