@@ -171,7 +171,13 @@ const reportSignatures: {
   },
   {
     type: "OZON_STOCK",
-    columns: ["Артикул", "SKU", "Название товара", "Доступно к продаже"],
+    columns: [
+      "Артикул",
+      "SKU",
+      "Название товара",
+      "Доступно к продаже",
+      "Готовится к продаже",
+    ],
   },
   {
     type: "OZON_PRODUCT",
@@ -244,6 +250,25 @@ export function detectWorkbookReport(workbook: XLSX.WorkBook): DetectionResult {
           sheetName,
           headerRowIndex: rowIndex,
           matchedColumns: ["sheet: Начисления", "SKU"],
+        };
+      }
+
+      if (
+        normalize(sheetName).includes("товар-склад") &&
+        rowHas(row, "Артикул") &&
+        rowHas(row, "SKU") &&
+        rowHas(row, "Доступно к продаже")
+      ) {
+        return {
+          reportType: "OZON_STOCK",
+          sheetName,
+          headerRowIndex: rowIndex,
+          matchedColumns: [
+            "sheet: Товар-склад",
+            "Артикул",
+            "SKU",
+            "Доступно к продаже",
+          ],
         };
       }
 
