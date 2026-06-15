@@ -10,24 +10,15 @@ type Props = {
   }>;
 };
 
-type PeriodOption = {
-  key: string;
-  label: string;
-  dateFrom: string;
-  dateTo: string;
-};
-
 type CompanyDashboardRow = {
   companyName: string;
   wbRevenue: number;
   ozonRevenue: number;
   totalRevenue: number;
-  wbOperatingProfitAfterTax: number;
-  ozonOperatingProfitAfterTax: number;
   operatingProfitAfterTax: number;
+  freeCashResult: number;
   adsCost: number;
   drr: number | null;
-  freeCashResult: number;
   loanPayments: number;
   wbStockQty: number;
   ozonStockQty: number;
@@ -93,7 +84,10 @@ function toIsoDate(date: Date) {
 }
 
 function startOfWeek(date: Date) {
-  const result = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate(), 12));
+  const result = new Date(
+    Date.UTC(date.getFullYear(), date.getMonth(), date.getDate(), 12)
+  );
+
   const day = result.getUTCDay();
   const diff = day === 0 ? -6 : 1 - day;
 
@@ -115,32 +109,46 @@ function createPeriodOptions() {
   const previousWeekStart = addDays(currentWeekStart, -7);
   const previousWeekEnd = addDays(previousWeekStart, 6);
 
-  const currentMonthStart = new Date(Date.UTC(today.getFullYear(), today.getMonth(), 1, 12));
-  const previousMonthStart = new Date(Date.UTC(today.getFullYear(), today.getMonth() - 1, 1, 12));
-  const previousMonthEnd = new Date(Date.UTC(today.getFullYear(), today.getMonth(), 0, 12));
+  const currentMonthStart = new Date(
+    Date.UTC(today.getFullYear(), today.getMonth(), 1, 12)
+  );
+  const previousMonthStart = new Date(
+    Date.UTC(today.getFullYear(), today.getMonth() - 1, 1, 12)
+  );
+  const previousMonthEnd = new Date(
+    Date.UTC(today.getFullYear(), today.getMonth(), 0, 12)
+  );
 
   return [
     {
       key: "previous-week",
-      label: `Прошлая неделя: ${formatDate(previousWeekStart)} — ${formatDate(previousWeekEnd)}`,
+      label: `Прошлая неделя: ${formatDate(previousWeekStart)} — ${formatDate(
+        previousWeekEnd
+      )}`,
       dateFrom: toIsoDate(previousWeekStart),
       dateTo: toIsoDate(previousWeekEnd),
     },
     {
       key: "current-week",
-      label: `Текущая неделя: ${formatDate(currentWeekStart)} — ${formatDate(today)}`,
+      label: `Текущая неделя: ${formatDate(currentWeekStart)} — ${formatDate(
+        today
+      )}`,
       dateFrom: toIsoDate(currentWeekStart),
       dateTo: toIsoDate(today),
     },
     {
       key: "current-month",
-      label: `Текущий месяц: ${formatDate(currentMonthStart)} — ${formatDate(today)}`,
+      label: `Текущий месяц: ${formatDate(currentMonthStart)} — ${formatDate(
+        today
+      )}`,
       dateFrom: toIsoDate(currentMonthStart),
       dateTo: toIsoDate(today),
     },
     {
       key: "previous-month",
-      label: `Прошлый месяц: ${formatDate(previousMonthStart)} — ${formatDate(previousMonthEnd)}`,
+      label: `Прошлый месяц: ${formatDate(previousMonthStart)} — ${formatDate(
+        previousMonthEnd
+      )}`,
       dateFrom: toIsoDate(previousMonthStart),
       dateTo: toIsoDate(previousMonthEnd),
     },
@@ -181,7 +189,6 @@ function countAbc(rows: { abcByProfit: "A" | "B" | "C" }[]) {
   return rows.reduce(
     (acc, row) => {
       acc[row.abcByProfit] += 1;
-
       return acc;
     },
     {
@@ -189,6 +196,26 @@ function countAbc(rows: { abcByProfit: "A" | "B" | "C" }[]) {
       B: 0,
       C: 0,
     }
+  );
+}
+
+function hasAnyCompanyMetric(row: CompanyDashboardRow) {
+  return (
+    row.wbRevenue !== 0 ||
+    row.ozonRevenue !== 0 ||
+    row.totalRevenue !== 0 ||
+    row.operatingProfitAfterTax !== 0 ||
+    row.freeCashResult !== 0 ||
+    row.adsCost !== 0 ||
+    row.loanPayments !== 0 ||
+    row.wbStockQty !== 0 ||
+    row.ozonStockQty !== 0 ||
+    row.wbAbcA !== 0 ||
+    row.wbAbcB !== 0 ||
+    row.wbAbcC !== 0 ||
+    row.ozonAbcA !== 0 ||
+    row.ozonAbcB !== 0 ||
+    row.ozonAbcC !== 0
   );
 }
 
@@ -325,7 +352,7 @@ export default async function HomePage({ searchParams }: Props) {
     ? companies.filter((company) => company.name === selectedCompanyName)
     : companies;
 
-  const companyRows: CompanyDashboardRow[] = [];
+  const rawCompanyRows: CompanyDashboardRow[] = [];
 
   for (const company of selectedCompanies) {
     const wb = await getProfitAnalytics({
@@ -335,20 +362,18 @@ export default async function HomePage({ searchParams }: Props) {
     });
 
     const ozon = await getProfitAnalyticsOzon({
-  dateFrom: selectedPeriod.dateFrom,
-  dateTo: selectedPeriod.dateTo,
-  companyName: company.name,
-
-  usnRate:
-    company.usnRate !== null && company.usnRate !== undefined
-      ? Number(company.usnRate)
-      : 1,
-
-  vatRate:
-    company.vatRate !== null && company.vatRate !== undefined
-      ? Number(company.vatRate)
-      : 5,
-});
+      dateFrom: selectedPeriod.dateFrom,
+      dateTo: selectedPeriod.dateTo,
+      companyName: company.name,
+      usnRate:
+        company.usnRate !== null && company.usnRate !== undefined
+          ? Number(company.usnRate)
+          : 1,
+      vatRate:
+        company.vatRate !== null && company.vatRate !== undefined
+          ? Number(company.vatRate)
+          : 5,
+    });
 
     const cash = await getFinanceCashResult({
       companyName: company.name,
@@ -371,15 +396,13 @@ export default async function HomePage({ searchParams }: Props) {
     const adsCost = wb.totals.adsCost + ozon.totals.adsCost;
     const drr = totalRevenue > 0 ? (adsCost / totalRevenue) * 100 : null;
 
-    companyRows.push({
+    rawCompanyRows.push({
       companyName: company.name,
 
       wbRevenue,
       ozonRevenue,
       totalRevenue,
 
-      wbOperatingProfitAfterTax: wb.totals.netProfitAfterTax,
-      ozonOperatingProfitAfterTax: ozon.totals.netProfitAfterTax,
       operatingProfitAfterTax:
         wb.totals.netProfitAfterTax + ozon.totals.netProfitAfterTax,
 
@@ -402,8 +425,9 @@ export default async function HomePage({ searchParams }: Props) {
     });
   }
 
-  const totalRevenue = companyRows.reduce((sum, row) => sum + row.totalRevenue, 0);
+  const companyRows = rawCompanyRows.filter(hasAnyCompanyMetric);
 
+  const totalRevenue = companyRows.reduce((sum, row) => sum + row.totalRevenue, 0);
   const wbRevenue = companyRows.reduce((sum, row) => sum + row.wbRevenue, 0);
   const ozonRevenue = companyRows.reduce((sum, row) => sum + row.ozonRevenue, 0);
 
@@ -609,7 +633,11 @@ export default async function HomePage({ searchParams }: Props) {
           <div className={metricCardClassName()}>
             <div className="mb-4 text-sm text-slate-500">Кредитные платежи</div>
 
-            <div className={metricValueClassName(loanPayments > 0 ? "text-red-600" : "text-slate-950")}>
+            <div
+              className={metricValueClassName(
+                loanPayments > 0 ? "text-red-600" : "text-slate-950"
+              )}
+            >
               {loanPayments > 0 ? formatCurrency(loanPayments) : "Нет данных"}
             </div>
 
@@ -634,7 +662,9 @@ export default async function HomePage({ searchParams }: Props) {
             <div className="mb-4 text-sm text-slate-500">Остатки Ozon</div>
 
             <div className={metricValueClassName("text-slate-950")}>
-              {ozonStockQty > 0 ? `${formatNumber(ozonStockQty)} шт` : "Нет данных"}
+              {ozonStockQty > 0
+                ? `${formatNumber(ozonStockQty)} шт`
+                : "Нет данных"}
             </div>
 
             <div className={subTextClassName()}>
@@ -643,14 +673,15 @@ export default async function HomePage({ searchParams }: Props) {
           </div>
 
           <div className={metricCardClassName()}>
-            <div className="mb-4 text-sm text-slate-500">Период</div>
+            <div className="mb-4 text-sm text-slate-500">ABC всего</div>
 
-            <div className="text-xl font-bold text-slate-950">
-              {selectedPeriod.label}
+            <div className={metricValueClassName("text-slate-950")}>
+              A {wbAbcA + ozonAbcA} · B {wbAbcB + ozonAbcB} · C{" "}
+              {wbAbcC + ozonAbcC}
             </div>
 
             <div className={subTextClassName()}>
-              Период теперь задаётся едино для WB, Ozon и финансов.
+              WB и Ozon по выбранному периоду.
             </div>
           </div>
         </section>
@@ -701,7 +732,8 @@ export default async function HomePage({ searchParams }: Props) {
               <h2 className="text-2xl font-bold">Компании</h2>
 
               <p className="mt-2 text-slate-500">
-                Сводка по ИП за выбранный период.
+                Только компании, у которых есть показатели за выбранный период
+                или актуальные остатки.
               </p>
             </div>
 
@@ -713,94 +745,125 @@ export default async function HomePage({ searchParams }: Props) {
             </Link>
           </div>
 
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[1300px] border-collapse">
-              <thead>
-                <tr className="border-b border-slate-200 text-slate-500">
-                  <th className="py-4 pr-4 text-left font-medium">Компания</th>
-                  <th className="py-4 pr-4 text-left font-medium">WB</th>
-                  <th className="py-4 pr-4 text-left font-medium">Ozon</th>
-                  <th className="py-4 pr-4 text-left font-medium">Всего</th>
-                  <th className="py-4 pr-4 text-left font-medium">
-                    Опер. прибыль
-                  </th>
-                  <th className="py-4 pr-4 text-left font-medium">
-                    Свободный результат
-                  </th>
-                  <th className="py-4 pr-4 text-left font-medium">Реклама</th>
-                  <th className="py-4 pr-4 text-left font-medium">ДРР</th>
-                  <th className="py-4 pr-4 text-left font-medium">Кредиты</th>
-                  <th className="py-4 pr-4 text-left font-medium">ABC WB</th>
-                  <th className="py-4 pr-4 text-left font-medium">ABC Ozon</th>
-                  <th className="py-4 pr-4 text-left font-medium">Остатки</th>
-                </tr>
-              </thead>
+          {companyRows.length > 0 ? (
+            <div className="grid gap-5 lg:grid-cols-2 2xl:grid-cols-3">
+              {companyRows.map((row) => (
+                <article
+                  key={row.companyName}
+                  className="rounded-2xl border border-slate-200 bg-slate-50 p-5"
+                >
+                  <div className="mb-5 flex items-start justify-between gap-4">
+                    <div>
+                      <h3 className="text-xl font-bold text-slate-950">
+                        {row.companyName}
+                      </h3>
 
-              <tbody>
-                {companyRows.map((row) => (
-                  <tr
-                    key={row.companyName}
-                    className="border-b border-slate-100 transition hover:bg-slate-50"
-                  >
-                    <td className="py-5 pr-4 font-medium">{row.companyName}</td>
+                      <p className="mt-1 text-sm text-slate-500">
+                        WB / Ozon / финансы / остатки
+                      </p>
+                    </div>
 
-                    <td className="py-5 pr-4 font-semibold">
-                      {formatCurrency(row.wbRevenue)}
-                    </td>
-
-                    <td className="py-5 pr-4 font-semibold">
-                      {formatCurrency(row.ozonRevenue)}
-                    </td>
-
-                    <td className="py-5 pr-4 font-semibold">
-                      {formatCurrency(row.totalRevenue)}
-                    </td>
-
-                    <td className={`py-5 pr-4 font-semibold ${valueColor(row.operatingProfitAfterTax)}`}>
+                    <div
+                      className={`rounded-full px-3 py-1 text-sm font-semibold ${
+                        row.operatingProfitAfterTax >= 0
+                          ? "bg-emerald-50 text-emerald-700"
+                          : "bg-red-50 text-red-700"
+                      }`}
+                    >
                       {formatCurrency(row.operatingProfitAfterTax)}
-                    </td>
+                    </div>
+                  </div>
 
-                    <td className={`py-5 pr-4 font-semibold ${valueColor(row.freeCashResult)}`}>
-                      {formatCurrency(row.freeCashResult)}
-                    </td>
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <div>
+                      <div className="text-sm text-slate-500">Выручка WB</div>
+                      <div className="mt-1 font-bold">
+                        {formatCurrency(row.wbRevenue)}
+                      </div>
+                    </div>
 
-                    <td className="py-5 pr-4 font-semibold">
-                      {formatCurrency(row.adsCost)}
-                    </td>
+                    <div>
+                      <div className="text-sm text-slate-500">Выручка Ozon</div>
+                      <div className="mt-1 font-bold">
+                        {formatCurrency(row.ozonRevenue)}
+                      </div>
+                    </div>
 
-                    <td className="py-5 pr-4 font-semibold">
-                      {row.drr !== null ? formatPercent(row.drr) : "—"}
-                    </td>
+                    <div>
+                      <div className="text-sm text-slate-500">Всего</div>
+                      <div className="mt-1 font-bold">
+                        {formatCurrency(row.totalRevenue)}
+                      </div>
+                    </div>
 
-                    <td className="py-5 pr-4 font-semibold">
-                      {formatCurrency(row.loanPayments)}
-                    </td>
+                    <div>
+                      <div className="text-sm text-slate-500">Реклама</div>
+                      <div className="mt-1 font-bold">
+                        {formatCurrency(row.adsCost)}
+                      </div>
+                    </div>
 
-                    <td className="py-5 pr-4 font-semibold">
-                      A {row.wbAbcA} · B {row.wbAbcB} · C {row.wbAbcC}
-                    </td>
+                    <div>
+                      <div className="text-sm text-slate-500">ДРР</div>
+                      <div className="mt-1 font-bold">
+                        {row.drr !== null ? formatPercent(row.drr) : "—"}
+                      </div>
+                    </div>
 
-                    <td className="py-5 pr-4 font-semibold">
-                      A {row.ozonAbcA} · B {row.ozonAbcB} · C {row.ozonAbcC}
-                    </td>
+                    <div>
+                      <div className="text-sm text-slate-500">Кредиты</div>
+                      <div className="mt-1 font-bold">
+                        {formatCurrency(row.loanPayments)}
+                      </div>
+                    </div>
 
-                    <td className="py-5 pr-4 font-semibold">
-                      WB {formatNumber(row.wbStockQty)} / Ozon{" "}
-                      {formatNumber(row.ozonStockQty)} шт
-                    </td>
-                  </tr>
-                ))}
+                    <div>
+                      <div className="text-sm text-slate-500">
+                        Свободный результат
+                      </div>
+                      <div className={`mt-1 font-bold ${valueColor(row.freeCashResult)}`}>
+                        {formatCurrency(row.freeCashResult)}
+                      </div>
+                    </div>
 
-                {companyRows.length === 0 && (
-                  <tr>
-                    <td colSpan={12} className="py-8 text-center text-slate-500">
-                      Нет данных за выбранный период.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
+                    <div>
+                      <div className="text-sm text-slate-500">Остатки</div>
+                      <div className="mt-1 font-bold">
+                        WB {formatNumber(row.wbStockQty)} / Ozon{" "}
+                        {formatNumber(row.ozonStockQty)} шт
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="mt-5 grid gap-3 border-t border-slate-200 pt-4 sm:grid-cols-2">
+                    <div>
+                      <div className="text-sm font-semibold text-slate-700">
+                        ABC WB
+                      </div>
+
+                      <div className="mt-1 text-sm text-slate-500">
+                        A {row.wbAbcA} · B {row.wbAbcB} · C {row.wbAbcC}
+                      </div>
+                    </div>
+
+                    <div>
+                      <div className="text-sm font-semibold text-slate-700">
+                        ABC Ozon
+                      </div>
+
+                      <div className="mt-1 text-sm text-slate-500">
+                        A {row.ozonAbcA} · B {row.ozonAbcB} · C {row.ozonAbcC}
+                      </div>
+                    </div>
+                  </div>
+                </article>
+              ))}
+            </div>
+          ) : (
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-8 text-center text-slate-500">
+              Нет компаний с показателями за выбранный период.
+            </div>
+          )}
         </section>
 
         <section className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
