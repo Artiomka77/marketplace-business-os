@@ -17,17 +17,34 @@ function toNumber(value: unknown): number | null {
   return Number.isNaN(number) ? null : number;
 }
 
+function makeSafeDate(year: number, monthIndex: number, day: number) {
+  return new Date(Date.UTC(year, monthIndex, day, 12, 0, 0));
+}
+
 function toDate(value: unknown): Date | null {
   if (!value) return null;
 
   if (value instanceof Date) {
-    return Number.isNaN(value.getTime()) ? null : value;
+    if (Number.isNaN(value.getTime())) return null;
+
+    return makeSafeDate(
+      value.getFullYear(),
+      value.getMonth(),
+      value.getDate()
+    );
   }
 
   if (typeof value === "number") {
     const excelEpoch = new Date(Date.UTC(1899, 11, 30));
-    const date = new Date(excelEpoch.getTime() + value * 24 * 60 * 60 * 1000);
-    return Number.isNaN(date.getTime()) ? null : date;
+    const rawDate = new Date(excelEpoch.getTime() + value * 24 * 60 * 60 * 1000);
+
+    if (Number.isNaN(rawDate.getTime())) return null;
+
+    return makeSafeDate(
+      rawDate.getUTCFullYear(),
+      rawDate.getUTCMonth(),
+      rawDate.getUTCDate()
+    );
   }
 
   const text = String(value).trim();
@@ -36,14 +53,42 @@ function toDate(value: unknown): Date | null {
   if (ruDate) {
     const [, day, month, year] = ruDate;
 
-    return new Date(
-      Date.UTC(Number(year), Number(month) - 1, Number(day), 12, 0, 0)
-    );
+    return makeSafeDate(Number(year), Number(month) - 1, Number(day));
+  }
+
+  const isoDate = text.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+
+  if (isoDate) {
+    const [, year, month, day] = isoDate;
+
+    return makeSafeDate(Number(year), Number(month) - 1, Number(day));
   }
 
   const date = new Date(text);
 
-  return Number.isNaN(date.getTime()) ? null : date;
+  if (Number.isNaN(date.getTime())) return null;
+
+  return makeSafeDate(date.getFullYear(), date.getMonth(), date.getDate());
+}
+
+function startOfDay(date: Date) {
+  return new Date(
+    Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate(), 0, 0, 0)
+  );
+}
+
+function endOfDay(date: Date) {
+  return new Date(
+    Date.UTC(
+      date.getUTCFullYear(),
+      date.getUTCMonth(),
+      date.getUTCDate(),
+      23,
+      59,
+      59,
+      999
+    )
+  );
 }
 
 function cleanText(value: unknown): string | null {
@@ -170,10 +215,21 @@ export async function normalizeFinanceTransactions(
     };
   }
 
+  const sortedDates = data
+    .map((row) => row.operationDate)
+    .sort((a, b) => a.getTime() - b.getTime());
+
+  const dateFrom = startOfDay(sortedDates[0]);
+  const dateTo = endOfDay(sortedDates[sortedDates.length - 1]);
+
   await prisma.financeTransaction.deleteMany({
     where: {
       companyName,
       sourceType: "GOOGLE_SHEETS_IMPORT",
+      operationDate: {
+        gte: dateFrom,
+        lte: dateTo,
+      },
     },
   });
 
