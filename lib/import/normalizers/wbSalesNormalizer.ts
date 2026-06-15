@@ -118,12 +118,31 @@ export async function normalizeWbSales(
     return { savedRows: 0 };
   }
 
-  await prisma.wbSale.deleteMany({
-    where: {
-      importSessionId,
-      companyName,
-    },
-  });
+  const reportNumbers = Array.from(
+    new Set(
+      filteredData
+        .map((row) => String(row.reportNumber ?? "").trim())
+        .filter(Boolean)
+    )
+  );
+
+  if (reportNumbers.length > 0) {
+    await prisma.wbSale.deleteMany({
+      where: {
+        companyName,
+        reportNumber: {
+          in: reportNumbers,
+        },
+      },
+    });
+  } else {
+    await prisma.wbSale.deleteMany({
+      where: {
+        importSessionId,
+        companyName,
+      },
+    });
+  }
 
   await prisma.wbSale.createMany({
     data: filteredData,
