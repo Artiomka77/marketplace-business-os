@@ -257,7 +257,6 @@ function buildCostByVendorCode(costs: CostRecord[]) {
 
   for (const cost of costs) {
     const vendorCode = normalizeText(cost.vendorCode);
-
     if (!vendorCode) continue;
 
     if (!costByVendorCode.has(vendorCode)) {
@@ -332,9 +331,7 @@ function createEmptyTotals(
     netSalesQty: 0,
 
     revenue: 0,
-
     sellerPayout: 0,
-
     wbCommission: 0,
 
     logisticsCost: 0,
@@ -343,7 +340,6 @@ function createEmptyTotals(
 
     penaltiesAmount: 0,
     deductions: 0,
-
     paymentServiceCost: 0,
 
     adsCost: 0,
@@ -375,7 +371,6 @@ function calculateAbcByProfit(rows: ProfitAnalyticsRow[]) {
     for (const row of rows) {
       row.abcByProfit = "C";
     }
-
     return;
   }
 
@@ -429,7 +424,6 @@ function calculateRowsAndTotals({
 
   for (const wbRow of wbRows) {
     const vendorCodeKey = normalizeText(wbRow.vendorCode);
-
     if (!vendorCodeKey) continue;
 
     const current =
@@ -447,7 +441,6 @@ function calculateRowsAndTotals({
         revenueSharePercent: 0,
 
         sellerPayout: 0,
-
         wbCommission: 0,
 
         logisticsCost: 0,
@@ -456,7 +449,6 @@ function calculateRowsAndTotals({
 
         penaltiesAmount: 0,
         deductions: 0,
-
         paymentServiceCost: 0,
 
         adsCost: adsCostByVendorCode.get(vendorCodeKey) ?? 0,
@@ -486,7 +478,6 @@ function calculateRowsAndTotals({
       current.revenue += toNumber(wbRow.wbRealizedAmount);
       current.sellerPayout += toNumber(wbRow.sellerPayout);
       current.wbCommission += toNumber(wbRow.wbReward);
-
       current.totalCost += current.costPrice * quantity;
     }
 
@@ -497,7 +488,6 @@ function calculateRowsAndTotals({
       current.revenue -= toNumber(wbRow.wbRealizedAmount);
       current.sellerPayout -= toNumber(wbRow.sellerPayout);
       current.wbCommission -= toNumber(wbRow.wbReward);
-
       current.totalCost -= current.costPrice * quantity;
     }
 
@@ -507,7 +497,6 @@ function calculateRowsAndTotals({
 
     current.penaltiesAmount += toNumber(wbRow.penaltiesAmount);
     current.deductions += toNumber(wbRow.deductions);
-
     current.paymentServiceCost += Math.abs(toNumber(wbRow.paymentServiceCost));
 
     current.marginProfit =
@@ -563,9 +552,7 @@ function calculateRowsAndTotals({
       acc.netSalesQty += row.netSalesQty;
 
       acc.revenue += row.revenue;
-
       acc.sellerPayout += row.sellerPayout;
-
       acc.wbCommission += row.wbCommission;
 
       acc.logisticsCost += row.logisticsCost;
@@ -574,17 +561,12 @@ function calculateRowsAndTotals({
 
       acc.penaltiesAmount += row.penaltiesAmount;
       acc.deductions += row.deductions;
-
       acc.paymentServiceCost += row.paymentServiceCost;
 
       acc.adsCost += row.adsCost;
-
       acc.totalCost += row.totalCost;
-
       acc.marginProfit += row.marginProfit;
-
       acc.taxesAmount += row.taxesAmount;
-
       acc.netProfitAfterTax += row.netProfitAfterTax;
 
       return acc;
@@ -618,30 +600,7 @@ async function findWbSaleRowsByPeriod(params?: {
     where: {
       ...(params?.companyName ? { companyName: params.companyName } : {}),
       ...(params?.dateFrom || params?.dateTo
-        ? {
-            OR: [
-              {
-                dateFrom: {
-                  ...(params?.dateFrom
-                    ? { gte: startOfDay(params.dateFrom) }
-                    : {}),
-                  ...(params?.dateTo
-                    ? { lt: nextDayStart(params.dateTo) }
-                    : {}),
-                },
-              },
-              {
-                dateTo: {
-                  ...(params?.dateFrom
-                    ? { gte: startOfDay(params.dateFrom) }
-                    : {}),
-                  ...(params?.dateTo
-                    ? { lt: nextDayStart(params.dateTo) }
-                    : {}),
-                },
-              },
-            ],
-          }
+        ? createDateFilterFromStrings(params?.dateFrom, params?.dateTo)
         : {}),
     },
   });
@@ -661,31 +620,38 @@ async function findWbSaleRowsByPeriod(params?: {
   const importSessions = await prisma.importSession.findMany({
     where: {
       ...(params?.companyName ? { companyName: params.companyName } : {}),
+      reportType: "WB_SALES",
       OR: reportNumbers.map((reportNumber) => ({
         fileName: {
           contains: reportNumber,
         },
       })),
     },
+    orderBy: {
+      createdAt: "desc",
+    },
   });
 
-  const importSessionIds = importSessions.map((session) => session.id);
+  const latestSessionByFileName = new Map<string, string>();
+
+  for (const session of importSessions) {
+    if (!latestSessionByFileName.has(session.fileName)) {
+      latestSessionByFileName.set(session.fileName, session.id);
+    }
+  }
+
+  const latestImportSessionIds = Array.from(latestSessionByFileName.values());
+
+  if (latestImportSessionIds.length === 0) {
+    return [];
+  }
 
   return prisma.wbSale.findMany({
     where: {
       ...(params?.companyName ? { companyName: params.companyName } : {}),
-      OR: [
-        {
-          reportNumber: {
-            in: reportNumbers,
-          },
-        },
-        {
-          importSessionId: {
-            in: importSessionIds,
-          },
-        },
-      ],
+      importSessionId: {
+        in: latestImportSessionIds,
+      },
     },
     orderBy: {
       saleDate: "desc",
