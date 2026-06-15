@@ -769,20 +769,24 @@ function applyWbFinanceExpenseTotals(
   },
   financeExpenses: WbFinanceExpenseTotals
 ) {
-  const storageDiff = financeExpenses.storageCost - result.totals.storageCost;
-  const acceptanceDiff =
-    financeExpenses.acceptanceCost - result.totals.acceptanceCost;
-  const penaltiesDiff =
-    financeExpenses.penaltiesAmount - result.totals.penaltiesAmount;
-
-  const totalExpenseDiff = storageDiff + acceptanceDiff + penaltiesDiff;
-
   result.totals.storageCost = financeExpenses.storageCost;
   result.totals.acceptanceCost = financeExpenses.acceptanceCost;
   result.totals.penaltiesAmount = financeExpenses.penaltiesAmount;
 
-  result.totals.marginProfit -= totalExpenseDiff;
-  result.totals.netProfitAfterTax -= totalExpenseDiff;
+  result.totals.marginProfit =
+    result.totals.revenue -
+    result.totals.totalCost -
+    result.totals.wbCommission -
+    result.totals.logisticsCost -
+    result.totals.storageCost -
+    result.totals.acceptanceCost -
+    result.totals.penaltiesAmount -
+    result.totals.deductions -
+    result.totals.paymentServiceCost -
+    result.totals.adsCost;
+
+  result.totals.netProfitAfterTax =
+    result.totals.marginProfit - result.totals.taxesAmount;
 
   result.totals.marginProfitPercent =
     result.totals.revenue > 0
