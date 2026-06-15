@@ -247,6 +247,8 @@ type WbAdsRecord = {
 };
 
 type WbFinanceExpenseTotals = {
+  revenue: number;
+  sellerPayout: number;
   storageCost: number;
   acceptanceCost: number;
   penaltiesAmount: number;
@@ -706,6 +708,8 @@ async function findWbFinanceExpenseTotalsByPeriod(params?: {
       ...(params?.companyName ? { companyName: params.companyName } : {}),
     },
     select: {
+      salesAmount: true,
+      payoutAmount: true,
       storageCost: true,
       acceptanceCost: true,
       penaltiesAmount: true,
@@ -714,6 +718,8 @@ async function findWbFinanceExpenseTotalsByPeriod(params?: {
 
   return rows.reduce(
     (acc, row) => {
+      acc.revenue += toNumber(row.salesAmount);
+      acc.sellerPayout += toNumber(row.payoutAmount);
       acc.storageCost += toNumber(row.storageCost);
       acc.acceptanceCost += toNumber(row.acceptanceCost);
       acc.penaltiesAmount += toNumber(row.penaltiesAmount);
@@ -721,6 +727,8 @@ async function findWbFinanceExpenseTotalsByPeriod(params?: {
       return acc;
     },
     {
+      revenue: 0,
+      sellerPayout: 0,
       storageCost: 0,
       acceptanceCost: 0,
       penaltiesAmount: 0,
@@ -735,6 +743,8 @@ function applyWbFinanceExpenseTotals(
   },
   financeExpenses: WbFinanceExpenseTotals
 ) {
+  result.totals.revenue = financeExpenses.revenue;
+  result.totals.sellerPayout = financeExpenses.sellerPayout;
   result.totals.storageCost = financeExpenses.storageCost;
   result.totals.acceptanceCost = financeExpenses.acceptanceCost;
   result.totals.penaltiesAmount = financeExpenses.penaltiesAmount;
@@ -751,6 +761,12 @@ function applyWbFinanceExpenseTotals(
     result.totals.paymentServiceCost -
     result.totals.adsCost;
 
+  result.totals.taxesAmount =
+    result.totals.revenue > 0
+      ? result.totals.revenue * (result.totals.usnRate / 100) +
+        calculateVatTax(result.totals.revenue, result.totals.vatRate)
+      : 0;
+
   result.totals.netProfitAfterTax =
     result.totals.marginProfit - result.totals.taxesAmount;
 
@@ -762,6 +778,11 @@ function applyWbFinanceExpenseTotals(
   result.totals.marginAfterTaxPercent =
     result.totals.revenue > 0
       ? (result.totals.netProfitAfterTax / result.totals.revenue) * 100
+      : 0;
+
+  result.totals.drrPercent =
+    result.totals.revenue > 0
+      ? (result.totals.adsCost / result.totals.revenue) * 100
       : 0;
 
   return result;
@@ -843,6 +864,8 @@ export async function getProfitAnalytics(params?: {
         companyName,
       })
     : {
+        revenue: 0,
+        sellerPayout: 0,
         storageCost: 0,
         acceptanceCost: 0,
         penaltiesAmount: 0,
