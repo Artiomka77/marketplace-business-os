@@ -1,23 +1,26 @@
 generator client {
   provider = "prisma-client-js"
 }
+
 datasource db {
   provider = "postgresql"
 }
+
 model Company {
-  id        String   @id @default(cuid())
-  name      String
+  id   String @id @default(cuid())
+  name String
 
   taxSystem String?  @default("УСН Доходы")
   usnRate   Decimal? @default(1)
   vatRate   Decimal? @default(5)
 
-  isActive  Boolean  @default(true)
+  isActive Boolean @default(true)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   marketplaceAccounts MarketplaceAccount[]
+  apiConnections      MarketplaceApiConnection[]
 }
 
 model Marketplace {
@@ -68,7 +71,7 @@ model ProductVariant {
 }
 
 model CostPrice {
-  id               String   @id @default(cuid())
+  id               String    @id @default(cuid())
   productVariantId String
   cost             Decimal
   validFrom        DateTime
@@ -108,7 +111,7 @@ model WbSale {
   id String @id @default(cuid())
 
   importSessionId String?
-  
+
   companyName String?
 
   reportNumber String?
@@ -130,7 +133,7 @@ model WbSale {
 
   quantity Int?
 
-  retailPrice     Decimal?
+  retailPrice      Decimal?
   wbRealizedAmount Decimal?
   sellerPayout     Decimal?
 
@@ -177,14 +180,14 @@ model WbFinance {
   dateTo         DateTime?
   reportTypeName String?
 
-  salesAmount      Decimal?
-  payoutAmount     Decimal?
-  logisticsCost    Decimal?
-  storageCost      Decimal?
-  acceptanceCost   Decimal?
-  otherDeductions  Decimal?
-  penaltiesAmount  Decimal?
-  totalToPay       Decimal?
+  salesAmount     Decimal?
+  payoutAmount    Decimal?
+  logisticsCost   Decimal?
+  storageCost     Decimal?
+  acceptanceCost  Decimal?
+  otherDeductions Decimal?
+  penaltiesAmount Decimal?
+  totalToPay      Decimal?
 
   createdAt DateTime @default(now())
 
@@ -269,6 +272,7 @@ model ProductCost {
   @@index([nmId])
   @@index([costDate])
 }
+
 model AdCampaignMap {
   id String @id @default(cuid())
 
@@ -276,7 +280,7 @@ model AdCampaignMap {
   companyName String?
 
   campaignName String
-  vendorCode String
+  vendorCode   String
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -286,17 +290,18 @@ model AdCampaignMap {
   @@index([campaignName])
   @@index([vendorCode])
 }
+
 model OzonFinance {
   id String @id @default(cuid())
 
   importSessionId String?
-  companyName String?
+  companyName     String?
 
   accrualDate DateTime?
 
   operationType String?
 
-  sku String?
+  sku        String?
   vendorCode String?
 
   quantity Int?
@@ -305,7 +310,7 @@ model OzonFinance {
 
   ozonCommission Decimal?
 
-  logisticsCost Decimal?
+  logisticsCost        Decimal?
   reverseLogisticsCost Decimal?
 
   totalAmount Decimal?
@@ -318,17 +323,18 @@ model OzonFinance {
   @@index([accrualDate])
   @@index([companyName])
 }
+
 model OzonAds {
   id String @id @default(cuid())
 
   importSessionId String?
-  companyName String?
+  companyName     String?
 
   reportDate DateTime?
-  sku String?
+  sku        String?
 
   impressions Int?
-  clicks Int?
+  clicks      Int?
 
   ctr Decimal?
   cpc Decimal?
@@ -344,17 +350,18 @@ model OzonAds {
   @@index([companyName])
   @@index([sku])
 }
+
 model OzonStock {
   id String @id @default(cuid())
 
   importSessionId String?
-  companyName String?
+  companyName     String?
 
-  sku String?
+  sku        String?
   vendorCode String?
 
   warehouseName String?
-  clusterName String?
+  clusterName   String?
 
   availableQty Int?
 
@@ -373,14 +380,15 @@ model OzonStock {
   @@index([companyName])
   @@index([warehouseName])
 }
+
 model OzonProduct {
   id String @id @default(cuid())
 
   importSessionId String?
-  companyName String?
+  companyName     String?
 
   vendorCode String
-  sku String
+  sku        String
 
   productName String?
 
@@ -391,16 +399,17 @@ model OzonProduct {
   @@index([companyName])
   @@index([sku])
 }
+
 model FinanceCategory {
   id String @id @default(cuid())
 
-  name String
+  name       String
   parentName String?
 
   categoryType String
 
-  sortOrder Int @default(0)
-  isActive Boolean @default(true)
+  sortOrder Int     @default(0)
+  isActive  Boolean @default(true)
 
   createdAt DateTime @default(now())
 
@@ -411,15 +420,15 @@ model FinanceCategory {
 model FinanceTransaction {
   id String @id @default(cuid())
 
-  companyId String?
+  companyId   String?
   companyName String
 
-  operationDate DateTime
+  operationDate  DateTime
   obligationDate DateTime?
 
   operationType String
 
-  category String
+  category    String
   subcategory String?
 
   counterparty String?
@@ -434,12 +443,12 @@ model FinanceTransaction {
 
   isInternalTransfer Boolean @default(false)
 
-  transferGroupId String?
+  transferGroupId   String?
   transferDirection String?
 
-  transactionStatus String @default("FACT")
-  sourceType String?
-  sourceId String?
+  transactionStatus String  @default("FACT")
+  sourceType        String?
+  sourceId          String?
 
   createdAt DateTime @default(now())
 
@@ -456,19 +465,19 @@ model FinanceTransaction {
 model Loan {
   id String @id @default(cuid())
 
-  companyId String?
+  companyId   String?
   companyName String
 
-  bankName String
+  bankName       String
   contractNumber String?
 
-  creditLimit Decimal?
-  currentDebt Decimal?
+  creditLimit    Decimal?
+  currentDebt    Decimal?
   monthlyPayment Decimal?
-  interestRate Decimal?
+  interestRate   Decimal?
 
   startDate DateTime?
-  endDate DateTime?
+  endDate   DateTime?
 
   paymentFrequency String @default("MONTHLY")
 
@@ -489,8 +498,8 @@ model LoanPayment {
   paymentDate DateTime
 
   principalAmount Decimal?
-  interestAmount Decimal?
-  totalAmount Decimal?
+  interestAmount  Decimal?
+  totalAmount     Decimal?
 
   paid Boolean @default(false)
 
@@ -507,7 +516,7 @@ model FinanceAccount {
 
   companyName String
 
-  name String
+  name        String
   accountType String
 
   openingBalance Decimal @default(0)
@@ -524,23 +533,52 @@ model FinanceAccount {
 }
 
 model BudgetPlan {
-  id            String   @id @default(cuid())
+  id String @id @default(cuid())
 
-  companyName   String
-  periodYear    Int
-  periodMonth   Int
+  companyName String
+  periodYear  Int
+  periodMonth Int
 
-  revenuePlan   Float?   @default(0)
-  profitPlan    Float?   @default(0)
+  revenuePlan Float? @default(0)
+  profitPlan  Float? @default(0)
 
-  adsPlan       Float?   @default(0)
-  logisticsPlan Float?   @default(0)
-  taxPlan       Float?   @default(0)
-  salaryPlan    Float?   @default(0)
-  otherPlan     Float?   @default(0)
+  adsPlan       Float? @default(0)
+  logisticsPlan Float? @default(0)
+  taxPlan       Float? @default(0)
+  salaryPlan    Float? @default(0)
+  otherPlan     Float? @default(0)
 
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@unique([companyName, periodYear, periodMonth])
+}
+
+model MarketplaceApiConnection {
+  id String @id @default(cuid())
+
+  companyId String
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  marketplace String // WB или OZON
+
+  wbToken String?
+
+  ozonClientId String?
+  ozonApiKey   String?
+
+  isEnabled Boolean @default(false)
+
+  status String @default("NOT_CONNECTED")
+  // NOT_CONNECTED | CONNECTED | ERROR
+
+  lastSyncAt DateTime?
+  lastError  String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([companyId, marketplace])
+  @@index([companyId])
+  @@index([marketplace])
 }
