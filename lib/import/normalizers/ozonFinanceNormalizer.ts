@@ -23,7 +23,14 @@ function normalizeDateOnly(date: Date): Date | null {
   if (Number.isNaN(date.getTime())) return null;
 
   const normalized = new Date(
-    Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate(), 12, 0, 0)
+    Date.UTC(
+      date.getUTCFullYear(),
+      date.getUTCMonth(),
+      date.getUTCDate(),
+      12,
+      0,
+      0
+    )
   );
 
   return Number.isNaN(normalized.getTime()) ? null : normalized;
@@ -75,6 +82,41 @@ function getByIndex(row: Record<string, unknown>, index: number) {
   return Object.values(row)[index] ?? null;
 }
 
+function getValue(
+  row: Record<string, unknown>,
+  keys: string[],
+  fallbackIndex?: number
+) {
+  for (const key of keys) {
+    if (row[key] !== undefined && row[key] !== null && row[key] !== "") {
+      return row[key];
+    }
+  }
+
+  if (fallbackIndex !== undefined) {
+    return getByIndex(row, fallbackIndex);
+  }
+
+  return null;
+}
+
+function fixMojibake(value: unknown): string | null {
+  const text = String(value ?? "").trim();
+
+  if (!text) return null;
+
+  if (!/[ÐÑ]/.test(text)) {
+    return text;
+  }
+
+  try {
+    const fixed = Buffer.from(text, "latin1").toString("utf8").trim();
+    return fixed || text;
+  } catch {
+    return text;
+  }
+}
+
 export async function normalizeOzonFinance(
   rows: Record<string, unknown>[],
   importSessionId: string,
@@ -85,25 +127,39 @@ export async function normalizeOzonFinance(
       importSessionId,
       companyName,
 
-      accrualDate: toDate(getByIndex(row, 0)),
+      accrualDate: toDate(
+        getValue(row, ["Дата начисления", "Дата операции", "operation_date"], 0)
+      ),
 
-      operationType: getByIndex(row, 1) ? String(getByIndex(row, 1)) : null,
+      operationType: fixMojibake(
+        getValue(row, ["Тип операции", "operation_type_name", "operation_type"], 1)
+      ),
 
-      sku: getByIndex(row, 5) ? String(getByIndex(row, 5)) : null,
+      sku: getValue(row, ["SKU", "sku"], 2)
+        ? String(getValue(row, ["SKU", "sku"], 2))
+        : null,
 
-      vendorCode: getByIndex(row, 6) ? String(getByIndex(row, 6)) : null,
+      vendorCode: getValue(row, ["Артикул", "Артикул продавца", "vendorCode"], 3)
+        ? String(getValue(row, ["Артикул", "Артикул продавца", "vendorCode"], 3))
+        : null,
 
-      quantity: toNumber(getByIndex(row, 8)),
+      quantity: toNumber(getValue(row, ["Количество", "quantity"], 4)),
 
-      salesAmount: toNumber(getByIndex(row, 9)),
+      salesAmount: toNumber(
+        getValue(row, ["Сумма продаж", "Начисления за продажу"], 5)
+      ),
 
-      ozonCommission: toNumber(getByIndex(row, 11)),
+      ozonCommission: toNumber(
+        getValue(row, ["Комиссия Ozon", "Комиссия"], 6)
+      ),
 
-      logisticsCost: toNumber(getByIndex(row, 20)),
+      logisticsCost: toNumber(getValue(row, ["Логистика"], 7)),
 
-      reverseLogisticsCost: toNumber(getByIndex(row, 23)),
+      reverseLogisticsCost: toNumber(
+        getValue(row, ["Обратная логистика"], 8)
+      ),
 
-      totalAmount: toNumber(getByIndex(row, 24)),
+      totalAmount: toNumber(getValue(row, ["Итого", "amount"], 9)),
     }))
     .filter((row) => row.sku || row.vendorCode || row.totalAmount !== null);
 

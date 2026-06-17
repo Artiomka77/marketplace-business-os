@@ -113,8 +113,9 @@ export async function normalizeWbFinance(
   }
 
   await prisma.wbFinance.createMany({
-    data,
-  });
+  data,
+  skipDuplicates: true,
+});
 
   return {
     savedRows: data.length,

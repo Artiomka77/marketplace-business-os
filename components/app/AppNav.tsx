@@ -27,6 +27,7 @@ const items = [
   {
     title: "Настройки",
     href: "/settings/companies",
+    activePrefix: "/settings",
   },
 ];
 
@@ -41,7 +42,7 @@ export default function AppNav() {
             const isActive =
               item.href === "/"
                 ? pathname === "/"
-                : pathname.startsWith(item.href);
+                : pathname.startsWith(item.activePrefix ?? item.href);
 
             return (
               <Link

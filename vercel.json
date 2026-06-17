@@ -1,0 +1,8 @@
+{
+  "crons": [
+    {
+      "path": "/api/cron/sync-ozon",
+      "schedule": "0 3 * * *"
+    }
+  ]
+}

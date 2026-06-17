@@ -239,6 +239,8 @@ model WbStock {
   vendorCode String?
   barcode    String?
   size       String?
+  nmId       String?
+  chrtId     String?
 
   inTransitToCustomer Int?
   inTransitReturns    Int?
@@ -253,6 +255,8 @@ model WbStock {
   @@index([barcode])
   @@index([warehouseName])
   @@index([companyName])
+  @@index([nmId])
+  @@index([chrtId])
 }
 
 model ProductCost {
@@ -564,8 +568,10 @@ model MarketplaceApiConnection {
 
   wbToken String?
 
-  ozonClientId String?
-  ozonApiKey   String?
+  ozonClientId                String?
+  ozonApiKey                  String?
+  ozonPerformanceClientId     String?
+  ozonPerformanceClientSecret String?
 
   isEnabled Boolean @default(false)
 
