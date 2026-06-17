@@ -1,6 +1,5 @@
 import { prisma } from "@/lib/prisma";
 import { normalizeWbAds } from "@/lib/import/normalizers/wbAdsNormalizer";
-import { sleep } from "@/lib/sleep";
 
 type CompanyRow = {
   id: string;
@@ -41,8 +40,7 @@ type WbAdsFullStatsItem = {
 };
 
 const WB_ADS_BATCH_SIZE = 10;
-const WB_ADS_REQUEST_DELAY_MS = 3000;
-const WB_ADS_REQUEST_TIMEOUT_MS = 45000;
+const WB_ADS_REQUEST_TIMEOUT_MS = 45_000;
 
 function formatDateOnly(date: Date) {
   return date.toISOString().slice(0, 10);
@@ -62,7 +60,15 @@ function getDefaultPeriod() {
   };
 }
 
-async function fetchWithTimeout(url: string, init: RequestInit) {
+function getErrorMessage(error: unknown) {
+  return error instanceof Error ? error.message : "Неизвестная ошибка";
+}
+
+async function fetchWithTimeout(
+  url: string,
+  init: RequestInit,
+  label: string
+) {
   const controller = new AbortController();
   const timeoutId = setTimeout(
     () => controller.abort(),
@@ -74,6 +80,12 @@ async function fetchWithTimeout(url: string, init: RequestInit) {
       ...init,
       signal: controller.signal,
     });
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") {
+      throw new Error(`${label}: timeout after ${WB_ADS_REQUEST_TIMEOUT_MS}ms`);
+    }
+
+    throw error;
   } finally {
     clearTimeout(timeoutId);
   }
@@ -122,7 +134,8 @@ async function fetchAdvertIds(token: string) {
         Authorization: token,
       },
       cache: "no-store",
-    }
+    },
+    "WB Ads Count API"
   );
 
   if (!response.ok) {
@@ -150,43 +163,44 @@ async function fetchFullStats(
   dateFromText: string,
   dateToText: string
 ) {
-  const result: WbAdsFullStatsItem[] = [];
+  if (advertIds.length === 0) {
+    return [];
+  }
 
-  for (const advertId of advertIds) {
-    const url = new URL("https://advert-api.wildberries.ru/adv/v3/fullstats");
+  const url = new URL("https://advert-api.wildberries.ru/adv/v3/fullstats");
 
-    url.searchParams.set("ids", String(advertId));
-    url.searchParams.set("beginDate", dateFromText);
-    url.searchParams.set("endDate", dateToText);
+  url.searchParams.set("ids", advertIds.join(","));
+  url.searchParams.set("beginDate", dateFromText);
+  url.searchParams.set("endDate", dateToText);
 
-    const response = await fetchWithTimeout(url.toString(), {
+  const response = await fetchWithTimeout(
+    url.toString(),
+    {
       method: "GET",
       headers: {
         Authorization: token,
       },
       cache: "no-store",
-    });
+    },
+    "WB Ads FullStats API"
+  );
 
-    if (response.status === 204) {
-      await sleep(WB_ADS_REQUEST_DELAY_MS);
-      continue;
-    }
-
-    if (!response.ok) {
-      const text = await response.text().catch(() => "");
-      throw new Error(`WB Ads FullStats API: ${response.status} ${text}`.trim());
-    }
-
-    const json = await response.json();
-
-if (Array.isArray(json)) {
-  result.push(...(json as WbAdsFullStatsItem[]));
-}
-
-    await sleep(WB_ADS_REQUEST_DELAY_MS);
+  if (response.status === 204) {
+    return [];
   }
 
-  return result;
+  if (!response.ok) {
+    const text = await response.text().catch(() => "");
+    throw new Error(`WB Ads FullStats API: ${response.status} ${text}`.trim());
+  }
+
+  const json = await response.json().catch(() => null);
+
+  if (!Array.isArray(json)) {
+    return [];
+  }
+
+  return json as WbAdsFullStatsItem[];
 }
 
 function mapWbAdsRows(stats: WbAdsFullStatsItem[]) {
@@ -197,6 +211,7 @@ function mapWbAdsRows(stats: WbAdsFullStatsItem[]) {
 
     for (const day of item.days ?? []) {
       rows.push({
+        Дата: day.date ?? "",
         "ID кампании": advertId,
         Кампания: `WB Ads API ${advertId}`,
         Показы: day.views ?? item.views ?? 0,
