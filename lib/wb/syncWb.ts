@@ -441,14 +441,14 @@ async function runSyncStep<T extends { name: string; rows: number }>(
   }
 }
 
-export async function syncWbFinanceAndSales(companyId: string) {
+export async function syncWbFinance(companyId: string) {
   const { company, connection } = await getWbConnection(companyId);
 
   if (isConnectionInCooldown(connection)) {
     const message = getCooldownMessage(connection.lastAttemptAt as Date);
 
     return {
-      name: "WB Finance + Sales",
+      name: "WB Finance",
       rows: 0,
       skipped: true,
       message,
@@ -489,6 +489,34 @@ export async function syncWbFinanceAndSales(companyId: string) {
     data: { rowsCount: financeNormalizeResult.savedRows },
   });
 
+  return {
+    name: "WB Finance",
+    rows: financeNormalizeResult.savedRows,
+    financeRows: financeNormalizeResult.savedRows,
+  };
+}
+
+export async function syncWbSales(companyId: string) {
+  const { company, connection } = await getWbConnection(companyId);
+
+  if (isConnectionInCooldown(connection)) {
+    const message = getCooldownMessage(connection.lastAttemptAt as Date);
+
+    return {
+      name: "WB Sales",
+      rows: 0,
+      skipped: true,
+      message,
+    };
+  }
+
+  const wbToken = connection.wbToken;
+
+  if (!wbToken) {
+    throw new Error("WB token не сохранён");
+  }
+
+  const financeResult = await fetchWbFinanceReports(wbToken);
   const reportIds = getReportIds(financeResult.rows).slice(0, 1);
   const salesDetailedRows: WbSalesDetailedRow[] = [];
 
@@ -528,10 +556,22 @@ export async function syncWbFinanceAndSales(companyId: string) {
   });
 
   return {
-    name: "WB Finance + Sales",
-    rows: financeNormalizeResult.savedRows + salesNormalizeResult.savedRows,
-    financeRows: financeNormalizeResult.savedRows,
+    name: "WB Sales",
+    rows: salesNormalizeResult.savedRows,
     salesRows: salesNormalizeResult.savedRows,
+    reportIds,
+  };
+}
+
+export async function syncWbFinanceAndSales(companyId: string) {
+  const financeResult = await syncWbFinance(companyId);
+  const salesResult = await syncWbSales(companyId);
+
+  return {
+    name: "WB Finance + Sales",
+    rows: financeResult.rows + salesResult.rows,
+    financeRows: financeResult.rows,
+    salesRows: salesResult.rows,
   };
 }
 
@@ -569,11 +609,8 @@ export async function syncWbAll(companyId: string) {
 
   results.push(await runSyncStep("WB Stock", () => syncWbStock(companyId)));
   results.push(await runSyncStep("WB Ads", () => syncWbAds(companyId)));
-  results.push(
-    await runSyncStep("WB Finance + Sales", () =>
-      syncWbFinanceAndSales(companyId)
-    )
-  );
+  results.push(await runSyncStep("WB Finance", () => syncWbFinance(companyId)));
+  results.push(await runSyncStep("WB Sales", () => syncWbSales(companyId)));
 
   const failedResults = results.filter((result) => !result.ok);
   const hardFailures = failedResults.filter((result) => !result.isRateLimit);

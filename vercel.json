@@ -13,8 +13,12 @@
       "schedule": "20 5 * * *"
     },
     {
-      "path": "/api/cron/sync-wb-ads",
+      "path": "/api/cron/sync-wb-sales",
       "schedule": "40 5 * * *"
+    },
+    {
+      "path": "/api/cron/sync-wb-ads",
+      "schedule": "0 6 * * *"
     }
   ]
 }

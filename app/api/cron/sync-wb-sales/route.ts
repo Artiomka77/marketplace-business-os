@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { prisma } from "@/lib/prisma";
-import { syncWbFinance } from "@/lib/wb/syncWb";
+import { syncWbSales } from "@/lib/wb/syncWb";
 
 function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : "Неизвестная ошибка";
@@ -48,7 +48,7 @@ export async function GET() {
         },
       });
 
-      const result = await syncWbFinance(connection.companyId);
+      const result = await syncWbSales(connection.companyId);
 
       await prisma.marketplaceApiConnection.update({
         where: {
