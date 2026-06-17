@@ -114,6 +114,11 @@ function formatDateOnly(date: Date) {
   return date.toISOString().slice(0, 10);
 }
 
+function formatDateForFileName(date: Date | null | undefined) {
+  if (!date) return "unknown";
+  return formatDateOnly(date);
+}
+
 function getDefaultPeriod() {
   const dateTo = new Date();
   const dateFrom = new Date();
@@ -394,20 +399,29 @@ async function fetchWbSalesDetailedRows(token: string, reportId: string) {
   return allRows;
 }
 
-function getReportIds(rows: WbFinanceReport[]) {
-  return Array.from(
-    new Set(
-      [...rows]
-        .sort((a, b) => {
-          const dateA = new Date(String(a.dateFrom ?? "")).getTime();
-          const dateB = new Date(String(b.dateFrom ?? "")).getTime();
+async function getLatestFinanceReport(companyName: string) {
+  const latestReport = await prisma.wbFinance.findFirst({
+    where: {
+      companyName,
+      reportNumber: {
+        not: null,
+      },
+    },
+    orderBy: [{ dateFrom: "desc" }, { createdAt: "desc" }],
+    select: {
+      reportNumber: true,
+      dateFrom: true,
+      dateTo: true,
+    },
+  });
 
-          return dateB - dateA;
-        })
-        .map((row) => String(row.reportId ?? "").trim())
-        .filter(Boolean)
-    )
-  );
+  if (!latestReport?.reportNumber) {
+    throw new Error(
+      "Не найден номер отчёта WB Finance. Сначала запусти синхронизацию WB Finance."
+    );
+  }
+
+  return latestReport;
 }
 
 async function runSyncStep<T extends { name: string; rows: number }>(
@@ -516,23 +530,17 @@ export async function syncWbSales(companyId: string) {
     throw new Error("WB token не сохранён");
   }
 
-  const financeResult = await fetchWbFinanceReports(wbToken);
-  const reportIds = getReportIds(financeResult.rows).slice(0, 1);
-  const salesDetailedRows: WbSalesDetailedRow[] = [];
+  const latestReport = await getLatestFinanceReport(company.name);
+  const reportId = String(latestReport.reportNumber);
 
-  for (const reportId of reportIds) {
-    await sleep(WB_REQUEST_DELAY_MS);
-
-    const rows = await fetchWbSalesDetailedRows(wbToken, reportId);
-
-    salesDetailedRows.push(...rows);
-  }
-
+  const salesDetailedRows = await fetchWbSalesDetailedRows(wbToken, reportId);
   const salesRows = mapWbSalesApiRows(salesDetailedRows);
 
   const salesImportSession = await prisma.importSession.create({
     data: {
-      fileName: `WB API Sales ${company.name} ${financeResult.dateFrom} - ${financeResult.dateTo}`,
+      fileName: `WB API Sales ${company.name} ${formatDateForFileName(
+        latestReport.dateFrom
+      )} - ${formatDateForFileName(latestReport.dateTo)}`,
       reportType: "WB_SALES",
       marketplace: "WILDBERRIES",
       companyName: company.name,
@@ -559,7 +567,7 @@ export async function syncWbSales(companyId: string) {
     name: "WB Sales",
     rows: salesNormalizeResult.savedRows,
     salesRows: salesNormalizeResult.savedRows,
-    reportIds,
+    reportId,
   };
 }
 
