@@ -1,5 +1,10 @@
 import { prisma } from "@/lib/prisma";
 
+type NormalizeOzonFinanceOptions = {
+  dateFrom?: Date;
+  dateTo?: Date;
+};
+
 function toNumber(value: unknown): number | null {
   if (value === null || value === undefined || value === "") {
     return null;
@@ -17,6 +22,26 @@ function toNumber(value: unknown): number | null {
   const number = Number(normalized);
 
   return Number.isNaN(number) ? null : number;
+}
+
+function startOfUtcDay(date: Date) {
+  return new Date(
+    Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate())
+  );
+}
+
+function endOfUtcDay(date: Date) {
+  return new Date(
+    Date.UTC(
+      date.getUTCFullYear(),
+      date.getUTCMonth(),
+      date.getUTCDate(),
+      23,
+      59,
+      59,
+      999
+    )
+  );
 }
 
 function normalizeDateOnly(date: Date): Date | null {
@@ -117,10 +142,27 @@ function fixMojibake(value: unknown): string | null {
   }
 }
 
+async function deleteOzonFinancePeriod(
+  companyName: string | null,
+  dateFrom: Date,
+  dateTo: Date
+) {
+  await prisma.ozonFinance.deleteMany({
+    where: {
+      companyName,
+      accrualDate: {
+        gte: startOfUtcDay(dateFrom),
+        lte: endOfUtcDay(dateTo),
+      },
+    },
+  });
+}
+
 export async function normalizeOzonFinance(
   rows: Record<string, unknown>[],
   importSessionId: string,
-  companyName: string | null
+  companyName: string | null,
+  options: NormalizeOzonFinanceOptions = {}
 ) {
   const data = rows
     .map((row) => ({
@@ -163,38 +205,32 @@ export async function normalizeOzonFinance(
     }))
     .filter((row) => row.sku || row.vendorCode || row.totalAmount !== null);
 
+  if (options.dateFrom && options.dateTo) {
+    await deleteOzonFinancePeriod(companyName, options.dateFrom, options.dateTo);
+  } else if (data.length > 0) {
+    const dates = data
+      .map((row) => row.accrualDate)
+      .filter((date): date is Date => Boolean(date));
+
+    if (dates.length > 0) {
+      const minDate = new Date(Math.min(...dates.map((date) => date.getTime())));
+      const maxDate = new Date(Math.max(...dates.map((date) => date.getTime())));
+
+      await deleteOzonFinancePeriod(companyName, minDate, maxDate);
+    } else {
+      await prisma.ozonFinance.deleteMany({
+        where: {
+          importSessionId,
+          companyName,
+        },
+      });
+    }
+  }
+
   if (data.length === 0) {
     return {
       savedRows: 0,
     };
-  }
-
-  const dates = data
-    .map((row) => row.accrualDate)
-    .filter((date): date is Date => Boolean(date));
-
-  if (dates.length > 0) {
-    const minDate = new Date(Math.min(...dates.map((date) => date.getTime())));
-    const maxDate = new Date(Math.max(...dates.map((date) => date.getTime())));
-    const maxDateExclusive = new Date(maxDate);
-    maxDateExclusive.setDate(maxDateExclusive.getDate() + 1);
-
-    await prisma.ozonFinance.deleteMany({
-      where: {
-        companyName,
-        accrualDate: {
-          gte: minDate,
-          lt: maxDateExclusive,
-        },
-      },
-    });
-  } else {
-    await prisma.ozonFinance.deleteMany({
-      where: {
-        importSessionId,
-        companyName,
-      },
-    });
   }
 
   await prisma.ozonFinance.createMany({

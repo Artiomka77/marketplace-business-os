@@ -5,6 +5,10 @@
       "schedule": "0 3 * * *"
     },
     {
+      "path": "/api/cron/historical-sync",
+      "schedule": "*/30 * * * *"
+    },
+    {
       "path": "/api/cron/sync-wb-stock",
       "schedule": "0 5 * * *"
     },

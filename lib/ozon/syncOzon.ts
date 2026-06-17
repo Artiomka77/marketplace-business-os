@@ -3,8 +3,33 @@ import { normalizeOzonFinance } from "@/lib/import/normalizers/ozonFinanceNormal
 
 type CompanyRow = { id: string; name: string };
 
+type OzonSyncPeriodOptions = {
+  dateFrom?: Date;
+  dateTo?: Date;
+};
+
 function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : "Неизвестная ошибка";
+}
+
+function startOfUtcDay(date: Date) {
+  return new Date(
+    Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate())
+  );
+}
+
+function endOfUtcDay(date: Date) {
+  return new Date(
+    Date.UTC(
+      date.getUTCFullYear(),
+      date.getUTCMonth(),
+      date.getUTCDate(),
+      23,
+      59,
+      59,
+      999
+    )
+  );
 }
 
 function formatDateOnly(date: Date) {
@@ -12,10 +37,35 @@ function formatDateOnly(date: Date) {
 }
 
 function getDefaultPeriod() {
-  const dateTo = new Date();
-  const dateFrom = new Date();
+  const now = new Date();
+  const dateTo = endOfUtcDay(now);
+  const dateFrom = startOfUtcDay(now);
 
-  dateFrom.setDate(dateFrom.getDate() - 14);
+  dateFrom.setUTCDate(dateFrom.getUTCDate() - 14);
+
+  return {
+    dateFrom,
+    dateTo,
+    dateFromText: formatDateOnly(dateFrom),
+    dateToText: formatDateOnly(dateTo),
+  };
+}
+
+function getSyncPeriod(options: OzonSyncPeriodOptions = {}) {
+  if (!options.dateFrom && !options.dateTo) {
+    return getDefaultPeriod();
+  }
+
+  if (!options.dateFrom || !options.dateTo) {
+    throw new Error("Для исторической Ozon-синхронизации нужны dateFrom и dateTo");
+  }
+
+  const dateFrom = startOfUtcDay(options.dateFrom);
+  const dateTo = endOfUtcDay(options.dateTo);
+
+  if (dateFrom.getTime() > dateTo.getTime()) {
+    throw new Error("dateFrom не может быть позже dateTo");
+  }
 
   return {
     dateFrom,
@@ -281,14 +331,17 @@ function mapOzonFinanceRows(operations: OzonFinanceOperation[]) {
   return rows;
 }
 
-export async function syncOzonFinance(companyId: string) {
+export async function syncOzonFinance(
+  companyId: string,
+  options: OzonSyncPeriodOptions = {}
+) {
   const { company, connection } = await getOzonConnection(companyId);
 
   if (!connection.ozonClientId || !connection.ozonApiKey) {
     throw new Error("Ozon Client-Id или Api-Key не сохранены");
   }
 
-  const { dateFromText, dateToText } = getDefaultPeriod();
+  const { dateFrom, dateTo, dateFromText, dateToText } = getSyncPeriod(options);
 
   const operations = await fetchOzonFinanceOperations(
     connection.ozonClientId,
@@ -316,7 +369,11 @@ export async function syncOzonFinance(companyId: string) {
   const normalizeResult = await normalizeOzonFinance(
     rows,
     importSession.id,
-    company.name
+    company.name,
+    {
+      dateFrom,
+      dateTo,
+    }
   );
 
   await prisma.importSession.update({
@@ -324,7 +381,12 @@ export async function syncOzonFinance(companyId: string) {
     data: { rowsCount: normalizeResult.savedRows },
   });
 
-  return { name: "Ozon Finance", rows: normalizeResult.savedRows };
+  return {
+    name: "Ozon Finance",
+    rows: normalizeResult.savedRows,
+    dateFrom: dateFromText,
+    dateTo: dateToText,
+  };
 }
 
 /* -------------------- PRODUCTS -------------------- */
@@ -898,7 +960,10 @@ function mapReportRows(
   return rows;
 }
 
-export async function syncOzonAds(companyId: string) {
+export async function syncOzonAds(
+  companyId: string,
+  options: OzonSyncPeriodOptions = {}
+) {
   const { company, connection } = await getOzonConnection(companyId);
 
   if (
@@ -908,7 +973,7 @@ export async function syncOzonAds(companyId: string) {
     throw new Error("Ozon Performance Client-Id или Client Secret не сохранены");
   }
 
-  const { dateFrom, dateTo, dateFromText, dateToText } = getDefaultPeriod();
+  const { dateFrom, dateTo, dateFromText, dateToText } = getSyncPeriod(options);
 
   const accessToken = await getPerformanceToken(
     connection.ozonPerformanceClientId,
@@ -921,6 +986,26 @@ export async function syncOzonAds(companyId: string) {
     .filter((campaign) => isCampaignRelevant(campaign, dateFromText, dateToText))
     .map((campaign) => campaign.id)
     .filter((id): id is string => Boolean(id));
+
+  if (campaignIds.length === 0) {
+    await prisma.ozonAds.deleteMany({
+      where: {
+        companyName: company.name,
+        reportDate: {
+          gte: dateFrom,
+          lte: dateTo,
+        },
+      },
+    });
+
+    return {
+      name: "Ozon Ads",
+      rows: 0,
+      dateFrom: dateFromText,
+      dateTo: dateToText,
+      campaigns: 0,
+    };
+  }
 
   const uuid = await createStatsReport(
     accessToken,
@@ -971,7 +1056,13 @@ export async function syncOzonAds(companyId: string) {
     },
   });
 
-  return { name: "Ozon Ads", rows: rows.length };
+  return {
+    name: "Ozon Ads",
+    rows: rows.length,
+    dateFrom: dateFromText,
+    dateTo: dateToText,
+    campaigns: campaignIds.length,
+  };
 }
 
 /* -------------------- ALL -------------------- */

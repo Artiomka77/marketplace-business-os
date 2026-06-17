@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 
 type MarketplaceCode = "WB" | "OZON";
 type HistoricalDataType = "FINANCE" | "SALES" | "ADS" | "PRODUCTS";
+type MarketplaceFilter = "WB" | "OZON" | "ALL";
 
 type DatePeriod = {
   dateFrom: Date;
@@ -12,6 +13,7 @@ type CreateHistoricalSyncJobsOptions = {
   dateFromText?: string;
   dateToText?: string;
   companyId?: string | null;
+  marketplace?: MarketplaceFilter;
 };
 
 type ConnectionRow = {
@@ -94,6 +96,40 @@ function splitDateRange(dateFrom: Date, dateTo: Date, chunkDays: number) {
   return periods;
 }
 
+function getLastDayOfMonth(date: Date) {
+  return new Date(
+    Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 0)
+  );
+}
+
+function getFirstDayOfNextMonth(date: Date) {
+  return new Date(
+    Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 1)
+  );
+}
+
+function splitDateRangeByCalendarMonth(dateFrom: Date, dateTo: Date) {
+  const periods: DatePeriod[] = [];
+  let cursor = new Date(dateFrom);
+
+  while (cursor.getTime() <= dateTo.getTime()) {
+    const monthEndCandidate = getLastDayOfMonth(cursor);
+    const chunkEnd =
+      monthEndCandidate.getTime() > dateTo.getTime()
+        ? new Date(dateTo)
+        : monthEndCandidate;
+
+    periods.push({
+      dateFrom: new Date(cursor),
+      dateTo: new Date(chunkEnd),
+    });
+
+    cursor = getFirstDayOfNextMonth(cursor);
+  }
+
+  return periods;
+}
+
 function getPlanForConnection(
   connection: ConnectionRow,
   dateFrom: Date,
@@ -102,10 +138,12 @@ function getPlanForConnection(
   const marketplace = connection.marketplace as MarketplaceCode;
 
   if (marketplace === "OZON") {
+    const ozonMonthlyPeriods = splitDateRangeByCalendarMonth(dateFrom, dateTo);
+
     const plan: { dataType: HistoricalDataType; periods: DatePeriod[] }[] = [
       {
         dataType: "FINANCE",
-        periods: splitDateRange(dateFrom, dateTo, 7),
+        periods: ozonMonthlyPeriods,
       },
       {
         dataType: "PRODUCTS",
@@ -119,7 +157,7 @@ function getPlanForConnection(
     ) {
       plan.push({
         dataType: "ADS",
-        periods: splitDateRange(dateFrom, dateTo, 7),
+        periods: ozonMonthlyPeriods,
       });
     }
 
@@ -144,6 +182,51 @@ function getPlanForConnection(
   }
 
   return [];
+}
+
+function getMarketplaceWhere(marketplace: MarketplaceFilter) {
+  if (marketplace === "OZON") {
+    return [
+      {
+        marketplace: "OZON",
+        ozonClientId: {
+          not: null,
+        },
+        ozonApiKey: {
+          not: null,
+        },
+      },
+    ];
+  }
+
+  if (marketplace === "WB") {
+    return [
+      {
+        marketplace: "WB",
+        wbToken: {
+          not: null,
+        },
+      },
+    ];
+  }
+
+  return [
+    {
+      marketplace: "WB",
+      wbToken: {
+        not: null,
+      },
+    },
+    {
+      marketplace: "OZON",
+      ozonClientId: {
+        not: null,
+      },
+      ozonApiKey: {
+        not: null,
+      },
+    },
+  ];
 }
 
 async function findExistingJob(params: {
@@ -217,6 +300,8 @@ async function createJobIfMissing(params: {
 export async function createHistoricalSyncJobs(
   options: CreateHistoricalSyncJobsOptions = {}
 ) {
+  const marketplace = options.marketplace ?? "ALL";
+
   const dateFrom = parseDateOnly(
     options.dateFromText ?? DEFAULT_HISTORICAL_START_DATE,
     "dateFrom"
@@ -237,23 +322,7 @@ export async function createHistoricalSyncJobs(
       company: {
         isActive: true,
       },
-      OR: [
-        {
-          marketplace: "WB",
-          wbToken: {
-            not: null,
-          },
-        },
-        {
-          marketplace: "OZON",
-          ozonClientId: {
-            not: null,
-          },
-          ozonApiKey: {
-            not: null,
-          },
-        },
-      ],
+      OR: getMarketplaceWhere(marketplace),
     },
     select: {
       companyId: true,
@@ -336,6 +405,7 @@ export async function createHistoricalSyncJobs(
   return {
     dateFrom: formatDateOnly(dateFrom),
     dateTo: formatDateOnly(dateTo),
+    marketplace,
     connections: connections.length,
     createdJobs,
     skippedExistingJobs,

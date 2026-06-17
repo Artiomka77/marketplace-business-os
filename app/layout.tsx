@@ -1,12 +1,7 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
 
 import "./globals.css";
 import AppNav from "@/components/app/AppNav";
-
-const inter = Inter({
-  subsets: ["latin", "cyrillic"],
-});
 
 export const metadata: Metadata = {
   title: "Marketplace OS",
@@ -20,7 +15,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="ru">
-      <body className={inter.className}>
+      <body className="bg-slate-100 font-sans text-slate-900 antialiased">
         <AppNav />
         {children}
       </body>
