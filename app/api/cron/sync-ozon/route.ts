@@ -20,11 +20,14 @@ async function runSync(baseUrl: string, companyId: string) {
     }
   );
 
-  return {
-    companyId,
-    status: response.status,
-    ok: response.ok || response.status === 303,
-  };
+  const text = await response.text().catch(() => "");
+
+return {
+  companyId,
+  status: response.status,
+  ok: response.ok || response.status === 303 || response.status === 302,
+  errorText: text.slice(0, 500),
+};
 }
 
 export async function GET(request: Request) {
