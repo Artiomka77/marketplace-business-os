@@ -590,3 +590,48 @@ model MarketplaceApiConnection {
   @@index([companyId])
   @@index([marketplace])
 }
+
+model HistoricalSyncJob {
+  id String @id @default(cuid())
+
+  companyId   String?
+  companyName String
+
+  marketplace String
+  // WB | OZON
+
+  dataType String
+  // FINANCE | SALES | ADS | STOCK | PRODUCTS
+
+  dateFrom DateTime
+  dateTo   DateTime
+
+  cursorDate         DateTime?
+  cursorReportNumber String?
+  cursorOffset       Int?
+
+  status String @default("PENDING")
+  // PENDING | RUNNING | SUCCESS | ERROR | RATE_LIMITED
+
+  totalSteps     Int? @default(0)
+  completedSteps Int? @default(0)
+
+  lastAttemptAt DateTime?
+  lastError     String?
+  retryCount    Int @default(0)
+
+  startedAt  DateTime?
+  finishedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([companyId])
+  @@index([companyName])
+  @@index([marketplace])
+  @@index([dataType])
+  @@index([status])
+  @@index([dateFrom])
+  @@index([dateTo])
+  @@index([createdAt])
+}
