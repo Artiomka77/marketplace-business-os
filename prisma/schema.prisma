@@ -578,8 +578,10 @@ model MarketplaceApiConnection {
   status String @default("NOT_CONNECTED")
   // NOT_CONNECTED | CONNECTED | ERROR
 
-  lastSyncAt DateTime?
-  lastError  String?
+   lastSyncAt    DateTime?
+  lastAttemptAt DateTime?
+  retryCount    Int       @default(0)
+  lastError     String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

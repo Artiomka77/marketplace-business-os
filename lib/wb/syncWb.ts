@@ -3,10 +3,22 @@ import { normalizeWbFinance } from "@/lib/import/normalizers/wbFinanceNormalizer
 import { normalizeWbSales } from "@/lib/import/normalizers/wbSalesNormalizer";
 import { sleep } from "@/lib/sleep";
 import { requestWithRetry } from "@/lib/wbApi/requestWithRetry";
+import { syncWbAds } from "@/lib/wb/syncWbAds";
+import { syncWbStock } from "@/lib/wb/syncWbStock";
 
 type CompanyRow = {
   id: string;
   name: string;
+};
+
+type SyncStepResult = {
+  name: string;
+  ok: boolean;
+  rows: number;
+  error: string | null;
+  isRateLimit?: boolean;
+  durationMs: number;
+  details?: Record<string, unknown>;
 };
 
 type WbFinanceReport = {
@@ -75,13 +87,27 @@ function isWbRateLimitError(error: unknown) {
 }
 
 function getWbRateLimitMessage() {
-  return "WB временно ограничил запросы (429). Это лимит Finance API на кабинет продавца. Повторная синхронизация будет выполнена автоматически позже.";
+  return "WB временно ограничил запросы (429). Повторная синхронизация будет выполнена автоматически позже.";
 }
 
-function getCooldownMessage(updatedAt: Date) {
-  const nextTryAt = new Date(updatedAt.getTime() + WB_COOLDOWN_MS);
+function getCooldownMessage(lastAttemptAt: Date) {
+  const nextTryAt = new Date(lastAttemptAt.getTime() + WB_COOLDOWN_MS);
 
-  return `WB Finance API недавно вернул 429. Чтобы не усиливать блокировку, повторный запуск временно остановлен. Повторить можно после ${nextTryAt.toLocaleString("ru-RU")}.`;
+  return `WB недавно вернул 429. Чтобы не усиливать блокировку, повторный запуск временно остановлен. Повторить можно после ${nextTryAt.toLocaleString("ru-RU")}.`;
+}
+
+function isConnectionInCooldown(connection: {
+  lastError: string | null;
+  lastAttemptAt: Date | null;
+}) {
+  if (!connection.lastError || !connection.lastAttemptAt) {
+    return false;
+  }
+
+  return (
+    isWbRateLimitError(connection.lastError) &&
+    Date.now() - connection.lastAttemptAt.getTime() < WB_COOLDOWN_MS
+  );
 }
 
 function formatDateOnly(date: Date) {
@@ -198,7 +224,21 @@ async function getWbConnection(companyId: string) {
   return { company, connection };
 }
 
-async function setWbConnected(companyId: string) {
+async function markWbAttempt(companyId: string) {
+  await prisma.marketplaceApiConnection.update({
+    where: {
+      companyId_marketplace: {
+        companyId,
+        marketplace: "WB",
+      },
+    },
+    data: {
+      lastAttemptAt: new Date(),
+    },
+  });
+}
+
+async function setWbConnected(companyId: string, lastError?: string | null) {
   await prisma.marketplaceApiConnection.update({
     where: {
       companyId_marketplace: {
@@ -209,29 +249,32 @@ async function setWbConnected(companyId: string) {
     data: {
       status: "CONNECTED",
       lastSyncAt: new Date(),
-      lastError: null,
+      lastError: lastError ?? null,
+      retryCount: 0,
+    },
+  });
+}
+
+async function setWbRateLimited(companyId: string, errorText: string) {
+  await prisma.marketplaceApiConnection.update({
+    where: {
+      companyId_marketplace: {
+        companyId,
+        marketplace: "WB",
+      },
+    },
+    data: {
+      status: "CONNECTED",
+      lastAttemptAt: new Date(),
+      lastError: errorText.slice(0, 1000),
+      retryCount: {
+        increment: 1,
+      },
     },
   });
 }
 
 async function setWbError(companyId: string, error: unknown) {
-  if (isWbRateLimitError(error)) {
-    await prisma.marketplaceApiConnection.update({
-      where: {
-        companyId_marketplace: {
-          companyId,
-          marketplace: "WB",
-        },
-      },
-      data: {
-        status: "CONNECTED",
-        lastError: getWbRateLimitMessage(),
-      },
-    });
-
-    return;
-  }
-
   await prisma.marketplaceApiConnection.update({
     where: {
       companyId_marketplace: {
@@ -242,6 +285,9 @@ async function setWbError(companyId: string, error: unknown) {
     data: {
       status: "ERROR",
       lastError: getErrorMessage(error).slice(0, 1000),
+      retryCount: {
+        increment: 1,
+      },
     },
   });
 }
@@ -364,35 +410,57 @@ function getReportIds(rows: WbFinanceReport[]) {
   );
 }
 
+async function runSyncStep<T extends { name: string; rows: number }>(
+  name: string,
+  fn: () => Promise<T>
+): Promise<SyncStepResult> {
+  const startedAt = Date.now();
+
+  try {
+    const result = await fn();
+
+    const { name: resultName, rows, ...details } = result;
+
+    return {
+      name: resultName || name,
+      ok: true,
+      rows,
+      error: null,
+      durationMs: Date.now() - startedAt,
+      details,
+    };
+  } catch (error) {
+    return {
+      name,
+      ok: false,
+      rows: 0,
+      error: getErrorMessage(error),
+      isRateLimit: isWbRateLimitError(error),
+      durationMs: Date.now() - startedAt,
+    };
+  }
+}
+
 export async function syncWbFinanceAndSales(companyId: string) {
   const { company, connection } = await getWbConnection(companyId);
 
-  if (
-    connection.lastError &&
-    isWbRateLimitError(connection.lastError) &&
-    Date.now() - connection.updatedAt.getTime() < WB_COOLDOWN_MS
-  ) {
-    await prisma.marketplaceApiConnection.update({
-      where: { id: connection.id },
-      data: {
-        status: "CONNECTED",
-        lastError: getCooldownMessage(connection.updatedAt),
-      },
-    });
+  if (isConnectionInCooldown(connection)) {
+    const message = getCooldownMessage(connection.lastAttemptAt as Date);
 
     return {
       name: "WB Finance + Sales",
       rows: 0,
       skipped: true,
-      message: getCooldownMessage(connection.updatedAt),
+      message,
     };
   }
 
-const wbToken = connection.wbToken;
+  const wbToken = connection.wbToken;
 
-if (!wbToken) {
-  throw new Error("WB token не сохранён");
-}
+  if (!wbToken) {
+    throw new Error("WB token не сохранён");
+  }
+
   const financeResult = await fetchWbFinanceReports(wbToken);
   const financeRows = mapWbFinanceApiRows(financeResult.rows);
 
@@ -461,33 +529,97 @@ if (!wbToken) {
 
   return {
     name: "WB Finance + Sales",
-    rows:
-      financeNormalizeResult.savedRows + salesNormalizeResult.savedRows,
+    rows: financeNormalizeResult.savedRows + salesNormalizeResult.savedRows,
     financeRows: financeNormalizeResult.savedRows,
     salesRows: salesNormalizeResult.savedRows,
   };
 }
 
 export async function syncWbAll(companyId: string) {
-  const results = [];
+  const { connection } = await getWbConnection(companyId);
 
-  try {
-    results.push(await syncWbFinanceAndSales(companyId));
-
-    await setWbConnected(companyId);
+  if (isConnectionInCooldown(connection)) {
+    const message = getCooldownMessage(connection.lastAttemptAt as Date);
 
     return {
       ok: true,
+      partial: true,
+      skipped: true,
+      reason: "RATE_LIMIT_COOLDOWN",
+      results: [
+        {
+          name: "WB Sync",
+          ok: true,
+          rows: 0,
+          error: null,
+          durationMs: 0,
+          details: {
+            skipped: true,
+            message,
+            retryCount: connection.retryCount,
+          },
+        },
+      ],
+    };
+  }
+
+  await markWbAttempt(companyId);
+
+  const results: SyncStepResult[] = [];
+
+  results.push(await runSyncStep("WB Stock", () => syncWbStock(companyId)));
+  results.push(await runSyncStep("WB Ads", () => syncWbAds(companyId)));
+  results.push(
+    await runSyncStep("WB Finance + Sales", () =>
+      syncWbFinanceAndSales(companyId)
+    )
+  );
+
+  const failedResults = results.filter((result) => !result.ok);
+  const hardFailures = failedResults.filter((result) => !result.isRateLimit);
+  const successfulResults = results.filter((result) => result.ok);
+
+  if (successfulResults.length > 0) {
+    const warningText =
+      failedResults.length > 0
+        ? failedResults
+            .map((result) => `${result.name}: ${result.error}`)
+            .join(" | ")
+            .slice(0, 1000)
+        : null;
+
+    await setWbConnected(companyId, warningText);
+
+    return {
+      ok: hardFailures.length === 0,
+      partial: failedResults.length > 0,
       results,
     };
-  } catch (error) {
-    await setWbError(companyId, error);
+  }
+
+  const errorText =
+    failedResults.map((result) => `${result.name}: ${result.error}`).join(" | ") ||
+    "WB синхронизация не выполнила ни один блок";
+
+  if (failedResults.every((result) => result.isRateLimit)) {
+    await setWbRateLimited(companyId, getWbRateLimitMessage());
 
     return {
       ok: false,
+      partial: false,
       results,
-      error: getErrorMessage(error),
-      isRateLimit: isWbRateLimitError(error),
+      error: errorText,
+      isRateLimit: true,
     };
   }
+
+  await setWbError(companyId, errorText);
+
+  return {
+    ok: false,
+    partial: false,
+    results,
+    error: errorText,
+    isRateLimit: failedResults.every((result) => result.isRateLimit),
+  };
 }
