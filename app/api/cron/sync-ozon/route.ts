@@ -1,40 +1,9 @@
 import { NextResponse } from "next/server";
 
 import { prisma } from "@/lib/prisma";
+import { syncOzonAll } from "@/lib/ozon/syncOzon";
 
-type ConnectionRow = {
-  companyId: string;
-};
-
-async function runSync(baseUrl: string, companyId: string) {
-  const formData = new FormData();
-  formData.set("companyId", companyId);
-
-  const response = await fetch(
-    `${baseUrl}/api/settings/api-connections/sync-ozon-all`,
-    {
-      method: "POST",
-      body: formData,
-      redirect: "manual",
-      cache: "no-store",
-    }
-  );
-
-  const text = await response.text().catch(() => "");
-
-return {
-  companyId,
-  status: response.status,
-  ok: response.ok || response.status === 303 || response.status === 302,
-  errorText: text.slice(0, 500),
-};
-}
-
-export async function GET(request: Request) {
-  const url = new URL(request.url);
-
-  const baseUrl = `${url.protocol}//${url.host}`;
-
+export async function GET() {
   const connections = await prisma.marketplaceApiConnection.findMany({
     where: {
       marketplace: "OZON",
@@ -54,13 +23,18 @@ export async function GET(request: Request) {
   const results = [];
 
   for (const connection of connections) {
-    const result = await runSync(baseUrl, connection.companyId);
+    const result = await syncOzonAll(connection.companyId);
 
-    results.push(result);
+    results.push({
+      companyId: connection.companyId,
+      ok: result.ok,
+      results: result.results,
+      error: result.ok ? null : result.error,
+    });
   }
 
   return NextResponse.json({
-    success: true,
+    success: results.every((result) => result.ok),
     syncedCompanies: results.length,
     results,
     executedAt: new Date().toISOString(),
