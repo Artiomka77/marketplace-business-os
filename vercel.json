@@ -3,6 +3,10 @@
     {
       "path": "/api/cron/sync-ozon",
       "schedule": "0 3 * * *"
+    },
+    {
+      "path": "/api/cron/sync-wb",
+      "schedule": "0 */3 * * *"
     }
   ]
 }
