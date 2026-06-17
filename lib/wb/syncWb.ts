@@ -39,37 +39,65 @@ type WbFinanceReport = {
 
 type WbSalesDetailedRow = {
   reportId?: number | string;
+  realizationreport_id?: number | string;
+  rrdId?: number | string;
+  rrd_id?: number | string;
   giId?: number | string;
+  gi_id?: number | string;
   brandName?: string;
+  brand_name?: string;
   subjectName?: string;
+  subject_name?: string;
   title?: string;
   techSize?: string;
+  tech_size?: string;
   nmId?: number | string;
+  nm_id?: number | string;
   vendorCode?: string;
+  sa_name?: string;
   sku?: string;
+  barcode?: string;
   sellerOperName?: string;
+  supplier_oper_name?: string;
   docTypeName?: string;
+  doc_type_name?: string;
   saleDt?: string;
+  sale_dt?: string;
   rrDate?: string;
+  rr_dt?: string;
   quantity?: number | string;
   retailPrice?: number | string;
+  retail_price?: number | string;
   retailAmount?: number | string;
+  retail_amount?: number | string;
   forPay?: number | string;
+  ppvz_for_pay?: number | string;
   vw?: number | string;
+  ppvz_vw?: number | string;
   deliveryAmount?: number | string;
+  delivery_amount?: number | string;
   returnAmount?: number | string;
+  return_amount?: number | string;
   deliveryService?: number | string;
+  delivery_rub?: number | string;
   paidStorage?: number | string;
+  storage_fee?: number | string;
   paidAcceptance?: number | string;
+  acceptance?: number | string;
   deduction?: number | string;
   penalty?: number | string;
   acquiringFee?: number | string;
+  acquiring_fee?: number | string;
   ppvzReward?: number | string;
+  ppvz_reward?: number | string;
   rebillLogisticCost?: number | string;
+  rebill_logistic_cost?: number | string;
 };
 
 const WB_COOLDOWN_MS = 60 * 60 * 1000;
 const WB_REQUEST_DELAY_MS = 70 * 1000;
+const WB_SALES_DETAILED_LIMIT = 100_000;
+const WB_SALES_MAX_PAGES = 20;
 
 function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : "Неизвестная ошибка";
@@ -131,6 +159,10 @@ function getDefaultPeriod() {
   };
 }
 
+function getWbSalesRrdId(row: WbSalesDetailedRow) {
+  return row.rrdId ?? row.rrd_id ?? null;
+}
+
 function mapWbFinanceApiRows(rows: WbFinanceReport[]) {
   return rows.map((row) => ({
     "№ отчета": row.reportId ? String(row.reportId) : "",
@@ -152,45 +184,70 @@ function mapWbFinanceApiRows(rows: WbFinanceReport[]) {
 
 function mapWbSalesApiRows(rows: WbSalesDetailedRow[]) {
   return rows.map((row) => ({
-    "Номер отчета": row.reportId ? String(row.reportId) : "",
-    "Номер поставки": row.giId ? String(row.giId) : "",
+    "Номер отчета": row.reportId
+      ? String(row.reportId)
+      : row.realizationreport_id
+        ? String(row.realizationreport_id)
+        : "",
 
-    Бренд: row.brandName ?? "",
-    Предмет: row.subjectName ?? "",
+    "Номер поставки": row.giId
+      ? String(row.giId)
+      : row.gi_id
+        ? String(row.gi_id)
+        : "",
+
+    Бренд: row.brandName ?? row.brand_name ?? "",
+    Предмет: row.subjectName ?? row.subject_name ?? "",
     Наименование: row.title ?? "",
-    Размер: row.techSize ?? "",
+    Размер: row.techSize ?? row.tech_size ?? "",
 
-    "Код номенклатуры": row.nmId ? String(row.nmId) : "",
-    "Артикул поставщика": row.vendorCode ?? "",
-    Баркод: row.sku ?? "",
+    "Код номенклатуры": row.nmId
+      ? String(row.nmId)
+      : row.nm_id
+        ? String(row.nm_id)
+        : "",
 
-    "Обоснование для оплаты": row.sellerOperName ?? "",
-    "Тип документа": row.docTypeName ?? "",
+    "Артикул поставщика": row.vendorCode ?? row.sa_name ?? "",
+    Баркод: row.sku ?? row.barcode ?? "",
 
-    "Дата продажи": row.saleDt ?? row.rrDate ?? "",
+    "Обоснование для оплаты":
+      row.sellerOperName ?? row.supplier_oper_name ?? "",
+
+    "Тип документа": row.docTypeName ?? row.doc_type_name ?? "",
+
+    "Дата продажи": row.saleDt ?? row.sale_dt ?? row.rrDate ?? row.rr_dt ?? "",
 
     "Кол-во": row.quantity ?? "",
 
-    "Цена розничная": row.retailPrice ?? "",
-    "Вайлдберриз реализовал Товар (Пр)": row.retailAmount ?? "",
-    "К перечислению Продавцу за реализованный Товар": row.forPay ?? "",
+    "Цена розничная": row.retailPrice ?? row.retail_price ?? "",
+    "Вайлдберриз реализовал Товар (Пр)":
+      row.retailAmount ?? row.retail_amount ?? "",
+    "К перечислению Продавцу за реализованный Товар":
+      row.forPay ?? row.ppvz_for_pay ?? "",
 
-    "Вознаграждение Вайлдберриз (ВВ), без НДС": row.vw ?? "",
+    "Вознаграждение Вайлдберриз (ВВ), без НДС":
+      row.vw ?? row.ppvz_vw ?? "",
 
-    "Количество доставок": row.deliveryAmount ?? "",
-    "Количество возврата": row.returnAmount ?? "",
+    "Количество доставок": row.deliveryAmount ?? row.delivery_amount ?? "",
+    "Количество возврата": row.returnAmount ?? row.return_amount ?? "",
 
-    "Услуги по доставке товара покупателю": row.deliveryService ?? "",
-    Хранение: row.paidStorage ?? "",
-    "Платная приемка": row.paidAcceptance ?? "",
+    "Услуги по доставке товара покупателю":
+      row.deliveryService ?? row.delivery_rub ?? "",
+
+    Хранение: row.paidStorage ?? row.storage_fee ?? "",
+    "Платная приемка": row.paidAcceptance ?? row.acceptance ?? "",
     Удержания: row.deduction ?? "",
     "Общая сумма штрафов": row.penalty ?? "",
 
     "Компенсация платёжных услуг/Комиссия за интеграцию платёжных сервисов":
-      row.acquiringFee ?? "",
+      row.acquiringFee ?? row.acquiring_fee ?? "",
 
-    "Возмещение за выдачу и возврат товаров на ПВЗ": row.ppvzReward ?? "",
-    "Возмещение издержек по перевозке": row.rebillLogisticCost ?? "",
+    "Возмещение за выдачу и возврат товаров на ПВЗ":
+      row.ppvzReward ?? row.ppvz_reward ?? "",
+
+    "Возмещение издержек по перевозке":
+      row.rebillLogisticCost ?? row.rebill_logistic_cost ?? "",
+
     "Корректировка вознаграждения Вайлдберриз": "",
   }));
 }
@@ -343,15 +400,24 @@ async function fetchWbFinanceReports(token: string) {
 
 async function fetchWbSalesDetailedRows(token: string, reportId: string) {
   const allRows: WbSalesDetailedRow[] = [];
-  const limit = 1000;
-  let offset = 0;
+  const limit = WB_SALES_DETAILED_LIMIT;
+
+  let rrdId: number | string = 0;
+  let page = 0;
 
   while (true) {
+    if (page >= WB_SALES_MAX_PAGES) {
+      throw new Error(
+        `WB Sales API report ${reportId}: остановлено после ${WB_SALES_MAX_PAGES} страниц, чтобы не уйти в бесконечную пагинацию`
+      );
+    }
+
     const url = `https://finance-api.wildberries.ru/api/finance/v1/sales-reports/detailed/${reportId}`;
 
     const response = await requestWithRetry({
       url,
       label: `WB Sales API report ${reportId}`,
+      timeoutMs: 30_000,
       init: {
         method: "POST",
         headers: {
@@ -360,7 +426,7 @@ async function fetchWbSalesDetailedRows(token: string, reportId: string) {
         },
         body: JSON.stringify({
           limit,
-          offset,
+          rrdId,
         }),
         cache: "no-store",
       },
@@ -385,13 +451,28 @@ async function fetchWbSalesDetailedRows(token: string, reportId: string) {
       );
     }
 
-    allRows.push(...(json as WbSalesDetailedRow[]));
+    if (json.length === 0) {
+      break;
+    }
+
+    const rows = json as WbSalesDetailedRow[];
+    const lastRow = rows[rows.length - 1];
+    const nextRrdId = getWbSalesRrdId(lastRow);
+
+    allRows.push(...rows);
 
     if (json.length < limit) {
       break;
     }
 
-    offset += limit;
+    if (nextRrdId === null || nextRrdId === undefined || nextRrdId === rrdId) {
+      throw new Error(
+        `WB Sales API report ${reportId}: не удалось продолжить пагинацию, rrdId не изменился`
+      );
+    }
+
+    rrdId = nextRrdId;
+    page += 1;
 
     await sleep(WB_REQUEST_DELAY_MS);
   }
@@ -532,6 +613,24 @@ export async function syncWbSales(companyId: string) {
 
   const latestReport = await getLatestFinanceReport(company.name);
   const reportId = String(latestReport.reportNumber);
+
+  const existingSalesRows = await prisma.wbSale.count({
+    where: {
+      companyName: company.name,
+      reportNumber: reportId,
+    },
+  });
+
+  if (existingSalesRows > 0) {
+    return {
+      name: "WB Sales",
+      rows: 0,
+      salesRows: 0,
+      reportId,
+      skipped: true,
+      message: `WB Sales report ${reportId} уже загружен, повторная загрузка пропущена.`,
+    };
+  }
 
   const salesDetailedRows = await fetchWbSalesDetailedRows(wbToken, reportId);
   const salesRows = mapWbSalesApiRows(salesDetailedRows);
