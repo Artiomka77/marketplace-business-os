@@ -480,8 +480,8 @@ async function fetchWbSalesDetailedRows(token: string, reportId: string) {
   return allRows;
 }
 
-async function getLatestFinanceReport(companyName: string) {
-  const latestReport = await prisma.wbFinance.findFirst({
+async function getNextFinanceReportWithoutSales(companyName: string) {
+  const reports = await prisma.wbFinance.findMany({
     where: {
       companyName,
       reportNumber: {
@@ -496,13 +496,65 @@ async function getLatestFinanceReport(companyName: string) {
     },
   });
 
-  if (!latestReport?.reportNumber) {
+  if (reports.length === 0) {
     throw new Error(
       "Не найден номер отчёта WB Finance. Сначала запусти синхронизацию WB Finance."
     );
   }
 
-  return latestReport;
+  const seenReportNumbers = new Set<string>();
+
+  const uniqueReports = reports.filter((report) => {
+    const reportNumber = String(report.reportNumber ?? "").trim();
+
+    if (!reportNumber || seenReportNumbers.has(reportNumber)) {
+      return false;
+    }
+
+    seenReportNumbers.add(reportNumber);
+    return true;
+  });
+
+  const reportNumbers = uniqueReports.map((report) =>
+    String(report.reportNumber)
+  );
+
+  if (reportNumbers.length === 0) {
+    throw new Error(
+      "Не найден номер отчёта WB Finance. Сначала запусти синхронизацию WB Finance."
+    );
+  }
+
+  const existingSalesReports = await prisma.wbSale.findMany({
+    where: {
+      companyName,
+      reportNumber: {
+        in: reportNumbers,
+      },
+    },
+    select: {
+      reportNumber: true,
+    },
+    distinct: ["reportNumber"],
+  });
+
+  const loadedReportNumbers = new Set(
+    existingSalesReports
+      .map((row) => String(row.reportNumber ?? "").trim())
+      .filter(Boolean)
+  );
+
+  const nextReport =
+    uniqueReports.find(
+      (report) => !loadedReportNumbers.has(String(report.reportNumber))
+    ) ?? null;
+
+  return {
+    report: nextReport,
+    totalReports: uniqueReports.length,
+    loadedReports: loadedReportNumbers.size,
+    pendingReports: Math.max(uniqueReports.length - loadedReportNumbers.size, 0),
+  };
 }
 
 async function runSyncStep<T extends { name: string; rows: number }>(
@@ -611,8 +663,22 @@ export async function syncWbSales(companyId: string) {
     throw new Error("WB token не сохранён");
   }
 
-  const latestReport = await getLatestFinanceReport(company.name);
-  const reportId = String(latestReport.reportNumber);
+  const salesQueue = await getNextFinanceReportWithoutSales(company.name);
+
+  if (!salesQueue.report) {
+    return {
+      name: "WB Sales",
+      rows: 0,
+      salesRows: 0,
+      skipped: true,
+      message: "Все найденные отчёты WB Sales уже загружены.",
+      totalReports: salesQueue.totalReports,
+      loadedReports: salesQueue.loadedReports,
+      pendingReports: 0,
+    };
+  }
+
+  const reportId = String(salesQueue.report.reportNumber);
 
   const existingSalesRows = await prisma.wbSale.count({
     where: {
@@ -629,6 +695,9 @@ export async function syncWbSales(companyId: string) {
       reportId,
       skipped: true,
       message: `WB Sales report ${reportId} уже загружен, повторная загрузка пропущена.`,
+      totalReports: salesQueue.totalReports,
+      loadedReports: salesQueue.loadedReports,
+      pendingReports: salesQueue.pendingReports,
     };
   }
 
@@ -638,8 +707,8 @@ export async function syncWbSales(companyId: string) {
   const salesImportSession = await prisma.importSession.create({
     data: {
       fileName: `WB API Sales ${company.name} ${formatDateForFileName(
-        latestReport.dateFrom
-      )} - ${formatDateForFileName(latestReport.dateTo)}`,
+        salesQueue.report.dateFrom
+      )} - ${formatDateForFileName(salesQueue.report.dateTo)}`,
       reportType: "WB_SALES",
       marketplace: "WILDBERRIES",
       companyName: company.name,
@@ -667,6 +736,9 @@ export async function syncWbSales(companyId: string) {
     rows: salesNormalizeResult.savedRows,
     salesRows: salesNormalizeResult.savedRows,
     reportId,
+    totalReports: salesQueue.totalReports,
+    loadedReportsBefore: salesQueue.loadedReports,
+    pendingReportsBefore: salesQueue.pendingReports,
   };
 }
 
