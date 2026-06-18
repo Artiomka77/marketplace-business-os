@@ -11,6 +11,11 @@ type CompanyRow = {
   name: string;
 };
 
+type WbSyncPeriodOptions = {
+  dateFrom?: Date;
+  dateTo?: Date;
+};
+
 type SyncStepResult = {
   name: string;
   ok: boolean;
@@ -138,6 +143,12 @@ function isConnectionInCooldown(connection: {
   );
 }
 
+function startOfUtcDay(date: Date) {
+  return new Date(
+    Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate())
+  );
+}
+
 function formatDateOnly(date: Date) {
   return date.toISOString().slice(0, 10);
 }
@@ -152,6 +163,28 @@ function getDefaultPeriod() {
   const dateFrom = new Date();
 
   dateFrom.setDate(dateFrom.getDate() - 14);
+
+  return {
+    dateFrom: formatDateOnly(dateFrom),
+    dateTo: formatDateOnly(dateTo),
+  };
+}
+
+function getSyncPeriod(options: WbSyncPeriodOptions = {}) {
+  if (!options.dateFrom && !options.dateTo) {
+    return getDefaultPeriod();
+  }
+
+  if (!options.dateFrom || !options.dateTo) {
+    throw new Error("Для исторической WB-синхронизации нужны dateFrom и dateTo");
+  }
+
+  const dateFrom = startOfUtcDay(options.dateFrom);
+  const dateTo = startOfUtcDay(options.dateTo);
+
+  if (dateFrom.getTime() > dateTo.getTime()) {
+    throw new Error("dateFrom не может быть позже dateTo");
+  }
 
   return {
     dateFrom: formatDateOnly(dateFrom),
@@ -354,8 +387,11 @@ async function setWbError(companyId: string, error: unknown) {
   });
 }
 
-async function fetchWbFinanceReports(token: string) {
-  const { dateFrom, dateTo } = getDefaultPeriod();
+async function fetchWbFinanceReports(
+  token: string,
+  options: WbSyncPeriodOptions = {}
+) {
+  const { dateFrom, dateTo } = getSyncPeriod(options);
 
   const response = await fetch(
     "https://finance-api.wildberries.ru/api/finance/v1/sales-reports/list",
@@ -588,7 +624,10 @@ async function runSyncStep<T extends { name: string; rows: number }>(
   }
 }
 
-export async function syncWbFinance(companyId: string) {
+export async function syncWbFinance(
+  companyId: string,
+  options: WbSyncPeriodOptions = {}
+) {
   const { company, connection } = await getWbConnection(companyId);
 
   if (isConnectionInCooldown(connection)) {
@@ -608,7 +647,7 @@ export async function syncWbFinance(companyId: string) {
     throw new Error("WB token не сохранён");
   }
 
-  const financeResult = await fetchWbFinanceReports(wbToken);
+  const financeResult = await fetchWbFinanceReports(wbToken, options);
   const financeRows = mapWbFinanceApiRows(financeResult.rows);
 
   const financeImportSession = await prisma.importSession.create({
@@ -640,6 +679,8 @@ export async function syncWbFinance(companyId: string) {
     name: "WB Finance",
     rows: financeNormalizeResult.savedRows,
     financeRows: financeNormalizeResult.savedRows,
+    dateFrom: financeResult.dateFrom,
+    dateTo: financeResult.dateTo,
   };
 }
 

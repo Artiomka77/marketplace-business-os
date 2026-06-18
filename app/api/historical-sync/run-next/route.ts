@@ -4,8 +4,22 @@ import { runNextHistoricalSyncJob } from "@/lib/historicalSync/runHistoricalSync
 
 export const dynamic = "force-dynamic";
 
+type MarketplaceParam = "OZON" | "WB" | "ALL";
+
 function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : "Неизвестная ошибка";
+}
+
+function parseMarketplace(value: string | null): MarketplaceParam {
+  if (value === "WB") {
+    return "WB";
+  }
+
+  if (value === "ALL") {
+    return "ALL";
+  }
+
+  return "OZON";
 }
 
 export async function GET(request: NextRequest) {
@@ -13,9 +27,10 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
 
     const companyId = searchParams.get("companyId");
+    const marketplace = parseMarketplace(searchParams.get("marketplace"));
 
     const result = await runNextHistoricalSyncJob({
-      marketplace: "OZON",
+      marketplace,
       companyId,
     });
 

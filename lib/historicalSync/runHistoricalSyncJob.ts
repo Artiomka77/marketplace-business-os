@@ -1,13 +1,18 @@
+import type { Prisma } from "@prisma/client";
+
 import { prisma } from "@/lib/prisma";
 import {
   syncOzonAds,
   syncOzonFinance,
   syncOzonProducts,
 } from "@/lib/ozon/syncOzon";
+import { syncWbFinance } from "@/lib/wb/syncWb";
+
+type MarketplaceFilter = "OZON" | "WB" | "ALL";
 
 type RunHistoricalSyncJobOptions = {
   companyId?: string | null;
-  marketplace?: "OZON";
+  marketplace?: MarketplaceFilter;
 };
 
 type HistoricalSyncJobRow = {
@@ -22,6 +27,9 @@ type HistoricalSyncJobRow = {
 };
 
 const RATE_LIMIT_COOLDOWN_MS = 60 * 60 * 1000;
+
+const OZON_SUPPORTED_DATA_TYPES = ["FINANCE", "ADS", "PRODUCTS"];
+const WB_SUPPORTED_DATA_TYPES = ["FINANCE"];
 
 function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : "Неизвестная ошибка";
@@ -42,32 +50,128 @@ function getRetryAllowedDate() {
   return new Date(Date.now() - RATE_LIMIT_COOLDOWN_MS);
 }
 
-async function findNextOzonJob(options: RunHistoricalSyncJobOptions) {
+function getRunnableStatusWhere(): Prisma.HistoricalSyncJobWhereInput {
+  return {
+    OR: [
+      {
+        status: "PENDING",
+      },
+      {
+        status: "ERROR",
+      },
+      {
+        status: "RATE_LIMITED",
+        OR: [
+          {
+            lastAttemptAt: null,
+          },
+          {
+            lastAttemptAt: {
+              lte: getRetryAllowedDate(),
+            },
+          },
+        ],
+      },
+    ],
+  };
+}
+
+function getSupportedJobWhere(
+  marketplace: MarketplaceFilter
+): Prisma.HistoricalSyncJobWhereInput {
+  if (marketplace === "OZON") {
+    return {
+      marketplace: "OZON",
+      dataType: {
+        in: OZON_SUPPORTED_DATA_TYPES,
+      },
+    };
+  }
+
+  if (marketplace === "WB") {
+    return {
+      marketplace: "WB",
+      dataType: {
+        in: WB_SUPPORTED_DATA_TYPES,
+      },
+    };
+  }
+
+  return {
+    OR: [
+      {
+        marketplace: "OZON",
+        dataType: {
+          in: OZON_SUPPORTED_DATA_TYPES,
+        },
+      },
+      {
+        marketplace: "WB",
+        dataType: {
+          in: WB_SUPPORTED_DATA_TYPES,
+        },
+      },
+    ],
+  };
+}
+
+function getNoPendingReason(marketplace: MarketplaceFilter) {
+  if (marketplace === "WB") {
+    return {
+      reason: "NO_PENDING_WB_FINANCE_JOBS",
+      message: "Нет ожидающих исторических задач WB Finance.",
+    };
+  }
+
+  if (marketplace === "ALL") {
+    return {
+      reason: "NO_PENDING_SUPPORTED_JOBS",
+      message: "Нет ожидающих поддерживаемых исторических задач.",
+    };
+  }
+
+  return {
+    reason: "NO_PENDING_OZON_JOBS",
+    message: "Нет ожидающих исторических задач Ozon.",
+  };
+}
+
+function getRowsFromResult(result: unknown) {
+  if (
+    typeof result === "object" &&
+    result !== null &&
+    "rows" in result &&
+    typeof result.rows === "number"
+  ) {
+    return result.rows;
+  }
+
+  return 0;
+}
+
+function throwIfSkippedResult(result: unknown) {
+  if (
+    typeof result === "object" &&
+    result !== null &&
+    "skipped" in result &&
+    result.skipped === true
+  ) {
+    const message =
+      "message" in result && typeof result.message === "string"
+        ? result.message
+        : "Историческая задача была пропущена.";
+
+    throw new Error(message);
+  }
+}
+
+async function findNextHistoricalJob(options: RunHistoricalSyncJobOptions) {
+  const marketplace = options.marketplace ?? "OZON";
+
   const job = await prisma.historicalSyncJob.findFirst({
     where: {
-      marketplace: options.marketplace ?? "OZON",
       ...(options.companyId ? { companyId: options.companyId } : {}),
-      OR: [
-        {
-          status: "PENDING",
-        },
-        {
-          status: "ERROR",
-        },
-        {
-          status: "RATE_LIMITED",
-          OR: [
-            {
-              lastAttemptAt: null,
-            },
-            {
-              lastAttemptAt: {
-                lte: getRetryAllowedDate(),
-              },
-            },
-          ],
-        },
-      ],
+      AND: [getSupportedJobWhere(marketplace), getRunnableStatusWhere()],
     },
     orderBy: [{ createdAt: "asc" }],
     select: {
@@ -162,31 +266,62 @@ async function runOzonJob(job: HistoricalSyncJobRow) {
   );
 }
 
+async function runWbJob(job: HistoricalSyncJobRow) {
+  if (!job.companyId) {
+    throw new Error(`HistoricalSyncJob ${job.id}: companyId не заполнен`);
+  }
+
+  if (job.dataType === "FINANCE") {
+    return syncWbFinance(job.companyId, {
+      dateFrom: job.dateFrom,
+      dateTo: job.dateTo,
+    });
+  }
+
+  throw new Error(
+    `HistoricalSyncJob ${job.id}: тип ${job.dataType} пока не поддерживается для WB`
+  );
+}
+
+async function runMarketplaceJob(job: HistoricalSyncJobRow) {
+  if (job.marketplace === "OZON") {
+    return runOzonJob(job);
+  }
+
+  if (job.marketplace === "WB") {
+    return runWbJob(job);
+  }
+
+  throw new Error(
+    `HistoricalSyncJob ${job.id}: маркетплейс ${job.marketplace} пока не поддерживается`
+  );
+}
+
 export async function runNextHistoricalSyncJob(
   options: RunHistoricalSyncJobOptions = {}
 ) {
-  const job = await findNextOzonJob(options);
+  const marketplace = options.marketplace ?? "OZON";
+  const job = await findNextHistoricalJob(options);
 
   if (!job) {
+    const noPending = getNoPendingReason(marketplace);
+
     return {
       ok: true,
       skipped: true,
-      reason: "NO_PENDING_OZON_JOBS",
-      message: "Нет ожидающих исторических задач Ozon.",
+      reason: noPending.reason,
+      message: noPending.message,
     };
   }
 
   await markJobRunning(job.id);
 
   try {
-    const result = await runOzonJob(job);
-    const rows =
-      typeof result === "object" &&
-      result !== null &&
-      "rows" in result &&
-      typeof result.rows === "number"
-        ? result.rows
-        : 0;
+    const result = await runMarketplaceJob(job);
+
+    throwIfSkippedResult(result);
+
+    const rows = getRowsFromResult(result);
 
     await markJobSuccess(job.id);
 
