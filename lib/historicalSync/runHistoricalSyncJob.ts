@@ -6,13 +6,18 @@ import {
   syncOzonFinance,
   syncOzonProducts,
 } from "@/lib/ozon/syncOzon";
-import { syncWbFinance } from "@/lib/wb/syncWb";
+import {
+  syncWbFinance,
+  syncWbSalesByReportNumber,
+} from "@/lib/wb/syncWb";
 
 type MarketplaceFilter = "OZON" | "WB" | "ALL";
+type HistoricalDataType = "FINANCE" | "ADS" | "PRODUCTS" | "SALES";
 
 type RunHistoricalSyncJobOptions = {
   companyId?: string | null;
   marketplace?: MarketplaceFilter;
+  dataTypes?: HistoricalDataType[];
 };
 
 type HistoricalSyncJobRow = {
@@ -23,13 +28,19 @@ type HistoricalSyncJobRow = {
   dataType: string;
   dateFrom: Date;
   dateTo: Date;
+  cursorReportNumber: string | null;
   retryCount: number;
 };
 
 const RATE_LIMIT_COOLDOWN_MS = 60 * 60 * 1000;
 
-const OZON_SUPPORTED_DATA_TYPES = ["FINANCE", "ADS", "PRODUCTS"];
-const WB_SUPPORTED_DATA_TYPES = ["FINANCE"];
+const OZON_SUPPORTED_DATA_TYPES: HistoricalDataType[] = [
+  "FINANCE",
+  "ADS",
+  "PRODUCTS",
+];
+
+const WB_SUPPORTED_DATA_TYPES: HistoricalDataType[] = ["FINANCE", "SALES"];
 
 function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : "Неизвестная ошибка";
@@ -48,6 +59,17 @@ function isRateLimitError(error: unknown) {
 
 function getRetryAllowedDate() {
   return new Date(Date.now() - RATE_LIMIT_COOLDOWN_MS);
+}
+
+function intersectDataTypes(
+  allowed: HistoricalDataType[],
+  requested?: HistoricalDataType[]
+) {
+  if (!requested || requested.length === 0) {
+    return allowed;
+  }
+
+  return allowed.filter((dataType) => requested.includes(dataType));
 }
 
 function getRunnableStatusWhere(): Prisma.HistoricalSyncJobWhereInput {
@@ -76,63 +98,122 @@ function getRunnableStatusWhere(): Prisma.HistoricalSyncJobWhereInput {
   };
 }
 
-function getSupportedJobWhere(
-  marketplace: MarketplaceFilter
+function getWbSupportedWhere(
+  requestedDataTypes?: HistoricalDataType[]
 ): Prisma.HistoricalSyncJobWhereInput {
-  if (marketplace === "OZON") {
-    return {
-      marketplace: "OZON",
-      dataType: {
-        in: OZON_SUPPORTED_DATA_TYPES,
-      },
-    };
+  const dataTypes = intersectDataTypes(
+    WB_SUPPORTED_DATA_TYPES,
+    requestedDataTypes
+  );
+
+  const supportedBlocks: Prisma.HistoricalSyncJobWhereInput[] = [];
+
+  if (dataTypes.includes("FINANCE")) {
+    supportedBlocks.push({
+      marketplace: "WB",
+      dataType: "FINANCE",
+    });
   }
 
-  if (marketplace === "WB") {
-    return {
+  if (dataTypes.includes("SALES")) {
+    supportedBlocks.push({
       marketplace: "WB",
-      dataType: {
-        in: WB_SUPPORTED_DATA_TYPES,
+      dataType: "SALES",
+      cursorReportNumber: {
+        not: null,
       },
+    });
+  }
+
+  if (supportedBlocks.length === 0) {
+    return {
+      id: "__NO_SUPPORTED_WB_HISTORICAL_JOB__",
     };
   }
 
   return {
+    OR: supportedBlocks,
+  };
+}
+
+function getOzonSupportedWhere(
+  requestedDataTypes?: HistoricalDataType[]
+): Prisma.HistoricalSyncJobWhereInput {
+  const dataTypes = intersectDataTypes(
+    OZON_SUPPORTED_DATA_TYPES,
+    requestedDataTypes
+  );
+
+  if (dataTypes.length === 0) {
+    return {
+      id: "__NO_SUPPORTED_OZON_HISTORICAL_JOB__",
+    };
+  }
+
+  return {
+    marketplace: "OZON",
+    dataType: {
+      in: dataTypes,
+    },
+  };
+}
+
+function getSupportedJobWhere(
+  marketplace: MarketplaceFilter,
+  requestedDataTypes?: HistoricalDataType[]
+): Prisma.HistoricalSyncJobWhereInput {
+  if (marketplace === "OZON") {
+    return getOzonSupportedWhere(requestedDataTypes);
+  }
+
+  if (marketplace === "WB") {
+    return getWbSupportedWhere(requestedDataTypes);
+  }
+
+  return {
     OR: [
-      {
-        marketplace: "OZON",
-        dataType: {
-          in: OZON_SUPPORTED_DATA_TYPES,
-        },
-      },
-      {
-        marketplace: "WB",
-        dataType: {
-          in: WB_SUPPORTED_DATA_TYPES,
-        },
-      },
+      getOzonSupportedWhere(requestedDataTypes),
+      getWbSupportedWhere(requestedDataTypes),
     ],
   };
 }
 
-function getNoPendingReason(marketplace: MarketplaceFilter) {
+function getNoPendingReason(
+  marketplace: MarketplaceFilter,
+  dataTypes?: HistoricalDataType[]
+) {
+  const dataTypeText =
+    dataTypes && dataTypes.length > 0 ? dataTypes.join(", ") : null;
+
   if (marketplace === "WB") {
     return {
-      reason: "NO_PENDING_WB_FINANCE_JOBS",
-      message: "Нет ожидающих исторических задач WB Finance.",
+      reason: dataTypeText
+        ? `NO_PENDING_WB_${dataTypeText}_JOBS`
+        : "NO_PENDING_WB_JOBS",
+      message: dataTypeText
+        ? `Нет ожидающих исторических задач WB: ${dataTypeText}.`
+        : "Нет ожидающих исторических задач WB.",
     };
   }
 
   if (marketplace === "ALL") {
     return {
-      reason: "NO_PENDING_SUPPORTED_JOBS",
-      message: "Нет ожидающих поддерживаемых исторических задач.",
+      reason: dataTypeText
+        ? `NO_PENDING_${dataTypeText}_JOBS`
+        : "NO_PENDING_SUPPORTED_JOBS",
+      message: dataTypeText
+        ? `Нет ожидающих поддерживаемых исторических задач: ${dataTypeText}.`
+        : "Нет ожидающих поддерживаемых исторических задач.",
     };
   }
 
   return {
-    reason: "NO_PENDING_OZON_JOBS",
-    message: "Нет ожидающих исторических задач Ozon.",
+    reason: dataTypeText
+      ? `NO_PENDING_OZON_${dataTypeText}_JOBS`
+      : "NO_PENDING_OZON_JOBS",
+    message: dataTypeText
+      ? `Нет ожидающих исторических задач Ozon: ${dataTypeText}.`
+      : "Нет ожидающих исторических задач Ozon.",
   };
 }
 
@@ -171,7 +252,10 @@ async function findNextHistoricalJob(options: RunHistoricalSyncJobOptions) {
   const job = await prisma.historicalSyncJob.findFirst({
     where: {
       ...(options.companyId ? { companyId: options.companyId } : {}),
-      AND: [getSupportedJobWhere(marketplace), getRunnableStatusWhere()],
+      AND: [
+        getSupportedJobWhere(marketplace, options.dataTypes),
+        getRunnableStatusWhere(),
+      ],
     },
     orderBy: [{ createdAt: "asc" }],
     select: {
@@ -182,6 +266,7 @@ async function findNextHistoricalJob(options: RunHistoricalSyncJobOptions) {
       dataType: true,
       dateFrom: true,
       dateTo: true,
+      cursorReportNumber: true,
       retryCount: true,
     },
   });
@@ -211,7 +296,6 @@ async function markJobSuccess(jobId: string) {
       lastError: null,
       cursorDate: null,
       cursorOffset: null,
-      cursorReportNumber: null,
     },
   });
 }
@@ -278,6 +362,19 @@ async function runWbJob(job: HistoricalSyncJobRow) {
     });
   }
 
+  if (job.dataType === "SALES") {
+    if (!job.cursorReportNumber) {
+      throw new Error(
+        `HistoricalSyncJob ${job.id}: для WB Sales не заполнен cursorReportNumber`
+      );
+    }
+
+    return syncWbSalesByReportNumber(job.companyId, job.cursorReportNumber, {
+      dateFrom: job.dateFrom,
+      dateTo: job.dateTo,
+    });
+  }
+
   throw new Error(
     `HistoricalSyncJob ${job.id}: тип ${job.dataType} пока не поддерживается для WB`
   );
@@ -304,7 +401,7 @@ export async function runNextHistoricalSyncJob(
   const job = await findNextHistoricalJob(options);
 
   if (!job) {
-    const noPending = getNoPendingReason(marketplace);
+    const noPending = getNoPendingReason(marketplace, options.dataTypes);
 
     return {
       ok: true,
@@ -333,6 +430,7 @@ export async function runNextHistoricalSyncJob(
       companyName: job.companyName,
       marketplace: job.marketplace,
       dataType: job.dataType,
+      cursorReportNumber: job.cursorReportNumber,
       dateFrom: job.dateFrom.toISOString().slice(0, 10),
       dateTo: job.dateTo.toISOString().slice(0, 10),
       rows,
@@ -349,6 +447,7 @@ export async function runNextHistoricalSyncJob(
       companyName: job.companyName,
       marketplace: job.marketplace,
       dataType: job.dataType,
+      cursorReportNumber: job.cursorReportNumber,
       dateFrom: job.dateFrom.toISOString().slice(0, 10),
       dateTo: job.dateTo.toISOString().slice(0, 10),
       error: failedResult.errorText,

@@ -16,6 +16,11 @@ type WbSyncPeriodOptions = {
   dateTo?: Date;
 };
 
+type WbSalesByReportOptions = {
+  dateFrom?: Date | null;
+  dateTo?: Date | null;
+};
+
 type SyncStepResult = {
   name: string;
   ok: boolean;
@@ -684,6 +689,80 @@ export async function syncWbFinance(
   };
 }
 
+export async function syncWbSalesByReportNumber(
+  companyId: string,
+  reportId: string,
+  options: WbSalesByReportOptions = {}
+) {
+  const normalizedReportId = String(reportId ?? "").trim();
+
+  if (!normalizedReportId) {
+    throw new Error("WB Sales: reportNumber не заполнен");
+  }
+
+  const { company, connection } = await getWbConnection(companyId);
+
+  if (isConnectionInCooldown(connection)) {
+    const message = getCooldownMessage(connection.lastAttemptAt as Date);
+
+    return {
+      name: "WB Sales",
+      rows: 0,
+      skipped: true,
+      message,
+      reportId: normalizedReportId,
+    };
+  }
+
+  const wbToken = connection.wbToken;
+
+  if (!wbToken) {
+    throw new Error("WB token не сохранён");
+  }
+
+  const salesDetailedRows = await fetchWbSalesDetailedRows(
+    wbToken,
+    normalizedReportId
+  );
+  const salesRows = mapWbSalesApiRows(salesDetailedRows);
+
+  const salesImportSession = await prisma.importSession.create({
+    data: {
+      fileName: `WB API Sales ${company.name} report ${normalizedReportId} ${formatDateForFileName(
+        options.dateFrom
+      )} - ${formatDateForFileName(options.dateTo)}`,
+      reportType: "WB_SALES",
+      marketplace: "WILDBERRIES",
+      companyName: company.name,
+      rowsCount: salesRows.length,
+      previewJson: salesRows.slice(0, 10),
+      sheetName: "WB Sales API",
+      headerRow: 1,
+      status: "SUCCESS",
+    },
+  });
+
+  const salesNormalizeResult = await normalizeWbSales(
+    salesRows,
+    salesImportSession.id,
+    company.name
+  );
+
+  await prisma.importSession.update({
+    where: { id: salesImportSession.id },
+    data: { rowsCount: salesNormalizeResult.savedRows },
+  });
+
+  return {
+    name: "WB Sales",
+    rows: salesNormalizeResult.savedRows,
+    salesRows: salesNormalizeResult.savedRows,
+    reportId: normalizedReportId,
+    dateFrom: formatDateForFileName(options.dateFrom),
+    dateTo: formatDateForFileName(options.dateTo),
+  };
+}
+
 export async function syncWbSales(companyId: string) {
   const { company, connection } = await getWbConnection(companyId);
 
@@ -696,12 +775,6 @@ export async function syncWbSales(companyId: string) {
       skipped: true,
       message,
     };
-  }
-
-  const wbToken = connection.wbToken;
-
-  if (!wbToken) {
-    throw new Error("WB token не сохранён");
   }
 
   const salesQueue = await getNextFinanceReportWithoutSales(company.name);
@@ -742,41 +815,13 @@ export async function syncWbSales(companyId: string) {
     };
   }
 
-  const salesDetailedRows = await fetchWbSalesDetailedRows(wbToken, reportId);
-  const salesRows = mapWbSalesApiRows(salesDetailedRows);
-
-  const salesImportSession = await prisma.importSession.create({
-    data: {
-      fileName: `WB API Sales ${company.name} ${formatDateForFileName(
-        salesQueue.report.dateFrom
-      )} - ${formatDateForFileName(salesQueue.report.dateTo)}`,
-      reportType: "WB_SALES",
-      marketplace: "WILDBERRIES",
-      companyName: company.name,
-      rowsCount: salesRows.length,
-      previewJson: salesRows.slice(0, 10),
-      sheetName: "WB Sales API",
-      headerRow: 1,
-      status: "SUCCESS",
-    },
-  });
-
-  const salesNormalizeResult = await normalizeWbSales(
-    salesRows,
-    salesImportSession.id,
-    company.name
-  );
-
-  await prisma.importSession.update({
-    where: { id: salesImportSession.id },
-    data: { rowsCount: salesNormalizeResult.savedRows },
+  const salesResult = await syncWbSalesByReportNumber(companyId, reportId, {
+    dateFrom: salesQueue.report.dateFrom,
+    dateTo: salesQueue.report.dateTo,
   });
 
   return {
-    name: "WB Sales",
-    rows: salesNormalizeResult.savedRows,
-    salesRows: salesNormalizeResult.savedRows,
-    reportId,
+    ...salesResult,
     totalReports: salesQueue.totalReports,
     loadedReportsBefore: salesQueue.loadedReports,
     pendingReportsBefore: salesQueue.pendingReports,

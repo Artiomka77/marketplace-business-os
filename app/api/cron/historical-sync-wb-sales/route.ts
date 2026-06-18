@@ -5,7 +5,7 @@ import { runNextHistoricalSyncJob } from "@/lib/historicalSync/runHistoricalSync
 
 export const dynamic = "force-dynamic";
 
-const STUCK_RUNNING_MINUTES = 60;
+const STUCK_RUNNING_MINUTES = 90;
 
 type HistoricalRunResult = Awaited<ReturnType<typeof runNextHistoricalSyncJob>>;
 
@@ -37,12 +37,12 @@ async function resetStuckWbJobs() {
   });
 }
 
-async function getWbFinanceTotals() {
+async function getWbSalesTotals() {
   const totals = await prisma.historicalSyncJob.groupBy({
     by: ["marketplace", "dataType", "status"],
     where: {
       marketplace: "WB",
-      dataType: "FINANCE",
+      dataType: "SALES",
     },
     _count: {
       _all: true,
@@ -85,17 +85,17 @@ export async function GET() {
         skipped: true,
         reason: "WB_RUNNING_JOB_EXISTS",
         message:
-          "WB historical уже выполняется. Чтобы не давить WB API, Finance запуск пропущен.",
+          "WB historical уже выполняется. Чтобы не давить WB API, Sales запуск пропущен.",
         resetStuckJobs: resetResult.count,
         activeRunningWbJobs,
-        totals: await getWbFinanceTotals(),
+        totals: await getWbSalesTotals(),
         executedAt: new Date().toISOString(),
       });
     }
 
     const result: HistoricalRunResult = await runNextHistoricalSyncJob({
       marketplace: "WB",
-      dataTypes: ["FINANCE"],
+      dataTypes: ["SALES"],
     });
 
     return NextResponse.json({
@@ -109,11 +109,11 @@ export async function GET() {
           ? "RATE_LIMIT"
           : "ERROR"
         : result.skipped
-          ? result.reason ?? "NO_PENDING_WB_FINANCE_JOBS"
+          ? result.reason ?? "NO_PENDING_WB_SALES_JOBS"
           : null,
       resetStuckJobs: resetResult.count,
       result,
-      totals: await getWbFinanceTotals(),
+      totals: await getWbSalesTotals(),
       executedAt: new Date().toISOString(),
     });
   } catch (error) {
