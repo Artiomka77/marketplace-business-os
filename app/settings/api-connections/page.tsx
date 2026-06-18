@@ -20,11 +20,81 @@ type ApiConnectionsPageProps = {
 type HistoricalGroupRow = {
   companyId: string | null;
   marketplace: string;
+  dataType: string;
   status: string;
   _count: {
     _all: number;
   };
 };
+
+type HistoricalJobPreviewRow = {
+  companyId: string | null;
+  companyName: string;
+  marketplace: string;
+  dataType: string;
+  status: string;
+  dateFrom: Date;
+  dateTo: Date;
+  cursorOffset: number | null;
+  cursorReportNumber: string | null;
+  retryCount: number;
+  lastError: string | null;
+  lastAttemptAt: Date | null;
+  finishedAt: Date | null;
+  updatedAt: Date;
+};
+
+type HistoricalDataTypeStats = {
+  marketplace: "OZON" | "WB";
+  dataType: "FINANCE" | "ADS" | "PRODUCTS" | "SALES";
+  title: string;
+  total: number;
+  completed: number;
+  queued: number;
+  running: number;
+  waiting: number;
+  errors: number;
+  percent: number;
+  statusLabel: string;
+  statusClass: string;
+};
+
+const historicalItems: {
+  marketplace: "OZON" | "WB";
+  dataType: "FINANCE" | "ADS" | "PRODUCTS" | "SALES";
+  title: string;
+}[] = [
+  {
+    marketplace: "OZON",
+    dataType: "FINANCE",
+    title: "Финансы",
+  },
+  {
+    marketplace: "OZON",
+    dataType: "ADS",
+    title: "Реклама",
+  },
+  {
+    marketplace: "OZON",
+    dataType: "PRODUCTS",
+    title: "Товары",
+  },
+  {
+    marketplace: "WB",
+    dataType: "FINANCE",
+    title: "Финансы",
+  },
+  {
+    marketplace: "WB",
+    dataType: "SALES",
+    title: "Продажи",
+  },
+  {
+    marketplace: "WB",
+    dataType: "ADS",
+    title: "Реклама",
+  },
+];
 
 function maskSecret(value: string | null | undefined) {
   if (!value) return "Не сохранён";
@@ -41,6 +111,20 @@ function formatDate(value: Date | null | undefined) {
   }).format(value);
 }
 
+function formatShortDate(value: Date | null | undefined) {
+  if (!value) return "—";
+
+  return new Intl.DateTimeFormat("ru-RU", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "2-digit",
+  }).format(value);
+}
+
+function formatPeriod(dateFrom: Date | null | undefined, dateTo: Date | null | undefined) {
+  return `${formatShortDate(dateFrom)} — ${formatShortDate(dateTo)}`;
+}
+
 function getStatusLabel(status: string | null | undefined) {
   if (status === "CONNECTED") return "Подключено";
   if (status === "ERROR") return "Ошибка";
@@ -48,15 +132,18 @@ function getStatusLabel(status: string | null | undefined) {
 }
 
 function getStatusClass(status: string | null | undefined) {
-  if (status === "CONNECTED") return "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200";
-  if (status === "ERROR") return "bg-red-50 text-red-700 ring-1 ring-red-200";
+  if (status === "CONNECTED") {
+    return "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200";
+  }
+
+  if (status === "ERROR") {
+    return "bg-red-50 text-red-700 ring-1 ring-red-200";
+  }
+
   return "bg-slate-100 text-slate-700 ring-1 ring-slate-200";
 }
 
-function getParamValue(
-  searchParams: SearchParams,
-  key: string
-): string | null {
+function getParamValue(searchParams: SearchParams, key: string): string | null {
   const value = searchParams[key];
 
   if (Array.isArray(value)) {
@@ -93,40 +180,149 @@ function getHistoricalNotice(searchParams: SearchParams) {
   return null;
 }
 
-function buildHistoricalStats(
+function countStatus(
   groups: HistoricalGroupRow[],
-  companyId: string
+  marketplace: string,
+  dataType: string,
+  statuses?: string[]
 ) {
+  return groups
+    .filter((group) => {
+      const statusMatches = statuses ? statuses.includes(group.status) : true;
+
+      return (
+        group.marketplace === marketplace &&
+        group.dataType === dataType &&
+        statusMatches
+      );
+    })
+    .reduce((sum, group) => sum + group._count._all, 0);
+}
+
+function getDataTypeStatus(item: {
+  total: number;
+  completed: number;
+  queued: number;
+  running: number;
+  waiting: number;
+  errors: number;
+}) {
+  if (item.total === 0) {
+    return {
+      statusLabel: "Не запускалось",
+      statusClass: "bg-slate-100 text-slate-600 ring-1 ring-slate-200",
+    };
+  }
+
+  if (item.errors > 0) {
+    return {
+      statusLabel: "Нужна проверка",
+      statusClass: "bg-red-50 text-red-700 ring-1 ring-red-200",
+    };
+  }
+
+  if (item.waiting > 0) {
+    return {
+      statusLabel: "Ожидает API",
+      statusClass: "bg-amber-50 text-amber-700 ring-1 ring-amber-200",
+    };
+  }
+
+  if (item.running > 0) {
+    return {
+      statusLabel: "Загружается",
+      statusClass: "bg-blue-50 text-blue-700 ring-1 ring-blue-200",
+    };
+  }
+
+  if (item.queued > 0) {
+    return {
+      statusLabel: "В очереди",
+      statusClass: "bg-blue-50 text-blue-700 ring-1 ring-blue-200",
+    };
+  }
+
+  if (item.completed === item.total) {
+    return {
+      statusLabel: "Завершено",
+      statusClass: "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200",
+    };
+  }
+
+  return {
+    statusLabel: "В обработке",
+    statusClass: "bg-blue-50 text-blue-700 ring-1 ring-blue-200",
+  };
+}
+
+function buildHistoricalStats(groups: HistoricalGroupRow[], companyId: string) {
   const companyGroups = groups.filter((group) => group.companyId === companyId);
 
-  const total = companyGroups.reduce(
-    (sum, group) => sum + group._count._all,
-    0
-  );
+  const dataTypeStats: HistoricalDataTypeStats[] = historicalItems.map((item) => {
+    const total = countStatus(
+      companyGroups,
+      item.marketplace,
+      item.dataType
+    );
 
-  const completed = companyGroups
-    .filter((group) => group.status === "SUCCESS")
-    .reduce((sum, group) => sum + group._count._all, 0);
+    const completed = countStatus(companyGroups, item.marketplace, item.dataType, [
+      "SUCCESS",
+    ]);
 
-  const inProgress = companyGroups
-    .filter((group) => ["PENDING", "RUNNING"].includes(group.status))
-    .reduce((sum, group) => sum + group._count._all, 0);
+    const queued = countStatus(companyGroups, item.marketplace, item.dataType, [
+      "PENDING",
+    ]);
 
-  const waiting = companyGroups
-    .filter((group) => group.status === "RATE_LIMITED")
-    .reduce((sum, group) => sum + group._count._all, 0);
+    const running = countStatus(companyGroups, item.marketplace, item.dataType, [
+      "RUNNING",
+    ]);
 
-  const needsAttention = companyGroups
-    .filter((group) => group.status === "ERROR")
-    .reduce((sum, group) => sum + group._count._all, 0);
+    const waiting = countStatus(companyGroups, item.marketplace, item.dataType, [
+      "RATE_LIMITED",
+    ]);
 
-  const ozonTotal = companyGroups
-    .filter((group) => group.marketplace === "OZON")
-    .reduce((sum, group) => sum + group._count._all, 0);
+    const errors = countStatus(companyGroups, item.marketplace, item.dataType, [
+      "ERROR",
+    ]);
 
-  const wbTotal = companyGroups
-    .filter((group) => group.marketplace === "WB")
-    .reduce((sum, group) => sum + group._count._all, 0);
+    const percent = total > 0 ? Math.round((completed / total) * 100) : 0;
+    const status = getDataTypeStatus({
+      total,
+      completed,
+      queued,
+      running,
+      waiting,
+      errors,
+    });
+
+    return {
+      ...item,
+      total,
+      completed,
+      queued,
+      running,
+      waiting,
+      errors,
+      percent,
+      statusLabel: status.statusLabel,
+      statusClass: status.statusClass,
+    };
+  });
+
+  const total = dataTypeStats.reduce((sum, item) => sum + item.total, 0);
+  const completed = dataTypeStats.reduce((sum, item) => sum + item.completed, 0);
+  const queued = dataTypeStats.reduce((sum, item) => sum + item.queued, 0);
+  const running = dataTypeStats.reduce((sum, item) => sum + item.running, 0);
+  const waiting = dataTypeStats.reduce((sum, item) => sum + item.waiting, 0);
+  const needsAttention = dataTypeStats.reduce((sum, item) => sum + item.errors, 0);
+
+  const ozonTotal = dataTypeStats
+    .filter((item) => item.marketplace === "OZON")
+    .reduce((sum, item) => sum + item.total, 0);
+
+  const wbTotal = dataTypeStats
+    .filter((item) => item.marketplace === "WB")
+    .reduce((sum, item) => sum + item.total, 0);
 
   const percent = total > 0 ? Math.round((completed / total) * 100) : 0;
 
@@ -145,22 +341,27 @@ function buildHistoricalStats(
     statusText =
       "Маркетплейс временно ограничил ответ. Система продолжит загрузку автоматически.";
     statusClass = "bg-amber-50 text-amber-700 ring-1 ring-amber-200";
-  } else if (inProgress > 0) {
+  } else if (running > 0) {
     statusLabel = "Идёт загрузка";
     statusText =
-      "Данные поставлены в обработку. Можно продолжать работу, система будет догружать историю.";
+      "Одна из задач выполняется прямо сейчас. Можно продолжать работу, система обновит статус автоматически.";
+    statusClass = "bg-blue-50 text-blue-700 ring-1 ring-blue-200";
+  } else if (queued > 0) {
+    statusLabel = "В очереди";
+    statusText =
+      "Данные поставлены в очередь. Система постепенно догружает историю по расписанию.";
     statusClass = "bg-blue-50 text-blue-700 ring-1 ring-blue-200";
   } else if (total > 0 && completed === total) {
     statusLabel = "Завершено";
-    statusText =
-      "Историческая загрузка по этой компании завершена.";
+    statusText = "Историческая загрузка по этой компании завершена.";
     statusClass = "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200";
   }
 
   return {
     total,
     completed,
-    inProgress,
+    queued,
+    running,
     waiting,
     needsAttention,
     ozonTotal,
@@ -169,7 +370,161 @@ function buildHistoricalStats(
     statusLabel,
     statusText,
     statusClass,
+    dataTypeStats,
   };
+}
+
+function getCompanyLatestJobs(jobs: HistoricalJobPreviewRow[], companyId: string) {
+  const companyJobs = jobs.filter((job) => job.companyId === companyId);
+
+  return {
+    lastSuccess:
+      companyJobs.find((job) => job.status === "SUCCESS") ?? null,
+    lastIssue:
+      companyJobs.find((job) =>
+        ["ERROR", "RATE_LIMITED"].includes(job.status)
+      ) ?? null,
+    lastRunning:
+      companyJobs.find((job) => job.status === "RUNNING") ?? null,
+  };
+}
+
+function getMarketplaceTitle(marketplace: string) {
+  if (marketplace === "WB") return "Wildberries";
+  if (marketplace === "OZON") return "Ozon";
+  return marketplace;
+}
+
+function getDataTypeTitle(dataType: string) {
+  if (dataType === "FINANCE") return "Финансы";
+  if (dataType === "ADS") return "Реклама";
+  if (dataType === "PRODUCTS") return "Товары";
+  if (dataType === "SALES") return "Продажи";
+  return dataType;
+}
+
+function HistoricalDataTypeCard({ item }: { item: HistoricalDataTypeStats }) {
+  return (
+    <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-200">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <div className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">
+            {getMarketplaceTitle(item.marketplace)}
+          </div>
+          <h5 className="mt-1 text-base font-bold text-slate-950">
+            {item.title}
+          </h5>
+        </div>
+
+        <span
+          className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-bold ${item.statusClass}`}
+        >
+          {item.statusLabel}
+        </span>
+      </div>
+
+      <div className="mt-4 flex items-end justify-between gap-3">
+        <div>
+          <div className="text-2xl font-black text-slate-950">
+            {item.completed}
+            <span className="text-sm font-bold text-slate-400">
+              {" "}
+              / {item.total}
+            </span>
+          </div>
+          <div className="mt-1 text-xs text-slate-500">завершено</div>
+        </div>
+
+        <div className="text-right">
+          <div className="text-xl font-black text-slate-950">
+            {item.percent}%
+          </div>
+          <div className="mt-1 text-xs text-slate-500">прогресс</div>
+        </div>
+      </div>
+
+      <div className="mt-4 h-2 overflow-hidden rounded-full bg-slate-200">
+        <div
+          className="h-full rounded-full bg-slate-900"
+          style={{ width: `${item.percent}%` }}
+        />
+      </div>
+
+      <div className="mt-4 grid grid-cols-3 gap-2 text-xs">
+        <div className="rounded-xl bg-slate-50 p-2">
+          <div className="text-slate-500">Очередь</div>
+          <div className="mt-1 font-bold text-slate-950">{item.queued}</div>
+        </div>
+
+        <div className="rounded-xl bg-slate-50 p-2">
+          <div className="text-slate-500">Ожидание</div>
+          <div className="mt-1 font-bold text-amber-700">{item.waiting}</div>
+        </div>
+
+        <div className="rounded-xl bg-slate-50 p-2">
+          <div className="text-slate-500">Ошибки</div>
+          <div className="mt-1 font-bold text-red-700">{item.errors}</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function HistoricalJobLine({
+  title,
+  job,
+  tone,
+}: {
+  title: string;
+  job: HistoricalJobPreviewRow | null;
+  tone: "success" | "warning";
+}) {
+  if (!job) {
+    return null;
+  }
+
+  const toneClass =
+    tone === "success"
+      ? "border-emerald-200 bg-emerald-50 text-emerald-900"
+      : "border-amber-200 bg-amber-50 text-amber-900";
+
+  return (
+    <div className={`rounded-2xl border p-4 ${toneClass}`}>
+      <div className="text-xs font-bold uppercase tracking-[0.16em] opacity-70">
+        {title}
+      </div>
+
+      <div className="mt-2 text-sm font-bold">
+        {getMarketplaceTitle(job.marketplace)} · {getDataTypeTitle(job.dataType)}
+      </div>
+
+      <div className="mt-1 text-sm opacity-80">
+        {formatPeriod(job.dateFrom, job.dateTo)}
+      </div>
+
+      {job.cursorReportNumber ? (
+        <div className="mt-1 text-xs opacity-70">
+          Отчёт WB: {job.cursorReportNumber}
+        </div>
+      ) : null}
+
+      {job.cursorOffset !== null && job.status !== "SUCCESS" ? (
+        <div className="mt-1 text-xs opacity-70">
+          Пачка кампаний: offset {job.cursorOffset}
+        </div>
+      ) : null}
+
+      {job.lastError ? (
+        <div className="mt-2 max-h-24 overflow-auto whitespace-pre-wrap break-words text-xs opacity-80">
+          {job.lastError}
+        </div>
+      ) : null}
+
+      <div className="mt-2 text-xs opacity-70">
+        Обновлено: {formatDate(job.updatedAt)}
+      </div>
+    </div>
+  );
 }
 
 export default async function ApiConnectionsPage({
@@ -190,7 +545,16 @@ export default async function ApiConnectionsPage({
   });
 
   const historicalGroups = await prisma.historicalSyncJob.groupBy({
-    by: ["companyId", "marketplace", "status"],
+    by: ["companyId", "marketplace", "dataType", "status"],
+    where: {
+      NOT: [
+        {
+          marketplace: "WB",
+          dataType: "SALES",
+          cursorReportNumber: null,
+        },
+      ],
+    },
     _count: {
       _all: true,
     },
@@ -202,9 +566,49 @@ export default async function ApiConnectionsPage({
         marketplace: "asc",
       },
       {
+        dataType: "asc",
+      },
+      {
         status: "asc",
       },
     ],
+  });
+
+  const historicalLatestJobs = await prisma.historicalSyncJob.findMany({
+    where: {
+      status: {
+        in: ["SUCCESS", "ERROR", "RATE_LIMITED", "RUNNING"],
+      },
+      NOT: [
+        {
+          marketplace: "WB",
+          dataType: "SALES",
+          cursorReportNumber: null,
+        },
+      ],
+    },
+    orderBy: [
+      {
+        updatedAt: "desc",
+      },
+    ],
+    take: 100,
+    select: {
+      companyId: true,
+      companyName: true,
+      marketplace: true,
+      dataType: true,
+      status: true,
+      dateFrom: true,
+      dateTo: true,
+      cursorOffset: true,
+      cursorReportNumber: true,
+      retryCount: true,
+      lastError: true,
+      lastAttemptAt: true,
+      finishedAt: true,
+      updatedAt: true,
+    },
   });
 
   function getConnection(companyId: string, marketplace: string) {
@@ -297,6 +701,19 @@ export default async function ApiConnectionsPage({
               company.id
             );
 
+            const latestJobs = getCompanyLatestJobs(
+              historicalLatestJobs,
+              company.id
+            );
+
+            const ozonStats = historicalStats.dataTypeStats.filter(
+              (item) => item.marketplace === "OZON"
+            );
+
+            const wbStats = historicalStats.dataTypeStats.filter(
+              (item) => item.marketplace === "WB"
+            );
+
             return (
               <div
                 key={company.id}
@@ -352,8 +769,7 @@ export default async function ApiConnectionsPage({
                           className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm transition focus:border-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-200"
                         />
                         <p className="mt-2 text-xs text-slate-500">
-                          Оставь пустым, если не хочешь менять сохранённый
-                          токен.
+                          Оставь пустым, если не хочешь менять сохранённый токен.
                         </p>
                       </div>
 
@@ -384,9 +800,7 @@ export default async function ApiConnectionsPage({
                         </div>
 
                         <div>
-                          <div className="text-slate-500">
-                            Последняя ошибка
-                          </div>
+                          <div className="text-slate-500">Последняя ошибка</div>
                           <div className="mt-1 max-h-32 overflow-auto whitespace-pre-wrap break-words font-semibold text-slate-900">
                             {wb?.lastError || "—"}
                           </div>
@@ -581,9 +995,7 @@ export default async function ApiConnectionsPage({
                         </div>
 
                         <div>
-                          <div className="text-slate-500">
-                            Последняя ошибка
-                          </div>
+                          <div className="text-slate-500">Последняя ошибка</div>
                           <div className="mt-1 max-h-32 overflow-auto whitespace-pre-wrap break-words font-semibold text-slate-900">
                             {ozon?.lastError || "—"}
                           </div>
@@ -631,7 +1043,7 @@ export default async function ApiConnectionsPage({
                   </form>
                 </div>
 
-                <section className="mt-8 rounded-2xl border border-slate-200 bg-slate-50 p-6">
+                <section className="mt-8 rounded-3xl border border-slate-200 bg-slate-50 p-6">
                   <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
                     <div className="max-w-3xl">
                       <div className="flex flex-wrap items-center gap-3">
@@ -651,9 +1063,9 @@ export default async function ApiConnectionsPage({
                       </h3>
 
                       <p className="mt-2 text-sm leading-6 text-slate-600">
-                        Подтягивает старые данные по компании после подключения
-                        API. Селлеру не нужно управлять паузами, повторами или
-                        лимитами маркетплейсов — система делает это внутри.
+                        Система постепенно подтягивает старые данные по Ozon и
+                        Wildberries. Паузы, повторы, лимиты API и продолжение
+                        после временных ошибок обрабатываются внутри.
                       </p>
 
                       <p className="mt-2 text-sm leading-6 text-slate-500">
@@ -661,17 +1073,17 @@ export default async function ApiConnectionsPage({
                       </p>
                     </div>
 
-                    <div className="w-full rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200 xl:w-[320px]">
+                    <div className="w-full rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200 xl:w-[340px]">
                       <div className="flex items-center justify-between gap-3">
                         <span className="text-sm font-medium text-slate-500">
-                          Прогресс
+                          Общий прогресс
                         </span>
-                        <span className="text-xl font-bold text-slate-950">
+                        <span className="text-2xl font-black text-slate-950">
                           {historicalStats.percent}%
                         </span>
                       </div>
 
-                      <div className="mt-4 h-2 overflow-hidden rounded-full bg-slate-200">
+                      <div className="mt-4 h-3 overflow-hidden rounded-full bg-slate-200">
                         <div
                           className="h-full rounded-full bg-slate-900"
                           style={{ width: `${historicalStats.percent}%` }}
@@ -687,9 +1099,23 @@ export default async function ApiConnectionsPage({
                         </div>
 
                         <div className="rounded-xl bg-slate-50 p-3">
-                          <div className="text-slate-500">Всего</div>
+                          <div className="text-slate-500">Всего задач</div>
                           <div className="mt-1 text-lg font-bold text-slate-950">
                             {historicalStats.total}
+                          </div>
+                        </div>
+
+                        <div className="rounded-xl bg-slate-50 p-3">
+                          <div className="text-slate-500">В очереди</div>
+                          <div className="mt-1 text-lg font-bold text-blue-700">
+                            {historicalStats.queued}
+                          </div>
+                        </div>
+
+                        <div className="rounded-xl bg-slate-50 p-3">
+                          <div className="text-slate-500">Проверить</div>
+                          <div className="mt-1 text-lg font-bold text-red-700">
+                            {historicalStats.needsAttention}
                           </div>
                         </div>
                       </div>
@@ -698,32 +1124,88 @@ export default async function ApiConnectionsPage({
 
                   <div className="mt-6 grid gap-3 text-sm md:grid-cols-4">
                     <div className="rounded-xl bg-white p-4 shadow-sm ring-1 ring-slate-200">
-                      <div className="text-slate-500">Ozon</div>
+                      <div className="text-slate-500">Ozon задач</div>
                       <div className="mt-1 text-2xl font-bold text-slate-950">
                         {historicalStats.ozonTotal}
                       </div>
                     </div>
 
                     <div className="rounded-xl bg-white p-4 shadow-sm ring-1 ring-slate-200">
-                      <div className="text-slate-500">Wildberries</div>
+                      <div className="text-slate-500">Wildberries задач</div>
                       <div className="mt-1 text-2xl font-bold text-slate-950">
                         {historicalStats.wbTotal}
                       </div>
                     </div>
 
                     <div className="rounded-xl bg-white p-4 shadow-sm ring-1 ring-slate-200">
-                      <div className="text-slate-500">В обработке</div>
-                      <div className="mt-1 text-2xl font-bold text-blue-700">
-                        {historicalStats.inProgress}
+                      <div className="text-slate-500">Ожидает API</div>
+                      <div className="mt-1 text-2xl font-bold text-amber-700">
+                        {historicalStats.waiting}
                       </div>
                     </div>
 
                     <div className="rounded-xl bg-white p-4 shadow-sm ring-1 ring-slate-200">
-                      <div className="text-slate-500">Нужна проверка</div>
-                      <div className="mt-1 text-2xl font-bold text-red-700">
-                        {historicalStats.needsAttention}
+                      <div className="text-slate-500">Сейчас выполняется</div>
+                      <div className="mt-1 text-2xl font-bold text-blue-700">
+                        {historicalStats.running}
                       </div>
                     </div>
+                  </div>
+
+                  <div className="mt-6 grid gap-4 xl:grid-cols-2">
+                    <div>
+                      <div className="mb-3 flex items-center justify-between">
+                        <h4 className="text-lg font-bold text-slate-950">
+                          Ozon
+                        </h4>
+                        <span className="rounded-full bg-white px-3 py-1 text-xs font-bold text-slate-500 ring-1 ring-slate-200">
+                          {historicalStats.ozonTotal} задач
+                        </span>
+                      </div>
+
+                      <div className="grid gap-3">
+                        {ozonStats.map((item) => (
+                          <HistoricalDataTypeCard
+                            key={`${item.marketplace}-${item.dataType}`}
+                            item={item}
+                          />
+                        ))}
+                      </div>
+                    </div>
+
+                    <div>
+                      <div className="mb-3 flex items-center justify-between">
+                        <h4 className="text-lg font-bold text-slate-950">
+                          Wildberries
+                        </h4>
+                        <span className="rounded-full bg-white px-3 py-1 text-xs font-bold text-slate-500 ring-1 ring-slate-200">
+                          {historicalStats.wbTotal} задач
+                        </span>
+                      </div>
+
+                      <div className="grid gap-3">
+                        {wbStats.map((item) => (
+                          <HistoricalDataTypeCard
+                            key={`${item.marketplace}-${item.dataType}`}
+                            item={item}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="mt-6 grid gap-4 xl:grid-cols-2">
+                    <HistoricalJobLine
+                      title="Последнее успешно загружено"
+                      job={latestJobs.lastSuccess}
+                      tone="success"
+                    />
+
+                    <HistoricalJobLine
+                      title="Последнее ожидание или ошибка"
+                      job={latestJobs.lastIssue}
+                      tone="warning"
+                    />
                   </div>
 
                   <form
@@ -770,10 +1252,9 @@ export default async function ApiConnectionsPage({
                     </div>
 
                     <p className="mt-4 text-xs leading-5 text-slate-500">
-                      Дата окончания выбирается автоматически. Если данные за
-                      последние периоды уже есть, система не будет загружать их
-                      повторно. Временные ошибки маркетплейсов обрабатываются
-                      автоматически.
+                      Повторный запуск не создаёт уже существующие задачи за тот
+                      же период. Временные ошибки маркетплейсов система
+                      обрабатывает автоматически.
                     </p>
 
                     {historicalStats.needsAttention > 0 ? (
