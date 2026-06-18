@@ -171,10 +171,6 @@ function getPlanForConnection(
         periods: splitDateRange(dateFrom, dateTo, 30),
       },
       {
-        dataType: "SALES" as HistoricalDataType,
-        periods: [{ dateFrom, dateTo }],
-      },
-      {
         dataType: "ADS" as HistoricalDataType,
         periods: splitDateRange(dateFrom, dateTo, 7),
       },

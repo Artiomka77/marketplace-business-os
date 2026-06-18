@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { prisma } from "@/lib/prisma";
 import { runNextHistoricalSyncJob } from "@/lib/historicalSync/runHistoricalSyncJob";
+import { createWbSalesHistoricalJobs } from "@/lib/historicalSync/createWbSalesHistoricalJobs";
 
 export const dynamic = "force-dynamic";
 
@@ -15,6 +16,19 @@ function getErrorMessage(error: unknown) {
 
 function getStuckRunningBeforeDate() {
   return new Date(Date.now() - STUCK_RUNNING_MINUTES * 60 * 1000);
+}
+
+function getCompanyIdFromResult(result: HistoricalRunResult) {
+  if (
+    result &&
+    typeof result === "object" &&
+    "companyId" in result &&
+    typeof result.companyId === "string"
+  ) {
+    return result.companyId;
+  }
+
+  return null;
 }
 
 async function resetStuckWbJobs() {
@@ -98,6 +112,18 @@ export async function GET() {
       dataTypes: ["FINANCE"],
     });
 
+    let wbSalesJobs = null;
+
+    if (result.ok && !result.skipped) {
+      const companyId = getCompanyIdFromResult(result);
+
+      if (companyId) {
+        wbSalesJobs = await createWbSalesHistoricalJobs({
+          companyId,
+        });
+      }
+    }
+
     return NextResponse.json({
       success: result.ok,
       ok: result.ok,
@@ -113,6 +139,7 @@ export async function GET() {
           : null,
       resetStuckJobs: resetResult.count,
       result,
+      wbSalesJobs,
       totals: await getWbFinanceTotals(),
       executedAt: new Date().toISOString(),
     });
