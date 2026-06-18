@@ -1,5 +1,10 @@
 import Link from "next/link";
+
 import { prisma } from "@/lib/prisma";
+import {
+  buildFinanceCategoryTreatmentIndex,
+  getFinanceTransactionCashEffect,
+} from "@/lib/finance/financeMetrics";
 
 const MIN_VISIBLE_BALANCE = 1000;
 
@@ -17,31 +22,6 @@ function formatPercent(value: number) {
   if (!Number.isFinite(value)) return "—";
   if (Math.abs(value) < 0.05) return "0.0%";
   return `${value.toFixed(1)}%`;
-}
-
-function getAmount(value: unknown) {
-  return Number(value ?? 0);
-}
-
-function cashEffect(operation: {
-  operationType: string;
-  category: string;
-  amount: unknown;
-  isInternalTransfer: boolean;
-}) {
-  if (operation.isInternalTransfer) return 0;
-
-  const amount = getAmount(operation.amount);
-
-  if (operation.operationType === "INCOME") return amount;
-  if (operation.operationType === "EXPENSE") return -amount;
-  if (operation.operationType === "PERSONAL") return -amount;
-
-  if (operation.operationType === "FINANCING") {
-    return operation.category === "Получение кредита" ? amount : -amount;
-  }
-
-  return 0;
 }
 
 function buildOperationsHref(companyName: string, bankAccount: string) {
@@ -79,28 +59,43 @@ export default async function FinanceAccountsPage({
   const companyName = company !== "ALL" ? company : null;
   const showSmall = params.showSmall === "1";
 
-  const companies = await prisma.company.findMany({
-    where: {
-      isActive: true,
-    },
-    orderBy: {
-      name: "asc",
-    },
-  });
-
-  const transactions = await prisma.financeTransaction.findMany({
-    where: {
-      bankAccount: {
-        not: null,
+  const [companies, categories, transactions] = await Promise.all([
+    prisma.company.findMany({
+      where: {
+        isActive: true,
       },
-      ...(companyName ? { companyName } : {}),
-    },
-    orderBy: [
-      { companyName: "asc" },
-      { bankAccount: "asc" },
-      { operationDate: "asc" },
-    ],
-  });
+      orderBy: {
+        name: "asc",
+      },
+    }),
+
+    prisma.financeCategory.findMany({
+      where: {
+        isActive: true,
+      },
+      orderBy: [
+        { categoryType: "asc" },
+        { sortOrder: "asc" },
+        { name: "asc" },
+      ],
+    }),
+
+    prisma.financeTransaction.findMany({
+      where: {
+        bankAccount: {
+          not: null,
+        },
+        ...(companyName ? { companyName } : {}),
+      },
+      orderBy: [
+        { companyName: "asc" },
+        { bankAccount: "asc" },
+        { operationDate: "asc" },
+      ],
+    }),
+  ]);
+
+  const categoryTreatmentIndex = buildFinanceCategoryTreatmentIndex(categories);
 
   const accountMap = new Map<
     string,
@@ -111,13 +106,18 @@ export default async function FinanceAccountsPage({
       outflow: number;
       balance: number;
       operationsCount: number;
+      ignoredCount: number;
     }
   >();
 
   for (const operation of transactions) {
     const bankAccount = operation.bankAccount ?? "Без счета";
     const key = `${operation.companyName}|||${bankAccount}`;
-    const effect = cashEffect(operation);
+
+    const effect = getFinanceTransactionCashEffect(
+      operation,
+      categoryTreatmentIndex
+    );
 
     const current =
       accountMap.get(key) ??
@@ -128,12 +128,15 @@ export default async function FinanceAccountsPage({
         outflow: 0,
         balance: 0,
         operationsCount: 0,
+        ignoredCount: 0,
       };
 
-    if (effect >= 0) {
+    if (effect > 0) {
       current.inflow += effect;
-    } else {
+    } else if (effect < 0) {
       current.outflow += Math.abs(effect);
+    } else {
+      current.ignoredCount += 1;
     }
 
     current.balance += effect;
@@ -150,7 +153,9 @@ export default async function FinanceAccountsPage({
 
   const accountRows = showSmall
     ? allAccountRows
-    : allAccountRows.filter((row) => Math.abs(row.balance) >= MIN_VISIBLE_BALANCE);
+    : allAccountRows.filter(
+        (row) => Math.abs(row.balance) >= MIN_VISIBLE_BALANCE
+      );
 
   const hiddenAccountsCount = allAccountRows.length - accountRows.length;
 
@@ -167,8 +172,14 @@ export default async function FinanceAccountsPage({
     (sum, row) => sum + row.operationsCount,
     0
   );
+  const totalIgnoredOperations = accountRows.reduce(
+    (sum, row) => sum + row.ignoredCount,
+    0
+  );
 
-  const topAccounts = [...accountRows].sort((a, b) => b.balance - a.balance).slice(0, 5);
+  const topAccounts = [...accountRows]
+    .sort((a, b) => b.balance - a.balance)
+    .slice(0, 5);
 
   function shareOf(row: { balance: number }) {
     return positiveTotalBalance > 0
@@ -198,7 +209,9 @@ export default async function FinanceAccountsPage({
             </h1>
 
             <p className="mt-3 text-slate-500">
-              Счета автоматически собираются из финансовых операций.
+              Счета автоматически собираются из финансовых операций. Расчёт
+              движения идёт через единую модель ДДС: поступления минус выбытия,
+              с учётом роли статьи profitTreatment.
             </p>
           </div>
 
@@ -266,7 +279,7 @@ export default async function FinanceAccountsPage({
           )}
         </section>
 
-        <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+        <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-6">
           <div className="rounded-2xl bg-white p-6 shadow-sm">
             <div className="text-sm text-slate-500">Счетов из операций</div>
             <div className="mt-2 text-3xl font-bold text-slate-900">
@@ -303,6 +316,13 @@ export default async function FinanceAccountsPage({
             <div className="text-sm text-slate-500">Операций со счетами</div>
             <div className="mt-2 text-3xl font-bold text-slate-900">
               {totalOperations}
+            </div>
+          </div>
+
+          <div className="rounded-2xl bg-white p-6 shadow-sm">
+            <div className="text-sm text-slate-500">Без влияния на ДДС</div>
+            <div className="mt-2 text-3xl font-bold text-slate-900">
+              {totalIgnoredOperations}
             </div>
           </div>
         </section>
@@ -348,7 +368,9 @@ export default async function FinanceAccountsPage({
                     <div className="mt-2 h-3 overflow-hidden rounded-full bg-slate-100">
                       <div
                         className="h-full rounded-full bg-slate-900"
-                        style={{ width: `${Math.min(100, Math.max(0, share))}%` }}
+                        style={{
+                          width: `${Math.min(100, Math.max(0, share))}%`,
+                        }}
                       />
                     </div>
                   </div>
@@ -451,6 +473,11 @@ export default async function FinanceAccountsPage({
                     <span className="font-semibold text-slate-900">
                       {row.operationsCount}
                     </span>
+                    {row.ignoredCount > 0 && (
+                      <span className="ml-2 text-slate-400">
+                        · без ДДС: {row.ignoredCount}
+                      </span>
+                    )}
                   </div>
 
                   <div className="flex flex-wrap gap-2">
@@ -487,12 +514,14 @@ export default async function FinanceAccountsPage({
             </h2>
 
             <p className="mt-2 text-slate-500">
-              Расчёт строится по операциям: поступления − выбытия.
+              Расчёт строится по единой модели ДДС: поступления − выбытия.
+              Внутренние переводы и операции без денежного эффекта не меняют
+              расчётный остаток.
             </p>
           </div>
 
           <div className="mt-6 overflow-x-auto">
-            <table className="w-full min-w-[1100px] text-sm">
+            <table className="w-full min-w-[1150px] text-sm">
               <thead className="bg-slate-100 text-left text-slate-700">
                 <tr>
                   <th className="p-3">Компания</th>
@@ -502,6 +531,7 @@ export default async function FinanceAccountsPage({
                   <th className="p-3 text-right">Расчётный остаток</th>
                   <th className="p-3 text-right">Доля</th>
                   <th className="p-3 text-right">Операций</th>
+                  <th className="p-3 text-right">Без ДДС</th>
                   <th className="p-3 text-center">Действия</th>
                 </tr>
               </thead>
@@ -533,9 +563,8 @@ export default async function FinanceAccountsPage({
                       <td className="p-3 text-right font-semibold">
                         {formatPercent(share)}
                       </td>
-                      <td className="p-3 text-right">
-                        {row.operationsCount}
-                      </td>
+                      <td className="p-3 text-right">{row.operationsCount}</td>
+                      <td className="p-3 text-right">{row.ignoredCount}</td>
                       <td className="p-3 text-center">
                         <div className="flex justify-center gap-2">
                           <Link
@@ -565,7 +594,7 @@ export default async function FinanceAccountsPage({
 
                 {accountRows.length === 0 && (
                   <tr>
-                    <td colSpan={8} className="p-8 text-center text-slate-500">
+                    <td colSpan={9} className="p-8 text-center text-slate-500">
                       Операций со счетами пока нет.
                     </td>
                   </tr>

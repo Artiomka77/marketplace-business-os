@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
+
 import { prisma } from "@/lib/prisma";
 
-function toNumber(value: FormDataEntryValue | null) {
+function toNumber(value: unknown) {
   const number = Number(
     String(value ?? "")
       .replace(/\s/g, "")
@@ -72,7 +73,7 @@ function buildFutureDate(
   return addDays(baseDate, fallbackDaysDelta * index);
 }
 
-function loanPaymentTransactionData(payment: {
+type LoanPaymentWithLoan = {
   id: string;
   paymentDate: Date;
   totalAmount: unknown;
@@ -82,31 +83,84 @@ function loanPaymentTransactionData(payment: {
     companyName: string;
     bankName: string;
   };
-}) {
+};
+
+function getLoanPaymentAmounts(payment: LoanPaymentWithLoan) {
+  const totalAmount = toNumber(payment.totalAmount);
+  const principalAmount = toNumber(payment.principalAmount);
+  const interestAmount = toNumber(payment.interestAmount);
+
+  return {
+    totalAmount,
+    principalAmount,
+    interestAmount,
+  };
+}
+
+function principalTransactionData(payment: LoanPaymentWithLoan) {
+  const amounts = getLoanPaymentAmounts(payment);
+
   return {
     companyName: payment.loan.companyName,
     operationDate: payment.paymentDate,
     obligationDate: payment.paymentDate,
     operationType: "FINANCING",
-    category: "Погашение кредита",
+    category: "Тело кредита",
     subcategory: payment.loan.bankName,
     counterparty: payment.loan.bankName,
-    amount: toNumber(payment.totalAmount as FormDataEntryValue | null),
+    amount: amounts.principalAmount,
     bankAccount: null,
     project: "Кредиты",
-    comment: `Кредитный платеж: ${payment.loan.bankName}. Тело: ${toNumber(
-      payment.principalAmount as FormDataEntryValue | null
-    )}, проценты: ${toNumber(
-      payment.interestAmount as FormDataEntryValue | null
-    )}`,
+    comment: `Тело кредитного платежа: ${payment.loan.bankName}. Итого платеж: ${amounts.totalAmount}, тело: ${amounts.principalAmount}, проценты: ${amounts.interestAmount}`,
     isInternalTransfer: false,
     transactionStatus: "PLAN",
-    sourceType: "LOAN_PAYMENT",
+    sourceType: "LOAN_PAYMENT_PRINCIPAL",
     sourceId: payment.id,
   };
 }
 
-async function upsertFinanceTransactionForLoanPayment(paymentId: string) {
+function interestTransactionData(payment: LoanPaymentWithLoan) {
+  const amounts = getLoanPaymentAmounts(payment);
+
+  return {
+    companyName: payment.loan.companyName,
+    operationDate: payment.paymentDate,
+    obligationDate: payment.paymentDate,
+    operationType: "EXPENSE",
+    category: "Проценты по кредиту",
+    subcategory: payment.loan.bankName,
+    counterparty: payment.loan.bankName,
+    amount: amounts.interestAmount,
+    bankAccount: null,
+    project: "Кредиты",
+    comment: `Проценты по кредитному платежу: ${payment.loan.bankName}. Итого платеж: ${amounts.totalAmount}, тело: ${amounts.principalAmount}, проценты: ${amounts.interestAmount}`,
+    isInternalTransfer: false,
+    transactionStatus: "PLAN",
+    sourceType: "LOAN_PAYMENT_INTEREST",
+    sourceId: payment.id,
+  };
+}
+
+function legacyLoanPaymentSourceTypes() {
+  return [
+    "LOAN_PAYMENT",
+    "LOAN_PAYMENT_PRINCIPAL",
+    "LOAN_PAYMENT_INTEREST",
+  ];
+}
+
+async function deleteFinanceTransactionsForLoanPayment(paymentId: string) {
+  await prisma.financeTransaction.deleteMany({
+    where: {
+      sourceId: paymentId,
+      sourceType: {
+        in: legacyLoanPaymentSourceTypes(),
+      },
+    },
+  });
+}
+
+async function syncFinanceTransactionsForLoanPayment(paymentId: string) {
   const payment = await prisma.loanPayment.findUnique({
     where: { id: paymentId },
     include: { loan: true },
@@ -114,38 +168,45 @@ async function upsertFinanceTransactionForLoanPayment(paymentId: string) {
 
   if (!payment) return;
 
-  const existingTransaction = await prisma.financeTransaction.findFirst({
-    where: {
-      sourceType: "LOAN_PAYMENT",
-      sourceId: payment.id,
-    },
-  });
+  const amounts = getLoanPaymentAmounts(payment);
 
-  const data = loanPaymentTransactionData(payment);
+  await deleteFinanceTransactionsForLoanPayment(payment.id);
 
-  if (existingTransaction) {
-    await prisma.financeTransaction.update({
-      where: { id: existingTransaction.id },
-      data,
-    });
-    return;
+  const createData = [];
+
+  if (amounts.principalAmount > 0) {
+    createData.push(principalTransactionData(payment));
   }
 
-  await prisma.financeTransaction.create({ data });
+  if (amounts.interestAmount > 0) {
+    createData.push(interestTransactionData(payment));
+  }
+
+  if (createData.length === 0) return;
+
+  await prisma.financeTransaction.createMany({
+    data: createData,
+  });
 }
 
-async function deleteFinanceTransactionForLoanPayment(paymentId: string) {
+async function deleteFinanceTransactionsForLoanPayments(paymentIds: string[]) {
+  if (paymentIds.length === 0) return;
+
   await prisma.financeTransaction.deleteMany({
     where: {
-      sourceType: "LOAN_PAYMENT",
-      sourceId: paymentId,
+      sourceId: {
+        in: paymentIds,
+      },
+      sourceType: {
+        in: legacyLoanPaymentSourceTypes(),
+      },
     },
   });
 }
 
 async function syncLoanPaymentTransactions(paymentIds: string[]) {
   for (const id of paymentIds) {
-    await upsertFinanceTransactionForLoanPayment(id);
+    await syncFinanceTransactionsForLoanPayment(id);
   }
 }
 
@@ -173,7 +234,7 @@ export async function POST(req: Request) {
       );
     }
 
-    await deleteFinanceTransactionForLoanPayment(paymentId);
+    await deleteFinanceTransactionsForLoanPayment(paymentId);
 
     await prisma.loanPayment.delete({
       where: { id: paymentId },
@@ -200,7 +261,7 @@ export async function POST(req: Request) {
       },
     });
 
-    await upsertFinanceTransactionForLoanPayment(payment.id);
+    await syncFinanceTransactionsForLoanPayment(payment.id);
 
     return NextResponse.redirect(new URL(redirectTo, req.url));
   }
@@ -244,9 +305,11 @@ export async function POST(req: Request) {
     await prisma.$transaction([
       prisma.financeTransaction.deleteMany({
         where: {
-          sourceType: "LOAN_PAYMENT",
           sourceId: {
             in: existingPaymentIds,
+          },
+          sourceType: {
+            in: legacyLoanPaymentSourceTypes(),
           },
         },
       }),
@@ -378,7 +441,7 @@ export async function POST(req: Request) {
       },
     });
 
-    await upsertFinanceTransactionForLoanPayment(paymentId);
+    await syncFinanceTransactionsForLoanPayment(paymentId);
   }
 
   return NextResponse.redirect(new URL(redirectTo, req.url));

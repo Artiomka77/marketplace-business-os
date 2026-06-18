@@ -1,5 +1,11 @@
 import Link from "next/link";
+
 import { prisma } from "@/lib/prisma";
+import {
+  buildFinanceCategoryTreatmentIndex,
+  calculateFinanceMetricsForRows,
+  getFinanceTransactionTreatment,
+} from "@/lib/finance/financeMetrics";
 
 function formatMoney(value: unknown) {
   return new Intl.NumberFormat("ru-RU", {
@@ -95,6 +101,13 @@ function isTaxCategory(category: string) {
 function isSalaryCategory(category: string) {
   const text = normalize(category);
   return text.includes("зарп") || text.includes("зп") || text.includes("сотруд");
+}
+
+function isNetProfitExpenseTreatment(treatment: string) {
+  return (
+    treatment === "INCLUDE_IN_NET_PROFIT" ||
+    treatment === "CREDIT_INTEREST"
+  );
 }
 
 const months = [
@@ -348,6 +361,7 @@ function dedupeWbSalesByLatestImport(rows: WbSaleRow[]) {
     if (!row.saleDate) {
       continue;
     }
+
     const importSessionId = row.importSessionId || row.id;
     const current = sessions.get(importSessionId);
 
@@ -425,6 +439,7 @@ async function getPnlFact(params: {
     ozonAds,
     productCosts,
     financeTransactions,
+    financeCategories,
   ] = await Promise.all([
     prisma.wbSale.findMany({
       where: {
@@ -463,6 +478,17 @@ async function getPnlFact(params: {
     }),
 
     getFinanceTransactions(params),
+
+    prisma.financeCategory.findMany({
+      where: {
+        isActive: true,
+      },
+      orderBy: [
+        { categoryType: "asc" },
+        { sortOrder: "asc" },
+        { name: "asc" },
+      ],
+    }),
   ]);
 
   const wbSales = dedupeWbSalesByLatestImport(rawWbSales);
@@ -580,30 +606,33 @@ async function getPnlFact(params: {
   const ozonMarginalProfit =
     ozonRevenue - ozonCogs - ozonMarketplaceCosts - ozonAdsSpend;
 
-  const financeExpenseTransactions = financeTransactions.filter(
-    (row) => row.operationType === "EXPENSE"
-  );
+  const financeMetrics = calculateFinanceMetricsForRows({
+    transactions: financeTransactions,
+    categories: financeCategories,
+  });
 
-  const financeFinancing = financeTransactions
-    .filter((row) => row.operationType === "FINANCING")
-    .reduce((sum, row) => sum + getAmount(row.amount), 0);
+  const categoryTreatmentIndex =
+    buildFinanceCategoryTreatmentIndex(financeCategories);
 
-  const financeTax = financeExpenseTransactions
+  const financeNetProfitExpenseTransactions = financeTransactions.filter((row) => {
+    const treatment = getFinanceTransactionTreatment(
+      row,
+      categoryTreatmentIndex
+    ).treatment;
+
+    return (
+      row.operationType !== "INCOME" &&
+      isNetProfitExpenseTreatment(treatment)
+    );
+  });
+
+  const financeTax = financeNetProfitExpenseTransactions
     .filter((row) => isTaxCategory(row.category))
     .reduce((sum, row) => sum + getAmount(row.amount), 0);
 
-  const financeSalary = financeExpenseTransactions
+  const financeSalary = financeNetProfitExpenseTransactions
     .filter((row) => isSalaryCategory(row.category))
     .reduce((sum, row) => sum + getAmount(row.amount), 0);
-
-  const financeIncome = financeTransactions
-    .filter((row) => row.operationType === "INCOME")
-    .reduce((sum, row) => sum + getAmount(row.amount), 0);
-
-  const financeExpenseTotal = financeExpenseTransactions.reduce(
-    (sum, row) => sum + getAmount(row.amount),
-    0
-  );
 
   const marketplaceRevenue = wbRevenue + ozonRevenue;
   const marketplaceAds = wbAdsSpend + ozonAdsSpend;
@@ -613,8 +642,18 @@ async function getPnlFact(params: {
   const grossProfit = marketplaceRevenue - cogs;
   const contributionProfit = wbMarginalProfit + ozonMarginalProfit;
 
-  const operatingProfit = contributionProfit - financeTax - financeSalary;
-  const cashFlow = financeIncome - financeExpenseTotal - financeFinancing;
+  const financeOtherProfitExpenses = Math.max(
+    0,
+    financeMetrics.netProfitExpense -
+      financeTax -
+      financeSalary -
+      financeMetrics.creditInterest
+  );
+
+  const operatingProfit =
+    contributionProfit + financeMetrics.netProfitIncome - financeMetrics.netProfitExpense;
+
+  const cashFlow = financeMetrics.netCashFlow;
 
   return {
     wbRows: wbSales.length,
@@ -660,9 +699,17 @@ async function getPnlFact(params: {
 
     financeTax,
     financeSalary,
-    financeFinancing,
-    financeIncome,
-    financeExpenseTotal,
+    financeOtherProfitExpenses,
+    financeCreditInterest: financeMetrics.creditInterest,
+    financeCreditPrincipal: financeMetrics.creditPrincipal,
+    financeCreditReceived: financeMetrics.creditReceived,
+    financeOwnerWithdrawals: financeMetrics.ownerWithdrawals,
+    financeCashOnly: financeMetrics.cashOnlyTotal,
+    financeNetProfitIncome: financeMetrics.netProfitIncome,
+    financeNetProfitExpense: financeMetrics.netProfitExpense,
+
+    financeIncome: financeMetrics.cashIncome,
+    financeExpenseTotal: financeMetrics.cashOutflow,
 
     operatingProfit,
     cashFlow,
@@ -763,6 +810,7 @@ export default async function PlanFactPage({
       fact: fact.marketplaceRevenue,
       lowerIsBetter: false,
       source: "WB/Ozon",
+      isPnl: true,
     },
     {
       title: "Операционная прибыль",
@@ -770,6 +818,7 @@ export default async function PlanFactPage({
       fact: fact.operatingProfit,
       lowerIsBetter: false,
       source: "P&L",
+      isPnl: true,
     },
     {
       title: "Себестоимость",
@@ -777,6 +826,7 @@ export default async function PlanFactPage({
       fact: fact.cogs,
       lowerIsBetter: true,
       source: "ProductCost",
+      isPnl: true,
     },
     {
       title: "Комиссии / логистика МП",
@@ -784,6 +834,7 @@ export default async function PlanFactPage({
       fact: fact.marketplaceCosts,
       lowerIsBetter: true,
       source: "WB/Ozon",
+      isPnl: true,
     },
     {
       title: "Реклама WB/Ozon",
@@ -791,34 +842,71 @@ export default async function PlanFactPage({
       fact: fact.marketplaceAds,
       lowerIsBetter: true,
       source: "WB/Ozon",
+      isPnl: true,
     },
     {
       title: "Налоги",
       plan: planTax,
       fact: fact.financeTax,
       lowerIsBetter: true,
-      source: "Финансы",
+      source: "Финансы / P&L",
+      isPnl: true,
     },
     {
       title: "Зарплата",
       plan: planSalary,
       fact: fact.financeSalary,
       lowerIsBetter: true,
-      source: "Финансы",
+      source: "Финансы / P&L",
+      isPnl: true,
+    },
+    {
+      title: "Проценты кредита",
+      plan: 0,
+      fact: fact.financeCreditInterest,
+      lowerIsBetter: true,
+      source: "Финансы / P&L",
+      isPnl: true,
     },
     {
       title: "Прочие расходы",
       plan: planOther,
-      fact: 0,
+      fact: fact.financeOtherProfitExpenses,
       lowerIsBetter: true,
-      source: "Финансы",
+      source: "Финансы / P&L",
+      isPnl: true,
     },
     {
-      title: "Кредиты и займы",
+      title: "Тело кредита",
       plan: 0,
-      fact: fact.financeFinancing,
+      fact: fact.financeCreditPrincipal,
       lowerIsBetter: true,
       source: "Финансы / ДДС",
+      isPnl: false,
+    },
+    {
+      title: "Получено кредитов / займов",
+      plan: 0,
+      fact: fact.financeCreditReceived,
+      lowerIsBetter: false,
+      source: "Финансы / ДДС",
+      isPnl: false,
+    },
+    {
+      title: "Вывод собственника",
+      plan: 0,
+      fact: fact.financeOwnerWithdrawals,
+      lowerIsBetter: true,
+      source: "Финансы / ДДС",
+      isPnl: false,
+    },
+    {
+      title: "Только ДДС",
+      plan: 0,
+      fact: fact.financeCashOnly,
+      lowerIsBetter: true,
+      source: "Финансы / ДДС",
+      isPnl: false,
     },
   ];
 
@@ -838,7 +926,8 @@ export default async function PlanFactPage({
 
             <p className="mt-3 text-slate-500">
               Управленческий P&amp;L: план, факт и разбивка WB/Ozon по ключевым
-              статьям.
+              статьям. Финансовые операции считаются через единую роль статьи
+              profitTreatment.
             </p>
           </div>
 
@@ -1010,7 +1099,7 @@ export default async function PlanFactPage({
           />
 
           <SplitMetricCard
-            title="Реклама"
+            title="Реклама WB/Ozon"
             total={formatMoney(fact.marketplaceAds)}
             className="text-red-600"
             items={[
@@ -1053,7 +1142,7 @@ export default async function PlanFactPage({
           <MetricCard
             title="Денежный поток"
             value={formatMoney(fact.cashFlow)}
-            subValue="По финансовым операциям"
+            subValue="По финансовым операциям / ДДС"
             className={fact.cashFlow >= 0 ? "text-emerald-600" : "text-red-600"}
           />
         </section>
@@ -1076,7 +1165,7 @@ export default async function PlanFactPage({
           />
         </section>
 
-        <section className="grid gap-4 md:grid-cols-3">
+        <section className="grid gap-4 md:grid-cols-3 xl:grid-cols-6">
           <MetricCard
             title="Налоги"
             value={formatMoney(fact.financeTax)}
@@ -1090,22 +1179,42 @@ export default async function PlanFactPage({
           />
 
           <MetricCard
-            title="Кредиты и займы"
-            value={formatMoney(fact.financeFinancing)}
+            title="Прочие P&L расходы"
+            value={formatMoney(fact.financeOtherProfitExpenses)}
+            className="text-red-600"
+          />
+
+          <MetricCard
+            title="Проценты кредита"
+            value={formatMoney(fact.financeCreditInterest)}
+            subValue="Входит в P&L"
+            className="text-red-600"
+          />
+
+          <MetricCard
+            title="Тело кредита"
+            value={formatMoney(fact.financeCreditPrincipal)}
             subValue="Не входит в P&L"
             className="text-red-600"
+          />
+
+          <MetricCard
+            title="Вывод собственника"
+            value={formatMoney(fact.financeOwnerWithdrawals)}
+            subValue="Не входит в P&L"
+            className="text-amber-600"
           />
         </section>
 
         <section className="grid gap-4 xl:grid-cols-2">
           <div className="rounded-2xl bg-white p-5 shadow-sm sm:p-6">
             <h2 className="text-2xl font-bold text-slate-900">
-              Выполнение бюджета по статьям
+              Выполнение бюджета по статьям P&amp;L
             </h2>
 
             <div className="mt-6 space-y-4">
               {rows
-                .filter((row) => row.title !== "Кредиты и займы")
+                .filter((row) => row.isPnl)
                 .map((row) => (
                   <BarCompare
                     key={row.title}
@@ -1160,11 +1269,12 @@ export default async function PlanFactPage({
           </h2>
 
           <div className="mt-6 overflow-x-auto">
-            <table className="w-full min-w-[1100px] text-sm">
+            <table className="w-full min-w-[1150px] text-sm">
               <thead className="bg-slate-100 text-left text-slate-700">
                 <tr>
                   <th className="p-3">Статья</th>
                   <th className="p-3">Источник</th>
+                  <th className="p-3">Роль</th>
                   <th className="p-3 text-right">План</th>
                   <th className="p-3 text-right">Факт</th>
                   <th className="p-3 text-right">Выполнение</th>
@@ -1183,6 +1293,17 @@ export default async function PlanFactPage({
                     <tr key={row.title} className="border-t border-slate-100">
                       <td className="p-3 font-semibold">{row.title}</td>
                       <td className="p-3 text-slate-500">{row.source}</td>
+                      <td className="p-3">
+                        <span
+                          className={`rounded-full px-3 py-1 text-xs font-bold ${
+                            row.isPnl
+                              ? "bg-emerald-50 text-emerald-700"
+                              : "bg-cyan-50 text-cyan-700"
+                          }`}
+                        >
+                          {row.isPnl ? "P&L" : "Только ДДС"}
+                        </span>
+                      </td>
                       <td className="p-3 text-right">{formatMoney(row.plan)}</td>
                       <td className="p-3 text-right font-semibold">
                         {formatMoney(row.fact)}
@@ -1220,11 +1341,12 @@ export default async function PlanFactPage({
           </h2>
 
           <p className="mt-3 text-slate-500">
-            Операционная прибыль = Выручка WB/Ozon − Себестоимость − Комиссии и
-            логистика маркетплейсов − Реклама WB/Ozon − Налоги − Зарплата.
-            Повторные загрузки одного и того же WB-отчёта исключаются: берётся
-            наиболее полный отчёт по периоду. Кредиты и займы не входят в
-            P&amp;L и показываются отдельно как денежный поток.
+            Операционная прибыль = маржинальная прибыль WB/Ozon + доходы из
+            финансовых операций, которые входят в чистую прибыль − расходы из
+            финансовых операций, которые входят в чистую прибыль. Фулфилмент,
+            закупка, внутренняя реклама WB/Ozon, тело кредита и вывод
+            собственника не задваиваются в P&amp;L и показываются отдельно как
+            денежный поток.
           </p>
         </section>
       </div>

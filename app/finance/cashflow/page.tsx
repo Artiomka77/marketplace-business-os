@@ -1,5 +1,13 @@
 import Link from "next/link";
+
 import { prisma } from "@/lib/prisma";
+import {
+  buildFinanceCategoryTreatmentIndex,
+  calculateFinanceMetricsForRows,
+  getFinanceTransactionAccountEffect,
+  getFinanceTransactionCashEffect,
+  getFinanceTransactionTreatment,
+} from "@/lib/finance/financeMetrics";
 
 function formatMoney(value: number) {
   return new Intl.NumberFormat("ru-RU", {
@@ -38,17 +46,6 @@ function startOfDay(date: Date) {
   return new Date(date.getFullYear(), date.getMonth(), date.getDate());
 }
 
-function endOfDay(date: Date) {
-  return new Date(
-    date.getFullYear(),
-    date.getMonth(),
-    date.getDate(),
-    23,
-    59,
-    59
-  );
-}
-
 function addDays(date: Date, days: number) {
   const result = new Date(date);
   result.setDate(result.getDate() + days);
@@ -83,11 +80,15 @@ function toDateEnd(value?: string) {
 }
 
 function monthKey(date: Date) {
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(
+    2,
+    "0"
+  )}`;
 }
 
 function getAmount(value: unknown) {
-  return Number(value ?? 0);
+  const number = Number(value ?? 0);
+  return Number.isFinite(number) ? number : 0;
 }
 
 function parentLabel(value: string | null | undefined) {
@@ -114,26 +115,8 @@ function operationClass(type: string) {
   return "text-slate-700";
 }
 
-function isFinancingCategory(category: string) {
-  const text = String(category ?? "").toLowerCase();
-
-  return (
-    text.includes("кредит") ||
-    text.includes("займ") ||
-    text.includes("процент") ||
-    text.includes("погашение")
-  );
-}
-
-function isFinancingIncomeCategory(category: string) {
-  const text = String(category ?? "").toLowerCase();
-
-  return (
-    text.includes("получение кредита") ||
-    text.includes("получение займа") ||
-    text.includes("получено кредит") ||
-    text.includes("получено займ")
-  );
+function valueClass(value: number) {
+  return value >= 0 ? "text-emerald-600" : "text-red-600";
 }
 
 function buildHref(params: {
@@ -159,6 +142,18 @@ function buildHref(params: {
   return `/finance/cashflow?${query.toString()}`;
 }
 
+function treatmentGroupLabel(treatment: string, parentName?: string | null) {
+  if (treatment === "CREDIT_RECEIVED") return "Финансовая деятельность";
+  if (treatment === "CREDIT_PRINCIPAL") return "Финансовая деятельность";
+  if (treatment === "CREDIT_INTEREST") return "Финансовая деятельность";
+  if (treatment === "OWNER_WITHDRAWAL") return "Собственник";
+  if (treatment === "CASH_ONLY") return parentLabel(parentName) || "Только ДДС";
+  if (treatment === "INCLUDE_IN_NET_PROFIT") return parentLabel(parentName);
+  if (treatment === "IGNORE") return "Не учитывается";
+
+  return parentLabel(parentName);
+}
+
 export default async function CashFlowPage({
   searchParams,
 }: {
@@ -181,6 +176,10 @@ export default async function CashFlowPage({
   const dateFrom = params.dateFrom ?? "";
   const dateTo = params.dateTo ?? "";
   const rowsLimit = Number(params.rows ?? 25);
+
+  const safeRowsLimit = [25, 50, 100, 250, 500].includes(rowsLimit)
+    ? rowsLimit
+    : 25;
 
   const today = startOfDay(new Date());
   const todayText = formatDateInput(today);
@@ -220,6 +219,8 @@ export default async function CashFlowPage({
     },
     orderBy: [{ companyName: "asc" }, { name: "asc" }],
   });
+
+  const categoryTreatmentIndex = buildFinanceCategoryTreatmentIndex(categories);
 
   const categoryMap = new Map(
     categories.map((category) => [category.name, category])
@@ -267,171 +268,119 @@ export default async function CashFlowPage({
     where: beforeWhere,
   });
 
-  function categoryTypeOf(row: { category: string; operationType: string }) {
-    const categoryType = categoryMap.get(row.category)?.categoryType;
+  const metrics = calculateFinanceMetricsForRows({
+    transactions,
+    categories,
+  });
 
-    if (categoryType) return categoryType;
-    if (isFinancingCategory(row.category)) return "FINANCING";
+  const openingBalance = beforeTransactions.reduce((sum, row) => {
+    const effect =
+      bankAccount === "ALL"
+        ? getFinanceTransactionCashEffect(row, categoryTreatmentIndex)
+        : getFinanceTransactionAccountEffect(row, categoryTreatmentIndex);
 
-    return row.operationType;
-  }
+    return sum + effect;
+  }, 0);
 
-  function cashEffectForCashflow(row: {
-    category: string;
-    operationType: string;
-    amount: unknown;
-    isInternalTransfer: boolean;
-  }) {
-    if (row.isInternalTransfer) return 0;
-
-    const amount = getAmount(row.amount);
-    const categoryType = categoryTypeOf(row);
-
-    if (categoryType === "INCOME") return amount;
-    if (categoryType === "EXPENSE") return -amount;
-    if (categoryType === "PERSONAL") return -amount;
-
-    if (categoryType === "FINANCING") {
-      return isFinancingIncomeCategory(row.category) ? amount : -amount;
-    }
-
-    if (row.operationType === "INCOME") return amount;
-    if (row.operationType === "EXPENSE") return -amount;
-
-    return 0;
-  }
-
-  function cashEffectForAccount(row: {
-    category: string;
-    operationType: string;
-    amount: unknown;
-    isInternalTransfer: boolean;
-    transferDirection?: string | null;
-  }) {
-    const amount = getAmount(row.amount);
-
-    if (row.isInternalTransfer) {
-      if (row.transferDirection === "TRANSFER_IN") return amount;
-      if (row.transferDirection === "TRANSFER_OUT") return -amount;
-      return 0;
-    }
-
-    return cashEffectForCashflow(row);
-  }
-
-  const openingBalance = beforeTransactions.reduce(
-    (sum, row) => sum + cashEffectForCashflow(row),
-    0
-  );
-
-  const operatingIncome = transactions
-    .filter(
-      (row) =>
-        categoryTypeOf(row) === "INCOME" &&
-        !row.isInternalTransfer &&
-        !isFinancingCategory(row.category)
-    )
-    .reduce((sum, row) => sum + getAmount(row.amount), 0);
-
-  const operatingExpense = transactions
-    .filter(
-      (row) =>
-        categoryTypeOf(row) === "EXPENSE" &&
-        !row.isInternalTransfer &&
-        !isFinancingCategory(row.category)
-    )
-    .reduce((sum, row) => sum + getAmount(row.amount), 0);
-
-  const personalExpense = transactions
-    .filter((row) => categoryTypeOf(row) === "PERSONAL" && !row.isInternalTransfer)
-    .reduce((sum, row) => sum + getAmount(row.amount), 0);
-
-  const financingIncome = transactions
-    .filter(
-      (row) =>
-        categoryTypeOf(row) === "FINANCING" &&
-        !row.isInternalTransfer &&
-        isFinancingIncomeCategory(row.category)
-    )
-    .reduce((sum, row) => sum + getAmount(row.amount), 0);
-
-  const financingExpense = transactions
-    .filter(
-      (row) =>
-        categoryTypeOf(row) === "FINANCING" &&
-        !row.isInternalTransfer &&
-        !isFinancingIncomeCategory(row.category)
-    )
-    .reduce((sum, row) => sum + getAmount(row.amount), 0);
-
-  const operatingFlow = operatingIncome - operatingExpense - personalExpense;
-  const financialFlow = financingIncome - financingExpense;
-
-  const totalInflow = operatingIncome + financingIncome;
-  const totalOutflow = operatingExpense + personalExpense + financingExpense;
-  const netCashFlow = totalInflow - totalOutflow;
-  const closingBalance = openingBalance + netCashFlow;
+  const closingBalance = openingBalance + metrics.netCashFlow;
 
   const cashFlowMargin =
-    totalInflow > 0 ? (netCashFlow / totalInflow) * 100 : null;
+    metrics.cashIncome > 0
+      ? (metrics.netCashFlow / metrics.cashIncome) * 100
+      : null;
 
-  const incomeRowsMap = new Map<string, number>();
+  const operatingIncome = metrics.cashIncome - metrics.creditReceived;
+  const operatingExpense =
+    metrics.cashOutflow -
+    metrics.creditPrincipal -
+    metrics.creditInterest -
+    metrics.ownerWithdrawals;
+
+  const operatingFlow = operatingIncome - operatingExpense;
+
+  const financialFlow =
+    metrics.creditReceived - metrics.creditPrincipal - metrics.creditInterest;
+
+  const ownerFlow = -metrics.ownerWithdrawals;
+
+  const incomeRowsMap = new Map<
+    string,
+    {
+      categoryName: string;
+      amount: number;
+      treatment: string;
+      treatmentLabel: string;
+      treatmentClassName: string;
+    }
+  >();
+
   const expenseRowsMap = new Map<
     string,
     {
       parentName: string;
       categoryName: string;
       amount: number;
+      treatment: string;
+      treatmentLabel: string;
+      treatmentClassName: string;
     }
   >();
 
   for (const row of transactions) {
-    if (row.isInternalTransfer) continue;
-
-    const amount = getAmount(row.amount);
-    const categoryType = categoryTypeOf(row);
-
-    if (categoryType === "INCOME" && !isFinancingCategory(row.category)) {
-      incomeRowsMap.set(row.category, (incomeRowsMap.get(row.category) ?? 0) + amount);
+    if (row.isInternalTransfer || row.operationType === "TRANSFER") {
       continue;
     }
 
-    if (
-      categoryType === "EXPENSE" ||
-      categoryType === "PERSONAL" ||
-      categoryType === "FINANCING"
-    ) {
-      if (categoryType === "FINANCING" && isFinancingIncomeCategory(row.category)) {
-        continue;
-      }
+    const effect = getFinanceTransactionCashEffect(row, categoryTreatmentIndex);
+    if (effect === 0) continue;
 
-      const category = categoryMap.get(row.category);
-      const parentName =
-        categoryType === "FINANCING"
-          ? "Финансовая деятельность"
-          : parentLabel(category?.parentName);
+    const treatment = getFinanceTransactionTreatment(
+      row,
+      categoryTreatmentIndex
+    );
 
-      const key = `${parentName}|||${row.category}`;
+    const category = categoryMap.get(row.category);
+    const groupName = treatmentGroupLabel(
+      treatment.treatment,
+      category?.parentName
+    );
 
+    if (effect > 0) {
       const current =
-        expenseRowsMap.get(key) ??
+        incomeRowsMap.get(row.category) ??
         {
-          parentName,
           categoryName: row.category,
           amount: 0,
+          treatment: treatment.treatment,
+          treatmentLabel: treatment.label,
+          treatmentClassName: treatment.className,
         };
 
-      current.amount += amount;
-      expenseRowsMap.set(key, current);
+      current.amount += effect;
+      incomeRowsMap.set(row.category, current);
+      continue;
     }
+
+    const key = `${groupName}|||${row.category}`;
+
+    const current =
+      expenseRowsMap.get(key) ??
+      {
+        parentName: groupName,
+        categoryName: row.category,
+        amount: 0,
+        treatment: treatment.treatment,
+        treatmentLabel: treatment.label,
+        treatmentClassName: treatment.className,
+      };
+
+    current.amount += Math.abs(effect);
+    expenseRowsMap.set(key, current);
   }
 
-  const incomeRows = Array.from(incomeRowsMap.entries())
-    .map(([categoryName, amount]) => ({
-      categoryName,
-      amount,
-    }))
-    .sort((a, b) => b.amount - a.amount);
+  const incomeRows = Array.from(incomeRowsMap.values()).sort(
+    (a, b) => b.amount - a.amount
+  );
 
   const categoryExpenseRows = Array.from(expenseRowsMap.values()).sort(
     (a, b) =>
@@ -468,7 +417,7 @@ export default async function CashFlowPage({
         net: 0,
       };
 
-    const effect = cashEffectForCashflow(row);
+    const effect = getFinanceTransactionCashEffect(row, categoryTreatmentIndex);
 
     if (effect >= 0) {
       current.inflow += effect;
@@ -488,7 +437,7 @@ export default async function CashFlowPage({
     (a, b) => b.operationDate.getTime() - a.operationDate.getTime()
   );
 
-  const visibleOperations = allFilteredOperations.slice(0, rowsLimit);
+  const visibleOperations = allFilteredOperations.slice(0, safeRowsLimit);
 
   const visibleAccounts =
     bankAccount === "ALL"
@@ -503,13 +452,33 @@ export default async function CashFlowPage({
     );
 
     const inflow = accountTransactions
-      .filter((operation) => cashEffectForAccount(operation) > 0)
-      .reduce((sum, operation) => sum + cashEffectForAccount(operation), 0);
+      .filter(
+        (operation) =>
+          getFinanceTransactionAccountEffect(operation, categoryTreatmentIndex) >
+          0
+      )
+      .reduce(
+        (sum, operation) =>
+          sum +
+          getFinanceTransactionAccountEffect(operation, categoryTreatmentIndex),
+        0
+      );
 
     const outflow = accountTransactions
-      .filter((operation) => cashEffectForAccount(operation) < 0)
+      .filter(
+        (operation) =>
+          getFinanceTransactionAccountEffect(operation, categoryTreatmentIndex) <
+          0
+      )
       .reduce(
-        (sum, operation) => sum + Math.abs(cashEffectForAccount(operation)),
+        (sum, operation) =>
+          sum +
+          Math.abs(
+            getFinanceTransactionAccountEffect(
+              operation,
+              categoryTreatmentIndex
+            )
+          ),
         0
       );
 
@@ -564,7 +533,8 @@ export default async function CashFlowPage({
           <div>
             <h1 className="text-4xl font-bold text-slate-900">ОДДС</h1>
             <p className="mt-3 text-slate-500">
-              Отчёт о движении денежных средств по операциям компании.
+              Отчёт о движении денежных средств. Расчёты используют единую
+              финансовую модель по ролям статей.
             </p>
           </div>
 
@@ -704,7 +674,7 @@ export default async function CashFlowPage({
             </div>
           </div>
 
-          <input type="hidden" name="rows" value={rowsLimit} />
+          <input type="hidden" name="rows" value={safeRowsLimit} />
         </form>
 
         <section className="rounded-2xl bg-white p-5 shadow-sm">
@@ -719,7 +689,7 @@ export default async function CashFlowPage({
                   operationType,
                   dateFrom: link.dateFrom,
                   dateTo: link.dateTo,
-                  rows: rowsLimit,
+                  rows: safeRowsLimit,
                 })}
                 className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold hover:bg-slate-50"
               >
@@ -735,7 +705,7 @@ export default async function CashFlowPage({
                 operationType,
                 dateFrom: "",
                 dateTo: "",
-                rows: rowsLimit,
+                rows: safeRowsLimit,
               })}
               className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold hover:bg-slate-50"
             >
@@ -753,27 +723,27 @@ export default async function CashFlowPage({
           </div>
 
           <div className="rounded-2xl bg-white p-6 shadow-sm">
-            <div className="text-sm text-slate-500">Поступления</div>
+            <div className="text-sm text-slate-500">Поступления ДДС</div>
             <div className="mt-2 text-2xl font-bold text-emerald-600">
-              {formatMoney(totalInflow)}
+              {formatMoney(metrics.cashIncome)}
             </div>
           </div>
 
           <div className="rounded-2xl bg-white p-6 shadow-sm">
-            <div className="text-sm text-slate-500">Выбытия</div>
+            <div className="text-sm text-slate-500">Выплаты ДДС</div>
             <div className="mt-2 text-2xl font-bold text-red-600">
-              {formatMoney(totalOutflow)}
+              {formatMoney(metrics.cashOutflow)}
             </div>
           </div>
 
           <div className="rounded-2xl bg-white p-6 shadow-sm">
             <div className="text-sm text-slate-500">Чистый ДДС</div>
             <div
-              className={`mt-2 text-2xl font-bold ${
-                netCashFlow >= 0 ? "text-emerald-600" : "text-red-600"
-              }`}
+              className={`mt-2 text-2xl font-bold ${valueClass(
+                metrics.netCashFlow
+              )}`}
             >
-              {formatMoney(netCashFlow)}
+              {formatMoney(metrics.netCashFlow)}
             </div>
 
             <div className="mt-2 text-sm text-slate-500">
@@ -785,6 +755,55 @@ export default async function CashFlowPage({
           </div>
         </section>
 
+        <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="rounded-2xl bg-cyan-50 p-6 shadow-sm ring-1 ring-cyan-100">
+            <div className="text-sm font-semibold text-cyan-700">Только ДДС</div>
+            <div className="mt-2 text-2xl font-black text-cyan-800">
+              {formatMoney(metrics.cashOnlyTotal)}
+            </div>
+            <p className="mt-2 text-sm leading-6 text-cyan-700">
+              Фулфилмент, закупки, упаковка и расходы, уже сидящие в
+              себестоимости.
+            </p>
+          </div>
+
+          <div className="rounded-2xl bg-blue-50 p-6 shadow-sm ring-1 ring-blue-100">
+            <div className="text-sm font-semibold text-blue-700">
+              Тело кредита
+            </div>
+            <div className="mt-2 text-2xl font-black text-blue-800">
+              {formatMoney(metrics.creditPrincipal)}
+            </div>
+            <p className="mt-2 text-sm leading-6 text-blue-700">
+              Уменьшает деньги, но не чистую прибыль.
+            </p>
+          </div>
+
+          <div className="rounded-2xl bg-violet-50 p-6 shadow-sm ring-1 ring-violet-100">
+            <div className="text-sm font-semibold text-violet-700">
+              Проценты кредита
+            </div>
+            <div className="mt-2 text-2xl font-black text-violet-800">
+              {formatMoney(metrics.creditInterest)}
+            </div>
+            <p className="mt-2 text-sm leading-6 text-violet-700">
+              Уменьшают и ДДС, и чистую прибыль.
+            </p>
+          </div>
+
+          <div className="rounded-2xl bg-amber-50 p-6 shadow-sm ring-1 ring-amber-100">
+            <div className="text-sm font-semibold text-amber-700">
+              Вывод собственника
+            </div>
+            <div className="mt-2 text-2xl font-black text-amber-800">
+              {formatMoney(metrics.ownerWithdrawals)}
+            </div>
+            <p className="mt-2 text-sm leading-6 text-amber-700">
+              Уменьшает ДДС и показатель после вывода собственника.
+            </p>
+          </div>
+        </section>
+
         <section className="grid gap-4 lg:grid-cols-3">
           <div className="rounded-2xl bg-white p-6 shadow-sm">
             <h2 className="text-xl font-bold text-slate-900">
@@ -793,23 +812,16 @@ export default async function CashFlowPage({
 
             <div className="mt-5 space-y-3 text-sm">
               <div className="flex justify-between">
-                <span className="text-slate-500">Поступления</span>
+                <span className="text-slate-500">Поступления без кредитов</span>
                 <span className="font-bold text-emerald-600">
                   {formatMoney(operatingIncome)}
                 </span>
               </div>
 
               <div className="flex justify-between">
-                <span className="text-slate-500">Расходы</span>
+                <span className="text-slate-500">Операционные выплаты</span>
                 <span className="font-bold text-red-600">
                   {formatMoney(operatingExpense)}
-                </span>
-              </div>
-
-              <div className="flex justify-between">
-                <span className="text-slate-500">Личные расходы</span>
-                <span className="font-bold text-amber-600">
-                  {formatMoney(personalExpense)}
                 </span>
               </div>
 
@@ -818,11 +830,7 @@ export default async function CashFlowPage({
                   <span className="font-semibold text-slate-900">
                     Операционный поток
                   </span>
-                  <span
-                    className={`font-bold ${
-                      operatingFlow >= 0 ? "text-emerald-600" : "text-red-600"
-                    }`}
-                  >
+                  <span className={`font-bold ${valueClass(operatingFlow)}`}>
                     {formatMoney(operatingFlow)}
                   </span>
                 </div>
@@ -832,21 +840,28 @@ export default async function CashFlowPage({
 
           <div className="rounded-2xl bg-white p-6 shadow-sm">
             <h2 className="text-xl font-bold text-slate-900">
-              Финансовая деятельность
+              Кредиты и займы
             </h2>
 
             <div className="mt-5 space-y-3 text-sm">
               <div className="flex justify-between">
                 <span className="text-slate-500">Получено кредитов / займов</span>
                 <span className="font-bold text-blue-600">
-                  {formatMoney(financingIncome)}
+                  {formatMoney(metrics.creditReceived)}
                 </span>
               </div>
 
               <div className="flex justify-between">
-                <span className="text-slate-500">Платежи по кредитам / займам</span>
+                <span className="text-slate-500">Тело кредита</span>
                 <span className="font-bold text-red-600">
-                  {formatMoney(financingExpense)}
+                  {formatMoney(metrics.creditPrincipal)}
+                </span>
+              </div>
+
+              <div className="flex justify-between">
+                <span className="text-slate-500">Проценты</span>
+                <span className="font-bold text-red-600">
+                  {formatMoney(metrics.creditInterest)}
                 </span>
               </div>
 
@@ -855,11 +870,7 @@ export default async function CashFlowPage({
                   <span className="font-semibold text-slate-900">
                     Финансовый поток
                   </span>
-                  <span
-                    className={`font-bold ${
-                      financialFlow >= 0 ? "text-blue-600" : "text-red-600"
-                    }`}
-                  >
+                  <span className={`font-bold ${valueClass(financialFlow)}`}>
                     {formatMoney(financialFlow)}
                   </span>
                 </div>
@@ -879,13 +890,16 @@ export default async function CashFlowPage({
               </div>
 
               <div className="flex justify-between">
+                <span className="text-slate-500">Вывод собственника</span>
+                <span className="font-bold text-amber-600">
+                  {formatMoney(Math.abs(ownerFlow))}
+                </span>
+              </div>
+
+              <div className="flex justify-between">
                 <span className="text-slate-500">Чистый денежный поток</span>
-                <span
-                  className={`font-bold ${
-                    netCashFlow >= 0 ? "text-emerald-600" : "text-red-600"
-                  }`}
-                >
-                  {formatMoney(netCashFlow)}
+                <span className={`font-bold ${valueClass(metrics.netCashFlow)}`}>
+                  {formatMoney(metrics.netCashFlow)}
                 </span>
               </div>
 
@@ -894,11 +908,7 @@ export default async function CashFlowPage({
                   <span className="font-semibold text-slate-900">
                     Конечный остаток
                   </span>
-                  <span
-                    className={`font-bold ${
-                      closingBalance >= 0 ? "text-emerald-600" : "text-red-600"
-                    }`}
-                  >
+                  <span className={`font-bold ${valueClass(closingBalance)}`}>
                     {formatMoney(closingBalance)}
                   </span>
                 </div>
@@ -919,8 +929,16 @@ export default async function CashFlowPage({
                   key={row.categoryName}
                   className="flex items-center justify-between gap-4 rounded-xl border border-slate-200 p-4"
                 >
-                  <div className="font-semibold text-slate-900">
-                    {row.categoryName}
+                  <div>
+                    <div className="font-semibold text-slate-900">
+                      {row.categoryName}
+                    </div>
+
+                    <div
+                      className={`mt-2 inline-flex rounded-full px-3 py-1 text-xs font-bold ring-1 ${row.treatmentClassName}`}
+                    >
+                      {row.treatmentLabel}
+                    </div>
                   </div>
 
                   <div className="text-right">
@@ -929,8 +947,8 @@ export default async function CashFlowPage({
                     </div>
 
                     <div className="mt-1 text-sm font-semibold text-slate-500">
-                      {operatingIncome > 0
-                        ? formatPercent((row.amount / operatingIncome) * 100)
+                      {metrics.cashIncome > 0
+                        ? formatPercent((row.amount / metrics.cashIncome) * 100)
                         : "—"}
                     </div>
                   </div>
@@ -947,7 +965,7 @@ export default async function CashFlowPage({
 
           <div className="rounded-2xl bg-white p-6 shadow-sm">
             <h2 className="text-xl font-bold text-slate-900">
-              Расшифровка расходов по статьям
+              Расшифровка выплат по статьям
             </h2>
 
             <div className="mt-5 space-y-6">
@@ -963,8 +981,10 @@ export default async function CashFlowPage({
                           {formatMoney(groupTotal)}
                         </div>
                         <div className="mt-1 text-sm font-semibold text-slate-500">
-                          {totalOutflow > 0
-                            ? formatPercent((groupTotal / totalOutflow) * 100)
+                          {metrics.cashOutflow > 0
+                            ? formatPercent(
+                                (groupTotal / metrics.cashOutflow) * 100
+                              )
                             : "—"}
                         </div>
                       </div>
@@ -979,7 +999,12 @@ export default async function CashFlowPage({
                               className="border-t border-slate-100"
                             >
                               <td className="p-3 font-medium">
-                                ├ {row.categoryName}
+                                <div>├ {row.categoryName}</div>
+                                <div
+                                  className={`mt-2 inline-flex rounded-full px-3 py-1 text-xs font-bold ring-1 ${row.treatmentClassName}`}
+                                >
+                                  {row.treatmentLabel}
+                                </div>
                               </td>
 
                               <td className="p-3 text-right">
@@ -988,8 +1013,10 @@ export default async function CashFlowPage({
                                 </div>
 
                                 <div className="mt-1 text-sm font-semibold text-slate-500">
-                                  {totalOutflow > 0
-                                    ? formatPercent((row.amount / totalOutflow) * 100)
+                                  {metrics.cashOutflow > 0
+                                    ? formatPercent(
+                                        (row.amount / metrics.cashOutflow) * 100
+                                      )
                                     : "—"}
                                 </div>
                               </td>
@@ -1050,9 +1077,9 @@ export default async function CashFlowPage({
                       </td>
 
                       <td
-                        className={`p-3 text-right font-bold ${
-                          row.balance >= 0 ? "text-emerald-600" : "text-red-600"
-                        }`}
+                        className={`p-3 text-right font-bold ${valueClass(
+                          row.balance
+                        )}`}
                       >
                         {formatMoney(row.balance)}
                       </td>
@@ -1074,9 +1101,7 @@ export default async function CashFlowPage({
           </div>
 
           <div className="rounded-2xl bg-white p-6 shadow-sm">
-            <h2 className="text-xl font-bold text-slate-900">
-              ДДС по месяцам
-            </h2>
+            <h2 className="text-xl font-bold text-slate-900">ДДС по месяцам</h2>
 
             <div className="mt-5 overflow-x-auto">
               <table className="w-full text-sm">
@@ -1095,20 +1120,14 @@ export default async function CashFlowPage({
                       key={row.date.toISOString()}
                       className="border-t border-slate-100"
                     >
-                      <td className="p-3 font-medium">
-                        {formatMonth(row.date)}
-                      </td>
+                      <td className="p-3 font-medium">{formatMonth(row.date)}</td>
                       <td className="p-3 text-right font-bold text-emerald-600">
                         {formatMoney(row.inflow)}
                       </td>
                       <td className="p-3 text-right font-bold text-red-600">
                         {formatMoney(row.outflow)}
                       </td>
-                      <td
-                        className={`p-3 text-right font-bold ${
-                          row.net >= 0 ? "text-emerald-600" : "text-red-600"
-                        }`}
-                      >
+                      <td className={`p-3 text-right font-bold ${valueClass(row.net)}`}>
                         {formatMoney(row.net)}
                       </td>
                     </tr>
@@ -1154,7 +1173,7 @@ export default async function CashFlowPage({
                     rows: limit,
                   })}
                   className={`rounded-lg px-3 py-1 font-medium ${
-                    rowsLimit === limit
+                    safeRowsLimit === limit
                       ? "bg-slate-900 text-white"
                       : "bg-slate-100 text-slate-700 hover:bg-slate-200"
                   }`}
@@ -1166,13 +1185,14 @@ export default async function CashFlowPage({
           </div>
 
           <div className="mt-5 max-h-[720px] overflow-auto">
-            <table className="w-full min-w-[1100px] text-sm">
+            <table className="w-full min-w-[1250px] text-sm">
               <thead className="sticky top-0 z-10 bg-slate-100 text-left text-slate-700">
                 <tr>
                   <th className="p-3">Дата</th>
                   <th className="p-3">Компания</th>
                   <th className="p-3">Тип</th>
                   <th className="p-3">Статья</th>
+                  <th className="p-3">Роль</th>
                   <th className="p-3">Счёт</th>
                   <th className="p-3 text-right">Сумма</th>
                   <th className="p-3">Комментарий</th>
@@ -1181,8 +1201,18 @@ export default async function CashFlowPage({
 
               <tbody>
                 {visibleOperations.map((row) => {
-                  const accountEffect = cashEffectForAccount(row);
-                  const cashflowEffect = cashEffectForCashflow(row);
+                  const accountEffect = getFinanceTransactionAccountEffect(
+                    row,
+                    categoryTreatmentIndex
+                  );
+                  const cashflowEffect = getFinanceTransactionCashEffect(
+                    row,
+                    categoryTreatmentIndex
+                  );
+                  const treatment = getFinanceTransactionTreatment(
+                    row,
+                    categoryTreatmentIndex
+                  );
 
                   return (
                     <tr key={row.id} className="border-t border-slate-100">
@@ -1190,12 +1220,20 @@ export default async function CashFlowPage({
                       <td className="p-3">{row.companyName}</td>
                       <td
                         className={`p-3 font-semibold ${operationClass(
-                          categoryTypeOf(row)
+                          row.operationType
                         )}`}
                       >
-                        {operationLabel(categoryTypeOf(row))}
+                        {operationLabel(row.operationType)}
                       </td>
                       <td className="p-3 font-medium">{row.category}</td>
+                      <td className="p-3">
+                        <div
+                          className={`inline-flex rounded-full px-3 py-1 text-xs font-bold ring-1 ${treatment.className}`}
+                          title={treatment.description}
+                        >
+                          {treatment.label}
+                        </div>
+                      </td>
                       <td className="p-3">{row.bankAccount || "—"}</td>
                       <td
                         className={`p-3 text-right font-bold ${
@@ -1204,10 +1242,7 @@ export default async function CashFlowPage({
                             : "text-red-600"
                         }`}
                       >
-                        {row.isInternalTransfer &&
-                        row.transferDirection === "TRANSFER_OUT"
-                          ? "-"
-                          : ""}
+                        {accountEffect < 0 ? "-" : ""}
                         {formatMoney(getAmount(row.amount))}
                       </td>
                       <td className="p-3">
@@ -1223,7 +1258,7 @@ export default async function CashFlowPage({
 
                 {visibleOperations.length === 0 && (
                   <tr>
-                    <td colSpan={7} className="p-6 text-center text-slate-500">
+                    <td colSpan={8} className="p-6 text-center text-slate-500">
                       Нет операций.
                     </td>
                   </tr>

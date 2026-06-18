@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+
 import { prisma } from "@/lib/prisma";
 import { recalculateAccountBalances } from "@/lib/finance/recalculateAccountBalances";
 
@@ -20,73 +21,103 @@ function toNumber(value: FormDataEntryValue | null) {
   return Number.isFinite(number) ? number : 0;
 }
 
+function normalizeText(value: FormDataEntryValue | null) {
+  return String(value ?? "").trim();
+}
+
 export async function POST(req: Request) {
-  const formData = await req.formData();
+  try {
+    const formData = await req.formData();
 
-  const companyName = String(formData.get("companyName") ?? "").trim();
-  const fromAccount = String(formData.get("fromAccount") ?? "").trim();
-  const toAccount = String(formData.get("toAccount") ?? "").trim();
-  const operationDate = toDate(formData.get("operationDate"));
-  const amount = toNumber(formData.get("amount"));
-  const comment = String(formData.get("comment") ?? "").trim();
+    const companyName = normalizeText(formData.get("companyName"));
+    const fromAccount = normalizeText(formData.get("fromAccount"));
+    const toAccount = normalizeText(formData.get("toAccount"));
+    const operationDate = toDate(formData.get("operationDate"));
+    const amount = toNumber(formData.get("amount"));
+    const comment = normalizeText(formData.get("comment"));
 
-  if (!companyName || !fromAccount || !toAccount || !operationDate || amount <= 0) {
+    if (
+      !companyName ||
+      !fromAccount ||
+      !toAccount ||
+      !operationDate ||
+      amount <= 0
+    ) {
+      return NextResponse.json(
+        { error: "Заполните обязательные поля" },
+        { status: 400 }
+      );
+    }
+
+    if (fromAccount === toAccount) {
+      return NextResponse.json(
+        { error: "Счёт списания и счёт зачисления не должны совпадать" },
+        { status: 400 }
+      );
+    }
+
+    const transferGroupId = crypto.randomUUID();
+
+    await prisma.$transaction([
+      prisma.financeTransaction.create({
+        data: {
+          companyName,
+          operationDate,
+          obligationDate: null,
+          operationType: "TRANSFER",
+          category: "Внутренний перевод",
+          subcategory: "Списание",
+          counterparty: null,
+          amount,
+          bankAccount: fromAccount,
+          comment: comment || `Перевод на ${toAccount}`,
+          project: null,
+          isInternalTransfer: true,
+          transferGroupId,
+          transferDirection: "TRANSFER_OUT",
+          transactionStatus: "FACT",
+          sourceType: "MANUAL_TRANSFER",
+          sourceId: transferGroupId,
+        },
+      }),
+
+      prisma.financeTransaction.create({
+        data: {
+          companyName,
+          operationDate,
+          obligationDate: null,
+          operationType: "TRANSFER",
+          category: "Внутренний перевод",
+          subcategory: "Зачисление",
+          counterparty: null,
+          amount,
+          bankAccount: toAccount,
+          comment: comment || `Перевод со счёта ${fromAccount}`,
+          project: null,
+          isInternalTransfer: true,
+          transferGroupId,
+          transferDirection: "TRANSFER_IN",
+          transactionStatus: "FACT",
+          sourceType: "MANUAL_TRANSFER",
+          sourceId: transferGroupId,
+        },
+      }),
+    ]);
+
+    await recalculateAccountBalances();
+
+    return NextResponse.redirect(new URL("/finance/operations", req.url));
+  } catch (error) {
+    console.error("CREATE_FINANCE_TRANSFER_ERROR", error);
+
     return NextResponse.json(
-      { error: "Заполните обязательные поля" },
-      { status: 400 }
+      {
+        error:
+          error instanceof Error
+            ? error.message
+            : "Ошибка создания внутреннего перевода",
+      },
+      { status: 500 }
     );
   }
-
-  if (fromAccount === toAccount) {
-    return NextResponse.json(
-      { error: "Счёт списания и счёт зачисления не должны совпадать" },
-      { status: 400 }
-    );
-  }
-
-  const transferGroupId = crypto.randomUUID();
-
-  await prisma.$transaction([
-    prisma.financeTransaction.create({
-      data: {
-        companyName,
-        operationDate,
-        obligationDate: null,
-        operationType: "TRANSFER",
-        category: "Внутренний перевод",
-        subcategory: "Списание",
-        counterparty: null,
-        amount,
-        bankAccount: fromAccount,
-        comment: comment || `Перевод на ${toAccount}`,
-        project: null,
-        isInternalTransfer: true,
-        transferGroupId,
-        transferDirection: "TRANSFER_OUT",
-      },
-    }),
-
-    prisma.financeTransaction.create({
-      data: {
-        companyName,
-        operationDate,
-        obligationDate: null,
-        operationType: "TRANSFER",
-        category: "Внутренний перевод",
-        subcategory: "Зачисление",
-        counterparty: null,
-        amount,
-        bankAccount: toAccount,
-        comment: comment || `Перевод со счёта ${fromAccount}`,
-        project: null,
-        isInternalTransfer: true,
-        transferGroupId,
-        transferDirection: "TRANSFER_IN",
-      },
-    }),
-  ]);
-
-await recalculateAccountBalances();
-
-  return NextResponse.redirect(new URL("/finance/operations", req.url));
 }

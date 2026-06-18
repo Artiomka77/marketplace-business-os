@@ -1,5 +1,12 @@
 import Link from "next/link";
+
 import { prisma } from "@/lib/prisma";
+import {
+  buildFinanceCategoryTreatmentIndex,
+  calculateFinanceMetricsForRows,
+  getFinanceTransactionCashEffect,
+  getFinanceTransactionTreatment,
+} from "@/lib/finance/financeMetrics";
 
 function formatMoney(value: unknown) {
   const number = Number(value ?? 0);
@@ -84,32 +91,139 @@ function calcDelta(current: number, previous: number) {
   };
 }
 
-function groupByCategory(
-  rows: {
-    category: string;
-    amount: unknown;
-    operationType: string;
-    isInternalTransfer: boolean;
-  }[],
-  operationType: string
-) {
-  const map = new Map<string, number>();
+function parentLabel(value: string | null | undefined) {
+  if (!value) return "Без группы";
+  if (value === "FINANCING") return "Кредиты и займы";
+  return value;
+}
 
-  for (const row of rows) {
-    if (row.operationType !== operationType || row.isInternalTransfer) continue;
+function valueClass(value: number) {
+  return value >= 0 ? "text-emerald-600" : "text-red-600";
+}
 
-    const category = row.category || "Без статьи";
-    const amount = Number(row.amount ?? 0);
+function deltaClass(value: number, goodWhen: "up" | "down") {
+  if (value === 0) return "text-slate-500";
 
-    map.set(category, (map.get(category) ?? 0) + amount);
+  if (goodWhen === "up") {
+    return value > 0 ? "text-emerald-600" : "text-red-600";
   }
 
-  return Array.from(map.entries())
-    .map(([category, amount]) => ({
-      category,
-      amount,
-    }))
-    .sort((a, b) => b.amount - a.amount);
+  return value < 0 ? "text-emerald-600" : "text-red-600";
+}
+
+function treatmentGroupLabel(treatment: string, parentName?: string | null) {
+  if (treatment === "CREDIT_RECEIVED") return "Финансовая деятельность";
+  if (treatment === "CREDIT_PRINCIPAL") return "Финансовая деятельность";
+  if (treatment === "CREDIT_INTEREST") return "Финансовая деятельность";
+  if (treatment === "OWNER_WITHDRAWAL") return "Собственник";
+  if (treatment === "CASH_ONLY") return parentLabel(parentName);
+  if (treatment === "INCLUDE_IN_NET_PROFIT") return parentLabel(parentName);
+  if (treatment === "IGNORE") return "Не учитывается";
+
+  return parentLabel(parentName);
+}
+
+function buildCategoryRows(params: {
+  transactions: {
+    operationType: string;
+    category: string;
+    amount: unknown;
+    subcategory?: string | null;
+    isInternalTransfer?: boolean | null;
+    transferDirection?: string | null;
+  }[];
+  categories: {
+    name: string;
+    categoryType: string;
+    parentName?: string | null;
+    profitTreatment?: string | null;
+  }[];
+}) {
+  const categoryTreatmentIndex = buildFinanceCategoryTreatmentIndex(
+    params.categories
+  );
+
+  const categoryMap = new Map(
+    params.categories.map((category) => [category.name, category])
+  );
+
+  const incomeMap = new Map<
+    string,
+    {
+      category: string;
+      amount: number;
+      treatmentLabel: string;
+      treatmentClassName: string;
+    }
+  >();
+
+  const outflowMap = new Map<
+    string,
+    {
+      group: string;
+      category: string;
+      amount: number;
+      treatmentLabel: string;
+      treatmentClassName: string;
+    }
+  >();
+
+  for (const row of params.transactions) {
+    const effect = getFinanceTransactionCashEffect(
+      row,
+      categoryTreatmentIndex
+    );
+
+    if (effect === 0) continue;
+
+    const treatment = getFinanceTransactionTreatment(
+      row,
+      categoryTreatmentIndex
+    );
+
+    const category = categoryMap.get(row.category);
+    const group = treatmentGroupLabel(treatment.treatment, category?.parentName);
+
+    if (effect > 0) {
+      const current =
+        incomeMap.get(row.category) ??
+        {
+          category: row.category,
+          amount: 0,
+          treatmentLabel: treatment.label,
+          treatmentClassName: treatment.className,
+        };
+
+      current.amount += effect;
+      incomeMap.set(row.category, current);
+
+      continue;
+    }
+
+    const key = `${group}|||${row.category}`;
+
+    const current =
+      outflowMap.get(key) ??
+      {
+        group,
+        category: row.category,
+        amount: 0,
+        treatmentLabel: treatment.label,
+        treatmentClassName: treatment.className,
+      };
+
+    current.amount += Math.abs(effect);
+    outflowMap.set(key, current);
+  }
+
+  return {
+    incomeRows: Array.from(incomeMap.values()).sort(
+      (a, b) => b.amount - a.amount
+    ),
+    outflowRows: Array.from(outflowMap.values()).sort(
+      (a, b) => a.group.localeCompare(b.group, "ru") || b.amount - a.amount
+    ),
+  };
 }
 
 const items = [
@@ -162,7 +276,9 @@ export default async function FinancePage({
   );
 
   const previousPeriodEnd = endOfDay(addDays(periodStart, -1));
-  const previousPeriodStart = startOfDay(addDays(previousPeriodEnd, -periodDays + 1));
+  const previousPeriodStart = startOfDay(
+    addDays(previousPeriodEnd, -periodDays + 1)
+  );
 
   const companies = await prisma.company.findMany({
     where: { isActive: true },
@@ -174,6 +290,17 @@ export default async function FinancePage({
       isActive: true,
       ...(companyName ? { companyName } : {}),
     },
+  });
+
+  const categories = await prisma.financeCategory.findMany({
+    where: {
+      isActive: true,
+    },
+    orderBy: [
+      { categoryType: "asc" },
+      { sortOrder: "asc" },
+      { name: "asc" },
+    ],
   });
 
   const periodTransactions = await prisma.financeTransaction.findMany({
@@ -194,6 +321,16 @@ export default async function FinancePage({
       },
       ...(companyName ? { companyName } : {}),
     },
+  });
+
+  const currentMetrics = calculateFinanceMetricsForRows({
+    transactions: periodTransactions,
+    categories,
+  });
+
+  const previousMetrics = calculateFinanceMetricsForRows({
+    transactions: previousPeriodTransactions,
+    categories,
   });
 
   const loans = await prisma.loan.findMany({
@@ -225,25 +362,13 @@ export default async function FinancePage({
     0
   );
 
-  const incomePeriod = periodTransactions
-    .filter((row) => row.operationType === "INCOME" && !row.isInternalTransfer)
-    .reduce((sum, row) => sum + Number(row.amount ?? 0), 0);
+  const incomePeriod = currentMetrics.cashIncome;
+  const expensePeriod = currentMetrics.cashOutflow;
+  const netCashFlowPeriod = currentMetrics.netCashFlow;
 
-  const expensePeriod = periodTransactions
-    .filter((row) => row.operationType === "EXPENSE" && !row.isInternalTransfer)
-    .reduce((sum, row) => sum + Number(row.amount ?? 0), 0);
-
-  const netCashFlowPeriod = incomePeriod - expensePeriod;
-
-  const incomePreviousPeriod = previousPeriodTransactions
-    .filter((row) => row.operationType === "INCOME" && !row.isInternalTransfer)
-    .reduce((sum, row) => sum + Number(row.amount ?? 0), 0);
-
-  const expensePreviousPeriod = previousPeriodTransactions
-    .filter((row) => row.operationType === "EXPENSE" && !row.isInternalTransfer)
-    .reduce((sum, row) => sum + Number(row.amount ?? 0), 0);
-
-  const netCashFlowPreviousPeriod = incomePreviousPeriod - expensePreviousPeriod;
+  const incomePreviousPeriod = previousMetrics.cashIncome;
+  const expensePreviousPeriod = previousMetrics.cashOutflow;
+  const netCashFlowPreviousPeriod = previousMetrics.netCashFlow;
 
   const incomeDelta = calcDelta(incomePeriod, incomePreviousPeriod);
   const expenseDelta = calcDelta(expensePeriod, expensePreviousPeriod);
@@ -260,7 +385,8 @@ export default async function FinancePage({
   const payments30Days = loanPayments30Days.reduce((sum, payment) => {
     const total =
       Number(payment.totalAmount ?? 0) ||
-      Number(payment.principalAmount ?? 0) + Number(payment.interestAmount ?? 0);
+      Number(payment.principalAmount ?? 0) +
+        Number(payment.interestAmount ?? 0);
 
     return sum + total;
   }, 0);
@@ -271,8 +397,10 @@ export default async function FinancePage({
   const liquidityDays =
     averageDailyExpense > 0 ? Math.floor(totalCash / averageDailyExpense) : null;
 
-  const incomeByCategory = groupByCategory(periodTransactions, "INCOME");
-  const expenseByCategory = groupByCategory(periodTransactions, "EXPENSE");
+  const { incomeRows, outflowRows } = buildCategoryRows({
+    transactions: periodTransactions,
+    categories,
+  });
 
   const todayText = formatDateInput(today);
   const weekStartText = formatDateInput(addDays(today, -6));
@@ -291,7 +419,8 @@ export default async function FinancePage({
             </h1>
 
             <p className="mt-3 text-slate-500">
-              Деньги, долги, платежи и прогноз ликвидности бизнеса.
+              Деньги, долги, платежи и прогноз ликвидности бизнеса. Расчёты
+              используют единую финансовую модель по ролям статей.
             </p>
           </div>
 
@@ -410,14 +539,15 @@ export default async function FinancePage({
           </div>
 
           <div className="rounded-2xl bg-white p-6 shadow-sm">
-            <div className="text-sm text-slate-500">Поступления за период</div>
+            <div className="text-sm text-slate-500">Поступления ДДС</div>
             <div className="mt-2 text-3xl font-bold text-emerald-600">
               {formatMoney(incomePeriod)}
             </div>
             <div
-              className={`mt-2 text-sm font-semibold ${
-                incomeDelta.absolute >= 0 ? "text-emerald-600" : "text-red-600"
-              }`}
+              className={`mt-2 text-sm font-semibold ${deltaClass(
+                incomeDelta.absolute,
+                "up"
+              )}`}
             >
               {formatMoney(incomeDelta.absolute)} /{" "}
               {incomeDelta.percent === null
@@ -427,14 +557,15 @@ export default async function FinancePage({
           </div>
 
           <div className="rounded-2xl bg-white p-6 shadow-sm">
-            <div className="text-sm text-slate-500">Выбытия за период</div>
+            <div className="text-sm text-slate-500">Выплаты ДДС</div>
             <div className="mt-2 text-3xl font-bold text-red-600">
               {formatMoney(expensePeriod)}
             </div>
             <div
-              className={`mt-2 text-sm font-semibold ${
-                expenseDelta.absolute <= 0 ? "text-emerald-600" : "text-red-600"
-              }`}
+              className={`mt-2 text-sm font-semibold ${deltaClass(
+                expenseDelta.absolute,
+                "down"
+              )}`}
             >
               {formatMoney(expenseDelta.absolute)} /{" "}
               {expenseDelta.percent === null
@@ -445,25 +576,71 @@ export default async function FinancePage({
 
           <div className="rounded-2xl bg-white p-6 shadow-sm">
             <div className="text-sm text-slate-500">Чистый ДДС за период</div>
-            <div
-              className={`mt-2 text-3xl font-bold ${
-                netCashFlowPeriod >= 0 ? "text-emerald-600" : "text-red-600"
-              }`}
-            >
+            <div className={`mt-2 text-3xl font-bold ${valueClass(netCashFlowPeriod)}`}>
               {formatMoney(netCashFlowPeriod)}
             </div>
             <div
-              className={`mt-2 text-sm font-semibold ${
-                netCashFlowDelta.absolute >= 0
-                  ? "text-emerald-600"
-                  : "text-red-600"
-              }`}
+              className={`mt-2 text-sm font-semibold ${deltaClass(
+                netCashFlowDelta.absolute,
+                "up"
+              )}`}
             >
               {formatMoney(netCashFlowDelta.absolute)} /{" "}
               {netCashFlowDelta.percent === null
                 ? "—"
                 : formatPercent(netCashFlowDelta.percent)}
             </div>
+          </div>
+        </section>
+
+        <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="rounded-2xl bg-cyan-50 p-6 shadow-sm ring-1 ring-cyan-100">
+            <div className="text-sm font-semibold text-cyan-700">
+              Только ДДС
+            </div>
+            <div className="mt-2 text-3xl font-black text-cyan-800">
+              {formatMoney(currentMetrics.cashOnlyTotal)}
+            </div>
+            <p className="mt-2 text-sm leading-6 text-cyan-700">
+              Фулфилмент, закупки, упаковка и расходы, уже сидящие в
+              себестоимости.
+            </p>
+          </div>
+
+          <div className="rounded-2xl bg-blue-50 p-6 shadow-sm ring-1 ring-blue-100">
+            <div className="text-sm font-semibold text-blue-700">
+              Получено кредитов / займов
+            </div>
+            <div className="mt-2 text-3xl font-black text-blue-800">
+              {formatMoney(currentMetrics.creditReceived)}
+            </div>
+            <p className="mt-2 text-sm leading-6 text-blue-700">
+              Увеличивает ДДС, но не является прибылью.
+            </p>
+          </div>
+
+          <div className="rounded-2xl bg-violet-50 p-6 shadow-sm ring-1 ring-violet-100">
+            <div className="text-sm font-semibold text-violet-700">
+              Проценты кредита
+            </div>
+            <div className="mt-2 text-3xl font-black text-violet-800">
+              {formatMoney(currentMetrics.creditInterest)}
+            </div>
+            <p className="mt-2 text-sm leading-6 text-violet-700">
+              Уменьшают и ДДС, и чистую прибыль.
+            </p>
+          </div>
+
+          <div className="rounded-2xl bg-amber-50 p-6 shadow-sm ring-1 ring-amber-100">
+            <div className="text-sm font-semibold text-amber-700">
+              Вывод собственника
+            </div>
+            <div className="mt-2 text-3xl font-black text-amber-800">
+              {formatMoney(currentMetrics.ownerWithdrawals)}
+            </div>
+            <p className="mt-2 text-sm leading-6 text-amber-700">
+              Уменьшает ДДС и показатель после вывода собственника.
+            </p>
           </div>
         </section>
 
@@ -489,9 +666,9 @@ export default async function FinancePage({
               Остаток после платежей 30 дней
             </div>
             <div
-              className={`mt-2 text-3xl font-bold ${
-                cashAfter30Days >= 0 ? "text-emerald-600" : "text-red-600"
-              }`}
+              className={`mt-2 text-3xl font-bold ${valueClass(
+                cashAfter30Days
+              )}`}
             >
               {formatMoney(cashAfter30Days)}
             </div>
@@ -511,7 +688,7 @@ export default async function FinancePage({
               {liquidityDays === null ? "∞" : `${liquidityDays} дн.`}
             </div>
             <div className="mt-2 text-sm text-slate-500">
-              По среднему расходу за выбранный период
+              По средним выплатам ДДС за выбранный период
             </div>
           </div>
         </section>
@@ -523,13 +700,21 @@ export default async function FinancePage({
             </h2>
 
             <div className="mt-5 space-y-3">
-              {incomeByCategory.slice(0, 8).map((item) => (
+              {incomeRows.slice(0, 8).map((item) => (
                 <div
                   key={item.category}
                   className="flex items-center justify-between gap-4 rounded-xl border border-slate-200 p-4"
                 >
-                  <div className="font-semibold text-slate-900">
-                    {item.category}
+                  <div>
+                    <div className="font-semibold text-slate-900">
+                      {item.category}
+                    </div>
+
+                    <div
+                      className={`mt-2 inline-flex rounded-full px-3 py-1 text-xs font-bold ring-1 ${item.treatmentClassName}`}
+                    >
+                      {item.treatmentLabel}
+                    </div>
                   </div>
 
                   <div className="font-bold text-emerald-600">
@@ -538,7 +723,7 @@ export default async function FinancePage({
                 </div>
               ))}
 
-              {incomeByCategory.length === 0 && (
+              {incomeRows.length === 0 && (
                 <div className="rounded-xl border border-slate-200 p-4 text-slate-500">
                   Поступлений за период нет.
                 </div>
@@ -548,36 +733,48 @@ export default async function FinancePage({
 
           <div className="rounded-2xl bg-white p-6 shadow-sm">
             <h2 className="text-2xl font-bold text-slate-900">
-              Выбытия по статьям
+              Выплаты по статьям
             </h2>
 
             <div className="mt-5 space-y-3">
-              {expenseByCategory.slice(0, 8).map((item) => (
+              {outflowRows.slice(0, 8).map((item) => (
                 <div
-                  key={item.category}
+                  key={`${item.group}-${item.category}`}
                   className="flex items-center justify-between gap-4 rounded-xl border border-slate-200 p-4"
                 >
-                  <div className="font-semibold text-slate-900">
-                    {item.category}
+                  <div>
+                    <div className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-400">
+                      {item.group}
+                    </div>
+
+                    <div className="mt-1 font-semibold text-slate-900">
+                      {item.category}
+                    </div>
+
+                    <div
+                      className={`mt-2 inline-flex rounded-full px-3 py-1 text-xs font-bold ring-1 ${item.treatmentClassName}`}
+                    >
+                      {item.treatmentLabel}
+                    </div>
                   </div>
 
                   <div className="text-right">
-  <div className="font-bold text-red-600">
-    {formatMoney(item.amount)}
-  </div>
+                    <div className="font-bold text-red-600">
+                      {formatMoney(item.amount)}
+                    </div>
 
-  <div className="mt-1 text-sm font-semibold text-slate-500">
-    {expensePeriod > 0
-      ? `${((item.amount / expensePeriod) * 100).toFixed(1)}%`
-      : "—"}
-  </div>
-</div>
+                    <div className="mt-1 text-sm font-semibold text-slate-500">
+                      {expensePeriod > 0
+                        ? `${((item.amount / expensePeriod) * 100).toFixed(1)}%`
+                        : "—"}
+                    </div>
+                  </div>
                 </div>
               ))}
 
-              {expenseByCategory.length === 0 && (
+              {outflowRows.length === 0 && (
                 <div className="rounded-xl border border-slate-200 p-4 text-slate-500">
-                  Выбытий за период нет.
+                  Выплат за период нет.
                 </div>
               )}
             </div>

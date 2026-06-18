@@ -31,6 +31,11 @@ const profitTreatmentOptions = [
     description: "Учитывается в ДДС и уменьшает чистую прибыль.",
   },
   {
+    value: "CREDIT_RECEIVED",
+    label: "Получение кредита / займа",
+    description: "Денежное поступление в ДДС, но не доход и не чистая прибыль.",
+  },
+  {
     value: "OWNER_WITHDRAWAL",
     label: "Вывод собственника",
     description:
@@ -90,6 +95,10 @@ function treatmentClassName(value?: string | null) {
 
   if (value === "CREDIT_INTEREST") {
     return "bg-violet-50 text-violet-700 ring-violet-200";
+  }
+
+  if (value === "CREDIT_RECEIVED") {
+    return "bg-indigo-50 text-indigo-700 ring-indigo-200";
   }
 
   if (value === "OWNER_WITHDRAWAL") {
@@ -230,7 +239,7 @@ export default async function FinanceCategoriesPage() {
           </Link>
         </div>
 
-        <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+        <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-6">
           <div className="rounded-2xl bg-white p-6 shadow-sm">
             <div className="text-sm text-slate-500">Всего статей</div>
             <div className="mt-2 text-3xl font-black text-slate-950">
@@ -238,17 +247,21 @@ export default async function FinanceCategoriesPage() {
             </div>
           </div>
 
-          {["INCOME", "EXPENSE", "TRANSFER", "FINANCING"].map((type) => (
-            <div key={type} className="rounded-2xl bg-white p-6 shadow-sm">
-              <div className="text-sm text-slate-500">{typeLabel(type)}</div>
-              <div className={`mt-2 text-3xl font-black ${typeClassName(type)}`}>
-                {grouped[type]?.length ?? 0}
+          {["INCOME", "EXPENSE", "TRANSFER", "FINANCING", "PERSONAL"].map(
+            (type) => (
+              <div key={type} className="rounded-2xl bg-white p-6 shadow-sm">
+                <div className="text-sm text-slate-500">{typeLabel(type)}</div>
+                <div
+                  className={`mt-2 text-3xl font-black ${typeClassName(type)}`}
+                >
+                  {grouped[type]?.length ?? 0}
+                </div>
               </div>
-            </div>
-          ))}
+            )
+          )}
         </section>
 
-        <section className="grid gap-4 xl:grid-cols-7">
+        <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           {profitTreatmentOptions.map((option) => (
             <div
               key={option.value}

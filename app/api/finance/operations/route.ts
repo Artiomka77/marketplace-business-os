@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+
 import { prisma } from "@/lib/prisma";
 import { recalculateAccountBalances } from "@/lib/finance/recalculateAccountBalances";
 
@@ -20,17 +21,34 @@ function toNumber(value: FormDataEntryValue | null) {
   return Number.isFinite(number) ? number : 0;
 }
 
+function normalizeText(value: FormDataEntryValue | null) {
+  return String(value ?? "").trim();
+}
+
 export async function POST(req: Request) {
   try {
     const formData = await req.formData();
 
-    const companyName = String(formData.get("companyName") ?? "").trim();
-    const operationType = String(formData.get("operationType") ?? "").trim();
-    const category = String(formData.get("category") ?? "").trim();
+    const companyName = normalizeText(formData.get("companyName"));
+    const operationType = normalizeText(formData.get("operationType"));
+    const category = normalizeText(formData.get("category"));
     const amount = toNumber(formData.get("amount"));
     const operationDate = toDate(formData.get("operationDate"));
+    const obligationDate = toDate(formData.get("obligationDate"));
 
-    if (!companyName || !operationType || !category || !operationDate || amount <= 0) {
+    const subcategory = normalizeText(formData.get("subcategory"));
+    const counterparty = normalizeText(formData.get("counterparty"));
+    const bankAccount = normalizeText(formData.get("bankAccount"));
+    const project = normalizeText(formData.get("project"));
+    const comment = normalizeText(formData.get("comment"));
+
+    if (
+      !companyName ||
+      !operationType ||
+      !category ||
+      !operationDate ||
+      amount <= 0
+    ) {
       return NextResponse.json(
         { error: "Заполните обязательные поля" },
         { status: 400 }
@@ -43,20 +61,23 @@ export async function POST(req: Request) {
         operationType,
         category,
         operationDate,
-        obligationDate: null,
+        obligationDate,
         amount,
-        subcategory: null,
-        counterparty: null,
-        bankAccount: String(formData.get("bankAccount") ?? "").trim() || null,
-        project: null,
-        comment: String(formData.get("comment") ?? "").trim() || null,
+        subcategory: subcategory || null,
+        counterparty: counterparty || null,
+        bankAccount: bankAccount || null,
+        project: project || null,
+        comment: comment || null,
         isInternalTransfer:
           operationType === "TRANSFER" ||
           formData.get("isInternalTransfer") === "on",
+        transactionStatus: "FACT",
+        sourceType: "MANUAL",
+        sourceId: null,
       },
     });
 
-await recalculateAccountBalances();
+    await recalculateAccountBalances();
 
     return NextResponse.json({
       success: true,

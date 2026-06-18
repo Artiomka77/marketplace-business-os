@@ -1,12 +1,20 @@
 import Link from "next/link";
+
 import { prisma } from "@/lib/prisma";
+import {
+  buildFinanceCategoryTreatmentIndex,
+  getFinanceTransactionCashEffect,
+  getFinanceTransactionTreatment,
+} from "@/lib/finance/financeMetrics";
 
 function formatMoney(value: unknown) {
+  const number = Number(value ?? 0);
+
   return new Intl.NumberFormat("ru-RU", {
     style: "currency",
     currency: "RUB",
     maximumFractionDigits: 0,
-  }).format(Number(value ?? 0));
+  }).format(Number.isFinite(number) ? number : 0);
 }
 
 function formatDate(date: Date) {
@@ -34,7 +42,10 @@ function toMonthDate(value?: string) {
 }
 
 function monthKey(date: Date) {
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(
+    2,
+    "0"
+  )}`;
 }
 
 function dayKey(date: Date) {
@@ -46,7 +57,15 @@ function startOfDay(date: Date) {
 }
 
 function endOfDay(date: Date) {
-  return new Date(date.getFullYear(), date.getMonth(), date.getDate(), 23, 59, 59, 999);
+  return new Date(
+    date.getFullYear(),
+    date.getMonth(),
+    date.getDate(),
+    23,
+    59,
+    59,
+    999
+  );
 }
 
 function startOfMonth(date: Date) {
@@ -54,7 +73,15 @@ function startOfMonth(date: Date) {
 }
 
 function endOfMonth(date: Date) {
-  return new Date(date.getFullYear(), date.getMonth() + 1, 0, 23, 59, 59, 999);
+  return new Date(
+    date.getFullYear(),
+    date.getMonth() + 1,
+    0,
+    23,
+    59,
+    59,
+    999
+  );
 }
 
 function addDays(date: Date, days: number) {
@@ -68,7 +95,8 @@ function addMonths(date: Date, count: number) {
 }
 
 function getAmount(value: unknown) {
-  return Number(value ?? 0);
+  const number = Number(value ?? 0);
+  return Number.isFinite(number) ? number : 0;
 }
 
 function frequencyLabel(value: string | null | undefined) {
@@ -99,31 +127,59 @@ function daysUntil(date: Date, today: Date) {
 function paymentStatus(date: Date, today: Date) {
   const days = daysUntil(date, today);
 
-  if (days < 0) return { label: "Просрочен", className: "bg-red-100 text-red-700" };
-  if (days === 0) return { label: "Сегодня", className: "bg-amber-100 text-amber-700" };
-  if (days === 1) return { label: "Завтра", className: "bg-blue-100 text-blue-700" };
+  if (days < 0) {
+    return {
+      label: "Просрочен",
+      className: "bg-red-100 text-red-700",
+    };
+  }
 
-  return { label: `Через ${days} дн.`, className: "bg-slate-100 text-slate-700" };
+  if (days === 0) {
+    return {
+      label: "Сегодня",
+      className: "bg-amber-100 text-amber-700",
+    };
+  }
+
+  if (days === 1) {
+    return {
+      label: "Завтра",
+      className: "bg-blue-100 text-blue-700",
+    };
+  }
+
+  return {
+    label: `Через ${days} дн.`,
+    className: "bg-slate-100 text-slate-700",
+  };
 }
 
-function isCreditLikeCategory(category: string) {
-  const text = String(category ?? "").toLowerCase();
-
+function loanPaymentTotal(payment: {
+  totalAmount: unknown;
+  principalAmount: unknown;
+  interestAmount: unknown;
+}) {
   return (
-    text.includes("кредит") ||
-    text.includes("займ") ||
-    text.includes("процент") ||
-    text.includes("погашение")
+    getAmount(payment.totalAmount) ||
+    getAmount(payment.principalAmount) + getAmount(payment.interestAmount)
   );
 }
 
-function obligationTypeLabel(category: string, operationType: string) {
-  const text = `${category} ${operationType}`.toLowerCase();
+function obligationTypeLabelByTreatment(params: {
+  treatment: string;
+  category: string;
+  operationType: string;
+}) {
+  const text = `${params.category} ${params.operationType}`.toLowerCase();
 
-  if (text.includes("налог") || text.includes("взнос")) return "Налог";
-  if (text.includes("постав") || text.includes("закуп")) return "Поставщик";
-  if (text.includes("зарплат")) return "Зарплата";
-  if (text.includes("лич")) return "Личное";
+  if (params.treatment === "OWNER_WITHDRAWAL") return "Личное";
+  if (params.treatment === "CASH_ONLY") return "Только ДДС";
+  if (params.treatment === "INCLUDE_IN_NET_PROFIT") {
+    if (text.includes("налог") || text.includes("взнос")) return "Налог";
+    if (text.includes("постав") || text.includes("закуп")) return "Поставщик";
+    if (text.includes("зарплат")) return "Зарплата";
+    return "Расход";
+  }
 
   return "Прочее";
 }
@@ -136,6 +192,32 @@ function buildMonthHref(month: string, company: string) {
 
   return `/finance/calendar?${query.toString()}`;
 }
+
+type CalendarItem = {
+  id: string;
+  source: "LOAN" | "OBLIGATION";
+  date: Date;
+  companyName: string;
+  title: string;
+  category: string;
+  counterparty: string;
+  amount: number;
+  principal: number;
+  interest: number;
+  typeLabel: string;
+  treatmentLabel: string;
+  treatmentClassName: string;
+
+  loanPaymentId?: string;
+  loanBankName?: string;
+  loanCompanyName?: string;
+  loanPaymentFrequency?: string | null;
+  loanPaymentDate?: Date;
+  loanPrincipalAmount?: number;
+  loanInterestAmount?: number;
+  loanTotalAmount?: number;
+  loanDebtAfterPayment?: number;
+};
 
 export default async function FinanceCalendarPage({
   searchParams,
@@ -166,6 +248,19 @@ export default async function FinanceCalendarPage({
     where: { isActive: true },
     orderBy: { name: "asc" },
   });
+
+  const categories = await prisma.financeCategory.findMany({
+    where: {
+      isActive: true,
+    },
+    orderBy: [
+      { categoryType: "asc" },
+      { sortOrder: "asc" },
+      { name: "asc" },
+    ],
+  });
+
+  const categoryTreatmentIndex = buildFinanceCategoryTreatmentIndex(categories);
 
   const selectedLoans = companyName
     ? await prisma.loan.findMany({
@@ -274,12 +369,43 @@ export default async function FinanceCalendarPage({
     },
   });
 
+  function shouldUseFinanceObligation(operation: {
+    operationType: string;
+    category: string;
+    amount: unknown;
+    subcategory?: string | null;
+    isInternalTransfer?: boolean | null;
+    transferDirection?: string | null;
+  }) {
+    const treatment = getFinanceTransactionTreatment(
+      operation,
+      categoryTreatmentIndex
+    );
+
+    const cashEffect = getFinanceTransactionCashEffect(
+      operation,
+      categoryTreatmentIndex
+    );
+
+    if (cashEffect >= 0) return false;
+
+    if (treatment.treatment === "IGNORE") return false;
+    if (treatment.treatment === "CREDIT_RECEIVED") return false;
+
+    // Кредиты берём из LoanPayment, чтобы не задваивать график кредита
+    // с будущими финансовыми операциями.
+    if (treatment.treatment === "CREDIT_PRINCIPAL") return false;
+    if (treatment.treatment === "CREDIT_INTEREST") return false;
+
+    return true;
+  }
+
   const cleanedFutureObligations = futureObligations.filter(
-    (operation) => !isCreditLikeCategory(operation.category)
+    shouldUseFinanceObligation
   );
 
   const cleanedFutureObligations30Days = futureObligations30Days.filter(
-    (operation) => !isCreditLikeCategory(operation.category)
+    shouldUseFinanceObligation
   );
 
   function remainingDebtAfterPayment(payment: (typeof loanPayments)[number]) {
@@ -291,7 +417,7 @@ export default async function FinanceCalendarPage({
       );
   }
 
-  const calendarItems = [
+  const calendarItems: CalendarItem[] = [
     ...loanPayments.map((payment) => ({
       id: payment.id,
       source: "LOAN" as const,
@@ -300,71 +426,173 @@ export default async function FinanceCalendarPage({
       title: payment.loan.bankName,
       category: "Погашение кредита",
       counterparty: payment.loan.bankName,
-      amount: getAmount(payment.totalAmount),
+      amount: loanPaymentTotal(payment),
       principal: getAmount(payment.principalAmount),
       interest: getAmount(payment.interestAmount),
-      loanPayment: payment,
-      operation: null,
       typeLabel: "Кредит",
+      treatmentLabel: "График кредита",
+      treatmentClassName: "bg-blue-50 text-blue-700 ring-blue-200",
+
+      loanPaymentId: payment.id,
+      loanBankName: payment.loan.bankName,
+      loanCompanyName: payment.loan.companyName,
+      loanPaymentFrequency: payment.loan.paymentFrequency,
+      loanPaymentDate: payment.paymentDate,
+      loanPrincipalAmount: getAmount(payment.principalAmount),
+      loanInterestAmount: getAmount(payment.interestAmount),
+      loanTotalAmount: loanPaymentTotal(payment),
+      loanDebtAfterPayment: remainingDebtAfterPayment(payment),
     })),
 
-    ...cleanedFutureObligations.map((operation) => ({
-      id: operation.id,
-      source: "OBLIGATION" as const,
-      date: operation.obligationDate ?? operation.operationDate,
-      companyName: operation.companyName,
-      title: operation.category,
-      category: operation.category,
-      counterparty: operation.counterparty ?? "—",
-      amount: getAmount(operation.amount),
-      principal: 0,
-      interest: 0,
-      loanPayment: null,
-      operation,
-      typeLabel: obligationTypeLabel(operation.category, operation.operationType),
-    })),
+    ...cleanedFutureObligations.map((operation) => {
+      const treatment = getFinanceTransactionTreatment(
+        operation,
+        categoryTreatmentIndex
+      );
+
+      return {
+        id: operation.id,
+        source: "OBLIGATION" as const,
+        date: operation.obligationDate ?? operation.operationDate,
+        companyName: operation.companyName,
+        title: operation.category,
+        category: operation.category,
+        counterparty: operation.counterparty ?? "—",
+        amount: Math.abs(
+          getFinanceTransactionCashEffect(operation, categoryTreatmentIndex)
+        ),
+        principal: 0,
+        interest: 0,
+        typeLabel: obligationTypeLabelByTreatment({
+          treatment: treatment.treatment,
+          category: operation.category,
+          operationType: operation.operationType,
+        }),
+        treatmentLabel: treatment.label,
+        treatmentClassName: treatment.className,
+      };
+    }),
   ].sort((a, b) => a.date.getTime() - b.date.getTime());
 
-  const monthItemsTotal = calendarItems.reduce((sum, item) => sum + item.amount, 0);
+  const monthItemsTotal = calendarItems.reduce(
+    (sum, item) => sum + item.amount,
+    0
+  );
 
   const paymentsToday = [
-    ...allFutureLoanPayments.filter((payment) => payment.paymentDate <= todayEnd),
-    ...cleanedFutureObligations30Days.filter(
-      (operation) => operation.obligationDate && operation.obligationDate <= todayEnd
+    ...allFutureLoanPayments.filter(
+      (payment) => payment.paymentDate <= todayEnd
     ),
-  ].reduce((sum, item: any) => sum + getAmount(item.totalAmount ?? item.amount), 0);
+    ...cleanedFutureObligations30Days.filter(
+      (operation) =>
+        operation.obligationDate && operation.obligationDate <= todayEnd
+    ),
+  ].reduce((sum, item) => {
+    if ("totalAmount" in item || "principalAmount" in item) {
+      return sum + loanPaymentTotal(item as (typeof allFutureLoanPayments)[number]);
+    }
+
+    return (
+      sum +
+      Math.abs(
+        getFinanceTransactionCashEffect(item, categoryTreatmentIndex)
+      )
+    );
+  }, 0);
 
   const payments7Days = [
-    ...allFutureLoanPayments.filter((payment) => payment.paymentDate <= sevenDaysEnd),
-    ...cleanedFutureObligations30Days.filter(
-      (operation) => operation.obligationDate && operation.obligationDate <= sevenDaysEnd
+    ...allFutureLoanPayments.filter(
+      (payment) => payment.paymentDate <= sevenDaysEnd
     ),
-  ].reduce((sum, item: any) => sum + getAmount(item.totalAmount ?? item.amount), 0);
+    ...cleanedFutureObligations30Days.filter(
+      (operation) =>
+        operation.obligationDate && operation.obligationDate <= sevenDaysEnd
+    ),
+  ].reduce((sum, item) => {
+    if ("totalAmount" in item || "principalAmount" in item) {
+      return sum + loanPaymentTotal(item as (typeof allFutureLoanPayments)[number]);
+    }
+
+    return (
+      sum +
+      Math.abs(
+        getFinanceTransactionCashEffect(item, categoryTreatmentIndex)
+      )
+    );
+  }, 0);
 
   const payments30Days = [
     ...allFutureLoanPayments,
     ...cleanedFutureObligations30Days,
-  ].reduce((sum, item: any) => sum + getAmount(item.totalAmount ?? item.amount), 0);
+  ].reduce((sum, item) => {
+    if ("totalAmount" in item || "principalAmount" in item) {
+      return sum + loanPaymentTotal(item as (typeof allFutureLoanPayments)[number]);
+    }
+
+    return (
+      sum +
+      Math.abs(
+        getFinanceTransactionCashEffect(item, categoryTreatmentIndex)
+      )
+    );
+  }, 0);
 
   const cashAfter30Days = cashOnAccounts - payments30Days;
 
-  const forecastItems30Days = [
+  const forecastItems30Days: CalendarItem[] = [
     ...allFutureLoanPayments.map((payment) => ({
+      id: payment.id,
+      source: "LOAN" as const,
       date: payment.paymentDate,
-      amount: getAmount(payment.totalAmount),
-      typeLabel: "Кредит",
       companyName: payment.loan.companyName,
       title: payment.loan.bankName,
+      category: "Погашение кредита",
       counterparty: payment.loan.bankName,
+      amount: loanPaymentTotal(payment),
+      principal: getAmount(payment.principalAmount),
+      interest: getAmount(payment.interestAmount),
+      typeLabel: "Кредит",
+      treatmentLabel: "График кредита",
+      treatmentClassName: "bg-blue-50 text-blue-700 ring-blue-200",
+      loanPaymentId: payment.id,
+      loanBankName: payment.loan.bankName,
+      loanCompanyName: payment.loan.companyName,
+      loanPaymentFrequency: payment.loan.paymentFrequency,
+      loanPaymentDate: payment.paymentDate,
+      loanPrincipalAmount: getAmount(payment.principalAmount),
+      loanInterestAmount: getAmount(payment.interestAmount),
+      loanTotalAmount: loanPaymentTotal(payment),
+      loanDebtAfterPayment: 0,
     })),
-    ...cleanedFutureObligations30Days.map((operation) => ({
-      date: operation.obligationDate ?? operation.operationDate,
-      amount: getAmount(operation.amount),
-      typeLabel: obligationTypeLabel(operation.category, operation.operationType),
-      companyName: operation.companyName,
-      title: operation.category,
-      counterparty: operation.counterparty ?? "—",
-    })),
+
+    ...cleanedFutureObligations30Days.map((operation) => {
+      const treatment = getFinanceTransactionTreatment(
+        operation,
+        categoryTreatmentIndex
+      );
+
+      return {
+        id: operation.id,
+        source: "OBLIGATION" as const,
+        date: operation.obligationDate ?? operation.operationDate,
+        companyName: operation.companyName,
+        title: operation.category,
+        category: operation.category,
+        counterparty: operation.counterparty ?? "—",
+        amount: Math.abs(
+          getFinanceTransactionCashEffect(operation, categoryTreatmentIndex)
+        ),
+        principal: 0,
+        interest: 0,
+        typeLabel: obligationTypeLabelByTreatment({
+          treatment: treatment.treatment,
+          category: operation.category,
+          operationType: operation.operationType,
+        }),
+        treatmentLabel: treatment.label,
+        treatmentClassName: treatment.className,
+      };
+    }),
   ].sort((a, b) => a.date.getTime() - b.date.getTime());
 
   let runningCash = cashOnAccounts;
@@ -381,7 +609,7 @@ export default async function FinanceCalendarPage({
     }
   }
 
-  const itemsByDay = new Map<string, typeof calendarItems>();
+  const itemsByDay = new Map<string, CalendarItem[]>();
 
   for (const item of calendarItems) {
     const key = dayKey(item.date);
@@ -468,6 +696,8 @@ export default async function FinanceCalendarPage({
 
             <p className="mt-2 text-slate-500">
               Кредиты, будущие обязательства, кассовые риски и платежи по дням.
+              Кредиты берутся из графика LoanPayment, прочие обязательства — из
+              финансовых операций по роли статьи.
             </p>
           </div>
 
@@ -577,7 +807,8 @@ export default async function FinanceCalendarPage({
             </div>
 
             <p className="mt-2 text-sm text-red-700">
-              При текущем остатке денег и известных платежах на 30 дней денег не хватит.
+              При текущем остатке денег и известных платежах на 30 дней денег не
+              хватит.
             </p>
           </section>
         )}
@@ -592,11 +823,15 @@ export default async function FinanceCalendarPage({
 
                 <div className="mt-2 flex flex-wrap gap-x-5 gap-y-2 text-sm text-slate-600">
                   <span>
-                    Платежей: <b className="text-slate-900">{calendarItems.length}</b>
+                    Платежей:{" "}
+                    <b className="text-slate-900">{calendarItems.length}</b>
                   </span>
 
                   <span>
-                    Всего: <b className="text-red-600">{formatMoney(monthItemsTotal)}</b>
+                    Всего:{" "}
+                    <b className="text-red-600">
+                      {formatMoney(monthItemsTotal)}
+                    </b>
                   </span>
                 </div>
               </div>
@@ -627,11 +862,16 @@ export default async function FinanceCalendarPage({
           </div>
 
           <div className="rounded-2xl bg-white p-5 shadow-sm">
-            <h2 className="text-xl font-bold text-slate-900">Структура обязательств</h2>
+            <h2 className="text-xl font-bold text-slate-900">
+              Структура обязательств
+            </h2>
 
             <div className="mt-4 grid gap-3 md:grid-cols-2">
               {typeRows.map((row) => (
-                <div key={row.label} className="rounded-xl border border-slate-200 p-4">
+                <div
+                  key={row.label}
+                  className="rounded-xl border border-slate-200 p-4"
+                >
                   <div className="text-sm text-slate-500">{row.label}</div>
                   <div className="mt-1 text-xl font-bold text-red-600">
                     {formatMoney(row.amount)}
@@ -653,7 +893,10 @@ export default async function FinanceCalendarPage({
 
           <div className="mt-4 grid gap-3 md:grid-cols-4">
             {weeklyRows.map((week) => (
-              <div key={week.label} className="rounded-xl border border-slate-200 p-4">
+              <div
+                key={week.label}
+                className="rounded-xl border border-slate-200 p-4"
+              >
                 <div className="text-sm text-slate-500">{week.label}</div>
                 <div className="mt-1 text-xl font-bold text-red-600">
                   {formatMoney(week.total)}
@@ -715,7 +958,9 @@ export default async function FinanceCalendarPage({
 
                   <div className="text-right">
                     <div className="mb-2">
-                      <span className={`rounded-full px-3 py-1 text-xs font-bold ${status.className}`}>
+                      <span
+                        className={`rounded-full px-3 py-1 text-xs font-bold ${status.className}`}
+                      >
                         {status.label}
                       </span>
                     </div>
@@ -726,7 +971,9 @@ export default async function FinanceCalendarPage({
 
                     <div
                       className={`mt-1 text-sm font-bold ${
-                        day.balanceAfterDay >= 0 ? "text-emerald-600" : "text-red-600"
+                        day.balanceAfterDay >= 0
+                          ? "text-emerald-600"
+                          : "text-red-600"
                       }`}
                     >
                       Остаток после дня: {formatMoney(day.balanceAfterDay)}
@@ -736,26 +983,29 @@ export default async function FinanceCalendarPage({
 
                 <div className="divide-y divide-slate-100">
                   {day.items.map((item) => {
-                    if (item.source === "LOAN" && item.loanPayment) {
-                      const payment = item.loanPayment;
-                      const debtAfterPayment = remainingDebtAfterPayment(payment);
-
+                    if (item.source === "LOAN") {
                       return (
                         <details key={`loan-${item.id}`} className="group">
                           <summary className="grid cursor-pointer list-none grid-cols-[1.4fr_110px_110px_120px_150px_100px] items-center gap-3 px-5 py-3 hover:bg-slate-50">
                             <div className="flex min-w-0 items-center gap-3">
                               <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-slate-900 text-xs font-bold text-white">
-                                {loanBadge(payment.loan.bankName)}
+                                {loanBadge(item.loanBankName ?? item.title)}
                               </div>
 
                               <div className="min-w-0">
                                 <div className="truncate font-bold text-slate-900">
-                                  {payment.loan.bankName}
+                                  {item.loanBankName ?? item.title}
                                 </div>
 
                                 <div className="truncate text-sm text-slate-500">
-                                  {payment.loan.companyName} ·{" "}
-                                  {frequencyLabel(payment.loan.paymentFrequency)}
+                                  {item.loanCompanyName ?? item.companyName} ·{" "}
+                                  {frequencyLabel(item.loanPaymentFrequency)}
+                                </div>
+
+                                <div
+                                  className={`mt-2 inline-flex rounded-full px-3 py-1 text-xs font-bold ring-1 ${item.treatmentClassName}`}
+                                >
+                                  {item.treatmentLabel}
                                 </div>
                               </div>
                             </div>
@@ -763,21 +1013,23 @@ export default async function FinanceCalendarPage({
                             <div className="text-right">
                               <div className="text-xs text-slate-500">Тело</div>
                               <div className="font-semibold text-slate-900">
-                                {formatMoney(payment.principalAmount)}
+                                {formatMoney(item.principal)}
                               </div>
                             </div>
 
                             <div className="text-right">
                               <div className="text-xs text-slate-500">%</div>
                               <div className="font-semibold text-amber-600">
-                                {formatMoney(payment.interestAmount)}
+                                {formatMoney(item.interest)}
                               </div>
                             </div>
 
                             <div className="text-right">
-                              <div className="text-xs text-slate-500">Платёж</div>
+                              <div className="text-xs text-slate-500">
+                                Платёж
+                              </div>
                               <div className="font-bold text-red-600">
-                                {formatMoney(payment.totalAmount)}
+                                {formatMoney(item.amount)}
                               </div>
                             </div>
 
@@ -786,7 +1038,7 @@ export default async function FinanceCalendarPage({
                                 Остаток по графику
                               </div>
                               <div className="font-bold text-emerald-700">
-                                {formatMoney(debtAfterPayment)}
+                                {formatMoney(item.loanDebtAfterPayment)}
                               </div>
                             </div>
 
@@ -801,18 +1053,24 @@ export default async function FinanceCalendarPage({
                               method="POST"
                               className="grid gap-3 lg:grid-cols-[150px_130px_130px_130px_160px_180px_120px]"
                             >
-                              <input type="hidden" name="paymentId" value={payment.id} />
+                              <input
+                                type="hidden"
+                                name="paymentId"
+                                value={item.loanPaymentId}
+                              />
 
                               <input
                                 type="date"
                                 name="paymentDate"
-                                defaultValue={inputDate(payment.paymentDate)}
+                                defaultValue={inputDate(
+                                  item.loanPaymentDate ?? item.date
+                                )}
                                 className="rounded-xl border border-slate-300 px-3 py-2"
                               />
 
                               <input
                                 name="principalAmount"
-                                defaultValue={String(Number(payment.principalAmount ?? 0))}
+                                defaultValue={String(item.principal)}
                                 inputMode="decimal"
                                 className="rounded-xl border border-slate-300 px-3 py-2"
                                 placeholder="Тело"
@@ -820,7 +1078,7 @@ export default async function FinanceCalendarPage({
 
                               <input
                                 name="interestAmount"
-                                defaultValue={String(Number(payment.interestAmount ?? 0))}
+                                defaultValue={String(item.interest)}
                                 inputMode="decimal"
                                 className="rounded-xl border border-slate-300 px-3 py-2"
                                 placeholder="Проценты"
@@ -828,7 +1086,7 @@ export default async function FinanceCalendarPage({
 
                               <input
                                 name="totalAmount"
-                                defaultValue={String(Number(payment.totalAmount ?? 0))}
+                                defaultValue={String(item.amount)}
                                 inputMode="decimal"
                                 className="rounded-xl border border-slate-300 px-3 py-2"
                                 placeholder="Итого"
@@ -836,7 +1094,9 @@ export default async function FinanceCalendarPage({
 
                               <select
                                 name="paymentFrequency"
-                                defaultValue={payment.loan.paymentFrequency ?? "MONTHLY"}
+                                defaultValue={
+                                  item.loanPaymentFrequency ?? "MONTHLY"
+                                }
                                 className="rounded-xl border border-slate-300 px-3 py-2"
                               >
                                 <option value="MONTHLY">Ежемесячно</option>
@@ -875,8 +1135,18 @@ export default async function FinanceCalendarPage({
                         </div>
 
                         <div>
-                          <div className="font-bold text-slate-900">{item.category}</div>
-                          <div className="text-sm text-slate-500">{item.companyName}</div>
+                          <div className="font-bold text-slate-900">
+                            {item.category}
+                          </div>
+                          <div className="text-sm text-slate-500">
+                            {item.companyName}
+                          </div>
+
+                          <div
+                            className={`mt-2 inline-flex rounded-full px-3 py-1 text-xs font-bold ring-1 ${item.treatmentClassName}`}
+                          >
+                            {item.treatmentLabel}
+                          </div>
                         </div>
 
                         <div className="text-sm text-slate-600">
@@ -888,7 +1158,9 @@ export default async function FinanceCalendarPage({
                         </div>
 
                         <div className="text-right">
-                          <span className={`rounded-full px-3 py-1 text-xs font-bold ${status.className}`}>
+                          <span
+                            className={`rounded-full px-3 py-1 text-xs font-bold ${status.className}`}
+                          >
                             {status.label}
                           </span>
                         </div>
@@ -913,25 +1185,33 @@ export default async function FinanceCalendarPage({
           </h2>
 
           <div className="mt-5 overflow-x-auto">
-            <table className="w-full min-w-[900px] text-sm">
+            <table className="w-full min-w-[1000px] text-sm">
               <thead className="bg-slate-100 text-left text-slate-700">
                 <tr>
                   <th className="p-3">Дата</th>
                   <th className="p-3">Тип</th>
                   <th className="p-3">Компания</th>
                   <th className="p-3">Статья / кредит</th>
+                  <th className="p-3">Роль</th>
                   <th className="p-3">Контрагент</th>
                   <th className="p-3 text-right">Сумма</th>
                 </tr>
               </thead>
 
               <tbody>
-                {forecastItems30Days.map((item, index) => (
-                  <tr key={index} className="border-t border-slate-100">
+                {forecastItems30Days.map((item) => (
+                  <tr key={`${item.source}-${item.id}`} className="border-t border-slate-100">
                     <td className="p-3">{formatDate(item.date)}</td>
                     <td className="p-3">{item.typeLabel}</td>
                     <td className="p-3">{item.companyName}</td>
                     <td className="p-3 font-medium">{item.title}</td>
+                    <td className="p-3">
+                      <div
+                        className={`inline-flex rounded-full px-3 py-1 text-xs font-bold ring-1 ${item.treatmentClassName}`}
+                      >
+                        {item.treatmentLabel}
+                      </div>
+                    </td>
                     <td className="p-3">{item.counterparty}</td>
                     <td className="p-3 text-right font-bold text-red-600">
                       {formatMoney(item.amount)}
@@ -941,7 +1221,7 @@ export default async function FinanceCalendarPage({
 
                 {forecastItems30Days.length === 0 && (
                   <tr>
-                    <td colSpan={6} className="p-8 text-center text-slate-500">
+                    <td colSpan={7} className="p-8 text-center text-slate-500">
                       Плановых платежей на 30 дней нет.
                     </td>
                   </tr>

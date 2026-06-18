@@ -1,12 +1,20 @@
 import Link from "next/link";
+
 import { prisma } from "@/lib/prisma";
+import {
+  buildFinanceCategoryTreatmentIndex,
+  getFinanceTransactionCashEffect,
+  getFinanceTransactionTreatment,
+} from "@/lib/finance/financeMetrics";
 
 function formatMoney(value: unknown) {
+  const number = Number(value ?? 0);
+
   return new Intl.NumberFormat("ru-RU", {
     style: "currency",
     currency: "RUB",
     maximumFractionDigits: 0,
-  }).format(Number(value ?? 0));
+  }).format(Number.isFinite(number) ? number : 0);
 }
 
 function formatDate(date: Date) {
@@ -18,7 +26,15 @@ function startOfDay(date: Date) {
 }
 
 function endOfDay(date: Date) {
-  return new Date(date.getFullYear(), date.getMonth(), date.getDate(), 23, 59, 59, 999);
+  return new Date(
+    date.getFullYear(),
+    date.getMonth(),
+    date.getDate(),
+    23,
+    59,
+    59,
+    999
+  );
 }
 
 function addDays(date: Date, days: number) {
@@ -28,31 +44,8 @@ function addDays(date: Date, days: number) {
 }
 
 function getAmount(value: unknown) {
-  return Number(value ?? 0);
-}
-
-function isCreditLikeCategory(category: string) {
-  const text = String(category ?? "").toLowerCase();
-
-  return (
-    text.includes("кредит") ||
-    text.includes("займ") ||
-    text.includes("процент") ||
-    text.includes("погашение")
-  );
-}
-
-function obligationTypeLabel(category: string, operationType: string) {
-  const text = `${category} ${operationType}`.toLowerCase();
-
-  if (text.includes("кредит") || text.includes("займ")) return "Кредиты";
-  if (text.includes("налог") || text.includes("взнос")) return "Налоги";
-  if (text.includes("постав") || text.includes("закуп")) return "Поставщики";
-  if (text.includes("зарплат")) return "Зарплата";
-  if (text.includes("лич")) return "Личные";
-  if (operationType === "INCOME") return "Поступления";
-
-  return "Прочее";
+  const number = Number(value ?? 0);
+  return Number.isFinite(number) ? number : 0;
 }
 
 function dayKey(date: Date) {
@@ -72,6 +65,62 @@ function buildForecastHref(company: string, days: number) {
   return `/finance/forecast?${query.toString()}`;
 }
 
+function valueClass(value: number) {
+  return value >= 0 ? "text-emerald-600" : "text-red-600";
+}
+
+function loanPaymentTotal(payment: {
+  totalAmount: unknown;
+  principalAmount: unknown;
+  interestAmount: unknown;
+}) {
+  return (
+    getAmount(payment.totalAmount) ||
+    getAmount(payment.principalAmount) + getAmount(payment.interestAmount)
+  );
+}
+
+function forecastTypeLabel(params: {
+  treatment: string;
+  category: string;
+  operationType: string;
+}) {
+  const text = `${params.category} ${params.operationType}`.toLowerCase();
+
+  if (params.treatment === "CREDIT_RECEIVED") return "Получение кредита";
+  if (params.treatment === "OWNER_WITHDRAWAL") return "Личные";
+  if (params.treatment === "CASH_ONLY") return "Только ДДС";
+
+  if (params.treatment === "INCLUDE_IN_NET_PROFIT") {
+    if (text.includes("налог") || text.includes("взнос")) return "Налоги";
+    if (text.includes("постав") || text.includes("закуп")) return "Поставщики";
+    if (text.includes("зарплат")) return "Зарплата";
+    if (params.operationType === "INCOME") return "Поступления";
+    return "Операционные";
+  }
+
+  if (params.operationType === "INCOME") return "Поступления";
+
+  return "Прочее";
+}
+
+type ForecastItem = {
+  id: string;
+  date: Date;
+  companyName: string;
+  type: string;
+  title: string;
+  counterparty: string;
+  inflow: number;
+  outflow: number;
+  source: "LOAN" | "OPERATION";
+  treatmentLabel: string;
+  treatmentClassName: string;
+  treatmentDescription: string;
+  principal?: number;
+  interest?: number;
+};
+
 export default async function FinanceForecastPage({
   searchParams,
 }: {
@@ -86,10 +135,11 @@ export default async function FinanceForecastPage({
   const companyName = selectedCompany !== "ALL" ? selectedCompany : null;
 
   const horizonDays = Number(params.days ?? 60);
-  const safeHorizonDays = [30, 60, 90].includes(horizonDays) ? horizonDays : 60;
+  const safeHorizonDays = [30, 60, 90].includes(horizonDays)
+    ? horizonDays
+    : 60;
 
   const today = startOfDay(new Date());
-  const todayEnd = endOfDay(today);
   const sevenDaysEnd = endOfDay(addDays(today, 6));
   const thirtyDaysEnd = endOfDay(addDays(today, 29));
   const horizonEnd = endOfDay(addDays(today, safeHorizonDays - 1));
@@ -102,6 +152,19 @@ export default async function FinanceForecastPage({
       name: "asc",
     },
   });
+
+  const categories = await prisma.financeCategory.findMany({
+    where: {
+      isActive: true,
+    },
+    orderBy: [
+      { categoryType: "asc" },
+      { sortOrder: "asc" },
+      { name: "asc" },
+    ],
+  });
+
+  const categoryTreatmentIndex = buildFinanceCategoryTreatmentIndex(categories);
 
   const selectedLoans = companyName
     ? await prisma.loan.findMany({
@@ -160,16 +223,45 @@ export default async function FinanceForecastPage({
     },
   });
 
-  const cleanedFutureTransactions = futureTransactions.filter(
-    (operation) => !isCreditLikeCategory(operation.category)
-  );
-
   const totalCash = accounts.reduce(
     (sum, account) => sum + getAmount(account.currentBalance),
     0
   );
 
-  const forecastItems = [
+  function shouldUseFutureTransaction(operation: {
+    operationType: string;
+    category: string;
+    amount: unknown;
+    subcategory?: string | null;
+    isInternalTransfer?: boolean | null;
+    transferDirection?: string | null;
+  }) {
+    const treatment = getFinanceTransactionTreatment(
+      operation,
+      categoryTreatmentIndex
+    );
+
+    const cashEffect = getFinanceTransactionCashEffect(
+      operation,
+      categoryTreatmentIndex
+    );
+
+    if (cashEffect === 0) return false;
+    if (treatment.treatment === "IGNORE") return false;
+
+    // Платежи по кредитам берём из LoanPayment, чтобы не задвоить график кредита
+    // с будущими финансовыми операциями.
+    if (treatment.treatment === "CREDIT_PRINCIPAL") return false;
+    if (treatment.treatment === "CREDIT_INTEREST") return false;
+
+    return true;
+  }
+
+  const usableFutureTransactions = futureTransactions.filter(
+    shouldUseFutureTransaction
+  );
+
+  const forecastItems: ForecastItem[] = [
     ...loanPayments.map((payment) => ({
       id: payment.id,
       date: payment.paymentDate,
@@ -178,24 +270,44 @@ export default async function FinanceForecastPage({
       title: payment.loan.bankName,
       counterparty: payment.loan.bankName,
       inflow: 0,
-      outflow: getAmount(payment.totalAmount),
-      source: "LOAN",
+      outflow: loanPaymentTotal(payment),
+      source: "LOAN" as const,
+      treatmentLabel: "График кредита",
+      treatmentClassName: "bg-blue-50 text-blue-700 ring-blue-200",
+      treatmentDescription:
+        "Плановый платёж по кредиту из графика LoanPayment.",
+      principal: getAmount(payment.principalAmount),
+      interest: getAmount(payment.interestAmount),
     })),
 
-    ...cleanedFutureTransactions.map((operation) => {
-      const isIncome = operation.operationType === "INCOME";
-      const amount = getAmount(operation.amount);
+    ...usableFutureTransactions.map((operation) => {
+      const cashEffect = getFinanceTransactionCashEffect(
+        operation,
+        categoryTreatmentIndex
+      );
+
+      const treatment = getFinanceTransactionTreatment(
+        operation,
+        categoryTreatmentIndex
+      );
 
       return {
         id: operation.id,
         date: operation.obligationDate ?? operation.operationDate,
         companyName: operation.companyName,
-        type: obligationTypeLabel(operation.category, operation.operationType),
+        type: forecastTypeLabel({
+          treatment: treatment.treatment,
+          category: operation.category,
+          operationType: operation.operationType,
+        }),
         title: operation.category,
         counterparty: operation.counterparty ?? "—",
-        inflow: isIncome ? amount : 0,
-        outflow: isIncome ? 0 : amount,
-        source: "OPERATION",
+        inflow: cashEffect > 0 ? cashEffect : 0,
+        outflow: cashEffect < 0 ? Math.abs(cashEffect) : 0,
+        source: "OPERATION" as const,
+        treatmentLabel: treatment.label,
+        treatmentClassName: treatment.className,
+        treatmentDescription: treatment.description,
       };
     }),
   ].sort((a, b) => a.date.getTime() - b.date.getTime());
@@ -216,8 +328,15 @@ export default async function FinanceForecastPage({
     .filter((item) => item.date <= thirtyDaysEnd)
     .reduce((sum, item) => sum + item.outflow, 0);
 
-  const incomingHorizon = forecastItems.reduce((sum, item) => sum + item.inflow, 0);
-  const outgoingHorizon = forecastItems.reduce((sum, item) => sum + item.outflow, 0);
+  const incomingHorizon = forecastItems.reduce(
+    (sum, item) => sum + item.inflow,
+    0
+  );
+
+  const outgoingHorizon = forecastItems.reduce(
+    (sum, item) => sum + item.outflow,
+    0
+  );
 
   const balanceAfter7Days = totalCash + incoming7Days - outgoing7Days;
   const balanceAfter30Days = totalCash + incoming30Days - outgoing30Days;
@@ -236,6 +355,7 @@ export default async function FinanceForecastPage({
 
   for (let day = 0; day < safeHorizonDays; day++) {
     const date = addDays(today, day);
+
     dailyMap.set(dayKey(date), {
       date,
       inflow: 0,
@@ -259,23 +379,23 @@ export default async function FinanceForecastPage({
   }
 
   let runningBalance = totalCash;
-let minBalance = totalCash;
+  let minBalance = totalCash;
 
-const dailyRows = Array.from(dailyMap.values()).map((row) => {
-  runningBalance = runningBalance + row.inflow - row.outflow;
-  row.balanceAfterDay = runningBalance;
+  const dailyRows = Array.from(dailyMap.values()).map((row) => {
+    runningBalance = runningBalance + row.inflow - row.outflow;
+    row.balanceAfterDay = runningBalance;
 
-  if (runningBalance < minBalance) {
-    minBalance = runningBalance;
-  }
+    if (runningBalance < minBalance) {
+      minBalance = runningBalance;
+    }
 
-  return row;
-});
+    return row;
+  });
 
-const firstCashGap =
-  dailyRows.find((row) => row.balanceAfterDay < 0) ?? null;
+  const firstCashGap =
+    dailyRows.find((row) => row.balanceAfterDay < 0) ?? null;
 
-const needToCover = Math.max(0, Math.abs(Math.min(0, minBalance)));
+  const needToCover = Math.max(0, Math.abs(Math.min(0, minBalance)));
 
   const typeMap = new Map<
     string,
@@ -305,7 +425,7 @@ const needToCover = Math.max(0, Math.abs(Math.min(0, minBalance)));
   }
 
   const typeRows = Array.from(typeMap.values()).sort(
-    (a, b) => b.outflow - a.outflow
+    (a, b) => b.outflow + b.inflow - (a.outflow + a.inflow)
   );
 
   const nearestPayments = forecastItems.slice(0, 20);
@@ -320,7 +440,9 @@ const needToCover = Math.max(0, Math.abs(Math.min(0, minBalance)));
             </h1>
 
             <p className="mt-3 text-slate-500">
-              Прогноз остатка денег, будущие платежи и дата возможного кассового разрыва.
+              Прогноз остатка денег, будущие платежи и дата возможного кассового
+              разрыва. Кредиты берутся из LoanPayment, остальные будущие
+              операции — по единой роли статьи.
             </p>
           </div>
 
@@ -410,16 +532,12 @@ const needToCover = Math.max(0, Math.abs(Math.min(0, minBalance)));
           </div>
 
           <div className="rounded-2xl bg-white p-6 shadow-sm">
-            <div className="text-sm text-slate-500">Платежи 7 дней</div>
-            <div className="mt-2 text-3xl font-bold text-red-600">
-              {formatMoney(outgoing7Days)}
+            <div className="text-sm text-slate-500">Поступления 30 дней</div>
+            <div className="mt-2 text-3xl font-bold text-emerald-600">
+              {formatMoney(incoming30Days)}
             </div>
-            <div
-              className={`mt-2 text-sm font-semibold ${
-                balanceAfter7Days >= 0 ? "text-emerald-600" : "text-red-600"
-              }`}
-            >
-              Остаток: {formatMoney(balanceAfter7Days)}
+            <div className="mt-2 text-sm font-semibold text-slate-500">
+              7 дней: {formatMoney(incoming7Days)}
             </div>
           </div>
 
@@ -428,11 +546,7 @@ const needToCover = Math.max(0, Math.abs(Math.min(0, minBalance)));
             <div className="mt-2 text-3xl font-bold text-red-600">
               {formatMoney(outgoing30Days)}
             </div>
-            <div
-              className={`mt-2 text-sm font-semibold ${
-                balanceAfter30Days >= 0 ? "text-emerald-600" : "text-red-600"
-              }`}
-            >
+            <div className={`mt-2 text-sm font-semibold ${valueClass(balanceAfter30Days)}`}>
               Остаток: {formatMoney(balanceAfter30Days)}
             </div>
           </div>
@@ -441,12 +555,11 @@ const needToCover = Math.max(0, Math.abs(Math.min(0, minBalance)));
             <div className="text-sm text-slate-500">
               Остаток через {safeHorizonDays} дней
             </div>
-            <div
-              className={`mt-2 text-3xl font-bold ${
-                balanceAfterHorizon >= 0 ? "text-emerald-600" : "text-red-600"
-              }`}
-            >
+            <div className={`mt-2 text-3xl font-bold ${valueClass(balanceAfterHorizon)}`}>
               {formatMoney(balanceAfterHorizon)}
+            </div>
+            <div className="mt-2 text-sm font-semibold text-slate-500">
+              Платежи 7 дней: {formatMoney(outgoing7Days)}
             </div>
           </div>
 
@@ -469,11 +582,13 @@ const needToCover = Math.max(0, Math.abs(Math.min(0, minBalance)));
             </div>
 
             <div className="mt-2 text-3xl font-bold text-red-700">
-              {formatDate(firstCashGap.date)} · {formatMoney(firstCashGap.balanceAfterDay)}
+              {formatDate(firstCashGap.date)} ·{" "}
+              {formatMoney(firstCashGap.balanceAfterDay)}
             </div>
 
             <p className="mt-2 text-sm text-red-700">
-              При текущем остатке денег и известных обязательствах денег не хватит.
+              При текущем остатке денег и известных обязательствах денег не
+              хватит.
             </p>
           </section>
         )}
@@ -541,13 +656,14 @@ const needToCover = Math.max(0, Math.abs(Math.min(0, minBalance)));
             </h2>
 
             <div className="mt-5 overflow-x-auto">
-              <table className="w-full min-w-[900px] text-sm">
+              <table className="w-full min-w-[1050px] text-sm">
                 <thead className="bg-slate-100 text-left text-slate-700">
                   <tr>
                     <th className="p-3">Дата</th>
                     <th className="p-3">Тип</th>
                     <th className="p-3">Компания</th>
                     <th className="p-3">Статья / кредит</th>
+                    <th className="p-3">Роль</th>
                     <th className="p-3">Контрагент</th>
                     <th className="p-3 text-right">Поступление</th>
                     <th className="p-3 text-right">Платёж</th>
@@ -556,11 +672,22 @@ const needToCover = Math.max(0, Math.abs(Math.min(0, minBalance)));
 
                 <tbody>
                   {nearestPayments.map((item) => (
-                    <tr key={`${item.source}-${item.id}`} className="border-t border-slate-100">
+                    <tr
+                      key={`${item.source}-${item.id}`}
+                      className="border-t border-slate-100"
+                    >
                       <td className="p-3">{formatDate(item.date)}</td>
                       <td className="p-3">{item.type}</td>
                       <td className="p-3">{item.companyName}</td>
                       <td className="p-3 font-medium">{item.title}</td>
+                      <td className="p-3">
+                        <div
+                          className={`inline-flex rounded-full px-3 py-1 text-xs font-bold ring-1 ${item.treatmentClassName}`}
+                          title={item.treatmentDescription}
+                        >
+                          {item.treatmentLabel}
+                        </div>
+                      </td>
                       <td className="p-3">{item.counterparty}</td>
                       <td className="p-3 text-right font-bold text-emerald-600">
                         {item.inflow > 0 ? formatMoney(item.inflow) : "—"}
@@ -573,7 +700,7 @@ const needToCover = Math.max(0, Math.abs(Math.min(0, minBalance)));
 
                   {nearestPayments.length === 0 && (
                     <tr>
-                      <td colSpan={7} className="p-8 text-center text-slate-500">
+                      <td colSpan={8} className="p-8 text-center text-slate-500">
                         Будущих платежей нет.
                       </td>
                     </tr>
@@ -614,13 +741,7 @@ const needToCover = Math.max(0, Math.abs(Math.min(0, minBalance)));
                       {row.outflow > 0 ? formatMoney(row.outflow) : "—"}
                     </td>
 
-                    <td
-                      className={`p-3 text-right font-bold ${
-                        row.balanceAfterDay >= 0
-                          ? "text-emerald-600"
-                          : "text-red-600"
-                      }`}
-                    >
+                    <td className={`p-3 text-right font-bold ${valueClass(row.balanceAfterDay)}`}>
                       {formatMoney(row.balanceAfterDay)}
                     </td>
 
