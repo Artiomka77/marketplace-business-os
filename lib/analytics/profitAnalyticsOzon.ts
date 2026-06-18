@@ -27,6 +27,10 @@ function normalizeText(value: unknown): string {
     .trim();
 }
 
+function cleanText(value: unknown): string {
+  return String(value ?? "").trim();
+}
+
 function startOfDay(value: string) {
   const date = new Date(value);
   date.setHours(0, 0, 0, 0);
@@ -224,22 +228,34 @@ function buildCostByVendorCode(costs: CostRecord[]) {
   return costByVendorCode;
 }
 
+function buildOzonProductLookup(ozonProducts: OzonProductRecord[]) {
+  const normalizedVendorCodeBySku = new Map<string, string>();
+  const displayVendorCodeBySku = new Map<string, string>();
+
+  for (const product of ozonProducts) {
+    const sku = normalizeText(product.sku);
+    const normalizedVendorCode = normalizeText(product.vendorCode);
+    const displayVendorCode = cleanText(product.vendorCode);
+
+    if (!sku || !normalizedVendorCode) continue;
+
+    if (!normalizedVendorCodeBySku.has(sku)) {
+      normalizedVendorCodeBySku.set(sku, normalizedVendorCode);
+      displayVendorCodeBySku.set(sku, displayVendorCode || normalizedVendorCode);
+    }
+  }
+
+  return {
+    normalizedVendorCodeBySku,
+    displayVendorCodeBySku,
+  };
+}
+
 function buildAdsCostByVendorCode(
   adsRows: OzonAdsRecord[],
   ozonProducts: OzonProductRecord[]
 ) {
-  const vendorCodeBySku = new Map<string, string>();
-
-  for (const product of ozonProducts) {
-    const sku = normalizeText(product.sku);
-    const vendorCode = normalizeText(product.vendorCode);
-
-    if (!sku || !vendorCode) continue;
-
-    if (!vendorCodeBySku.has(sku)) {
-      vendorCodeBySku.set(sku, vendorCode);
-    }
-  }
+  const { normalizedVendorCodeBySku } = buildOzonProductLookup(ozonProducts);
 
   const adsCostByVendorCode = new Map<string, number>();
   let undistributedAdsCost = 0;
@@ -250,7 +266,7 @@ function buildAdsCostByVendorCode(
 
     if (!sku || spend === 0) continue;
 
-    const vendorCode = vendorCodeBySku.get(sku);
+    const vendorCode = normalizedVendorCodeBySku.get(sku) ?? sku;
 
     if (!vendorCode) {
       undistributedAdsCost += spend;
@@ -365,6 +381,7 @@ function calculateRowsAndTotals({
   vatRate: number;
 }) {
   const costByVendorCode = buildCostByVendorCode(costs);
+  const productLookup = buildOzonProductLookup(ozonProducts);
 
   const { adsCostByVendorCode, undistributedAdsCost } =
     buildAdsCostByVendorCode(adsRows, ozonProducts);
@@ -372,15 +389,27 @@ function calculateRowsAndTotals({
   const grouped = new Map<string, OzonProfitAnalyticsRow>();
 
   for (const financeRow of financeRows) {
-    const vendorCodeKey = normalizeText(financeRow.vendorCode);
+    const skuKey = normalizeText(financeRow.sku);
+    const directVendorCodeKey = normalizeText(financeRow.vendorCode);
+    const mappedVendorCodeKey = skuKey
+      ? productLookup.normalizedVendorCodeBySku.get(skuKey) ?? ""
+      : "";
+
+    const vendorCodeKey = directVendorCodeKey || mappedVendorCodeKey || skuKey;
 
     if (!vendorCodeKey) continue;
+
+    const displayVendorCode =
+      cleanText(financeRow.vendorCode) ||
+      (skuKey ? productLookup.displayVendorCodeBySku.get(skuKey) : "") ||
+      cleanText(financeRow.sku) ||
+      vendorCodeKey;
 
     const current =
       grouped.get(vendorCodeKey) ??
       {
         nmId: financeRow.sku ?? "",
-        vendorCode: financeRow.vendorCode ?? "",
+        vendorCode: displayVendorCode,
         subject: "",
 
         salesQty: 0,
@@ -424,8 +453,8 @@ function calculateRowsAndTotals({
       current.nmId = financeRow.sku;
     }
 
-    if (!current.vendorCode && financeRow.vendorCode) {
-      current.vendorCode = financeRow.vendorCode;
+    if (!current.vendorCode) {
+      current.vendorCode = displayVendorCode;
     }
 
     if (current.costPrice === 0 && vendorCodeKey) {
