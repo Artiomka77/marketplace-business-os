@@ -40,7 +40,9 @@ type CompanyDashboardRow = {
 
 type PeriodOption = {
   key: string;
+  shortLabel: string;
   label: string;
+  description: string;
   dateFrom: string;
   dateTo: string;
 };
@@ -136,7 +138,11 @@ function startOfQuarter(date: Date) {
 
 function createPeriodOptions(): PeriodOption[] {
   const now = new Date();
-  const today = makeUtcDate(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+  const today = makeUtcDate(
+    now.getUTCFullYear(),
+    now.getUTCMonth(),
+    now.getUTCDate()
+  );
 
   const currentWeekStart = startOfWeek(today);
   const previousWeekStart = addDays(currentWeekStart, -7);
@@ -145,7 +151,11 @@ function createPeriodOptions(): PeriodOption[] {
   const last4WeeksStart = addDays(currentWeekStart, -28);
   const last4WeeksEnd = addDays(currentWeekStart, -1);
 
-  const currentMonthStart = makeUtcDate(today.getUTCFullYear(), today.getUTCMonth(), 1);
+  const currentMonthStart = makeUtcDate(
+    today.getUTCFullYear(),
+    today.getUTCMonth(),
+    1
+  );
   const previousMonthStart = makeUtcDate(
     today.getUTCFullYear(),
     today.getUTCMonth() - 1,
@@ -164,7 +174,11 @@ function createPeriodOptions(): PeriodOption[] {
   return [
     {
       key: "previous-week",
+      shortLabel: "Прошлая неделя",
       label: `Прошлая неделя: ${formatDate(previousWeekStart)} — ${formatDate(
+        previousWeekEnd
+      )}`,
+      description: `${formatDate(previousWeekStart)} — ${formatDate(
         previousWeekEnd
       )}`,
       dateFrom: toIsoDate(previousWeekStart),
@@ -172,15 +186,21 @@ function createPeriodOptions(): PeriodOption[] {
     },
     {
       key: "current-week",
+      shortLabel: "Текущая неделя",
       label: `Текущая неделя: ${formatDate(currentWeekStart)} — ${formatDate(
         today
       )}`,
+      description: `${formatDate(currentWeekStart)} — ${formatDate(today)}`,
       dateFrom: toIsoDate(currentWeekStart),
       dateTo: toIsoDate(today),
     },
     {
       key: "last-4-weeks",
+      shortLabel: "Последние 4 недели",
       label: `Последние 4 недели: ${formatDate(last4WeeksStart)} — ${formatDate(
+        last4WeeksEnd
+      )}`,
+      description: `${formatDate(last4WeeksStart)} — ${formatDate(
         last4WeeksEnd
       )}`,
       dateFrom: toIsoDate(last4WeeksStart),
@@ -188,15 +208,21 @@ function createPeriodOptions(): PeriodOption[] {
     },
     {
       key: "current-month",
+      shortLabel: "Текущий месяц",
       label: `Текущий месяц: ${formatDate(currentMonthStart)} — ${formatDate(
         today
       )}`,
+      description: `${formatDate(currentMonthStart)} — ${formatDate(today)}`,
       dateFrom: toIsoDate(currentMonthStart),
       dateTo: toIsoDate(today),
     },
     {
       key: "previous-month",
+      shortLabel: "Прошлый месяц",
       label: `Прошлый месяц: ${formatDate(previousMonthStart)} — ${formatDate(
+        previousMonthEnd
+      )}`,
+      description: `${formatDate(previousMonthStart)} — ${formatDate(
         previousMonthEnd
       )}`,
       dateFrom: toIsoDate(previousMonthStart),
@@ -204,15 +230,21 @@ function createPeriodOptions(): PeriodOption[] {
     },
     {
       key: "current-quarter",
+      shortLabel: "Текущий квартал",
       label: `Текущий квартал: ${formatDate(currentQuarterStart)} — ${formatDate(
         today
       )}`,
+      description: `${formatDate(currentQuarterStart)} — ${formatDate(today)}`,
       dateFrom: toIsoDate(currentQuarterStart),
       dateTo: toIsoDate(today),
     },
     {
       key: "previous-quarter",
+      shortLabel: "Прошлый квартал",
       label: `Прошлый квартал: ${formatDate(previousQuarterStart)} — ${formatDate(
+        previousQuarterEnd
+      )}`,
+      description: `${formatDate(previousQuarterStart)} — ${formatDate(
         previousQuarterEnd
       )}`,
       dateFrom: toIsoDate(previousQuarterStart),
@@ -220,13 +252,19 @@ function createPeriodOptions(): PeriodOption[] {
     },
     {
       key: "current-year",
+      shortLabel: "Текущий год",
       label: `Текущий год: ${formatDate(currentYearStart)} — ${formatDate(today)}`,
+      description: `${formatDate(currentYearStart)} — ${formatDate(today)}`,
       dateFrom: toIsoDate(currentYearStart),
       dateTo: toIsoDate(today),
     },
     {
       key: "previous-year",
+      shortLabel: "Прошлый год",
       label: `Прошлый год: ${formatDate(previousYearStart)} — ${formatDate(
+        previousYearEnd
+      )}`,
+      description: `${formatDate(previousYearStart)} — ${formatDate(
         previousYearEnd
       )}`,
       dateFrom: toIsoDate(previousYearStart),
@@ -234,7 +272,9 @@ function createPeriodOptions(): PeriodOption[] {
     },
     {
       key: "custom",
+      shortLabel: "Произвольный период",
       label: "Произвольный период",
+      description: "Выбери даты вручную",
       dateFrom: toIsoDate(previousWeekStart),
       dateTo: toIsoDate(previousWeekEnd),
     },
@@ -304,6 +344,33 @@ function hasAnyCompanyMetric(row: CompanyDashboardRow) {
     row.ozonAbcB !== 0 ||
     row.ozonAbcC !== 0
   );
+}
+
+function buildDashboardHref(params: {
+  period: string;
+  companyName?: string | null;
+  dateFrom?: string;
+  dateTo?: string;
+}) {
+  const searchParams = new URLSearchParams();
+
+  searchParams.set("period", params.period);
+
+  if (params.companyName) {
+    searchParams.set("companyName", params.companyName);
+  } else {
+    searchParams.set("companyName", "ALL");
+  }
+
+  if (params.dateFrom) {
+    searchParams.set("dateFrom", params.dateFrom);
+  }
+
+  if (params.dateTo) {
+    searchParams.set("dateTo", params.dateTo);
+  }
+
+  return `/?${searchParams.toString()}`;
 }
 
 function KpiIcon({ children, tone }: { children: React.ReactNode; tone: string }) {
@@ -551,6 +618,9 @@ export default async function HomePage({ searchParams }: Props) {
           label: `Произвольный период: ${formatDate(
             params.dateFrom || selectedPeriodOption.dateFrom
           )} — ${formatDate(params.dateTo || selectedPeriodOption.dateTo)}`,
+          description: `${formatDate(
+            params.dateFrom || selectedPeriodOption.dateFrom
+          )} — ${formatDate(params.dateTo || selectedPeriodOption.dateTo)}`,
         }
       : selectedPeriodOption;
 
@@ -684,6 +754,9 @@ export default async function HomePage({ searchParams }: Props) {
     C: wbAbc.C + ozonAbc.C,
   };
 
+  const selectedCompanyValue = params.companyName ?? "ALL";
+  const presetPeriods = periodOptions.filter((period) => period.key !== "custom");
+
   const attentionItems = [
     {
       level: operatingProfitAfterTax < 0 ? "danger" : "ok",
@@ -736,70 +809,120 @@ export default async function HomePage({ searchParams }: Props) {
   return (
     <main className="min-h-screen bg-slate-100 p-4 sm:p-6 xl:p-10">
       <div className="mx-auto max-w-[1800px] space-y-8">
-        <section className="grid gap-6 xl:grid-cols-[1fr_760px] xl:items-start">
+        <section className="grid gap-6 xl:grid-cols-[1fr_820px] xl:items-start">
           <div className="min-w-0 pt-2">
-            <h1 className="break-words text-4xl font-bold tracking-tight text-slate-950">
-              Dashboard
+            <div className="inline-flex rounded-full bg-slate-950 px-4 py-2 text-xs font-bold uppercase tracking-[0.18em] text-white">
+              Dashboard собственника
+            </div>
+
+            <h1 className="mt-5 break-words text-4xl font-bold tracking-tight text-slate-950">
+              Главная панель бизнеса
             </h1>
 
             <p className="mt-4 max-w-2xl text-lg leading-8 text-slate-500">
-              Главный экран собственника: прибыль, денежный результат, реклама,
-              остатки, ABC и кредитная нагрузка.
+              Прибыль, денежный результат, реклама, остатки, ABC и кредитная
+              нагрузка по Wildberries и Ozon за выбранный период.
             </p>
+
+            <div className="mt-6 flex flex-wrap gap-3">
+              <div className="rounded-2xl bg-white px-4 py-3 text-sm font-semibold text-slate-700 shadow-sm ring-1 ring-slate-200">
+                Период:{" "}
+                <span className="font-black text-slate-950">
+                  {selectedPeriod.description}
+                </span>
+              </div>
+
+              <div className="rounded-2xl bg-white px-4 py-3 text-sm font-semibold text-slate-700 shadow-sm ring-1 ring-slate-200">
+                Компания:{" "}
+                <span className="font-black text-slate-950">
+                  {selectedCompanyName ?? "Все компании"}
+                </span>
+              </div>
+            </div>
           </div>
 
-          <div className="grid gap-4">
-            <form
-              action="/"
-              className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm"
-            >
-              <div className="mb-4 text-xs font-bold uppercase tracking-wide text-slate-400">
-                Фильтры Dashboard
+          <div className="rounded-[32px] border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <div className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">
+                  Фильтры Dashboard
+                </div>
+
+                <h2 className="mt-2 text-2xl font-bold text-slate-950">
+                  Выбор периода
+                </h2>
+
+                <p className="mt-1 text-sm text-slate-500">
+                  Быстрые периоды работают через URL. Даты ниже — для ручного
+                  периода.
+                </p>
               </div>
 
-              <div className="grid gap-3 lg:grid-cols-[1fr_250px_140px]">
-                <select
-                  name="period"
-                  defaultValue={selectedPeriodOption.key}
-                  className="h-12 w-full rounded-2xl border border-slate-200 bg-slate-100 px-4 text-sm font-semibold text-slate-950 outline-none"
-                >
-                  {periodOptions.map((period) => (
-                    <option key={period.key} value={period.key}>
-                      {period.label}
-                    </option>
-                  ))}
-                </select>
+              <Link
+                href="/import"
+                className="inline-flex w-fit items-center gap-2 rounded-2xl bg-slate-950 px-5 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-slate-800 active:scale-95"
+              >
+                <span>📥</span>
+                Импортировать отчёт
+              </Link>
+            </div>
 
-                <select
-                  name="companyName"
-                  defaultValue={params.companyName ?? "ALL"}
-                  className="h-12 w-full rounded-2xl border border-slate-200 bg-slate-100 px-4 text-sm font-semibold text-slate-950 outline-none"
-                >
-                  <option value="ALL">Все компании</option>
+            <div className="mt-5 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+              {presetPeriods.map((period) => {
+                const isActive = selectedPeriodOption.key === period.key;
 
-                  {companies.map((company) => (
-                    <option key={company.id} value={company.name}>
-                      {company.name}
-                    </option>
-                  ))}
-                </select>
+                return (
+                  <Link
+                    key={period.key}
+                    href={buildDashboardHref({
+                      period: period.key,
+                      companyName: selectedCompanyValue,
+                    })}
+                    className={`rounded-2xl border p-4 transition active:scale-[0.99] ${
+                      isActive
+                        ? "border-slate-950 bg-slate-950 text-white shadow-sm"
+                        : "border-slate-200 bg-slate-50 text-slate-800 hover:border-slate-300 hover:bg-white"
+                    }`}
+                  >
+                    <div className="text-sm font-black">{period.shortLabel}</div>
+                    <div
+                      className={`mt-1 text-xs leading-5 ${
+                        isActive ? "text-slate-200" : "text-slate-500"
+                      }`}
+                    >
+                      {period.description}
+                    </div>
+                  </Link>
+                );
+              })}
+            </div>
 
-                <button
-                  type="submit"
-                  className="h-12 rounded-2xl bg-slate-950 px-5 text-sm font-bold text-white transition hover:bg-slate-800"
-                >
-                  Показать
-                </button>
-              </div>
+            <form action="/" className="mt-5 rounded-3xl bg-slate-50 p-4 ring-1 ring-slate-200">
+              <div className="grid gap-3 lg:grid-cols-[1fr_1fr_1fr]">
+                <label className="text-sm font-medium text-slate-500">
+                  Компания
+                  <select
+                    name="companyName"
+                    defaultValue={selectedCompanyValue}
+                    className="mt-1 h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-950 outline-none transition focus:border-slate-900 focus:ring-2 focus:ring-slate-200"
+                  >
+                    <option value="ALL">Все компании</option>
 
-              <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                    {companies.map((company) => (
+                      <option key={company.id} value={company.name}>
+                        {company.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
                 <label className="text-sm font-medium text-slate-500">
                   Дата от
                   <input
                     type="date"
                     name="dateFrom"
                     defaultValue={selectedPeriod.dateFrom}
-                    className="mt-1 h-12 w-full rounded-2xl border border-slate-200 bg-slate-100 px-4 font-semibold text-slate-950 outline-none"
+                    className="mt-1 h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 font-semibold text-slate-950 outline-none transition focus:border-slate-900 focus:ring-2 focus:ring-slate-200"
                   />
                 </label>
 
@@ -809,21 +932,38 @@ export default async function HomePage({ searchParams }: Props) {
                     type="date"
                     name="dateTo"
                     defaultValue={selectedPeriod.dateTo}
-                    className="mt-1 h-12 w-full rounded-2xl border border-slate-200 bg-slate-100 px-4 font-semibold text-slate-950 outline-none"
+                    className="mt-1 h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 font-semibold text-slate-950 outline-none transition focus:border-slate-900 focus:ring-2 focus:ring-slate-200"
                   />
                 </label>
               </div>
-            </form>
 
-            <div className="flex justify-end">
-              <Link
-                href="/import"
-                className="inline-flex items-center gap-2 rounded-2xl bg-slate-950 px-5 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-slate-800"
-              >
-                <span>📥</span>
-                Импортировать отчёт
-              </Link>
-            </div>
+              <div className="mt-4 flex flex-wrap gap-3">
+                <button
+                  type="submit"
+                  name="period"
+                  value={selectedPeriodOption.key}
+                  className="rounded-2xl bg-slate-950 px-5 py-3 text-sm font-bold text-white transition hover:bg-slate-800 active:scale-95"
+                >
+                  Применить фильтр
+                </button>
+
+                <button
+                  type="submit"
+                  name="period"
+                  value="custom"
+                  className="rounded-2xl border border-blue-200 bg-white px-5 py-3 text-sm font-bold text-blue-700 transition hover:bg-blue-50 active:scale-95"
+                >
+                  Показать выбранные даты
+                </button>
+
+                <Link
+                  href="/"
+                  className="rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-bold text-slate-600 transition hover:bg-slate-100 active:scale-95"
+                >
+                  Сбросить
+                </Link>
+              </div>
+            </form>
           </div>
         </section>
 
