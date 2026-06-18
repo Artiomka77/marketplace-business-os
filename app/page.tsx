@@ -20,6 +20,12 @@ type AbcCounts = {
   C: number;
 };
 
+type CompanyForDashboard = {
+  name: string;
+  usnRate: unknown;
+  vatRate: unknown;
+};
+
 type CompanyDashboardRow = {
   companyName: string;
   wbRevenue: number;
@@ -40,6 +46,23 @@ type CompanyDashboardRow = {
   ozonAbcC: number;
 };
 
+type DashboardSummary = {
+  companyRows: CompanyDashboardRow[];
+  totalRevenue: number;
+  wbRevenue: number;
+  ozonRevenue: number;
+  operatingProfitAfterTax: number;
+  freeCashResult: number;
+  adsCost: number;
+  drr: number | null;
+  loanPayments: number;
+  wbStockQty: number;
+  ozonStockQty: number;
+  wbAbc: AbcCounts;
+  ozonAbc: AbcCounts;
+  totalAbc: AbcCounts;
+};
+
 type PeriodOption = {
   key: string;
   shortLabel: string;
@@ -47,6 +70,12 @@ type PeriodOption = {
   description: string;
   dateFrom: string;
   dateTo: string;
+};
+
+type MetricTrend = {
+  label: string;
+  title: string;
+  className: string;
 };
 
 const quickLinks = [
@@ -94,6 +123,16 @@ function formatPercent(value: number) {
   return `${value.toFixed(1)}%`;
 }
 
+function formatSignedPercent(value: number) {
+  const prefix = value > 0 ? "+" : "";
+  return `${prefix}${value.toFixed(1)}%`;
+}
+
+function formatSignedPoints(value: number) {
+  const prefix = value > 0 ? "+" : "";
+  return `${prefix}${value.toFixed(1)} п.п.`;
+}
+
 function formatDate(value: string | Date) {
   const date = typeof value === "string" ? new Date(`${value}T12:00:00Z`) : value;
 
@@ -108,6 +147,11 @@ function toIsoDate(date: Date) {
 
 function makeUtcDate(year: number, month: number, day: number) {
   return new Date(Date.UTC(year, month, day, 12, 0, 0));
+}
+
+function parseIsoDate(value: string) {
+  const [yearText, monthText, dayText] = value.split("-");
+  return makeUtcDate(Number(yearText), Number(monthText) - 1, Number(dayText));
 }
 
 function startOfWeek(date: Date) {
@@ -136,6 +180,28 @@ function startOfQuarter(date: Date) {
   const quarterStartMonth = Math.floor(date.getUTCMonth() / 3) * 3;
 
   return makeUtcDate(date.getUTCFullYear(), quarterStartMonth, 1);
+}
+
+function getInclusiveDays(dateFrom: string, dateTo: string) {
+  const from = parseIsoDate(dateFrom);
+  const to = parseIsoDate(dateTo);
+  const ms = to.getTime() - from.getTime();
+
+  return Math.max(1, Math.round(ms / 86_400_000) + 1);
+}
+
+function getPreviousPeriod(dateFrom: string, dateTo: string) {
+  const currentFrom = parseIsoDate(dateFrom);
+  const days = getInclusiveDays(dateFrom, dateTo);
+
+  const previousTo = addDays(currentFrom, -1);
+  const previousFrom = addDays(previousTo, -(days - 1));
+
+  return {
+    dateFrom: toIsoDate(previousFrom),
+    dateTo: toIsoDate(previousTo),
+    description: `${formatDate(previousFrom)} — ${formatDate(previousTo)}`,
+  };
 }
 
 function createPeriodOptions(): PeriodOption[] {
@@ -309,6 +375,67 @@ function valueTone(value: number) {
     : "bg-red-50 text-red-700 ring-red-200";
 }
 
+function trendTone(isGood: boolean | null) {
+  if (isGood === true) {
+    return "bg-emerald-50 text-emerald-700 ring-emerald-200";
+  }
+
+  if (isGood === false) {
+    return "bg-red-50 text-red-700 ring-red-200";
+  }
+
+  return "bg-slate-50 text-slate-600 ring-slate-200";
+}
+
+function buildMoneyTrend(params: {
+  current: number;
+  previous: number;
+  goodWhen: "up" | "down";
+}): MetricTrend {
+  const delta = params.current - params.previous;
+  const percent =
+    params.previous !== 0 ? (delta / Math.abs(params.previous)) * 100 : null;
+
+  const isGood =
+    delta === 0 ? null : params.goodWhen === "up" ? delta > 0 : delta < 0;
+
+  const sign = delta > 0 ? "+" : delta < 0 ? "−" : "";
+  const deltaText = `${sign}${formatCurrency(Math.abs(delta))}`;
+
+  return {
+    label:
+      percent === null
+        ? deltaText
+        : `${deltaText} · ${formatSignedPercent(percent)}`,
+    title: "к предыдущему периоду",
+    className: trendTone(isGood),
+  };
+}
+
+function buildPercentTrend(params: {
+  current: number | null;
+  previous: number | null;
+  goodWhen: "up" | "down";
+}): MetricTrend {
+  if (params.current === null || params.previous === null) {
+    return {
+      label: "нет сравнения",
+      title: "к предыдущему периоду",
+      className: trendTone(null),
+    };
+  }
+
+  const delta = params.current - params.previous;
+  const isGood =
+    delta === 0 ? null : params.goodWhen === "up" ? delta > 0 : delta < 0;
+
+  return {
+    label: formatSignedPoints(delta),
+    title: "к предыдущему периоду",
+    className: trendTone(isGood),
+  };
+}
+
 function countAbc(rows: { abcByProfit: "A" | "B" | "C" }[]) {
   return rows.reduce(
     (acc, row) => {
@@ -384,6 +511,7 @@ function MetricCard({
   subtitle,
   icon,
   accent,
+  trend,
   valueClassName = "text-slate-950",
 }: {
   title: string;
@@ -391,6 +519,7 @@ function MetricCard({
   subtitle: string;
   icon: ReactNode;
   accent: string;
+  trend?: MetricTrend;
   valueClassName?: string;
 }) {
   return (
@@ -402,9 +531,18 @@ function MetricCard({
           {icon}
         </div>
 
-        <div className="rounded-full bg-slate-50 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400">
-          KPI
-        </div>
+        {trend ? (
+          <div
+            className={`rounded-full px-3 py-1 text-[11px] font-black ring-1 ${trend.className}`}
+            title={trend.title}
+          >
+            {trend.label}
+          </div>
+        ) : (
+          <div className="rounded-full bg-slate-50 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400">
+            KPI
+          </div>
+        )}
       </div>
 
       <div className="mt-5 text-sm font-semibold text-slate-500">{title}</div>
@@ -691,56 +829,23 @@ async function getLatestOzonStockQty(companyName: string) {
   }, 0);
 }
 
-export default async function HomePage({ searchParams }: Props) {
-  const params = searchParams ? await searchParams : {};
+async function buildCompanyDashboardRows(params: {
+  companies: CompanyForDashboard[];
+  dateFrom: string;
+  dateTo: string;
+}) {
+  const rows: CompanyDashboardRow[] = [];
 
-  const periodOptions = createPeriodOptions();
-  const selectedPeriodOption =
-    periodOptions.find((period) => period.key === params.period) ??
-    periodOptions[0];
-
-  const selectedPeriod =
-    selectedPeriodOption.key === "custom"
-      ? {
-          ...selectedPeriodOption,
-          dateFrom: params.dateFrom || selectedPeriodOption.dateFrom,
-          dateTo: params.dateTo || selectedPeriodOption.dateTo,
-          label: `Произвольный период: ${formatDate(
-            params.dateFrom || selectedPeriodOption.dateFrom
-          )} — ${formatDate(params.dateTo || selectedPeriodOption.dateTo)}`,
-          description: `${formatDate(
-            params.dateFrom || selectedPeriodOption.dateFrom
-          )} — ${formatDate(params.dateTo || selectedPeriodOption.dateTo)}`,
-        }
-      : selectedPeriodOption;
-
-  const selectedCompanyName =
-    params.companyName && params.companyName !== "ALL"
-      ? params.companyName
-      : null;
-
-  const companies = await prisma.company.findMany({
-    orderBy: {
-      name: "asc",
-    },
-  });
-
-  const selectedCompanies = selectedCompanyName
-    ? companies.filter((company) => company.name === selectedCompanyName)
-    : companies;
-
-  const rawCompanyRows: CompanyDashboardRow[] = [];
-
-  for (const company of selectedCompanies) {
+  for (const company of params.companies) {
     const wb = await getProfitAnalytics({
-      dateFrom: selectedPeriod.dateFrom,
-      dateTo: selectedPeriod.dateTo,
+      dateFrom: params.dateFrom,
+      dateTo: params.dateTo,
       companyName: company.name,
     });
 
     const ozon = await getProfitAnalyticsOzon({
-      dateFrom: selectedPeriod.dateFrom,
-      dateTo: selectedPeriod.dateTo,
+      dateFrom: params.dateFrom,
+      dateTo: params.dateTo,
       companyName: company.name,
       usnRate:
         company.usnRate !== null && company.usnRate !== undefined
@@ -754,8 +859,8 @@ export default async function HomePage({ searchParams }: Props) {
 
     const cash = await getFinanceCashResult({
       companyName: company.name,
-      dateFrom: selectedPeriod.dateFrom,
-      dateTo: selectedPeriod.dateTo,
+      dateFrom: params.dateFrom,
+      dateTo: params.dateTo,
     });
 
     const [wbStockQty, ozonStockQty] = await Promise.all([
@@ -773,7 +878,7 @@ export default async function HomePage({ searchParams }: Props) {
     const adsCost = wb.totals.adsCost + ozon.totals.adsCost;
     const drr = totalRevenue > 0 ? (adsCost / totalRevenue) * 100 : null;
 
-    rawCompanyRows.push({
+    rows.push({
       companyName: company.name,
       wbRevenue,
       ozonRevenue,
@@ -795,7 +900,11 @@ export default async function HomePage({ searchParams }: Props) {
     });
   }
 
-  const companyRows = rawCompanyRows.filter(hasAnyCompanyMetric);
+  return rows;
+}
+
+function summarizeDashboardRows(rows: CompanyDashboardRow[]): DashboardSummary {
+  const companyRows = rows.filter(hasAnyCompanyMetric);
 
   const totalRevenue = companyRows.reduce((sum, row) => sum + row.totalRevenue, 0);
   const wbRevenue = companyRows.reduce((sum, row) => sum + row.wbRevenue, 0);
@@ -837,52 +946,131 @@ export default async function HomePage({ searchParams }: Props) {
     C: wbAbc.C + ozonAbc.C,
   };
 
+  return {
+    companyRows,
+    totalRevenue,
+    wbRevenue,
+    ozonRevenue,
+    operatingProfitAfterTax,
+    freeCashResult,
+    adsCost,
+    drr,
+    loanPayments,
+    wbStockQty,
+    ozonStockQty,
+    wbAbc,
+    ozonAbc,
+    totalAbc,
+  };
+}
+
+export default async function HomePage({ searchParams }: Props) {
+  const params = searchParams ? await searchParams : {};
+
+  const periodOptions = createPeriodOptions();
+  const selectedPeriodOption =
+    periodOptions.find((period) => period.key === params.period) ??
+    periodOptions[0];
+
+  const selectedPeriod =
+    selectedPeriodOption.key === "custom"
+      ? {
+          ...selectedPeriodOption,
+          dateFrom: params.dateFrom || selectedPeriodOption.dateFrom,
+          dateTo: params.dateTo || selectedPeriodOption.dateTo,
+          label: `Произвольный период: ${formatDate(
+            params.dateFrom || selectedPeriodOption.dateFrom
+          )} — ${formatDate(params.dateTo || selectedPeriodOption.dateTo)}`,
+          description: `${formatDate(
+            params.dateFrom || selectedPeriodOption.dateFrom
+          )} — ${formatDate(params.dateTo || selectedPeriodOption.dateTo)}`,
+        }
+      : selectedPeriodOption;
+
+  const previousPeriod = getPreviousPeriod(
+    selectedPeriod.dateFrom,
+    selectedPeriod.dateTo
+  );
+
+  const selectedCompanyName =
+    params.companyName && params.companyName !== "ALL"
+      ? params.companyName
+      : null;
+
+  const companies = await prisma.company.findMany({
+    orderBy: {
+      name: "asc",
+    },
+  });
+
+  const selectedCompanies = selectedCompanyName
+    ? companies.filter((company) => company.name === selectedCompanyName)
+    : companies;
+
+  const [currentRows, previousRows] = await Promise.all([
+    buildCompanyDashboardRows({
+      companies: selectedCompanies,
+      dateFrom: selectedPeriod.dateFrom,
+      dateTo: selectedPeriod.dateTo,
+    }),
+    buildCompanyDashboardRows({
+      companies: selectedCompanies,
+      dateFrom: previousPeriod.dateFrom,
+      dateTo: previousPeriod.dateTo,
+    }),
+  ]);
+
+  const current = summarizeDashboardRows(currentRows);
+  const previous = summarizeDashboardRows(previousRows);
+
   const selectedCompanyValue = params.companyName ?? "ALL";
   const presetPeriods = periodOptions.filter((period) => period.key !== "custom");
 
   const attentionItems = [
     {
-      level: operatingProfitAfterTax < 0 ? "danger" : "ok",
+      level: current.operatingProfitAfterTax < 0 ? "danger" : "ok",
       title: "Операционная прибыль",
       text:
-        operatingProfitAfterTax < 0
+        current.operatingProfitAfterTax < 0
           ? `Операционная прибыль после налогов отрицательная: ${formatCurrency(
-              operatingProfitAfterTax
+              current.operatingProfitAfterTax
             )}.`
           : `Операционная прибыль после налогов: ${formatCurrency(
-              operatingProfitAfterTax
+              current.operatingProfitAfterTax
             )}.`,
       href: "/analytics",
       icon: "⚠️",
     },
     {
-      level: freeCashResult < 0 ? "danger" : "ok",
+      level: current.freeCashResult < 0 ? "danger" : "ok",
       title: "Свободный результат",
       text:
-        freeCashResult < 0
+        current.freeCashResult < 0
           ? `После всех расходов минус ${formatCurrency(
-              Math.abs(freeCashResult)
+              Math.abs(current.freeCashResult)
             )}. Нужно смотреть ДДС.`
-          : `После всех расходов осталось ${formatCurrency(freeCashResult)}.`,
+          : `После всех расходов осталось ${formatCurrency(current.freeCashResult)}.`,
       href: "/finance/cash-flow",
       icon: "💸",
     },
     {
-      level: drr !== null && drr > 12 ? "warning" : "ok",
+      level: current.drr !== null && current.drr > 12 ? "warning" : "ok",
       title: "Реклама",
       text:
-        drr !== null && drr > 12
-          ? `ДРР ${formatPercent(drr)}. Нужно проверить кампании.`
+        current.drr !== null && current.drr > 12
+          ? `ДРР ${formatPercent(current.drr)}. Нужно проверить кампании.`
           : "ДРР в пределах контроля или данных недостаточно.",
       href: "/ads-mapping",
       icon: "📣",
     },
     {
-      level: loanPayments > 0 ? "warning" : "ok",
+      level: current.loanPayments > 0 ? "warning" : "ok",
       title: "Кредиты",
       text:
-        loanPayments > 0
-          ? `Платежи по кредитам за период: ${formatCurrency(loanPayments)}.`
+        current.loanPayments > 0
+          ? `Платежи по кредитам за период: ${formatCurrency(
+              current.loanPayments
+            )}.`
           : "В выбранном периоде платежей по кредитам не найдено.",
       href: "/finance/loans",
       icon: "🏦",
@@ -902,6 +1090,10 @@ export default async function HomePage({ searchParams }: Props) {
 
                 <span className="rounded-full bg-slate-100 px-4 py-2 text-xs font-bold text-slate-600 ring-1 ring-slate-200">
                   {selectedPeriod.description}
+                </span>
+
+                <span className="rounded-full bg-slate-100 px-4 py-2 text-xs font-bold text-slate-600 ring-1 ring-slate-200">
+                  Сравнение: {previousPeriod.description}
                 </span>
 
                 <span className="rounded-full bg-slate-100 px-4 py-2 text-xs font-bold text-slate-600 ring-1 ring-slate-200">
@@ -975,11 +1167,14 @@ export default async function HomePage({ searchParams }: Props) {
                         >
                           <option value="ALL">Все компании</option>
 
-                          {companyRows.map((company) => (
-  			<option key={company.companyName} value={company.companyName}>
-   			 {company.companyName}
-  			</option>
-			))}
+                          {current.companyRows.map((company) => (
+                            <option
+                              key={company.companyName}
+                              value={company.companyName}
+                            >
+                              {company.companyName}
+                            </option>
+                          ))}
                         </select>
                       </label>
 
@@ -1039,58 +1234,104 @@ export default async function HomePage({ searchParams }: Props) {
         <section className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-4">
           <MetricCard
             title="Выручка всего"
-            value={totalRevenue > 0 ? formatCurrency(totalRevenue) : "Нет данных"}
-            subtitle={`WB: ${formatCurrency(wbRevenue)} · Ozon: ${formatCurrency(
-              ozonRevenue
-            )}`}
+            value={
+              current.totalRevenue > 0
+                ? formatCurrency(current.totalRevenue)
+                : "Нет данных"
+            }
+            subtitle={`WB: ${formatCurrency(
+              current.wbRevenue
+            )} · Ozon: ${formatCurrency(current.ozonRevenue)}`}
             icon="💼"
             accent="bg-blue-50 text-blue-600"
+            trend={buildMoneyTrend({
+              current: current.totalRevenue,
+              previous: previous.totalRevenue,
+              goodWhen: "up",
+            })}
           />
 
           <MetricCard
             title="Операционная прибыль"
-            value={formatCurrency(operatingProfitAfterTax)}
+            value={formatCurrency(current.operatingProfitAfterTax)}
             subtitle="После себестоимости, рекламы, логистики, хранения и налогов."
             icon="↗"
             accent="bg-emerald-50 text-emerald-600"
-            valueClassName={valueColor(operatingProfitAfterTax)}
+            valueClassName={valueColor(current.operatingProfitAfterTax)}
+            trend={buildMoneyTrend({
+              current: current.operatingProfitAfterTax,
+              previous: previous.operatingProfitAfterTax,
+              goodWhen: "up",
+            })}
           />
 
           <MetricCard
             title="Свободный результат"
-            value={formatCurrency(freeCashResult)}
+            value={formatCurrency(current.freeCashResult)}
             subtitle="После всех расходов, кредитов, процентов и личных трат."
             icon="₽"
             accent="bg-red-50 text-red-600"
-            valueClassName={valueColor(freeCashResult)}
+            valueClassName={valueColor(current.freeCashResult)}
+            trend={buildMoneyTrend({
+              current: current.freeCashResult,
+              previous: previous.freeCashResult,
+              goodWhen: "up",
+            })}
           />
 
           <MetricCard
             title="ДРР общий"
-            value={drr !== null ? formatPercent(drr) : "Нет данных"}
-            subtitle={`Реклама всего: ${formatCurrency(adsCost)}`}
+            value={current.drr !== null ? formatPercent(current.drr) : "Нет данных"}
+            subtitle={`Реклама всего: ${formatCurrency(current.adsCost)}`}
             icon="📣"
             accent="bg-violet-50 text-violet-600"
-            valueClassName={drr !== null && drr > 12 ? "text-red-600" : "text-slate-950"}
+            valueClassName={
+              current.drr !== null && current.drr > 12
+                ? "text-red-600"
+                : "text-slate-950"
+            }
+            trend={buildPercentTrend({
+              current: current.drr,
+              previous: previous.drr,
+              goodWhen: "down",
+            })}
           />
         </section>
 
-        <MarketplaceShare wbRevenue={wbRevenue} ozonRevenue={ozonRevenue} />
+        <MarketplaceShare
+          wbRevenue={current.wbRevenue}
+          ozonRevenue={current.ozonRevenue}
+        />
 
         <section className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-4">
           <MetricCard
             title="Кредитные платежи"
-            value={loanPayments > 0 ? formatCurrency(loanPayments) : "Нет данных"}
+            value={
+              current.loanPayments > 0
+                ? formatCurrency(current.loanPayments)
+                : "Нет данных"
+            }
             subtitle="Факт по финансовым операциям за выбранный период."
             icon="💳"
             accent="bg-orange-50 text-orange-600"
-            valueClassName={loanPayments > 0 ? "text-red-600" : "text-slate-950"}
+            valueClassName={
+              current.loanPayments > 0 ? "text-red-600" : "text-slate-950"
+            }
+            trend={buildMoneyTrend({
+              current: current.loanPayments,
+              previous: previous.loanPayments,
+              goodWhen: "down",
+            })}
           />
 
           <MetricCard
             title="Остатки WB"
-            value={wbStockQty > 0 ? `${formatNumber(wbStockQty)} шт` : "Нет данных"}
-            subtitle={`ABC: A ${wbAbc.A} · B ${wbAbc.B} · C ${wbAbc.C}`}
+            value={
+              current.wbStockQty > 0
+                ? `${formatNumber(current.wbStockQty)} шт`
+                : "Нет данных"
+            }
+            subtitle={`ABC: A ${current.wbAbc.A} · B ${current.wbAbc.B} · C ${current.wbAbc.C}`}
             icon="▣"
             accent="bg-blue-50 text-blue-600"
           />
@@ -1098,17 +1339,19 @@ export default async function HomePage({ searchParams }: Props) {
           <MetricCard
             title="Остатки Ozon"
             value={
-              ozonStockQty > 0 ? `${formatNumber(ozonStockQty)} шт` : "Нет данных"
+              current.ozonStockQty > 0
+                ? `${formatNumber(current.ozonStockQty)} шт`
+                : "Нет данных"
             }
-            subtitle={`ABC: A ${ozonAbc.A} · B ${ozonAbc.B} · C ${ozonAbc.C}`}
+            subtitle={`ABC: A ${current.ozonAbc.A} · B ${current.ozonAbc.B} · C ${current.ozonAbc.C}`}
             icon="▣"
             accent="bg-indigo-50 text-indigo-600"
           />
 
           <MetricCard
             title="ABC всего"
-            value={`${formatNumber(abcTotal(totalAbc))} SKU`}
-            subtitle={`A ${totalAbc.A} · B ${totalAbc.B} · C ${totalAbc.C}`}
+            value={`${formatNumber(abcTotal(current.totalAbc))} SKU`}
+            subtitle={`A ${current.totalAbc.A} · B ${current.totalAbc.B} · C ${current.totalAbc.C}`}
             icon="◔"
             accent="bg-violet-50 text-violet-600"
           />
@@ -1127,14 +1370,14 @@ export default async function HomePage({ searchParams }: Props) {
               </div>
 
               <div className="rounded-2xl bg-slate-100 px-4 py-2 text-sm font-black text-slate-700">
-                {formatNumber(abcTotal(totalAbc))} SKU
+                {formatNumber(abcTotal(current.totalAbc))} SKU
               </div>
             </div>
 
             <div className="mt-5 grid gap-4">
-              <AbcCard title="WB" abc={wbAbc} />
-              <AbcCard title="Ozon" abc={ozonAbc} />
-              <AbcCard title="Всего WB + Ozon" abc={totalAbc} />
+              <AbcCard title="WB" abc={current.wbAbc} />
+              <AbcCard title="Ozon" abc={current.ozonAbc} />
+              <AbcCard title="Всего WB + Ozon" abc={current.totalAbc} />
             </div>
           </section>
 
@@ -1202,9 +1445,9 @@ export default async function HomePage({ searchParams }: Props) {
             </Link>
           </div>
 
-          {companyRows.length > 0 ? (
+          {current.companyRows.length > 0 ? (
             <div className="grid gap-5 xl:grid-cols-2">
-              {companyRows.map((row) => {
+              {current.companyRows.map((row) => {
                 const rowWbAbc = {
                   A: row.wbAbcA,
                   B: row.wbAbcB,
