@@ -1326,7 +1326,7 @@ export default async function HomePage({ searchParams }: Props) {
           </div>
         </section>
 
-        <section className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-4">
+        <section className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-5">
           <MetricCard
             title="Выручка всего"
             value={
@@ -1375,6 +1375,20 @@ export default async function HomePage({ searchParams }: Props) {
           />
 
           <MetricCard
+            title="Денежный поток"
+            value={formatCurrency(current.cashFlowResult)}
+            subtitle="ДДС: поступления минус фактические расходы по операциям."
+            icon="💸"
+            accent="bg-cyan-50 text-cyan-600"
+            valueClassName={valueColor(current.cashFlowResult)}
+            trend={buildMoneyTrend({
+              current: current.cashFlowResult,
+              previous: previous.cashFlowResult,
+              goodWhen: "up",
+            })}
+          />
+
+          <MetricCard
             title="ДРР общий"
             value={current.drr !== null ? formatPercent(current.drr) : "Нет данных"}
             subtitle={`Реклама всего: ${formatCurrency(current.adsCost)}`}
@@ -1398,21 +1412,7 @@ export default async function HomePage({ searchParams }: Props) {
           ozonRevenue={current.ozonRevenue}
         />
 
-        <section className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-5">
-          <MetricCard
-            title="Денежный поток"
-            value={formatCurrency(current.cashFlowResult)}
-            subtitle="Поступления минус фактические расходы по ДДС."
-            icon="💸"
-            accent="bg-cyan-50 text-cyan-600"
-            valueClassName={valueColor(current.cashFlowResult)}
-            trend={buildMoneyTrend({
-              current: current.cashFlowResult,
-              previous: previous.cashFlowResult,
-              goodWhen: "up",
-            })}
-          />
-
+        <section className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-4">
           <MetricCard
             title="Кредитные платежи"
             value={
