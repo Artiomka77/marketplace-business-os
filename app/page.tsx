@@ -32,10 +32,13 @@ type CompanyDashboardRow = {
   ozonRevenue: number;
   totalRevenue: number;
   operatingProfitAfterTax: number;
-  freeCashResult: number;
+  netProfit: number;
+  cashFlowResult: number;
   adsCost: number;
   drr: number | null;
   loanPayments: number;
+  personalExpenses: number;
+  financialExpenses: number;
   wbStockQty: number;
   ozonStockQty: number;
   wbAbcA: number;
@@ -52,10 +55,13 @@ type DashboardSummary = {
   wbRevenue: number;
   ozonRevenue: number;
   operatingProfitAfterTax: number;
-  freeCashResult: number;
+  netProfit: number;
+  cashFlowResult: number;
   adsCost: number;
   drr: number | null;
   loanPayments: number;
+  personalExpenses: number;
+  financialExpenses: number;
   wbStockQty: number;
   ozonStockQty: number;
   wbAbc: AbcCounts;
@@ -134,7 +140,8 @@ function formatSignedPoints(value: number) {
 }
 
 function formatDate(value: string | Date) {
-  const date = typeof value === "string" ? new Date(`${value}T12:00:00Z`) : value;
+  const date =
+    typeof value === "string" ? new Date(`${value}T12:00:00Z`) : value;
 
   return date.toLocaleDateString("ru-RU", {
     timeZone: "UTC",
@@ -323,7 +330,9 @@ function createPeriodOptions(): PeriodOption[] {
     {
       key: "current-year",
       shortLabel: "Текущий год",
-      label: `Текущий год: ${formatDate(currentYearStart)} — ${formatDate(today)}`,
+      label: `Текущий год: ${formatDate(currentYearStart)} — ${formatDate(
+        today
+      )}`,
       description: `${formatDate(currentYearStart)} — ${formatDate(today)}`,
       dateFrom: toIsoDate(currentYearStart),
       dateTo: toIsoDate(today),
@@ -362,7 +371,34 @@ function safeNumber(value: unknown) {
 function isLoanCategory(category?: string | null) {
   const value = String(category ?? "").toLowerCase();
 
-  return value.includes("кредит") || value.includes("займ");
+  return (
+    value.includes("кредит") ||
+    value.includes("займ") ||
+    value.includes("заем")
+  );
+}
+
+function isPersonalCategory(category?: string | null) {
+  const value = String(category ?? "").toLowerCase();
+
+  return (
+    value.includes("личн") ||
+    value.includes("собственник") ||
+    value.includes("дивиденд")
+  );
+}
+
+function isFinancialExpenseCategory(category?: string | null) {
+  const value = String(category ?? "").toLowerCase();
+
+  return (
+    value.includes("процент") ||
+    value.includes("комиссия банка") ||
+    value.includes("банковская комиссия") ||
+    value.includes("обслуживание счета") ||
+    value.includes("обслуживание счёта") ||
+    value.includes("эквайринг")
+  );
 }
 
 function valueColor(value: number) {
@@ -469,9 +505,12 @@ function hasAnyCompanyMetric(row: CompanyDashboardRow) {
     row.ozonRevenue !== 0 ||
     row.totalRevenue !== 0 ||
     row.operatingProfitAfterTax !== 0 ||
-    row.freeCashResult !== 0 ||
+    row.netProfit !== 0 ||
+    row.cashFlowResult !== 0 ||
     row.adsCost !== 0 ||
     row.loanPayments !== 0 ||
+    row.personalExpenses !== 0 ||
+    row.financialExpenses !== 0 ||
     row.wbStockQty !== 0 ||
     row.ozonStockQty !== 0 ||
     row.wbAbcA !== 0 ||
@@ -649,7 +688,9 @@ function AbcCard({ title, abc }: { title: string; abc: AbcCounts }) {
       <div className="flex items-start justify-between gap-4">
         <div>
           <h3 className="text-lg font-black text-slate-950">{title}</h3>
-          <p className="mt-1 text-sm text-slate-500">{formatNumber(total)} SKU</p>
+          <p className="mt-1 text-sm text-slate-500">
+            {formatNumber(total)} SKU
+          </p>
         </div>
 
         <div className="rounded-2xl bg-slate-100 px-3 py-2 text-sm font-bold text-slate-700">
@@ -700,7 +741,9 @@ function MarketplaceShare({
           />
           <MiniMetric
             title="Ozon"
-            value={`${formatCurrency(ozonRevenue)} · ${formatPercent(ozonPercent)}`}
+            value={`${formatCurrency(ozonRevenue)} · ${formatPercent(
+              ozonPercent
+            )}`}
             tone="text-violet-700"
           />
         </div>
@@ -739,28 +782,62 @@ async function getFinanceCashResult(params: {
   });
 
   let income = 0;
-  let expense = 0;
+  let cashExpense = 0;
   let loanPayments = 0;
+  let personalExpenses = 0;
+  let financialExpenses = 0;
 
   for (const row of rows) {
+    if (row.isInternalTransfer || row.operationType === "TRANSFER") {
+      continue;
+    }
+
     const amount = Math.abs(safeNumber(row.amount));
 
     if (row.operationType === "INCOME") {
       income += amount;
+      continue;
+    }
+
+    if (row.operationType === "FINANCING") {
+      loanPayments += amount;
+      cashExpense += amount;
+      continue;
+    }
+
+    if (row.operationType === "PERSONAL") {
+      personalExpenses += amount;
+      cashExpense += amount;
+      continue;
     }
 
     if (row.operationType === "EXPENSE") {
-      expense += amount;
-    }
+      cashExpense += amount;
 
-    if (row.operationType === "FINANCING" || isLoanCategory(row.category)) {
-      loanPayments += amount;
+      if (isLoanCategory(row.category)) {
+        loanPayments += amount;
+        continue;
+      }
+
+      if (isPersonalCategory(row.category)) {
+        personalExpenses += amount;
+        continue;
+      }
+
+      if (isFinancialExpenseCategory(row.category)) {
+        financialExpenses += amount;
+      }
     }
   }
 
+  const profitDeductions = loanPayments + personalExpenses + financialExpenses;
+
   return {
-    freeCashResult: income - expense - loanPayments,
+    cashFlowResult: income - cashExpense,
     loanPayments,
+    personalExpenses,
+    financialExpenses,
+    profitDeductions,
   };
 }
 
@@ -875,6 +952,9 @@ async function buildCompanyDashboardRows(params: {
     const ozonRevenue = ozon.totals.revenue;
     const totalRevenue = wbRevenue + ozonRevenue;
 
+    const operatingProfitAfterTax =
+      wb.totals.netProfitAfterTax + ozon.totals.netProfitAfterTax;
+
     const adsCost = wb.totals.adsCost + ozon.totals.adsCost;
     const drr = totalRevenue > 0 ? (adsCost / totalRevenue) * 100 : null;
 
@@ -883,12 +963,14 @@ async function buildCompanyDashboardRows(params: {
       wbRevenue,
       ozonRevenue,
       totalRevenue,
-      operatingProfitAfterTax:
-        wb.totals.netProfitAfterTax + ozon.totals.netProfitAfterTax,
+      operatingProfitAfterTax,
+      netProfit: operatingProfitAfterTax - cash.profitDeductions,
+      cashFlowResult: cash.cashFlowResult,
       adsCost,
       drr,
-      freeCashResult: cash.freeCashResult,
       loanPayments: cash.loanPayments,
+      personalExpenses: cash.personalExpenses,
+      financialExpenses: cash.financialExpenses,
       wbStockQty,
       ozonStockQty,
       wbAbcA: wbAbc.A,
@@ -915,8 +997,10 @@ function summarizeDashboardRows(rows: CompanyDashboardRow[]): DashboardSummary {
     0
   );
 
-  const freeCashResult = companyRows.reduce(
-    (sum, row) => sum + row.freeCashResult,
+  const netProfit = companyRows.reduce((sum, row) => sum + row.netProfit, 0);
+
+  const cashFlowResult = companyRows.reduce(
+    (sum, row) => sum + row.cashFlowResult,
     0
   );
 
@@ -924,6 +1008,14 @@ function summarizeDashboardRows(rows: CompanyDashboardRow[]): DashboardSummary {
   const drr = totalRevenue > 0 ? (adsCost / totalRevenue) * 100 : null;
 
   const loanPayments = companyRows.reduce((sum, row) => sum + row.loanPayments, 0);
+  const personalExpenses = companyRows.reduce(
+    (sum, row) => sum + row.personalExpenses,
+    0
+  );
+  const financialExpenses = companyRows.reduce(
+    (sum, row) => sum + row.financialExpenses,
+    0
+  );
 
   const wbStockQty = companyRows.reduce((sum, row) => sum + row.wbStockQty, 0);
   const ozonStockQty = companyRows.reduce((sum, row) => sum + row.ozonStockQty, 0);
@@ -952,10 +1044,13 @@ function summarizeDashboardRows(rows: CompanyDashboardRow[]): DashboardSummary {
     wbRevenue,
     ozonRevenue,
     operatingProfitAfterTax,
-    freeCashResult,
+    netProfit,
+    cashFlowResult,
     adsCost,
     drr,
     loanPayments,
+    personalExpenses,
+    financialExpenses,
     wbStockQty,
     ozonStockQty,
     wbAbc,
@@ -1042,14 +1137,14 @@ export default async function HomePage({ searchParams }: Props) {
       icon: "⚠️",
     },
     {
-      level: current.freeCashResult < 0 ? "danger" : "ok",
-      title: "Свободный результат",
+      level: current.netProfit < 0 ? "danger" : "ok",
+      title: "Чистая прибыль",
       text:
-        current.freeCashResult < 0
-          ? `После всех расходов минус ${formatCurrency(
-              Math.abs(current.freeCashResult)
-            )}. Нужно смотреть ДДС.`
-          : `После всех расходов осталось ${formatCurrency(current.freeCashResult)}.`,
+        current.netProfit < 0
+          ? `Чистая прибыль отрицательная: ${formatCurrency(
+              current.netProfit
+            )}. Проверь кредиты, личные и финансовые расходы.`
+          : `Чистая прибыль: ${formatCurrency(current.netProfit)}.`,
       href: "/finance/cash-flow",
       icon: "💸",
     },
@@ -1266,15 +1361,15 @@ export default async function HomePage({ searchParams }: Props) {
           />
 
           <MetricCard
-            title="Свободный результат"
-            value={formatCurrency(current.freeCashResult)}
-            subtitle="После всех расходов, кредитов, процентов и личных трат."
+            title="Чистая прибыль"
+            value={formatCurrency(current.netProfit)}
+            subtitle="Операционная прибыль минус кредиты, личные и финансовые расходы."
             icon="₽"
             accent="bg-red-50 text-red-600"
-            valueClassName={valueColor(current.freeCashResult)}
+            valueClassName={valueColor(current.netProfit)}
             trend={buildMoneyTrend({
-              current: current.freeCashResult,
-              previous: previous.freeCashResult,
+              current: current.netProfit,
+              previous: previous.netProfit,
               goodWhen: "up",
             })}
           />
@@ -1303,7 +1398,21 @@ export default async function HomePage({ searchParams }: Props) {
           ozonRevenue={current.ozonRevenue}
         />
 
-        <section className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-4">
+        <section className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-5">
+          <MetricCard
+            title="Денежный поток"
+            value={formatCurrency(current.cashFlowResult)}
+            subtitle="Поступления минус фактические расходы по ДДС."
+            icon="💸"
+            accent="bg-cyan-50 text-cyan-600"
+            valueClassName={valueColor(current.cashFlowResult)}
+            trend={buildMoneyTrend({
+              current: current.cashFlowResult,
+              previous: previous.cashFlowResult,
+              goodWhen: "up",
+            })}
+          />
+
           <MetricCard
             title="Кредитные платежи"
             value={
@@ -1311,7 +1420,7 @@ export default async function HomePage({ searchParams }: Props) {
                 ? formatCurrency(current.loanPayments)
                 : "Нет данных"
             }
-            subtitle="Факт по финансовым операциям за выбранный период."
+            subtitle="Кредиты и займы по финансовым операциям за период."
             icon="💳"
             accent="bg-orange-50 text-orange-600"
             valueClassName={
@@ -1433,7 +1542,8 @@ export default async function HomePage({ searchParams }: Props) {
                 Разрез по ИП
               </h2>
               <p className="mt-2 text-sm text-slate-500">
-                Выручка, реклама, ДРР, кредиты, остатки и ABC по каждой компании.
+                Выручка, реклама, ДРР, кредиты, чистая прибыль, ДДС, остатки и
+                ABC по каждой компании.
               </p>
             </div>
 
@@ -1478,18 +1588,27 @@ export default async function HomePage({ searchParams }: Props) {
 
                       <div
                         className={`w-fit rounded-full px-4 py-2 text-sm font-black ring-1 ${valueTone(
-                          row.operatingProfitAfterTax
+                          row.netProfit
                         )}`}
                       >
-                        {formatCurrency(row.operatingProfitAfterTax)}
+                        {formatCurrency(row.netProfit)}
                       </div>
                     </div>
 
                     <div className="mt-5 grid gap-3 sm:grid-cols-3">
                       <MiniMetric title="WB" value={formatCurrency(row.wbRevenue)} />
-                      <MiniMetric title="Ozon" value={formatCurrency(row.ozonRevenue)} />
-                      <MiniMetric title="Всего" value={formatCurrency(row.totalRevenue)} />
-                      <MiniMetric title="Реклама" value={formatCurrency(row.adsCost)} />
+                      <MiniMetric
+                        title="Ozon"
+                        value={formatCurrency(row.ozonRevenue)}
+                      />
+                      <MiniMetric
+                        title="Всего"
+                        value={formatCurrency(row.totalRevenue)}
+                      />
+                      <MiniMetric
+                        title="Реклама"
+                        value={formatCurrency(row.adsCost)}
+                      />
                       <MiniMetric
                         title="ДРР"
                         value={row.drr !== null ? formatPercent(row.drr) : "—"}
@@ -1499,11 +1618,27 @@ export default async function HomePage({ searchParams }: Props) {
                             : "text-slate-950"
                         }
                       />
-                      <MiniMetric title="Кредиты" value={formatCurrency(row.loanPayments)} />
                       <MiniMetric
-                        title="Свободный результат"
-                        value={formatCurrency(row.freeCashResult)}
-                        tone={valueColor(row.freeCashResult)}
+                        title="Кредиты"
+                        value={formatCurrency(row.loanPayments)}
+                      />
+                      <MiniMetric
+                        title="Чистая прибыль"
+                        value={formatCurrency(row.netProfit)}
+                        tone={valueColor(row.netProfit)}
+                      />
+                      <MiniMetric
+                        title="Денежный поток"
+                        value={formatCurrency(row.cashFlowResult)}
+                        tone={valueColor(row.cashFlowResult)}
+                      />
+                      <MiniMetric
+                        title="Личные расходы"
+                        value={formatCurrency(row.personalExpenses)}
+                      />
+                      <MiniMetric
+                        title="Фин. расходы"
+                        value={formatCurrency(row.financialExpenses)}
                       />
                       <MiniMetric
                         title="Остатки WB"
