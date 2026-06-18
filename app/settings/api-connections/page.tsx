@@ -427,7 +427,7 @@ function getDataTypeTitle(dataType: string) {
 
 function HistoricalProgressRow({ item }: { item: HistoricalDataTypeStats }) {
   return (
-    <div className="grid grid-cols-[88px_1fr_86px_74px_96px] items-center gap-3 border-b border-slate-100 px-4 py-3 text-sm last:border-b-0">
+    <div className="grid grid-cols-[88px_1fr_86px_74px_96px] items-center gap-3 border-b border-slate-100 px-4 py-2.5 text-sm last:border-b-0">
       <div className="font-semibold text-slate-500">
         {getMarketplaceTitle(item.marketplace)}
       </div>
@@ -1014,12 +1014,12 @@ export default async function ApiConnectionsPage({
                   </form>
                 </div>
 
-                <section className="mt-8 rounded-3xl border border-slate-200 bg-slate-50 p-6">
-                  <div className="grid gap-6 xl:grid-cols-[1fr_320px] xl:items-start">
-                    <div>
+                <section className="mt-8 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                  <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+                    <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-3">
-                        <p className="text-xs font-bold uppercase tracking-[0.2em] text-slate-400">
-                          Следующий шаг после API
+                        <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">
+                          Историческая загрузка
                         </p>
 
                         <span
@@ -1029,102 +1029,69 @@ export default async function ApiConnectionsPage({
                         </span>
                       </div>
 
-                      <h3 className="mt-3 text-2xl font-bold tracking-tight text-slate-950">
-                        Историческая загрузка данных
-                      </h3>
+                      <div className="mt-2 flex flex-wrap items-end gap-x-4 gap-y-1">
+                        <h3 className="text-xl font-bold tracking-tight text-slate-950">
+                          Прогресс загрузки старых данных
+                        </h3>
 
-                      <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
-                        Система подтягивает историю по Ozon и Wildberries по
-                        расписанию. Паузы, повторы, лимиты API и продолжение
-                        после временных ошибок обрабатываются внутри.
-                      </p>
-
-                      <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">
-                        {historicalStats.statusText}
-                      </p>
+                        <p className="text-sm text-slate-500">
+                          {historicalStats.statusText}
+                        </p>
+                      </div>
                     </div>
 
-                    <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
-                      <div className="flex items-center justify-between gap-3">
-                        <span className="text-sm font-medium text-slate-500">
-                          Общий прогресс
-                        </span>
-                        <span className="text-2xl font-black text-slate-950">
+                    <div className="grid shrink-0 grid-cols-4 gap-2 rounded-2xl bg-white p-3 shadow-sm ring-1 ring-slate-200">
+                      <div className="min-w-[92px] rounded-xl bg-slate-50 px-3 py-2">
+                        <div className="text-[11px] text-slate-500">
+                          Прогресс
+                        </div>
+                        <div className="mt-1 text-lg font-black text-slate-950">
                           {historicalStats.percent}%
-                        </span>
+                        </div>
                       </div>
 
-                      <div className="mt-4 h-3 overflow-hidden rounded-full bg-slate-200">
-                        <div
-                          className="h-full rounded-full bg-slate-900"
-                          style={{ width: `${historicalStats.percent}%` }}
-                        />
+                      <div className="min-w-[92px] rounded-xl bg-slate-50 px-3 py-2">
+                        <div className="text-[11px] text-slate-500">
+                          Готово
+                        </div>
+                        <div className="mt-1 text-lg font-black text-slate-950">
+                          {historicalStats.completed}
+                          <span className="text-xs font-bold text-slate-400">
+                            {" "}
+                            / {historicalStats.total}
+                          </span>
+                        </div>
                       </div>
 
-                      <div className="mt-4 grid grid-cols-2 gap-3 text-xs">
-                        <div className="rounded-xl bg-slate-50 p-3">
-                          <div className="text-slate-500">Завершено</div>
-                          <div className="mt-1 text-lg font-bold text-slate-950">
-                            {historicalStats.completed}
-                          </div>
+                      <div className="min-w-[92px] rounded-xl bg-slate-50 px-3 py-2">
+                        <div className="text-[11px] text-slate-500">
+                          Очередь
                         </div>
-
-                        <div className="rounded-xl bg-slate-50 p-3">
-                          <div className="text-slate-500">Всего задач</div>
-                          <div className="mt-1 text-lg font-bold text-slate-950">
-                            {historicalStats.total}
-                          </div>
+                        <div className="mt-1 text-lg font-black text-blue-700">
+                          {historicalStats.queued}
                         </div>
+                      </div>
 
-                        <div className="rounded-xl bg-slate-50 p-3">
-                          <div className="text-slate-500">В очереди</div>
-                          <div className="mt-1 text-lg font-bold text-blue-700">
-                            {historicalStats.queued}
-                          </div>
+                      <div className="min-w-[92px] rounded-xl bg-slate-50 px-3 py-2">
+                        <div className="text-[11px] text-slate-500">
+                          Ошибки
                         </div>
-
-                        <div className="rounded-xl bg-slate-50 p-3">
-                          <div className="text-slate-500">Проверить</div>
-                          <div className="mt-1 text-lg font-bold text-red-700">
-                            {historicalStats.needsAttention}
-                          </div>
+                        <div className="mt-1 text-lg font-black text-red-700">
+                          {historicalStats.needsAttention}
                         </div>
                       </div>
                     </div>
                   </div>
 
-                  <div className="mt-5 grid gap-3 text-sm md:grid-cols-4">
-                    <div className="rounded-xl bg-white px-4 py-3 shadow-sm ring-1 ring-slate-200">
-                      <div className="text-xs text-slate-500">Ozon</div>
-                      <div className="mt-1 text-xl font-bold text-slate-950">
-                        {historicalStats.ozonTotal}
-                      </div>
-                    </div>
-
-                    <div className="rounded-xl bg-white px-4 py-3 shadow-sm ring-1 ring-slate-200">
-                      <div className="text-xs text-slate-500">Wildberries</div>
-                      <div className="mt-1 text-xl font-bold text-slate-950">
-                        {historicalStats.wbTotal}
-                      </div>
-                    </div>
-
-                    <div className="rounded-xl bg-white px-4 py-3 shadow-sm ring-1 ring-slate-200">
-                      <div className="text-xs text-slate-500">Ожидает API</div>
-                      <div className="mt-1 text-xl font-bold text-amber-700">
-                        {historicalStats.waiting}
-                      </div>
-                    </div>
-
-                    <div className="rounded-xl bg-white px-4 py-3 shadow-sm ring-1 ring-slate-200">
-                      <div className="text-xs text-slate-500">Выполняется</div>
-                      <div className="mt-1 text-xl font-bold text-blue-700">
-                        {historicalStats.running}
-                      </div>
-                    </div>
+                  <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-200">
+                    <div
+                      className="h-full rounded-full bg-slate-900"
+                      style={{ width: `${historicalStats.percent}%` }}
+                    />
                   </div>
 
-                  <div className="mt-5 overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-slate-200">
-                    <div className="grid grid-cols-[88px_1fr_86px_74px_96px] gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3 text-xs font-bold uppercase tracking-[0.12em] text-slate-400">
+                  <div className="mt-4 overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-slate-200">
+                    <div className="grid grid-cols-[88px_1fr_86px_74px_96px] gap-3 border-b border-slate-200 bg-slate-50 px-4 py-2.5 text-xs font-bold uppercase tracking-[0.12em] text-slate-400">
                       <div>Площадка</div>
                       <div>Данные</div>
                       <div className="text-right">Готово</div>
@@ -1140,7 +1107,7 @@ export default async function ApiConnectionsPage({
                     ))}
                   </div>
 
-                  <div className="mt-5 grid gap-4 xl:grid-cols-2">
+                  <div className="mt-4 grid gap-3 xl:grid-cols-2">
                     <HistoricalJobLine
                       title="Последнее успешно загружено"
                       job={latestJobs.lastSuccess}
@@ -1157,7 +1124,7 @@ export default async function ApiConnectionsPage({
                   <form
                     action="/api/historical-sync/start"
                     method="POST"
-                    className="mt-5 rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200"
+                    className="mt-4 rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-200"
                   >
                     <input type="hidden" name="companyId" value={company.id} />
 
@@ -1197,7 +1164,7 @@ export default async function ApiConnectionsPage({
                       </SubmitButton>
                     </div>
 
-                    <p className="mt-4 text-xs leading-5 text-slate-500">
+                    <p className="mt-3 text-xs leading-5 text-slate-500">
                       Повторный запуск не создаёт уже существующие задачи за тот
                       же период. Временные ошибки маркетплейсов система
                       обрабатывает автоматически.
