@@ -1,4 +1,5 @@
 import Link from "next/link";
+import type { Prisma } from "@prisma/client";
 
 import { prisma } from "@/lib/prisma";
 import SubmitButton from "./SubmitButton";
@@ -25,6 +26,20 @@ type HistoricalGroupRow = {
   _count: {
     _all: number;
   };
+};
+
+type CompanyCountRow = {
+  companyId: string | null;
+  _count: {
+    _all: number;
+  };
+};
+
+type HistoricalSpeedSnapshot = {
+  completedLastHour: number;
+  completedLast6Hours: number;
+  completedLast24Hours: number;
+  stuckRunningJobs: number;
 };
 
 type HistoricalJobPreviewRow = {
@@ -54,9 +69,22 @@ type HistoricalDataTypeStats = {
   running: number;
   waiting: number;
   errors: number;
+  remaining: number;
   percent: number;
   statusLabel: string;
   statusClass: string;
+};
+
+const STUCK_RUNNING_MINUTES = 60;
+
+const visibleHistoricalJobsWhere: Prisma.HistoricalSyncJobWhereInput = {
+  NOT: [
+    {
+      marketplace: "WB",
+      dataType: "SALES",
+      cursorReportNumber: null,
+    },
+  ],
 };
 
 const historicalItems: {
@@ -191,6 +219,40 @@ function simplifyApiError(value: string | null | undefined) {
   return value;
 }
 
+function roundNumber(value: number, digits = 1) {
+  const factor = 10 ** digits;
+  return Math.round(value * factor) / factor;
+}
+
+function formatJobsPerHour(value: number) {
+  if (value <= 0) return "—";
+  return `${roundNumber(value, 1)}/ч`;
+}
+
+function getEstimatedDurationText(hours: number | null) {
+  if (hours === null) {
+    return "—";
+  }
+
+  if (hours <= 1) {
+    return "меньше 1 ч";
+  }
+
+  if (hours < 24) {
+    return `${Math.ceil(hours)} ч`;
+  }
+
+  return `${Math.ceil(hours / 24)} дн`;
+}
+
+function getCompanyCount(rows: CompanyCountRow[], companyId: string) {
+  return rows.find((row) => row.companyId === companyId)?._count._all ?? 0;
+}
+
+function getStuckRunningBeforeDate() {
+  return new Date(Date.now() - STUCK_RUNNING_MINUTES * 60 * 1000);
+}
+
 function countStatus(
   groups: HistoricalGroupRow[],
   marketplace: string,
@@ -266,7 +328,11 @@ function getDataTypeStatus(item: {
   };
 }
 
-function buildHistoricalStats(groups: HistoricalGroupRow[], companyId: string) {
+function buildHistoricalStats(
+  groups: HistoricalGroupRow[],
+  companyId: string,
+  speed: HistoricalSpeedSnapshot
+) {
   const companyGroups = groups.filter((group) => group.companyId === companyId);
 
   const dataTypeStats: HistoricalDataTypeStats[] = historicalItems.map((item) => {
@@ -307,6 +373,7 @@ function buildHistoricalStats(groups: HistoricalGroupRow[], companyId: string) {
       ["ERROR"]
     );
 
+    const remaining = queued + running + waiting + errors;
     const percent = total > 0 ? Math.round((completed / total) * 100) : 0;
     const status = getDataTypeStatus({
       total,
@@ -325,6 +392,7 @@ function buildHistoricalStats(groups: HistoricalGroupRow[], companyId: string) {
       running,
       waiting,
       errors,
+      remaining,
       percent,
       statusLabel: status.statusLabel,
       statusClass: status.statusClass,
@@ -341,6 +409,8 @@ function buildHistoricalStats(groups: HistoricalGroupRow[], companyId: string) {
     0
   );
 
+  const remaining = queued + running + waiting + needsAttention;
+
   const ozonTotal = dataTypeStats
     .filter((item) => item.marketplace === "OZON")
     .reduce((sum, item) => sum + item.total, 0);
@@ -351,21 +421,34 @@ function buildHistoricalStats(groups: HistoricalGroupRow[], companyId: string) {
 
   const percent = total > 0 ? Math.round((completed / total) * 100) : 0;
 
+  const averageJobsPerHourBy6Hours =
+    speed.completedLast6Hours > 0 ? speed.completedLast6Hours / 6 : 0;
+
+  const averageJobsPerHourBy24Hours =
+    speed.completedLast24Hours > 0 ? speed.completedLast24Hours / 24 : 0;
+
+  const averageJobsPerHour =
+    averageJobsPerHourBy6Hours > 0
+      ? averageJobsPerHourBy6Hours
+      : averageJobsPerHourBy24Hours;
+
+  const estimatedHoursRemaining =
+    averageJobsPerHour > 0
+      ? roundNumber(remaining / averageJobsPerHour, 1)
+      : null;
+
+  const problemsCount = needsAttention + waiting + speed.stuckRunningJobs;
+
   let statusLabel = "Не запускалась";
   let statusText =
     "После подключения API можно загрузить старые данные за прошлые периоды.";
   let statusClass = "bg-slate-100 text-slate-700 ring-1 ring-slate-200";
 
-  if (needsAttention > 0) {
+  if (problemsCount > 0) {
     statusLabel = "Нужна проверка";
     statusText =
-      "Есть ошибка, которую система не смогла решить сама. Проверь API-ключи и доступы маркетплейса.";
+      "Есть ошибки, лимиты API или зависшие задачи. Система часть проблем решит сама, но блок стоит держать под контролем.";
     statusClass = "bg-red-50 text-red-700 ring-1 ring-red-200";
-  } else if (waiting > 0) {
-    statusLabel = "Ожидаем API";
-    statusText =
-      "Маркетплейс временно ограничил ответ. Система продолжит загрузку автоматически.";
-    statusClass = "bg-amber-50 text-amber-700 ring-1 ring-amber-200";
   } else if (running > 0) {
     statusLabel = "Идёт загрузка";
     statusText =
@@ -389,6 +472,9 @@ function buildHistoricalStats(groups: HistoricalGroupRow[], companyId: string) {
     running,
     waiting,
     needsAttention,
+    problemsCount,
+    stuckRunningJobs: speed.stuckRunningJobs,
+    remaining,
     ozonTotal,
     wbTotal,
     percent,
@@ -396,6 +482,14 @@ function buildHistoricalStats(groups: HistoricalGroupRow[], companyId: string) {
     statusText,
     statusClass,
     dataTypeStats,
+    speed: {
+      completedLastHour: speed.completedLastHour,
+      completedLast6Hours: speed.completedLast6Hours,
+      completedLast24Hours: speed.completedLast24Hours,
+      averageJobsPerHour: roundNumber(averageJobsPerHour, 2),
+      estimatedHoursRemaining,
+      estimatedDurationText: getEstimatedDurationText(estimatedHoursRemaining),
+    },
   };
 }
 
@@ -525,6 +619,12 @@ export default async function ApiConnectionsPage({
   const resolvedSearchParams = searchParams ? await searchParams : {};
   const historicalNotice = getHistoricalNotice(resolvedSearchParams);
 
+  const now = new Date();
+  const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
+  const sixHoursAgo = new Date(now.getTime() - 6 * 60 * 60 * 1000);
+  const twentyFourHoursAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+  const stuckRunningBefore = getStuckRunningBeforeDate();
+
   const companies = await prisma.$queryRaw<CompanyRow[]>`
     select "id", "name"
     from "Company"
@@ -536,60 +636,116 @@ export default async function ApiConnectionsPage({
     orderBy: [{ companyId: "asc" }, { marketplace: "asc" }],
   });
 
-  const historicalGroups = await prisma.historicalSyncJob.groupBy({
-    by: ["companyId", "marketplace", "dataType", "status"],
-    where: {
-      NOT: [
-        {
-          marketplace: "WB",
-          dataType: "SALES",
-          cursorReportNumber: null,
-        },
-      ],
-    },
-    _count: {
-      _all: true,
-    },
-    orderBy: [
-      { companyId: "asc" },
-      { marketplace: "asc" },
-      { dataType: "asc" },
-      { status: "asc" },
-    ],
-  });
-
-  const historicalLatestJobs = await prisma.historicalSyncJob.findMany({
-    where: {
-      status: {
-        in: ["SUCCESS", "ERROR", "RATE_LIMITED"],
+  const [
+    historicalGroups,
+    historicalLatestJobs,
+    completedLastHourRows,
+    completedLast6HoursRows,
+    completedLast24HoursRows,
+    stuckRunningRows,
+  ] = await Promise.all([
+    prisma.historicalSyncJob.groupBy({
+      by: ["companyId", "marketplace", "dataType", "status"],
+      where: visibleHistoricalJobsWhere,
+      _count: {
+        _all: true,
       },
-      NOT: [
-        {
-          marketplace: "WB",
-          dataType: "SALES",
-          cursorReportNumber: null,
-        },
+      orderBy: [
+        { companyId: "asc" },
+        { marketplace: "asc" },
+        { dataType: "asc" },
+        { status: "asc" },
       ],
-    },
-    orderBy: [{ updatedAt: "desc" }],
-    take: 100,
-    select: {
-      companyId: true,
-      companyName: true,
-      marketplace: true,
-      dataType: true,
-      status: true,
-      dateFrom: true,
-      dateTo: true,
-      cursorOffset: true,
-      cursorReportNumber: true,
-      retryCount: true,
-      lastError: true,
-      lastAttemptAt: true,
-      finishedAt: true,
-      updatedAt: true,
-    },
-  });
+    }),
+    prisma.historicalSyncJob.findMany({
+      where: {
+        ...visibleHistoricalJobsWhere,
+        status: {
+          in: ["SUCCESS", "ERROR", "RATE_LIMITED"],
+        },
+      },
+      orderBy: [{ updatedAt: "desc" }],
+      take: 100,
+      select: {
+        companyId: true,
+        companyName: true,
+        marketplace: true,
+        dataType: true,
+        status: true,
+        dateFrom: true,
+        dateTo: true,
+        cursorOffset: true,
+        cursorReportNumber: true,
+        retryCount: true,
+        lastError: true,
+        lastAttemptAt: true,
+        finishedAt: true,
+        updatedAt: true,
+      },
+    }),
+    prisma.historicalSyncJob.groupBy({
+      by: ["companyId"],
+      where: {
+        ...visibleHistoricalJobsWhere,
+        status: "SUCCESS",
+        finishedAt: {
+          gte: oneHourAgo,
+        },
+      },
+      _count: {
+        _all: true,
+      },
+    }),
+    prisma.historicalSyncJob.groupBy({
+      by: ["companyId"],
+      where: {
+        ...visibleHistoricalJobsWhere,
+        status: "SUCCESS",
+        finishedAt: {
+          gte: sixHoursAgo,
+        },
+      },
+      _count: {
+        _all: true,
+      },
+    }),
+    prisma.historicalSyncJob.groupBy({
+      by: ["companyId"],
+      where: {
+        ...visibleHistoricalJobsWhere,
+        status: "SUCCESS",
+        finishedAt: {
+          gte: twentyFourHoursAgo,
+        },
+      },
+      _count: {
+        _all: true,
+      },
+    }),
+    prisma.historicalSyncJob.groupBy({
+      by: ["companyId"],
+      where: {
+        ...visibleHistoricalJobsWhere,
+        status: "RUNNING",
+        OR: [
+          {
+            lastAttemptAt: {
+              lte: stuckRunningBefore,
+            },
+          },
+          {
+            lastAttemptAt: null,
+            updatedAt: {
+              lte: stuckRunningBefore,
+            },
+          },
+        ],
+      },
+      _count: {
+        _all: true,
+      },
+    }),
+  ]);
 
   function getConnection(companyId: string, marketplace: string) {
     return connections.find(
@@ -597,6 +753,15 @@ export default async function ApiConnectionsPage({
         connection.companyId === companyId &&
         connection.marketplace === marketplace
     );
+  }
+
+  function getHistoricalSpeedSnapshot(companyId: string): HistoricalSpeedSnapshot {
+    return {
+      completedLastHour: getCompanyCount(completedLastHourRows, companyId),
+      completedLast6Hours: getCompanyCount(completedLast6HoursRows, companyId),
+      completedLast24Hours: getCompanyCount(completedLast24HoursRows, companyId),
+      stuckRunningJobs: getCompanyCount(stuckRunningRows, companyId),
+    };
   }
 
   const buttonBase =
@@ -678,7 +843,8 @@ export default async function ApiConnectionsPage({
             const ozon = getConnection(company.id, "OZON");
             const historicalStats = buildHistoricalStats(
               historicalGroups,
-              company.id
+              company.id,
+              getHistoricalSpeedSnapshot(company.id)
             );
 
             const latestJobs = getCompanyLatestJobs(
@@ -1038,9 +1204,24 @@ export default async function ApiConnectionsPage({
                           {historicalStats.statusText}
                         </p>
                       </div>
+
+                      <div className="mt-3 flex flex-wrap gap-2 text-xs font-semibold text-slate-600">
+                        <span className="rounded-full bg-white px-3 py-1 ring-1 ring-slate-200">
+                          Ozon задач: {historicalStats.ozonTotal}
+                        </span>
+                        <span className="rounded-full bg-white px-3 py-1 ring-1 ring-slate-200">
+                          WB задач: {historicalStats.wbTotal}
+                        </span>
+                        <span className="rounded-full bg-white px-3 py-1 ring-1 ring-slate-200">
+                          За 1 час: {historicalStats.speed.completedLastHour}
+                        </span>
+                        <span className="rounded-full bg-white px-3 py-1 ring-1 ring-slate-200">
+                          За 24 часа: {historicalStats.speed.completedLast24Hours}
+                        </span>
+                      </div>
                     </div>
 
-                    <div className="grid shrink-0 grid-cols-4 gap-2 rounded-2xl bg-white p-3 shadow-sm ring-1 ring-slate-200">
+                    <div className="grid shrink-0 grid-cols-2 gap-2 rounded-2xl bg-white p-3 shadow-sm ring-1 ring-slate-200 md:grid-cols-3 xl:grid-cols-6">
                       <div className="min-w-[92px] rounded-xl bg-slate-50 px-3 py-2">
                         <div className="text-[11px] text-slate-500">
                           Прогресс
@@ -1065,19 +1246,45 @@ export default async function ApiConnectionsPage({
 
                       <div className="min-w-[92px] rounded-xl bg-slate-50 px-3 py-2">
                         <div className="text-[11px] text-slate-500">
-                          Очередь
+                          Осталось
                         </div>
                         <div className="mt-1 text-lg font-black text-blue-700">
-                          {historicalStats.queued}
+                          {historicalStats.remaining}
                         </div>
                       </div>
 
                       <div className="min-w-[92px] rounded-xl bg-slate-50 px-3 py-2">
                         <div className="text-[11px] text-slate-500">
-                          Ошибки
+                          Скорость
                         </div>
-                        <div className="mt-1 text-lg font-black text-red-700">
-                          {historicalStats.needsAttention}
+                        <div className="mt-1 text-lg font-black text-slate-950">
+                          {formatJobsPerHour(
+                            historicalStats.speed.averageJobsPerHour
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="min-w-[92px] rounded-xl bg-slate-50 px-3 py-2">
+                        <div className="text-[11px] text-slate-500">
+                          Прогноз
+                        </div>
+                        <div className="mt-1 text-lg font-black text-slate-950">
+                          {historicalStats.speed.estimatedDurationText}
+                        </div>
+                      </div>
+
+                      <div className="min-w-[92px] rounded-xl bg-slate-50 px-3 py-2">
+                        <div className="text-[11px] text-slate-500">
+                          Проблемы
+                        </div>
+                        <div
+                          className={`mt-1 text-lg font-black ${
+                            historicalStats.problemsCount > 0
+                              ? "text-red-700"
+                              : "text-emerald-700"
+                          }`}
+                        >
+                          {historicalStats.problemsCount}
                         </div>
                       </div>
                     </div>
@@ -1088,6 +1295,33 @@ export default async function ApiConnectionsPage({
                       className="h-full rounded-full bg-slate-900"
                       style={{ width: `${historicalStats.percent}%` }}
                     />
+                  </div>
+
+                  <div className="mt-3 grid gap-2 text-xs font-semibold text-slate-600 md:grid-cols-4">
+                    <div className="rounded-xl bg-white px-3 py-2 ring-1 ring-slate-200">
+                      В очереди:{" "}
+                      <span className="font-black text-blue-700">
+                        {historicalStats.queued}
+                      </span>
+                    </div>
+                    <div className="rounded-xl bg-white px-3 py-2 ring-1 ring-slate-200">
+                      Выполняется:{" "}
+                      <span className="font-black text-slate-950">
+                        {historicalStats.running}
+                      </span>
+                    </div>
+                    <div className="rounded-xl bg-white px-3 py-2 ring-1 ring-slate-200">
+                      Лимиты API:{" "}
+                      <span className="font-black text-amber-700">
+                        {historicalStats.waiting}
+                      </span>
+                    </div>
+                    <div className="rounded-xl bg-white px-3 py-2 ring-1 ring-slate-200">
+                      Зависшие:{" "}
+                      <span className="font-black text-red-700">
+                        {historicalStats.stuckRunningJobs}
+                      </span>
+                    </div>
                   </div>
 
                   <div className="mt-4 overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-slate-200">
@@ -1167,14 +1401,16 @@ export default async function ApiConnectionsPage({
                     <p className="mt-3 text-xs leading-5 text-slate-500">
                       Повторный запуск не создаёт уже существующие задачи за тот
                       же период. Временные ошибки маркетплейсов система
-                      обрабатывает автоматически.
+                      обрабатывает автоматически. Прогноз времени считается по
+                      текущей скорости загрузки и может меняться.
                     </p>
 
-                    {historicalStats.needsAttention > 0 ? (
+                    {historicalStats.problemsCount > 0 ? (
                       <div className="mt-4 rounded-xl border border-red-200 bg-red-50 p-4 text-sm leading-6 text-red-800">
-                        Есть данные, которые не удалось загрузить. Обычно это
-                        связано с API-ключом или доступами в кабинете
-                        маркетплейса. Проверь подключение выше.
+                        Есть данные, которые требуют внимания: ошибки, лимиты API
+                        или зависшие задачи. Обычно временные лимиты система
+                        переждёт сама, но если ошибка повторяется — проверь
+                        подключение выше.
                       </div>
                     ) : null}
                   </form>
