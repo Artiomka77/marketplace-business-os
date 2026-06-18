@@ -64,36 +64,12 @@ const historicalItems: {
   dataType: "FINANCE" | "ADS" | "PRODUCTS" | "SALES";
   title: string;
 }[] = [
-  {
-    marketplace: "OZON",
-    dataType: "FINANCE",
-    title: "Финансы",
-  },
-  {
-    marketplace: "OZON",
-    dataType: "ADS",
-    title: "Реклама",
-  },
-  {
-    marketplace: "OZON",
-    dataType: "PRODUCTS",
-    title: "Товары",
-  },
-  {
-    marketplace: "WB",
-    dataType: "FINANCE",
-    title: "Финансы",
-  },
-  {
-    marketplace: "WB",
-    dataType: "SALES",
-    title: "Продажи",
-  },
-  {
-    marketplace: "WB",
-    dataType: "ADS",
-    title: "Реклама",
-  },
+  { marketplace: "OZON", dataType: "FINANCE", title: "Финансы" },
+  { marketplace: "OZON", dataType: "ADS", title: "Реклама" },
+  { marketplace: "OZON", dataType: "PRODUCTS", title: "Товары" },
+  { marketplace: "WB", dataType: "FINANCE", title: "Финансы" },
+  { marketplace: "WB", dataType: "SALES", title: "Продажи" },
+  { marketplace: "WB", dataType: "ADS", title: "Реклама" },
 ];
 
 function maskSecret(value: string | null | undefined) {
@@ -121,7 +97,10 @@ function formatShortDate(value: Date | null | undefined) {
   }).format(value);
 }
 
-function formatPeriod(dateFrom: Date | null | undefined, dateTo: Date | null | undefined) {
+function formatPeriod(
+  dateFrom: Date | null | undefined,
+  dateTo: Date | null | undefined
+) {
   return `${formatShortDate(dateFrom)} — ${formatShortDate(dateTo)}`;
 }
 
@@ -158,7 +137,8 @@ function getHistoricalNotice(searchParams: SearchParams) {
 
   if (status === "started") {
     const createdJobs = getParamValue(searchParams, "createdJobs") ?? "0";
-    const initialCompleted = getParamValue(searchParams, "initialCompleted") ?? "0";
+    const initialCompleted =
+      getParamValue(searchParams, "initialCompleted") ?? "0";
 
     return {
       type: "success" as const,
@@ -178,6 +158,37 @@ function getHistoricalNotice(searchParams: SearchParams) {
   }
 
   return null;
+}
+
+function simplifyApiError(value: string | null | undefined) {
+  if (!value) return "—";
+
+  const text = value.toLowerCase();
+
+  if (
+    text.includes("ozon") &&
+    (text.includes("429") ||
+      text.includes("rate limit") ||
+      text.includes("rate exceeded"))
+  ) {
+    return "Ozon временно ограничил запросы. Система повторит загрузку позже. Не запускай ручную синхронизацию, пока идёт историческая загрузка.";
+  }
+
+  if (
+    text.includes("wb") &&
+    (text.includes("429") ||
+      text.includes("too many requests") ||
+      text.includes("rate limit") ||
+      text.includes("limited by global limiter"))
+  ) {
+    return "Wildberries временно ограничил запросы. Система подождёт и продолжит загрузку автоматически.";
+  }
+
+  if (text.includes("fetch failed")) {
+    return "Временный сетевой сбой при обращении к API. Обычно проходит при следующей автоматической попытке.";
+  }
+
+  return value;
 }
 
 function countStatus(
@@ -216,21 +227,21 @@ function getDataTypeStatus(item: {
 
   if (item.errors > 0) {
     return {
-      statusLabel: "Нужна проверка",
+      statusLabel: "Проверить",
       statusClass: "bg-red-50 text-red-700 ring-1 ring-red-200",
     };
   }
 
   if (item.waiting > 0) {
     return {
-      statusLabel: "Ожидает API",
+      statusLabel: "Ожидание",
       statusClass: "bg-amber-50 text-amber-700 ring-1 ring-amber-200",
     };
   }
 
   if (item.running > 0) {
     return {
-      statusLabel: "Загружается",
+      statusLabel: "Идёт",
       statusClass: "bg-blue-50 text-blue-700 ring-1 ring-blue-200",
     };
   }
@@ -244,13 +255,13 @@ function getDataTypeStatus(item: {
 
   if (item.completed === item.total) {
     return {
-      statusLabel: "Завершено",
+      statusLabel: "Готово",
       statusClass: "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200",
     };
   }
 
   return {
-    statusLabel: "В обработке",
+    statusLabel: "В работе",
     statusClass: "bg-blue-50 text-blue-700 ring-1 ring-blue-200",
   };
 }
@@ -259,31 +270,42 @@ function buildHistoricalStats(groups: HistoricalGroupRow[], companyId: string) {
   const companyGroups = groups.filter((group) => group.companyId === companyId);
 
   const dataTypeStats: HistoricalDataTypeStats[] = historicalItems.map((item) => {
-    const total = countStatus(
+    const total = countStatus(companyGroups, item.marketplace, item.dataType);
+
+    const completed = countStatus(
       companyGroups,
       item.marketplace,
-      item.dataType
+      item.dataType,
+      ["SUCCESS"]
     );
 
-    const completed = countStatus(companyGroups, item.marketplace, item.dataType, [
-      "SUCCESS",
-    ]);
+    const queued = countStatus(
+      companyGroups,
+      item.marketplace,
+      item.dataType,
+      ["PENDING"]
+    );
 
-    const queued = countStatus(companyGroups, item.marketplace, item.dataType, [
-      "PENDING",
-    ]);
+    const running = countStatus(
+      companyGroups,
+      item.marketplace,
+      item.dataType,
+      ["RUNNING"]
+    );
 
-    const running = countStatus(companyGroups, item.marketplace, item.dataType, [
-      "RUNNING",
-    ]);
+    const waiting = countStatus(
+      companyGroups,
+      item.marketplace,
+      item.dataType,
+      ["RATE_LIMITED"]
+    );
 
-    const waiting = countStatus(companyGroups, item.marketplace, item.dataType, [
-      "RATE_LIMITED",
-    ]);
-
-    const errors = countStatus(companyGroups, item.marketplace, item.dataType, [
-      "ERROR",
-    ]);
+    const errors = countStatus(
+      companyGroups,
+      item.marketplace,
+      item.dataType,
+      ["ERROR"]
+    );
 
     const percent = total > 0 ? Math.round((completed / total) * 100) : 0;
     const status = getDataTypeStatus({
@@ -314,7 +336,10 @@ function buildHistoricalStats(groups: HistoricalGroupRow[], companyId: string) {
   const queued = dataTypeStats.reduce((sum, item) => sum + item.queued, 0);
   const running = dataTypeStats.reduce((sum, item) => sum + item.running, 0);
   const waiting = dataTypeStats.reduce((sum, item) => sum + item.waiting, 0);
-  const needsAttention = dataTypeStats.reduce((sum, item) => sum + item.errors, 0);
+  const needsAttention = dataTypeStats.reduce(
+    (sum, item) => sum + item.errors,
+    0
+  );
 
   const ozonTotal = dataTypeStats
     .filter((item) => item.marketplace === "OZON")
@@ -337,14 +362,14 @@ function buildHistoricalStats(groups: HistoricalGroupRow[], companyId: string) {
       "Есть ошибка, которую система не смогла решить сама. Проверь API-ключи и доступы маркетплейса.";
     statusClass = "bg-red-50 text-red-700 ring-1 ring-red-200";
   } else if (waiting > 0) {
-    statusLabel = "Ожидаем маркетплейс";
+    statusLabel = "Ожидаем API";
     statusText =
       "Маркетплейс временно ограничил ответ. Система продолжит загрузку автоматически.";
     statusClass = "bg-amber-50 text-amber-700 ring-1 ring-amber-200";
   } else if (running > 0) {
     statusLabel = "Идёт загрузка";
     statusText =
-      "Одна из задач выполняется прямо сейчас. Можно продолжать работу, система обновит статус автоматически.";
+      "Одна из задач выполняется прямо сейчас. Можно продолжать работу.";
     statusClass = "bg-blue-50 text-blue-700 ring-1 ring-blue-200";
   } else if (queued > 0) {
     statusLabel = "В очереди";
@@ -378,14 +403,11 @@ function getCompanyLatestJobs(jobs: HistoricalJobPreviewRow[], companyId: string
   const companyJobs = jobs.filter((job) => job.companyId === companyId);
 
   return {
-    lastSuccess:
-      companyJobs.find((job) => job.status === "SUCCESS") ?? null,
+    lastSuccess: companyJobs.find((job) => job.status === "SUCCESS") ?? null,
     lastIssue:
       companyJobs.find((job) =>
         ["ERROR", "RATE_LIMITED"].includes(job.status)
       ) ?? null,
-    lastRunning:
-      companyJobs.find((job) => job.status === "RUNNING") ?? null,
   };
 }
 
@@ -403,68 +425,38 @@ function getDataTypeTitle(dataType: string) {
   return dataType;
 }
 
-function HistoricalDataTypeCard({ item }: { item: HistoricalDataTypeStats }) {
+function HistoricalProgressRow({ item }: { item: HistoricalDataTypeStats }) {
   return (
-    <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-200">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <div className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">
-            {getMarketplaceTitle(item.marketplace)}
-          </div>
-          <h5 className="mt-1 text-base font-bold text-slate-950">
-            {item.title}
-          </h5>
-        </div>
+    <div className="grid grid-cols-[88px_1fr_86px_74px_96px] items-center gap-3 border-b border-slate-100 px-4 py-3 text-sm last:border-b-0">
+      <div className="font-semibold text-slate-500">
+        {getMarketplaceTitle(item.marketplace)}
+      </div>
 
+      <div>
+        <div className="font-bold text-slate-950">{item.title}</div>
+        <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-slate-200">
+          <div
+            className="h-full rounded-full bg-slate-900"
+            style={{ width: `${item.percent}%` }}
+          />
+        </div>
+      </div>
+
+      <div className="text-right font-bold text-slate-950">
+        {item.completed}
+        <span className="font-semibold text-slate-400"> / {item.total}</span>
+      </div>
+
+      <div className="text-right font-bold text-slate-950">
+        {item.percent}%
+      </div>
+
+      <div className="text-right">
         <span
-          className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-bold ${item.statusClass}`}
+          className={`inline-flex rounded-full px-2.5 py-1 text-xs font-bold ${item.statusClass}`}
         >
           {item.statusLabel}
         </span>
-      </div>
-
-      <div className="mt-4 flex items-end justify-between gap-3">
-        <div>
-          <div className="text-2xl font-black text-slate-950">
-            {item.completed}
-            <span className="text-sm font-bold text-slate-400">
-              {" "}
-              / {item.total}
-            </span>
-          </div>
-          <div className="mt-1 text-xs text-slate-500">завершено</div>
-        </div>
-
-        <div className="text-right">
-          <div className="text-xl font-black text-slate-950">
-            {item.percent}%
-          </div>
-          <div className="mt-1 text-xs text-slate-500">прогресс</div>
-        </div>
-      </div>
-
-      <div className="mt-4 h-2 overflow-hidden rounded-full bg-slate-200">
-        <div
-          className="h-full rounded-full bg-slate-900"
-          style={{ width: `${item.percent}%` }}
-        />
-      </div>
-
-      <div className="mt-4 grid grid-cols-3 gap-2 text-xs">
-        <div className="rounded-xl bg-slate-50 p-2">
-          <div className="text-slate-500">Очередь</div>
-          <div className="mt-1 font-bold text-slate-950">{item.queued}</div>
-        </div>
-
-        <div className="rounded-xl bg-slate-50 p-2">
-          <div className="text-slate-500">Ожидание</div>
-          <div className="mt-1 font-bold text-amber-700">{item.waiting}</div>
-        </div>
-
-        <div className="rounded-xl bg-slate-50 p-2">
-          <div className="text-slate-500">Ошибки</div>
-          <div className="mt-1 font-bold text-red-700">{item.errors}</div>
-        </div>
       </div>
     </div>
   );
@@ -516,7 +508,7 @@ function HistoricalJobLine({
 
       {job.lastError ? (
         <div className="mt-2 max-h-24 overflow-auto whitespace-pre-wrap break-words text-xs opacity-80">
-          {job.lastError}
+          {simplifyApiError(job.lastError)}
         </div>
       ) : null}
 
@@ -559,25 +551,17 @@ export default async function ApiConnectionsPage({
       _all: true,
     },
     orderBy: [
-      {
-        companyId: "asc",
-      },
-      {
-        marketplace: "asc",
-      },
-      {
-        dataType: "asc",
-      },
-      {
-        status: "asc",
-      },
+      { companyId: "asc" },
+      { marketplace: "asc" },
+      { dataType: "asc" },
+      { status: "asc" },
     ],
   });
 
   const historicalLatestJobs = await prisma.historicalSyncJob.findMany({
     where: {
       status: {
-        in: ["SUCCESS", "ERROR", "RATE_LIMITED", "RUNNING"],
+        in: ["SUCCESS", "ERROR", "RATE_LIMITED"],
       },
       NOT: [
         {
@@ -587,11 +571,7 @@ export default async function ApiConnectionsPage({
         },
       ],
     },
-    orderBy: [
-      {
-        updatedAt: "desc",
-      },
-    ],
+    orderBy: [{ updatedAt: "desc" }],
     take: 100,
     select: {
       companyId: true,
@@ -706,14 +686,6 @@ export default async function ApiConnectionsPage({
               company.id
             );
 
-            const ozonStats = historicalStats.dataTypeStats.filter(
-              (item) => item.marketplace === "OZON"
-            );
-
-            const wbStats = historicalStats.dataTypeStats.filter(
-              (item) => item.marketplace === "WB"
-            );
-
             return (
               <div
                 key={company.id}
@@ -802,7 +774,7 @@ export default async function ApiConnectionsPage({
                         <div>
                           <div className="text-slate-500">Последняя ошибка</div>
                           <div className="mt-1 max-h-32 overflow-auto whitespace-pre-wrap break-words font-semibold text-slate-900">
-                            {wb?.lastError || "—"}
+                            {simplifyApiError(wb?.lastError)}
                           </div>
                         </div>
                       </div>
@@ -916,8 +888,7 @@ export default async function ApiConnectionsPage({
                               className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm transition focus:border-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-200"
                             />
                             <p className="mt-2 text-xs text-slate-500">
-                              Пустые поля не перезаписывают уже сохранённые
-                              ключи.
+                              Пустые поля не перезаписывают уже сохранённые ключи.
                             </p>
                           </div>
                         </div>
@@ -928,8 +899,8 @@ export default async function ApiConnectionsPage({
                           Ozon Performance API
                         </h4>
                         <p className="mt-1 text-sm text-slate-500">
-                          Используется только для рекламы Ozon: расходы,
-                          показы, клики и кампании.
+                          Используется только для рекламы Ozon: расходы, показы,
+                          клики и кампании.
                         </p>
 
                         <div className="mt-4 space-y-4">
@@ -962,8 +933,8 @@ export default async function ApiConnectionsPage({
                               className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm transition focus:border-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-200"
                             />
                             <p className="mt-2 text-xs text-slate-500">
-                              Эти поля можно оставить пустыми, пока не
-                              подключаем рекламу Ozon.
+                              Эти поля можно оставить пустыми, пока не подключаем
+                              рекламу Ozon.
                             </p>
                           </div>
                         </div>
@@ -997,7 +968,7 @@ export default async function ApiConnectionsPage({
                         <div>
                           <div className="text-slate-500">Последняя ошибка</div>
                           <div className="mt-1 max-h-32 overflow-auto whitespace-pre-wrap break-words font-semibold text-slate-900">
-                            {ozon?.lastError || "—"}
+                            {simplifyApiError(ozon?.lastError)}
                           </div>
                         </div>
                       </div>
@@ -1044,8 +1015,8 @@ export default async function ApiConnectionsPage({
                 </div>
 
                 <section className="mt-8 rounded-3xl border border-slate-200 bg-slate-50 p-6">
-                  <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
-                    <div className="max-w-3xl">
+                  <div className="grid gap-6 xl:grid-cols-[1fr_320px] xl:items-start">
+                    <div>
                       <div className="flex flex-wrap items-center gap-3">
                         <p className="text-xs font-bold uppercase tracking-[0.2em] text-slate-400">
                           Следующий шаг после API
@@ -1062,18 +1033,18 @@ export default async function ApiConnectionsPage({
                         Историческая загрузка данных
                       </h3>
 
-                      <p className="mt-2 text-sm leading-6 text-slate-600">
-                        Система постепенно подтягивает старые данные по Ozon и
-                        Wildberries. Паузы, повторы, лимиты API и продолжение
+                      <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
+                        Система подтягивает историю по Ozon и Wildberries по
+                        расписанию. Паузы, повторы, лимиты API и продолжение
                         после временных ошибок обрабатываются внутри.
                       </p>
 
-                      <p className="mt-2 text-sm leading-6 text-slate-500">
+                      <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">
                         {historicalStats.statusText}
                       </p>
                     </div>
 
-                    <div className="w-full rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200 xl:w-[340px]">
+                    <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
                       <div className="flex items-center justify-between gap-3">
                         <span className="text-sm font-medium text-slate-500">
                           Общий прогресс
@@ -1122,79 +1093,54 @@ export default async function ApiConnectionsPage({
                     </div>
                   </div>
 
-                  <div className="mt-6 grid gap-3 text-sm md:grid-cols-4">
-                    <div className="rounded-xl bg-white p-4 shadow-sm ring-1 ring-slate-200">
-                      <div className="text-slate-500">Ozon задач</div>
-                      <div className="mt-1 text-2xl font-bold text-slate-950">
+                  <div className="mt-5 grid gap-3 text-sm md:grid-cols-4">
+                    <div className="rounded-xl bg-white px-4 py-3 shadow-sm ring-1 ring-slate-200">
+                      <div className="text-xs text-slate-500">Ozon</div>
+                      <div className="mt-1 text-xl font-bold text-slate-950">
                         {historicalStats.ozonTotal}
                       </div>
                     </div>
 
-                    <div className="rounded-xl bg-white p-4 shadow-sm ring-1 ring-slate-200">
-                      <div className="text-slate-500">Wildberries задач</div>
-                      <div className="mt-1 text-2xl font-bold text-slate-950">
+                    <div className="rounded-xl bg-white px-4 py-3 shadow-sm ring-1 ring-slate-200">
+                      <div className="text-xs text-slate-500">Wildberries</div>
+                      <div className="mt-1 text-xl font-bold text-slate-950">
                         {historicalStats.wbTotal}
                       </div>
                     </div>
 
-                    <div className="rounded-xl bg-white p-4 shadow-sm ring-1 ring-slate-200">
-                      <div className="text-slate-500">Ожидает API</div>
-                      <div className="mt-1 text-2xl font-bold text-amber-700">
+                    <div className="rounded-xl bg-white px-4 py-3 shadow-sm ring-1 ring-slate-200">
+                      <div className="text-xs text-slate-500">Ожидает API</div>
+                      <div className="mt-1 text-xl font-bold text-amber-700">
                         {historicalStats.waiting}
                       </div>
                     </div>
 
-                    <div className="rounded-xl bg-white p-4 shadow-sm ring-1 ring-slate-200">
-                      <div className="text-slate-500">Сейчас выполняется</div>
-                      <div className="mt-1 text-2xl font-bold text-blue-700">
+                    <div className="rounded-xl bg-white px-4 py-3 shadow-sm ring-1 ring-slate-200">
+                      <div className="text-xs text-slate-500">Выполняется</div>
+                      <div className="mt-1 text-xl font-bold text-blue-700">
                         {historicalStats.running}
                       </div>
                     </div>
                   </div>
 
-                  <div className="mt-6 grid gap-4 xl:grid-cols-2">
-                    <div>
-                      <div className="mb-3 flex items-center justify-between">
-                        <h4 className="text-lg font-bold text-slate-950">
-                          Ozon
-                        </h4>
-                        <span className="rounded-full bg-white px-3 py-1 text-xs font-bold text-slate-500 ring-1 ring-slate-200">
-                          {historicalStats.ozonTotal} задач
-                        </span>
-                      </div>
-
-                      <div className="grid gap-3">
-                        {ozonStats.map((item) => (
-                          <HistoricalDataTypeCard
-                            key={`${item.marketplace}-${item.dataType}`}
-                            item={item}
-                          />
-                        ))}
-                      </div>
+                  <div className="mt-5 overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-slate-200">
+                    <div className="grid grid-cols-[88px_1fr_86px_74px_96px] gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3 text-xs font-bold uppercase tracking-[0.12em] text-slate-400">
+                      <div>Площадка</div>
+                      <div>Данные</div>
+                      <div className="text-right">Готово</div>
+                      <div className="text-right">%</div>
+                      <div className="text-right">Статус</div>
                     </div>
 
-                    <div>
-                      <div className="mb-3 flex items-center justify-between">
-                        <h4 className="text-lg font-bold text-slate-950">
-                          Wildberries
-                        </h4>
-                        <span className="rounded-full bg-white px-3 py-1 text-xs font-bold text-slate-500 ring-1 ring-slate-200">
-                          {historicalStats.wbTotal} задач
-                        </span>
-                      </div>
-
-                      <div className="grid gap-3">
-                        {wbStats.map((item) => (
-                          <HistoricalDataTypeCard
-                            key={`${item.marketplace}-${item.dataType}`}
-                            item={item}
-                          />
-                        ))}
-                      </div>
-                    </div>
+                    {historicalStats.dataTypeStats.map((item) => (
+                      <HistoricalProgressRow
+                        key={`${item.marketplace}-${item.dataType}`}
+                        item={item}
+                      />
+                    ))}
                   </div>
 
-                  <div className="mt-6 grid gap-4 xl:grid-cols-2">
+                  <div className="mt-5 grid gap-4 xl:grid-cols-2">
                     <HistoricalJobLine
                       title="Последнее успешно загружено"
                       job={latestJobs.lastSuccess}
@@ -1211,7 +1157,7 @@ export default async function ApiConnectionsPage({
                   <form
                     action="/api/historical-sync/start"
                     method="POST"
-                    className="mt-6 rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200"
+                    className="mt-5 rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200"
                   >
                     <input type="hidden" name="companyId" value={company.id} />
 
