@@ -975,11 +975,11 @@ export default async function HomePage({ searchParams }: Props) {
                         >
                           <option value="ALL">Все компании</option>
 
-                          {companies.map((company) => (
-                            <option key={company.id} value={company.name}>
-                              {company.name}
-                            </option>
-                          ))}
+                          {companyRows.map((company) => (
+  			<option key={company.companyName} value={company.companyName}>
+   			 {company.companyName}
+  			</option>
+			))}
                         </select>
                       </label>
 
