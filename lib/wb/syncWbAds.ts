@@ -6,6 +6,13 @@ type CompanyRow = {
   name: string;
 };
 
+type WbAdsSyncOptions = {
+  dateFrom?: Date;
+  dateTo?: Date;
+  cursorOffset?: number | null;
+  mode?: "FULL" | "CHUNK";
+};
+
 type AdvertListItem = {
   advertId?: number;
   changeTime?: string;
@@ -41,6 +48,17 @@ type WbAdsFullStatsItem = {
 
 const WB_ADS_BATCH_SIZE = 10;
 const WB_ADS_REQUEST_TIMEOUT_MS = 45_000;
+const WB_ADS_BATCH_DELAY_MS = 1_000;
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function startOfUtcDay(date: Date) {
+  return new Date(
+    Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate())
+  );
+}
 
 function formatDateOnly(date: Date) {
   return date.toISOString().slice(0, 10);
@@ -53,15 +71,39 @@ function getDefaultPeriod() {
   dateFrom.setDate(dateFrom.getDate() - 7);
 
   return {
+    dateFrom: startOfUtcDay(dateFrom),
+    dateTo: startOfUtcDay(dateTo),
+  };
+}
+
+function getSyncPeriod(options: WbAdsSyncOptions = {}) {
+  if (!options.dateFrom && !options.dateTo) {
+    return getDefaultPeriod();
+  }
+
+  if (!options.dateFrom || !options.dateTo) {
+    throw new Error("Для WB Ads синхронизации нужны dateFrom и dateTo");
+  }
+
+  const dateFrom = startOfUtcDay(options.dateFrom);
+  const dateTo = startOfUtcDay(options.dateTo);
+
+  if (dateFrom.getTime() > dateTo.getTime()) {
+    throw new Error("dateFrom не может быть позже dateTo");
+  }
+
+  return {
     dateFrom,
     dateTo,
-    dateFromText: formatDateOnly(dateFrom),
-    dateToText: formatDateOnly(dateTo),
   };
 }
 
 function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : "Неизвестная ошибка";
+}
+
+function isWbRateLimitStatus(status: number) {
+  return status === 429;
 }
 
 async function fetchWithTimeout(
@@ -140,6 +182,7 @@ async function fetchAdvertIds(token: string) {
 
   if (!response.ok) {
     const text = await response.text().catch(() => "");
+
     throw new Error(`WB Ads Count API: ${response.status} ${text}`.trim());
   }
 
@@ -191,6 +234,13 @@ async function fetchFullStats(
 
   if (!response.ok) {
     const text = await response.text().catch(() => "");
+
+    if (isWbRateLimitStatus(response.status)) {
+      throw new Error(
+        `WB Ads FullStats API: 429 ${text || "rate limit"}`.trim()
+      );
+    }
+
     throw new Error(`WB Ads FullStats API: ${response.status} ${text}`.trim());
   }
 
@@ -226,9 +276,69 @@ function mapWbAdsRows(stats: WbAdsFullStatsItem[]) {
   return rows;
 }
 
-export async function syncWbAds(companyId: string) {
+function getBatch(advertIds: number[], offset: number) {
+  return advertIds.slice(offset, offset + WB_ADS_BATCH_SIZE);
+}
+
+function getNextOffset(currentOffset: number, processedCampaigns: number) {
+  return currentOffset + processedCampaigns;
+}
+
+async function fetchAllStatsInBatches(
+  token: string,
+  advertIds: number[],
+  dateFromText: string,
+  dateToText: string
+) {
+  const allStats: WbAdsFullStatsItem[] = [];
+
+  for (let offset = 0; offset < advertIds.length; offset += WB_ADS_BATCH_SIZE) {
+    const batch = getBatch(advertIds, offset);
+    const stats = await fetchFullStats(token, batch, dateFromText, dateToText);
+
+    allStats.push(...stats);
+
+    if (offset + WB_ADS_BATCH_SIZE < advertIds.length) {
+      await sleep(WB_ADS_BATCH_DELAY_MS);
+    }
+  }
+
+  return allStats;
+}
+
+async function createImportSession(params: {
+  companyName: string;
+  dateFromText: string;
+  dateToText: string;
+  rows: Record<string, unknown>[];
+  cursorOffset?: number | null;
+}) {
+  const cursorText =
+    params.cursorOffset === null || params.cursorOffset === undefined
+      ? ""
+      : ` offset ${params.cursorOffset}`;
+
+  return prisma.importSession.create({
+    data: {
+      fileName: `WB API Ads ${params.companyName} ${params.dateFromText} - ${params.dateToText}${cursorText}`,
+      reportType: "WB_ADS_STATS",
+      marketplace: "WILDBERRIES",
+      companyName: params.companyName,
+      rowsCount: params.rows.length,
+      previewJson: params.rows.slice(0, 10) as any,
+      sheetName: "WB Ads API",
+      headerRow: 1,
+      status: "SUCCESS",
+    },
+  });
+}
+
+async function syncWbAdsFull(companyId: string, options: WbAdsSyncOptions = {}) {
   const { company, connection } = await getWbConnection(companyId);
-  const { dateFrom, dateTo, dateFromText, dateToText } = getDefaultPeriod();
+  const { dateFrom, dateTo } = getSyncPeriod(options);
+
+  const dateFromText = formatDateOnly(dateFrom);
+  const dateToText = formatDateOnly(dateTo);
 
   const wbToken = connection.wbToken;
 
@@ -237,29 +347,20 @@ export async function syncWbAds(companyId: string) {
   }
 
   const advertIds = await fetchAdvertIds(wbToken);
-  const limitedAdvertIds = advertIds.slice(0, WB_ADS_BATCH_SIZE);
-
-  const stats = await fetchFullStats(
+  const stats = await fetchAllStatsInBatches(
     wbToken,
-    limitedAdvertIds,
+    advertIds,
     dateFromText,
     dateToText
   );
 
   const rows = mapWbAdsRows(stats);
 
-  const importSession = await prisma.importSession.create({
-    data: {
-      fileName: `WB API Ads ${company.name} ${dateFromText} - ${dateToText}`,
-      reportType: "WB_ADS_STATS",
-      marketplace: "WILDBERRIES",
-      companyName: company.name,
-      rowsCount: rows.length,
-      previewJson: rows.slice(0, 10) as any,
-      sheetName: "WB Ads API",
-      headerRow: 1,
-      status: "SUCCESS",
-    },
+  const importSession = await createImportSession({
+    companyName: company.name,
+    dateFromText,
+    dateToText,
+    rows,
   });
 
   const normalizeResult = await normalizeWbAds(
@@ -267,7 +368,10 @@ export async function syncWbAds(companyId: string) {
     importSession.id,
     dateFrom,
     dateTo,
-    company.name
+    company.name,
+    {
+      replaceMode: "PERIOD",
+    }
   );
 
   await prisma.importSession.update({
@@ -279,7 +383,83 @@ export async function syncWbAds(companyId: string) {
     name: "WB Ads",
     rows: normalizeResult.savedRows,
     totalCampaigns: advertIds.length,
-    processedCampaigns: limitedAdvertIds.length,
-    skippedCampaigns: Math.max(advertIds.length - limitedAdvertIds.length, 0),
+    processedCampaigns: advertIds.length,
+    skippedCampaigns: 0,
+    dateFrom: dateFromText,
+    dateTo: dateToText,
+    done: true,
+    nextCursorOffset: null,
   };
+}
+
+async function syncWbAdsChunk(companyId: string, options: WbAdsSyncOptions = {}) {
+  const { company, connection } = await getWbConnection(companyId);
+  const { dateFrom, dateTo } = getSyncPeriod(options);
+
+  const dateFromText = formatDateOnly(dateFrom);
+  const dateToText = formatDateOnly(dateTo);
+
+  const wbToken = connection.wbToken;
+
+  if (!wbToken) {
+    throw new Error("WB token не сохранён");
+  }
+
+  const advertIds = await fetchAdvertIds(wbToken);
+  const cursorOffset = Math.max(options.cursorOffset ?? 0, 0);
+  const batch = getBatch(advertIds, cursorOffset);
+  const stats = await fetchFullStats(wbToken, batch, dateFromText, dateToText);
+  const rows = mapWbAdsRows(stats);
+
+  const importSession = await createImportSession({
+    companyName: company.name,
+    dateFromText,
+    dateToText,
+    rows,
+    cursorOffset,
+  });
+
+  const normalizeResult = await normalizeWbAds(
+    rows,
+    importSession.id,
+    dateFrom,
+    dateTo,
+    company.name,
+    {
+      replaceMode: "CAMPAIGNS",
+      campaignIds: batch.map(String),
+    }
+  );
+
+  await prisma.importSession.update({
+    where: { id: importSession.id },
+    data: { rowsCount: normalizeResult.savedRows },
+  });
+
+  const nextCursorOffset = getNextOffset(cursorOffset, batch.length);
+  const done = nextCursorOffset >= advertIds.length || batch.length === 0;
+
+  return {
+    name: "WB Ads",
+    rows: normalizeResult.savedRows,
+    totalCampaigns: advertIds.length,
+    processedCampaigns: batch.length,
+    skippedCampaigns: Math.max(advertIds.length - nextCursorOffset, 0),
+    cursorOffset,
+    nextCursorOffset: done ? null : nextCursorOffset,
+    dateFrom: dateFromText,
+    dateTo: dateToText,
+    done,
+  };
+}
+
+export async function syncWbAds(
+  companyId: string,
+  options: WbAdsSyncOptions = {}
+) {
+  if (options.mode === "CHUNK") {
+    return syncWbAdsChunk(companyId, options);
+  }
+
+  return syncWbAdsFull(companyId, options);
 }

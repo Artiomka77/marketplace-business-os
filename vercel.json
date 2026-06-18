@@ -9,6 +9,10 @@
       "schedule": "*/30 * * * *"
     },
     {
+      "path": "/api/cron/historical-sync-wb-ads",
+      "schedule": "5 * * * *"
+    },
+    {
       "path": "/api/cron/historical-sync-wb-finance",
       "schedule": "15 * * * *"
     },

@@ -10,6 +10,7 @@ import {
   syncWbFinance,
   syncWbSalesByReportNumber,
 } from "@/lib/wb/syncWb";
+import { syncWbAds } from "@/lib/wb/syncWbAds";
 
 type MarketplaceFilter = "OZON" | "WB" | "ALL";
 type HistoricalDataType = "FINANCE" | "ADS" | "PRODUCTS" | "SALES";
@@ -29,6 +30,7 @@ type HistoricalSyncJobRow = {
   dateFrom: Date;
   dateTo: Date;
   cursorReportNumber: string | null;
+  cursorOffset: number | null;
   retryCount: number;
 };
 
@@ -40,7 +42,11 @@ const OZON_SUPPORTED_DATA_TYPES: HistoricalDataType[] = [
   "PRODUCTS",
 ];
 
-const WB_SUPPORTED_DATA_TYPES: HistoricalDataType[] = ["FINANCE", "SALES"];
+const WB_SUPPORTED_DATA_TYPES: HistoricalDataType[] = [
+  "FINANCE",
+  "SALES",
+  "ADS",
+];
 
 function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : "Неизвестная ошибка";
@@ -122,6 +128,13 @@ function getWbSupportedWhere(
       cursorReportNumber: {
         not: null,
       },
+    });
+  }
+
+  if (dataTypes.includes("ADS")) {
+    supportedBlocks.push({
+      marketplace: "WB",
+      dataType: "ADS",
     });
   }
 
@@ -230,6 +243,32 @@ function getRowsFromResult(result: unknown) {
   return 0;
 }
 
+function getNextCursorOffsetFromResult(result: unknown) {
+  if (
+    typeof result === "object" &&
+    result !== null &&
+    "nextCursorOffset" in result &&
+    typeof result.nextCursorOffset === "number"
+  ) {
+    return result.nextCursorOffset;
+  }
+
+  return null;
+}
+
+function isChunkDoneResult(result: unknown) {
+  if (
+    typeof result === "object" &&
+    result !== null &&
+    "done" in result &&
+    result.done === false
+  ) {
+    return false;
+  }
+
+  return true;
+}
+
 function throwIfSkippedResult(result: unknown) {
   if (
     typeof result === "object" &&
@@ -267,6 +306,7 @@ async function findNextHistoricalJob(options: RunHistoricalSyncJobOptions) {
       dateFrom: true,
       dateTo: true,
       cursorReportNumber: true,
+      cursorOffset: true,
       retryCount: true,
     },
   });
@@ -280,6 +320,21 @@ async function markJobRunning(jobId: string) {
     data: {
       status: "RUNNING",
       startedAt: new Date(),
+      lastAttemptAt: new Date(),
+      lastError: null,
+    },
+  });
+}
+
+async function markJobProgress(jobId: string, nextCursorOffset: number | null) {
+  return prisma.historicalSyncJob.update({
+    where: { id: jobId },
+    data: {
+      status: "PENDING",
+      cursorOffset: nextCursorOffset,
+      completedSteps: {
+        increment: 1,
+      },
       lastAttemptAt: new Date(),
       lastError: null,
     },
@@ -375,6 +430,15 @@ async function runWbJob(job: HistoricalSyncJobRow) {
     });
   }
 
+  if (job.dataType === "ADS") {
+    return syncWbAds(job.companyId, {
+      dateFrom: job.dateFrom,
+      dateTo: job.dateTo,
+      cursorOffset: job.cursorOffset ?? 0,
+      mode: "CHUNK",
+    });
+  }
+
   throw new Error(
     `HistoricalSyncJob ${job.id}: тип ${job.dataType} пока не поддерживается для WB`
   );
@@ -419,18 +483,45 @@ export async function runNextHistoricalSyncJob(
     throwIfSkippedResult(result);
 
     const rows = getRowsFromResult(result);
+    const isDone = isChunkDoneResult(result);
+    const nextCursorOffset = getNextCursorOffsetFromResult(result);
+
+    if (!isDone) {
+      await markJobProgress(job.id, nextCursorOffset);
+
+      return {
+        ok: true,
+        skipped: false,
+        partial: true,
+        jobId: job.id,
+        companyId: job.companyId,
+        companyName: job.companyName,
+        marketplace: job.marketplace,
+        dataType: job.dataType,
+        cursorReportNumber: job.cursorReportNumber,
+        cursorOffset: job.cursorOffset ?? 0,
+        nextCursorOffset,
+        dateFrom: job.dateFrom.toISOString().slice(0, 10),
+        dateTo: job.dateTo.toISOString().slice(0, 10),
+        rows,
+        result,
+      };
+    }
 
     await markJobSuccess(job.id);
 
     return {
       ok: true,
       skipped: false,
+      partial: false,
       jobId: job.id,
       companyId: job.companyId,
       companyName: job.companyName,
       marketplace: job.marketplace,
       dataType: job.dataType,
       cursorReportNumber: job.cursorReportNumber,
+      cursorOffset: job.cursorOffset ?? 0,
+      nextCursorOffset: null,
       dateFrom: job.dateFrom.toISOString().slice(0, 10),
       dateTo: job.dateTo.toISOString().slice(0, 10),
       rows,
@@ -442,12 +533,14 @@ export async function runNextHistoricalSyncJob(
     return {
       ok: false,
       skipped: false,
+      partial: false,
       jobId: job.id,
       companyId: job.companyId,
       companyName: job.companyName,
       marketplace: job.marketplace,
       dataType: job.dataType,
       cursorReportNumber: job.cursorReportNumber,
+      cursorOffset: job.cursorOffset ?? 0,
       dateFrom: job.dateFrom.toISOString().slice(0, 10),
       dateTo: job.dateTo.toISOString().slice(0, 10),
       error: failedResult.errorText,
