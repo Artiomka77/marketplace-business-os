@@ -75,6 +75,66 @@ function getSyncPeriod(options: OzonSyncPeriodOptions = {}) {
   };
 }
 
+
+function addUtcDays(date: Date, days: number) {
+  const result = new Date(date);
+  result.setUTCDate(result.getUTCDate() + days);
+  return result;
+}
+
+function getOzonAdsMinAvailableDate(now = new Date()) {
+  const result = startOfUtcDay(now);
+
+  // Ozon Performance хранит рекламную статистику примерно за последние 12 месяцев.
+  // Чтобы не запрашивать недоступный день "ровно год назад", сдвигаем начало на +1 день.
+  result.setUTCFullYear(result.getUTCFullYear() - 1);
+  return addUtcDays(result, 1);
+}
+
+function getOzonAdsSyncPeriod(options: OzonSyncPeriodOptions = {}) {
+  const requestedPeriod = getSyncPeriod(options);
+  const minAvailableDate = getOzonAdsMinAvailableDate();
+
+  const requestedDateToStart = startOfUtcDay(requestedPeriod.dateTo);
+
+  if (requestedDateToStart.getTime() < minAvailableDate.getTime()) {
+    return {
+      ...requestedPeriod,
+      requestedDateFromText: requestedPeriod.dateFromText,
+      requestedDateToText: requestedPeriod.dateToText,
+      minAvailableDate,
+      minAvailableDateText: formatDateOnly(minAvailableDate),
+      isUnavailable: true,
+      isPartiallyTrimmed: false,
+      skipReason: `Ozon Performance хранит рекламную статистику только за последние 12 месяцев. Минимальная доступная дата: ${formatDateOnly(
+        minAvailableDate
+      )}. Запрошенный период ${requestedPeriod.dateFromText} — ${
+        requestedPeriod.dateToText
+      } недоступен.`,
+    };
+  }
+
+  const effectiveDateFrom =
+    requestedPeriod.dateFrom.getTime() < minAvailableDate.getTime()
+      ? minAvailableDate
+      : requestedPeriod.dateFrom;
+
+  return {
+    dateFrom: effectiveDateFrom,
+    dateTo: requestedPeriod.dateTo,
+    dateFromText: formatDateOnly(effectiveDateFrom),
+    dateToText: requestedPeriod.dateToText,
+    requestedDateFromText: requestedPeriod.dateFromText,
+    requestedDateToText: requestedPeriod.dateToText,
+    minAvailableDate,
+    minAvailableDateText: formatDateOnly(minAvailableDate),
+    isUnavailable: false,
+    isPartiallyTrimmed:
+      effectiveDateFrom.getTime() !== requestedPeriod.dateFrom.getTime(),
+    skipReason: null,
+  };
+}
+
 function toNumber(value: unknown): number | null {
   if (value === null || value === undefined || value === "") return null;
   if (typeof value === "number") return Number.isNaN(value) ? null : value;
@@ -705,6 +765,7 @@ type CampaignItem = {
   title?: string;
   state?: string;
   PaymentType?: string;
+  paymentType?: string;
   advObjectType?: string;
   fromDate?: string;
   toDate?: string;
@@ -791,13 +852,22 @@ async function fetchCampaigns(accessToken: string) {
   return json?.list ?? [];
 }
 
+function getCampaignPaymentType(campaign: CampaignItem) {
+  return String(campaign.PaymentType ?? campaign.paymentType ?? "")
+    .trim()
+    .toUpperCase();
+}
+
 function isCampaignRelevant(
   campaign: CampaignItem,
   dateFrom: string,
   dateTo: string
 ) {
   if (!campaign.id) return false;
-  if (campaign.PaymentType === "CPO") return true;
+
+  // CPO / "Продвижение с оплатой за заказ" не запрашиваем через statistics/json.
+  // Эти расходы уже могут приходить через Ozon Finance и не должны ломать Ozon Ads.
+  if (getCampaignPaymentType(campaign) === "CPO") return false;
 
   if (
     ![
@@ -813,6 +883,17 @@ function isCampaignRelevant(
   const toDate = campaign.toDate || "2999-12-31";
 
   return fromDate <= dateTo && toDate >= dateFrom;
+}
+
+function isForbiddenStatsReportError(error: unknown) {
+  const message = getErrorMessage(error).toLowerCase();
+
+  return (
+    message.includes("forbidden") ||
+    message.includes("invalidargument") ||
+    message.includes("generation of this type of report") ||
+    message.includes("transferred list of campaigns")
+  );
 }
 
 async function createStatsReport(
@@ -922,6 +1003,95 @@ async function downloadReport(accessToken: string, uuid: string) {
   return rawText ? (JSON.parse(rawText) as ReportFile) : {};
 }
 
+
+function mergeReportFiles(reports: ReportFile[]) {
+  const merged: ReportFile = {};
+  let duplicateIndex = 0;
+
+  for (const report of reports) {
+    for (const [campaignKey, campaignReport] of Object.entries(report)) {
+      let key = campaignKey;
+
+      while (Object.prototype.hasOwnProperty.call(merged, key)) {
+        duplicateIndex += 1;
+        key = `${campaignKey}_${duplicateIndex}`;
+      }
+
+      merged[key] = campaignReport;
+    }
+  }
+
+  return merged;
+}
+
+async function loadStatsReportForCampaignBatch(
+  accessToken: string,
+  campaignIds: string[],
+  dateFrom: string,
+  dateTo: string
+) {
+  const uuid = await createStatsReport(accessToken, campaignIds, dateFrom, dateTo);
+
+  await waitForReport(accessToken, uuid);
+
+  return downloadReport(accessToken, uuid);
+}
+
+async function loadStatsReportsSafely(
+  accessToken: string,
+  campaignIds: string[],
+  dateFrom: string,
+  dateTo: string
+) {
+  const reports: ReportFile[] = [];
+  const skippedCampaignIds: string[] = [];
+
+  for (const batch of chunkArray(campaignIds, 10)) {
+    try {
+      const report = await loadStatsReportForCampaignBatch(
+        accessToken,
+        batch,
+        dateFrom,
+        dateTo
+      );
+
+      reports.push(report);
+      continue;
+    } catch (error) {
+      if (!isForbiddenStatsReportError(error)) {
+        throw error;
+      }
+
+      // Если одна кампания в пачке запрещена для statistics/json,
+      // Ozon отклоняет весь список. Разбираем пачку по одной кампании,
+      // плохие кампании пропускаем, остальные загружаем.
+      for (const campaignId of batch) {
+        try {
+          const report = await loadStatsReportForCampaignBatch(
+            accessToken,
+            [campaignId],
+            dateFrom,
+            dateTo
+          );
+
+          reports.push(report);
+        } catch (innerError) {
+          if (!isForbiddenStatsReportError(innerError)) {
+            throw innerError;
+          }
+
+          skippedCampaignIds.push(campaignId);
+        }
+      }
+    }
+  }
+
+  return {
+    report: mergeReportFiles(reports),
+    skippedCampaignIds,
+  };
+}
+
 function mapReportRows(
   report: ReportFile,
   importSessionId: string,
@@ -973,7 +1143,22 @@ export async function syncOzonAds(
     throw new Error("Ozon Performance Client-Id или Client Secret не сохранены");
   }
 
-  const { dateFrom, dateTo, dateFromText, dateToText } = getSyncPeriod(options);
+  const adsPeriod = getOzonAdsSyncPeriod(options);
+
+  if (adsPeriod.isUnavailable) {
+    return {
+      name: "Ozon Ads",
+      rows: 0,
+      dateFrom: adsPeriod.requestedDateFromText,
+      dateTo: adsPeriod.requestedDateToText,
+      campaigns: 0,
+      skipped: true,
+      reason: adsPeriod.skipReason,
+      minAvailableDate: adsPeriod.minAvailableDateText,
+    };
+  }
+
+  const { dateFrom, dateTo, dateFromText, dateToText } = adsPeriod;
 
   const accessToken = await getPerformanceToken(
     connection.ozonPerformanceClientId,
@@ -982,10 +1167,14 @@ export async function syncOzonAds(
 
   const campaigns = await fetchCampaigns(accessToken);
 
-  const campaignIds = campaigns
-    .filter((campaign) => isCampaignRelevant(campaign, dateFromText, dateToText))
-    .map((campaign) => campaign.id)
-    .filter((id): id is string => Boolean(id));
+  const campaignIds = Array.from(
+    new Set(
+      campaigns
+        .filter((campaign) => isCampaignRelevant(campaign, dateFromText, dateToText))
+        .map((campaign) => campaign.id)
+        .filter((id): id is string => Boolean(id))
+    )
+  );
 
   if (campaignIds.length === 0) {
     await prisma.ozonAds.deleteMany({
@@ -1003,20 +1192,21 @@ export async function syncOzonAds(
       rows: 0,
       dateFrom: dateFromText,
       dateTo: dateToText,
+      requestedDateFrom: adsPeriod.requestedDateFromText,
+      requestedDateTo: adsPeriod.requestedDateToText,
       campaigns: 0,
+      skippedCampaigns: 0,
+      partiallyTrimmed: adsPeriod.isPartiallyTrimmed,
+      minAvailableDate: adsPeriod.minAvailableDateText,
     };
   }
 
-  const uuid = await createStatsReport(
+  const { report, skippedCampaignIds } = await loadStatsReportsSafely(
     accessToken,
     campaignIds,
     dateFromText,
     dateToText
   );
-
-  await waitForReport(accessToken, uuid);
-
-  const report = await downloadReport(accessToken, uuid);
 
   const importSession = await prisma.importSession.create({
     data: {
@@ -1025,7 +1215,18 @@ export async function syncOzonAds(
       marketplace: "OZON",
       companyName: company.name,
       rowsCount: 0,
-      previewJson: [],
+      previewJson: [
+        {
+          requestedDateFrom: adsPeriod.requestedDateFromText,
+          requestedDateTo: adsPeriod.requestedDateToText,
+          effectiveDateFrom: dateFromText,
+          effectiveDateTo: dateToText,
+          partiallyTrimmed: adsPeriod.isPartiallyTrimmed,
+          minAvailableDate: adsPeriod.minAvailableDateText,
+          campaigns: campaignIds.length,
+          skippedCampaigns: skippedCampaignIds.length,
+        },
+      ] as any,
       sheetName: "Ozon Performance API",
       headerRow: 1,
       status: "SUCCESS",
@@ -1061,7 +1262,13 @@ export async function syncOzonAds(
     rows: rows.length,
     dateFrom: dateFromText,
     dateTo: dateToText,
+    requestedDateFrom: adsPeriod.requestedDateFromText,
+    requestedDateTo: adsPeriod.requestedDateToText,
     campaigns: campaignIds.length,
+    skippedCampaigns: skippedCampaignIds.length,
+    skippedCampaignIds,
+    partiallyTrimmed: adsPeriod.isPartiallyTrimmed,
+    minAvailableDate: adsPeriod.minAvailableDateText,
   };
 }
 
