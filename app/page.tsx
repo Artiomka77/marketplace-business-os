@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import { prisma } from "@/lib/prisma";
 import { getProfitAnalytics } from "@/lib/analytics/profitAnalytics";
 import { getProfitAnalyticsOzon } from "@/lib/analytics/profitAnalyticsOzon";
+import { calculateFinanceMetricsForRows } from "@/lib/finance/financeMetrics";
 
 type Props = {
   searchParams?: Promise<{
@@ -90,30 +91,6 @@ type MetricTrend = {
   label: string;
   title: string;
   className: string;
-};
-
-type ProfitTreatment =
-  | "AUTO"
-  | "INCLUDE_IN_NET_PROFIT"
-  | "CASH_ONLY"
-  | "CREDIT_PRINCIPAL"
-  | "CREDIT_INTEREST"
-  | "CREDIT_RECEIVED"
-  | "OWNER_WITHDRAWAL"
-  | "IGNORE";
-
-type FinanceCategoryForDashboard = {
-  name: string;
-  categoryType: string;
-  profitTreatment: string | null;
-};
-
-type FinanceTransactionForDashboard = {
-  operationType: string;
-  category: string;
-  subcategory: string | null;
-  amount: unknown;
-  isInternalTransfer: boolean;
 };
 
 const quickLinks = [
@@ -398,196 +375,6 @@ function safeNumber(value: unknown) {
   const number = Number(value);
 
   return Number.isFinite(number) ? number : 0;
-}
-
-function normalizeSearchText(value?: string | null) {
-  return String(value ?? "")
-    .toLowerCase()
-    .replaceAll("ё", "е")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function categoryKey(categoryType: string, name: string) {
-  return `${normalizeSearchText(categoryType)}::${normalizeSearchText(name)}`;
-}
-
-function isLoanCategory(value?: string | null) {
-  const text = normalizeSearchText(value);
-
-  return text.includes("кредит") || text.includes("займ") || text.includes("заем");
-}
-
-function isCreditInterestCategory(value?: string | null) {
-  const text = normalizeSearchText(value);
-
-  return (
-    text.includes("процент") ||
-    text.includes("% по кредит") ||
-    text.includes("% по займ") ||
-    text.includes("финансовые проценты")
-  );
-}
-
-function isCreditReceivedCategory(value?: string | null) {
-  const text = normalizeSearchText(value);
-
-  return (
-    text.includes("получение кредита") ||
-    text.includes("получение займа") ||
-    text.includes("получение заема") ||
-    text.includes("поступление кредита") ||
-    text.includes("поступление займа") ||
-    text.includes("кредит получен") ||
-    text.includes("займ получен") ||
-    text.includes("заем получен")
-  );
-}
-
-function isPersonalCategory(value?: string | null) {
-  const text = normalizeSearchText(value);
-
-  return (
-    text.includes("личн") ||
-    text.includes("собственник") ||
-    text.includes("дивиденд") ||
-    text.includes("вывод")
-  );
-}
-
-function isCashOnlyCategory(value?: string | null) {
-  const text = normalizeSearchText(value);
-
-  return (
-    text.includes("фулфил") ||
-    text.includes("fulfill") ||
-    text.includes("закуп") ||
-    text.includes("себестоим") ||
-    text.includes("упаков") ||
-    text.includes("доставка до склада") ||
-    text.includes("логистика до склада") ||
-    text.includes("переупаков") ||
-    text.includes("проверка брака") ||
-    text.includes("проверка на брак") ||
-    text.includes("брак") ||
-    text.includes("поставщик")
-  );
-}
-
-function isFinancialExpenseCategory(value?: string | null) {
-  const text = normalizeSearchText(value);
-
-  return (
-    text.includes("процент") ||
-    text.includes("комиссия банка") ||
-    text.includes("банковская комиссия") ||
-    text.includes("обслуживание счета") ||
-    text.includes("обслуживание счета") ||
-    text.includes("эквайринг")
-  );
-}
-
-function normalizeProfitTreatment(value?: string | null): ProfitTreatment {
-  const allowed: ProfitTreatment[] = [
-    "AUTO",
-    "INCLUDE_IN_NET_PROFIT",
-    "CASH_ONLY",
-    "CREDIT_PRINCIPAL",
-    "CREDIT_INTEREST",
-    "CREDIT_RECEIVED",
-    "OWNER_WITHDRAWAL",
-    "IGNORE",
-  ];
-
-  return allowed.includes(value as ProfitTreatment)
-    ? (value as ProfitTreatment)
-    : "AUTO";
-}
-
-function getFallbackProfitTreatment(
-  transaction: FinanceTransactionForDashboard
-): ProfitTreatment {
-  const text = `${transaction.category} ${transaction.subcategory ?? ""}`;
-
-  if (transaction.isInternalTransfer || transaction.operationType === "TRANSFER") {
-    return "IGNORE";
-  }
-
-  if (isCreditReceivedCategory(text)) {
-    return "CREDIT_RECEIVED";
-  }
-
-  if (isLoanCategory(text) && isCreditInterestCategory(text)) {
-    return "CREDIT_INTEREST";
-  }
-
-  if (isLoanCategory(text)) {
-    return "CREDIT_PRINCIPAL";
-  }
-
-  if (transaction.operationType === "PERSONAL" || isPersonalCategory(text)) {
-    return "OWNER_WITHDRAWAL";
-  }
-
-  if (isCashOnlyCategory(text)) {
-    return "CASH_ONLY";
-  }
-
-  if (isFinancialExpenseCategory(text)) {
-    return "INCLUDE_IN_NET_PROFIT";
-  }
-
-  if (transaction.operationType === "INCOME") {
-    return "CASH_ONLY";
-  }
-
-  if (transaction.operationType === "EXPENSE") {
-    return "INCLUDE_IN_NET_PROFIT";
-  }
-
-  if (transaction.operationType === "FINANCING") {
-    return "CREDIT_PRINCIPAL";
-  }
-
-  return "CASH_ONLY";
-}
-
-function getTransactionProfitTreatment(params: {
-  transaction: FinanceTransactionForDashboard;
-  categories: FinanceCategoryForDashboard[];
-}) {
-  const exactCategory = params.categories.find(
-    (category) =>
-      categoryKey(category.categoryType, category.name) ===
-      categoryKey(params.transaction.operationType, params.transaction.category)
-  );
-
-  const byNameCategory = params.categories.find(
-    (category) =>
-      normalizeSearchText(category.name) ===
-      normalizeSearchText(params.transaction.category)
-  );
-
-  const explicitTreatment = normalizeProfitTreatment(
-    exactCategory?.profitTreatment ?? byNameCategory?.profitTreatment
-  );
-
-  if (explicitTreatment !== "AUTO") {
-    return explicitTreatment;
-  }
-
-  return getFallbackProfitTreatment(params.transaction);
-}
-
-function isCashIncomeOperation(params: {
-  transaction: FinanceTransactionForDashboard;
-  treatment: ProfitTreatment;
-}) {
-  if (params.treatment === "CREDIT_RECEIVED") {
-    return true;
-  }
-
-  return params.transaction.operationType === "INCOME";
 }
 
 function valueColor(value: number) {
@@ -978,93 +765,27 @@ async function getFinanceCashResult(params: {
       select: {
         name: true,
         categoryType: true,
+        parentName: true,
         profitTreatment: true,
       },
     }),
   ]);
 
-  let income = 0;
-  let cashExpense = 0;
-
-  let creditPrincipal = 0;
-  let creditInterest = 0;
-  let ownerWithdrawals = 0;
-  let cashOnlyExpenses = 0;
-
-  let netProfitIncludedIncome = 0;
-  let netProfitIncludedExpenses = 0;
-
-  for (const row of rows) {
-    const transaction: FinanceTransactionForDashboard = {
-      operationType: row.operationType,
-      category: row.category,
-      subcategory: row.subcategory,
-      amount: row.amount,
-      isInternalTransfer: row.isInternalTransfer,
-    };
-
-    const treatment = getTransactionProfitTreatment({
-      transaction,
-      categories,
-    });
-
-    if (treatment === "IGNORE") {
-      continue;
-    }
-
-    const amount = Math.abs(safeNumber(row.amount));
-    const isIncome = isCashIncomeOperation({ transaction, treatment });
-
-    if (isIncome) {
-      income += amount;
-
-      if (treatment === "INCLUDE_IN_NET_PROFIT") {
-        netProfitIncludedIncome += amount;
-      }
-
-      continue;
-    }
-
-    cashExpense += amount;
-
-    if (treatment === "INCLUDE_IN_NET_PROFIT") {
-      netProfitIncludedExpenses += amount;
-      continue;
-    }
-
-    if (treatment === "CREDIT_INTEREST") {
-      creditInterest += amount;
-      netProfitIncludedExpenses += amount;
-      continue;
-    }
-
-    if (treatment === "CREDIT_PRINCIPAL") {
-      creditPrincipal += amount;
-      continue;
-    }
-
-    if (treatment === "OWNER_WITHDRAWAL") {
-      ownerWithdrawals += amount;
-      continue;
-    }
-
-    if (treatment === "CASH_ONLY") {
-      cashOnlyExpenses += amount;
-    }
-  }
-
-  const loanPayments = creditPrincipal + creditInterest;
+  const metrics = calculateFinanceMetricsForRows({
+    transactions: rows,
+    categories,
+  });
 
   return {
-    cashFlowResult: income - cashExpense,
-    loanPayments,
-    creditPrincipal,
-    creditInterest,
-    personalExpenses: ownerWithdrawals,
-    financialExpenses: Math.max(0, netProfitIncludedExpenses - creditInterest),
-    cashOnlyExpenses,
-    netProfitIncludedIncome,
-    netProfitIncludedExpenses,
+    cashFlowResult: metrics.netCashFlow,
+    loanPayments: metrics.creditPrincipal + metrics.creditInterest,
+    creditPrincipal: metrics.creditPrincipal,
+    creditInterest: metrics.creditInterest,
+    personalExpenses: metrics.ownerWithdrawals,
+    financialExpenses: Math.max(0, metrics.netProfitExpense - metrics.creditInterest),
+    cashOnlyExpenses: metrics.cashOnlyTotal,
+    netProfitIncludedIncome: metrics.netProfitIncome,
+    netProfitIncludedExpenses: metrics.netProfitExpense,
   };
 }
 
