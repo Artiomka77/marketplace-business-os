@@ -1,4 +1,6 @@
 import Link from "next/link";
+import type { ReactNode } from "react";
+
 import { prisma } from "@/lib/prisma";
 import { getProfitAnalytics } from "@/lib/analytics/profitAnalytics";
 import { getProfitAnalyticsOzon } from "@/lib/analytics/profitAnalyticsOzon";
@@ -156,11 +158,13 @@ function createPeriodOptions(): PeriodOption[] {
     today.getUTCMonth(),
     1
   );
+
   const previousMonthStart = makeUtcDate(
     today.getUTCFullYear(),
     today.getUTCMonth() - 1,
     1
   );
+
   const previousMonthEnd = addDays(currentMonthStart, -1);
 
   const currentQuarterStart = startOfQuarter(today);
@@ -196,7 +200,7 @@ function createPeriodOptions(): PeriodOption[] {
     },
     {
       key: "last-4-weeks",
-      shortLabel: "Последние 4 недели",
+      shortLabel: "4 недели",
       label: `Последние 4 недели: ${formatDate(last4WeeksStart)} — ${formatDate(
         last4WeeksEnd
       )}`,
@@ -272,9 +276,9 @@ function createPeriodOptions(): PeriodOption[] {
     },
     {
       key: "custom",
-      shortLabel: "Произвольный период",
+      shortLabel: "Свой период",
       label: "Произвольный период",
-      description: "Выбери даты вручную",
+      description: "Выбор дат вручную",
       dateFrom: toIsoDate(previousWeekStart),
       dateTo: toIsoDate(previousWeekEnd),
     },
@@ -297,6 +301,12 @@ function isLoanCategory(category?: string | null) {
 
 function valueColor(value: number) {
   return value >= 0 ? "text-emerald-600" : "text-red-600";
+}
+
+function valueTone(value: number) {
+  return value >= 0
+    ? "bg-emerald-50 text-emerald-700 ring-emerald-200"
+    : "bg-red-50 text-red-700 ring-red-200";
 }
 
 function countAbc(rows: { abcByProfit: "A" | "B" | "C" }[]) {
@@ -355,12 +365,7 @@ function buildDashboardHref(params: {
   const searchParams = new URLSearchParams();
 
   searchParams.set("period", params.period);
-
-  if (params.companyName) {
-    searchParams.set("companyName", params.companyName);
-  } else {
-    searchParams.set("companyName", "ALL");
-  }
+  searchParams.set("companyName", params.companyName || "ALL");
 
   if (params.dateFrom) {
     searchParams.set("dateFrom", params.dateFrom);
@@ -373,47 +378,64 @@ function buildDashboardHref(params: {
   return `/?${searchParams.toString()}`;
 }
 
-function KpiIcon({ children, tone }: { children: React.ReactNode; tone: string }) {
-  return (
-    <div
-      className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl text-lg ${tone}`}
-    >
-      {children}
-    </div>
-  );
-}
-
-function KpiCard({
+function MetricCard({
   title,
   value,
   subtitle,
   icon,
-  tone,
+  accent,
   valueClassName = "text-slate-950",
 }: {
   title: string;
   value: string;
   subtitle: string;
-  icon: React.ReactNode;
-  tone: string;
+  icon: ReactNode;
+  accent: string;
   valueClassName?: string;
 }) {
   return (
-    <article className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
-      <div className="flex items-start gap-4">
-        <KpiIcon tone={tone}>{icon}</KpiIcon>
+    <article className="group rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
+      <div className="flex items-start justify-between gap-4">
+        <div
+          className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl text-lg ${accent}`}
+        >
+          {icon}
+        </div>
 
-        <div className="min-w-0">
-          <div className="text-sm font-medium text-slate-500">{title}</div>
-
-          <div className={`mt-4 break-words text-3xl font-bold tracking-tight ${valueClassName}`}>
-            {value}
-          </div>
-
-          <div className="mt-3 text-sm leading-6 text-slate-500">{subtitle}</div>
+        <div className="rounded-full bg-slate-50 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400">
+          KPI
         </div>
       </div>
+
+      <div className="mt-5 text-sm font-semibold text-slate-500">{title}</div>
+
+      <div
+        className={`mt-3 break-words text-[28px] font-black leading-tight tracking-tight ${valueClassName}`}
+      >
+        {value}
+      </div>
+
+      <p className="mt-3 min-h-[44px] text-sm leading-6 text-slate-500">
+        {subtitle}
+      </p>
     </article>
+  );
+}
+
+function MiniMetric({
+  title,
+  value,
+  tone = "text-slate-950",
+}: {
+  title: string;
+  value: string;
+  tone?: string;
+}) {
+  return (
+    <div className="rounded-2xl bg-slate-50 px-4 py-3 ring-1 ring-slate-200">
+      <div className="text-xs font-semibold text-slate-500">{title}</div>
+      <div className={`mt-1 text-lg font-black ${tone}`}>{value}</div>
+    </div>
   );
 }
 
@@ -442,9 +464,24 @@ function AbcPills({ abc }: { abc: AbcCounts }) {
 
   return (
     <div className="flex flex-wrap gap-2">
-      <AbcPill label="A" count={abc.A} total={total} tone="bg-emerald-50 text-emerald-700" />
-      <AbcPill label="B" count={abc.B} total={total} tone="bg-amber-50 text-amber-700" />
-      <AbcPill label="C" count={abc.C} total={total} tone="bg-red-50 text-red-700" />
+      <AbcPill
+        label="A"
+        count={abc.A}
+        total={total}
+        tone="bg-emerald-50 text-emerald-700"
+      />
+      <AbcPill
+        label="B"
+        count={abc.B}
+        total={total}
+        tone="bg-amber-50 text-amber-700"
+      />
+      <AbcPill
+        label="C"
+        count={abc.C}
+        total={total}
+        tone="bg-red-50 text-red-700"
+      />
     </div>
   );
 }
@@ -470,10 +507,10 @@ function AbcCard({ title, abc }: { title: string; abc: AbcCounts }) {
   const total = abcTotal(abc);
 
   return (
-    <article className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+    <article className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h3 className="font-bold text-slate-950">{title}</h3>
+          <h3 className="text-lg font-black text-slate-950">{title}</h3>
           <p className="mt-1 text-sm text-slate-500">{formatNumber(total)} SKU</p>
         </div>
 
@@ -488,6 +525,59 @@ function AbcCard({ title, abc }: { title: string; abc: AbcCounts }) {
         <AbcPills abc={abc} />
       </div>
     </article>
+  );
+}
+
+function MarketplaceShare({
+  wbRevenue,
+  ozonRevenue,
+}: {
+  wbRevenue: number;
+  ozonRevenue: number;
+}) {
+  const total = wbRevenue + ozonRevenue;
+  const wbPercent = total > 0 ? (wbRevenue / total) * 100 : 0;
+  const ozonPercent = total > 0 ? (ozonRevenue / total) * 100 : 0;
+
+  return (
+    <section className="rounded-[32px] border border-slate-200 bg-white p-6 shadow-sm">
+      <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+        <div>
+          <div className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">
+            Маркетплейсы
+          </div>
+          <h2 className="mt-2 text-2xl font-black text-slate-950">
+            Выручка WB / Ozon
+          </h2>
+          <p className="mt-2 text-sm leading-6 text-slate-500">
+            Быстрая оценка, где сейчас формируется оборот за выбранный период.
+          </p>
+        </div>
+
+        <div className="grid gap-3 sm:grid-cols-2 xl:min-w-[460px]">
+          <MiniMetric
+            title="Wildberries"
+            value={`${formatCurrency(wbRevenue)} · ${formatPercent(wbPercent)}`}
+            tone="text-blue-700"
+          />
+          <MiniMetric
+            title="Ozon"
+            value={`${formatCurrency(ozonRevenue)} · ${formatPercent(ozonPercent)}`}
+            tone="text-violet-700"
+          />
+        </div>
+      </div>
+
+      <div className="mt-5 h-4 overflow-hidden rounded-full bg-slate-100">
+        <div className="flex h-full w-full">
+          <div className="h-full bg-blue-500" style={{ width: `${wbPercent}%` }} />
+          <div
+            className="h-full bg-violet-500"
+            style={{ width: `${ozonPercent}%` }}
+          />
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -685,27 +775,20 @@ export default async function HomePage({ searchParams }: Props) {
 
     rawCompanyRows.push({
       companyName: company.name,
-
       wbRevenue,
       ozonRevenue,
       totalRevenue,
-
       operatingProfitAfterTax:
         wb.totals.netProfitAfterTax + ozon.totals.netProfitAfterTax,
-
       adsCost,
       drr,
-
       freeCashResult: cash.freeCashResult,
       loanPayments: cash.loanPayments,
-
       wbStockQty,
       ozonStockQty,
-
       wbAbcA: wbAbc.A,
       wbAbcB: wbAbc.B,
       wbAbcC: wbAbc.C,
-
       ozonAbcA: ozonAbc.A,
       ozonAbcB: ozonAbc.B,
       ozonAbcC: ozonAbc.C,
@@ -807,317 +890,313 @@ export default async function HomePage({ searchParams }: Props) {
   ];
 
   return (
-    <main className="min-h-screen bg-slate-100 p-4 sm:p-6 xl:p-10">
-      <div className="mx-auto max-w-[1800px] space-y-8">
-        <section className="grid gap-6 xl:grid-cols-[1fr_820px] xl:items-start">
-          <div className="min-w-0 pt-2">
-            <div className="inline-flex rounded-full bg-slate-950 px-4 py-2 text-xs font-bold uppercase tracking-[0.18em] text-white">
-              Dashboard собственника
-            </div>
+    <main className="min-h-screen bg-slate-100 px-4 py-6 sm:px-6 xl:px-10">
+      <div className="mx-auto max-w-[1800px] space-y-6">
+        <section className="rounded-[36px] border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+          <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-3">
+                <span className="rounded-full bg-slate-950 px-4 py-2 text-xs font-bold uppercase tracking-[0.18em] text-white">
+                  Dashboard собственника
+                </span>
 
-            <h1 className="mt-5 break-words text-4xl font-bold tracking-tight text-slate-950">
-              Главная панель бизнеса
-            </h1>
-
-            <p className="mt-4 max-w-2xl text-lg leading-8 text-slate-500">
-              Прибыль, денежный результат, реклама, остатки, ABC и кредитная
-              нагрузка по Wildberries и Ozon за выбранный период.
-            </p>
-
-            <div className="mt-6 flex flex-wrap gap-3">
-              <div className="rounded-2xl bg-white px-4 py-3 text-sm font-semibold text-slate-700 shadow-sm ring-1 ring-slate-200">
-                Период:{" "}
-                <span className="font-black text-slate-950">
+                <span className="rounded-full bg-slate-100 px-4 py-2 text-xs font-bold text-slate-600 ring-1 ring-slate-200">
                   {selectedPeriod.description}
                 </span>
-              </div>
 
-              <div className="rounded-2xl bg-white px-4 py-3 text-sm font-semibold text-slate-700 shadow-sm ring-1 ring-slate-200">
-                Компания:{" "}
-                <span className="font-black text-slate-950">
+                <span className="rounded-full bg-slate-100 px-4 py-2 text-xs font-bold text-slate-600 ring-1 ring-slate-200">
                   {selectedCompanyName ?? "Все компании"}
                 </span>
               </div>
+
+              <h1 className="mt-5 text-3xl font-black tracking-tight text-slate-950 sm:text-4xl">
+                Главная панель бизнеса
+              </h1>
+
+              <p className="mt-3 max-w-3xl text-base leading-7 text-slate-500">
+                Деньги, прибыль, реклама, остатки, ABC и кредитная нагрузка по
+                Wildberries и Ozon за выбранный период.
+              </p>
             </div>
-          </div>
 
-          <div className="rounded-[32px] border border-slate-200 bg-white p-5 shadow-sm">
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-              <div>
-                <div className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">
-                  Фильтры Dashboard
+            <div className="flex flex-col gap-3 sm:flex-row xl:shrink-0">
+              <details className="group">
+                <summary className="flex cursor-pointer list-none items-center justify-center rounded-2xl border border-slate-200 bg-slate-50 px-5 py-3 text-sm font-black text-slate-950 transition hover:bg-white">
+                  Фильтры и период
+                  <span className="ml-2 text-slate-400 transition group-open:rotate-180">
+                    ↓
+                  </span>
+                </summary>
+
+                <div className="mt-3 w-full rounded-[28px] border border-slate-200 bg-white p-4 shadow-xl xl:absolute xl:right-10 xl:z-20 xl:w-[760px]">
+                  <div className="grid gap-2 sm:grid-cols-3">
+                    {presetPeriods.map((period) => {
+                      const isActive = selectedPeriodOption.key === period.key;
+
+                      return (
+                        <Link
+                          key={period.key}
+                          href={buildDashboardHref({
+                            period: period.key,
+                            companyName: selectedCompanyValue,
+                          })}
+                          className={`rounded-2xl border p-3 transition active:scale-[0.99] ${
+                            isActive
+                              ? "border-slate-950 bg-slate-950 text-white"
+                              : "border-slate-200 bg-slate-50 text-slate-800 hover:bg-white"
+                          }`}
+                        >
+                          <div className="text-sm font-black">
+                            {period.shortLabel}
+                          </div>
+                          <div
+                            className={`mt-1 text-xs leading-5 ${
+                              isActive ? "text-slate-200" : "text-slate-500"
+                            }`}
+                          >
+                            {period.description}
+                          </div>
+                        </Link>
+                      );
+                    })}
+                  </div>
+
+                  <form
+                    action="/"
+                    className="mt-4 rounded-3xl bg-slate-50 p-4 ring-1 ring-slate-200"
+                  >
+                    <div className="grid gap-3 lg:grid-cols-[1fr_1fr_1fr]">
+                      <label className="text-sm font-medium text-slate-500">
+                        Компания
+                        <select
+                          name="companyName"
+                          defaultValue={selectedCompanyValue}
+                          className="mt-1 h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-950 outline-none transition focus:border-slate-900 focus:ring-2 focus:ring-slate-200"
+                        >
+                          <option value="ALL">Все компании</option>
+
+                          {companies.map((company) => (
+                            <option key={company.id} value={company.name}>
+                              {company.name}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+
+                      <label className="text-sm font-medium text-slate-500">
+                        Дата от
+                        <input
+                          type="date"
+                          name="dateFrom"
+                          defaultValue={selectedPeriod.dateFrom}
+                          className="mt-1 h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 font-semibold text-slate-950 outline-none transition focus:border-slate-900 focus:ring-2 focus:ring-slate-200"
+                        />
+                      </label>
+
+                      <label className="text-sm font-medium text-slate-500">
+                        Дата до
+                        <input
+                          type="date"
+                          name="dateTo"
+                          defaultValue={selectedPeriod.dateTo}
+                          className="mt-1 h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 font-semibold text-slate-950 outline-none transition focus:border-slate-900 focus:ring-2 focus:ring-slate-200"
+                        />
+                      </label>
+                    </div>
+
+                    <div className="mt-4 flex flex-wrap gap-3">
+                      <button
+                        type="submit"
+                        name="period"
+                        value="custom"
+                        className="rounded-2xl bg-slate-950 px-5 py-3 text-sm font-bold text-white transition hover:bg-slate-800 active:scale-95"
+                      >
+                        Показать выбранные даты
+                      </button>
+
+                      <Link
+                        href="/"
+                        className="rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-bold text-slate-600 transition hover:bg-slate-100 active:scale-95"
+                      >
+                        Сбросить
+                      </Link>
+                    </div>
+                  </form>
                 </div>
-
-                <h2 className="mt-2 text-2xl font-bold text-slate-950">
-                  Выбор периода
-                </h2>
-
-                <p className="mt-1 text-sm text-slate-500">
-                  Быстрые периоды работают через URL. Даты ниже — для ручного
-                  периода.
-                </p>
-              </div>
+              </details>
 
               <Link
                 href="/import"
-                className="inline-flex w-fit items-center gap-2 rounded-2xl bg-slate-950 px-5 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-slate-800 active:scale-95"
+                className="inline-flex items-center justify-center gap-2 rounded-2xl bg-slate-950 px-5 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-slate-800 active:scale-95"
               >
                 <span>📥</span>
-                Импортировать отчёт
+                Импорт
               </Link>
             </div>
-
-            <div className="mt-5 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-              {presetPeriods.map((period) => {
-                const isActive = selectedPeriodOption.key === period.key;
-
-                return (
-                  <Link
-                    key={period.key}
-                    href={buildDashboardHref({
-                      period: period.key,
-                      companyName: selectedCompanyValue,
-                    })}
-                    className={`rounded-2xl border p-4 transition active:scale-[0.99] ${
-                      isActive
-                        ? "border-slate-950 bg-slate-950 text-white shadow-sm"
-                        : "border-slate-200 bg-slate-50 text-slate-800 hover:border-slate-300 hover:bg-white"
-                    }`}
-                  >
-                    <div className="text-sm font-black">{period.shortLabel}</div>
-                    <div
-                      className={`mt-1 text-xs leading-5 ${
-                        isActive ? "text-slate-200" : "text-slate-500"
-                      }`}
-                    >
-                      {period.description}
-                    </div>
-                  </Link>
-                );
-              })}
-            </div>
-
-            <form action="/" className="mt-5 rounded-3xl bg-slate-50 p-4 ring-1 ring-slate-200">
-              <div className="grid gap-3 lg:grid-cols-[1fr_1fr_1fr]">
-                <label className="text-sm font-medium text-slate-500">
-                  Компания
-                  <select
-                    name="companyName"
-                    defaultValue={selectedCompanyValue}
-                    className="mt-1 h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-950 outline-none transition focus:border-slate-900 focus:ring-2 focus:ring-slate-200"
-                  >
-                    <option value="ALL">Все компании</option>
-
-                    {companies.map((company) => (
-                      <option key={company.id} value={company.name}>
-                        {company.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-
-                <label className="text-sm font-medium text-slate-500">
-                  Дата от
-                  <input
-                    type="date"
-                    name="dateFrom"
-                    defaultValue={selectedPeriod.dateFrom}
-                    className="mt-1 h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 font-semibold text-slate-950 outline-none transition focus:border-slate-900 focus:ring-2 focus:ring-slate-200"
-                  />
-                </label>
-
-                <label className="text-sm font-medium text-slate-500">
-                  Дата до
-                  <input
-                    type="date"
-                    name="dateTo"
-                    defaultValue={selectedPeriod.dateTo}
-                    className="mt-1 h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 font-semibold text-slate-950 outline-none transition focus:border-slate-900 focus:ring-2 focus:ring-slate-200"
-                  />
-                </label>
-              </div>
-
-              <div className="mt-4 flex flex-wrap gap-3">
-                <button
-                  type="submit"
-                  name="period"
-                  value={selectedPeriodOption.key}
-                  className="rounded-2xl bg-slate-950 px-5 py-3 text-sm font-bold text-white transition hover:bg-slate-800 active:scale-95"
-                >
-                  Применить фильтр
-                </button>
-
-                <button
-                  type="submit"
-                  name="period"
-                  value="custom"
-                  className="rounded-2xl border border-blue-200 bg-white px-5 py-3 text-sm font-bold text-blue-700 transition hover:bg-blue-50 active:scale-95"
-                >
-                  Показать выбранные даты
-                </button>
-
-                <Link
-                  href="/"
-                  className="rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-bold text-slate-600 transition hover:bg-slate-100 active:scale-95"
-                >
-                  Сбросить
-                </Link>
-              </div>
-            </form>
           </div>
         </section>
 
         <section className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-4">
-          <KpiCard
+          <MetricCard
             title="Выручка всего"
             value={totalRevenue > 0 ? formatCurrency(totalRevenue) : "Нет данных"}
             subtitle={`WB: ${formatCurrency(wbRevenue)} · Ozon: ${formatCurrency(
               ozonRevenue
             )}`}
             icon="💼"
-            tone="bg-blue-50 text-blue-600"
+            accent="bg-blue-50 text-blue-600"
           />
 
-          <KpiCard
-            title="Операционная прибыль после налогов"
+          <MetricCard
+            title="Операционная прибыль"
             value={formatCurrency(operatingProfitAfterTax)}
             subtitle="После себестоимости, рекламы, логистики, хранения и налогов."
             icon="↗"
-            tone="bg-emerald-50 text-emerald-600"
+            accent="bg-emerald-50 text-emerald-600"
             valueClassName={valueColor(operatingProfitAfterTax)}
           />
 
-          <KpiCard
-            title="Свободный денежный результат"
+          <MetricCard
+            title="Свободный результат"
             value={formatCurrency(freeCashResult)}
             subtitle="После всех расходов, кредитов, процентов и личных трат."
             icon="₽"
-            tone="bg-red-50 text-red-600"
+            accent="bg-red-50 text-red-600"
             valueClassName={valueColor(freeCashResult)}
           />
 
-          <KpiCard
+          <MetricCard
             title="ДРР общий"
             value={drr !== null ? formatPercent(drr) : "Нет данных"}
             subtitle={`Реклама всего: ${formatCurrency(adsCost)}`}
             icon="📣"
-            tone="bg-violet-50 text-violet-600"
+            accent="bg-violet-50 text-violet-600"
+            valueClassName={drr !== null && drr > 12 ? "text-red-600" : "text-slate-950"}
           />
         </section>
 
+        <MarketplaceShare wbRevenue={wbRevenue} ozonRevenue={ozonRevenue} />
+
         <section className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-4">
-          <KpiCard
+          <MetricCard
             title="Кредитные платежи"
             value={loanPayments > 0 ? formatCurrency(loanPayments) : "Нет данных"}
             subtitle="Факт по финансовым операциям за выбранный период."
             icon="💳"
-            tone="bg-orange-50 text-orange-600"
+            accent="bg-orange-50 text-orange-600"
             valueClassName={loanPayments > 0 ? "text-red-600" : "text-slate-950"}
           />
 
-          <article className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
-            <div className="flex items-start gap-4">
-              <KpiIcon tone="bg-blue-50 text-blue-600">▣</KpiIcon>
+          <MetricCard
+            title="Остатки WB"
+            value={wbStockQty > 0 ? `${formatNumber(wbStockQty)} шт` : "Нет данных"}
+            subtitle={`ABC: A ${wbAbc.A} · B ${wbAbc.B} · C ${wbAbc.C}`}
+            icon="▣"
+            accent="bg-blue-50 text-blue-600"
+          />
+
+          <MetricCard
+            title="Остатки Ozon"
+            value={
+              ozonStockQty > 0 ? `${formatNumber(ozonStockQty)} шт` : "Нет данных"
+            }
+            subtitle={`ABC: A ${ozonAbc.A} · B ${ozonAbc.B} · C ${ozonAbc.C}`}
+            icon="▣"
+            accent="bg-indigo-50 text-indigo-600"
+          />
+
+          <MetricCard
+            title="ABC всего"
+            value={`${formatNumber(abcTotal(totalAbc))} SKU`}
+            subtitle={`A ${totalAbc.A} · B ${totalAbc.B} · C ${totalAbc.C}`}
+            icon="◔"
+            accent="bg-violet-50 text-violet-600"
+          />
+        </section>
+
+        <section className="grid gap-5 xl:grid-cols-[1fr_1fr]">
+          <section className="rounded-[32px] border border-slate-200 bg-white p-6 shadow-sm">
+            <div className="flex items-start justify-between gap-4">
               <div>
-                <div className="text-sm font-medium text-slate-500">Остатки WB</div>
-                <div className="mt-4 text-3xl font-bold tracking-tight text-slate-950">
-                  {wbStockQty > 0 ? `${formatNumber(wbStockQty)} шт` : "Нет данных"}
+                <div className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">
+                  ABC структура
                 </div>
+                <h2 className="mt-2 text-2xl font-black text-slate-950">
+                  Качество ассортимента
+                </h2>
+              </div>
+
+              <div className="rounded-2xl bg-slate-100 px-4 py-2 text-sm font-black text-slate-700">
+                {formatNumber(abcTotal(totalAbc))} SKU
               </div>
             </div>
 
-            <div className="mt-5">
-              <AbcPills abc={wbAbc} />
+            <div className="mt-5 grid gap-4">
+              <AbcCard title="WB" abc={wbAbc} />
+              <AbcCard title="Ozon" abc={ozonAbc} />
+              <AbcCard title="Всего WB + Ozon" abc={totalAbc} />
             </div>
-          </article>
+          </section>
 
-          <article className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
-            <div className="flex items-start gap-4">
-              <KpiIcon tone="bg-indigo-50 text-indigo-600">▣</KpiIcon>
-              <div>
-                <div className="text-sm font-medium text-slate-500">Остатки Ozon</div>
-                <div className="mt-4 text-3xl font-bold tracking-tight text-slate-950">
-                  {ozonStockQty > 0
-                    ? `${formatNumber(ozonStockQty)} шт`
-                    : "Нет данных"}
-                </div>
-              </div>
+          <section className="rounded-[32px] border border-slate-200 bg-white p-6 shadow-sm">
+            <div className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">
+              Контроль собственника
             </div>
+            <h2 className="mt-2 text-2xl font-black text-slate-950">
+              Что требует внимания
+            </h2>
 
-            <div className="mt-5">
-              <AbcPills abc={ozonAbc} />
-            </div>
-          </article>
+            <div className="mt-5 grid gap-3">
+              {attentionItems.map((item) => (
+                <Link
+                  key={item.title}
+                  href={item.href}
+                  className={`rounded-3xl border p-4 transition hover:-translate-y-0.5 hover:shadow-md ${
+                    item.level === "danger"
+                      ? "border-red-200 bg-red-50/50"
+                      : item.level === "warning"
+                        ? "border-amber-200 bg-amber-50/50"
+                        : "border-slate-200 bg-slate-50"
+                  }`}
+                >
+                  <div className="flex items-start gap-4">
+                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-white text-xl shadow-sm">
+                      {item.icon}
+                    </div>
 
-          <article className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
-            <div className="flex items-start gap-4">
-              <KpiIcon tone="bg-violet-50 text-violet-600">◔</KpiIcon>
-              <div>
-                <div className="text-sm font-medium text-slate-500">ABC всего</div>
-                <div className="mt-4 text-2xl font-bold tracking-tight text-slate-950">
-                  {formatNumber(abcTotal(totalAbc))} SKU
-                </div>
-              </div>
+                    <div>
+                      <h3 className="font-black text-slate-950">{item.title}</h3>
+                      <p className="mt-2 text-sm leading-6 text-slate-600">
+                        {item.text}
+                      </p>
+                      <div className="mt-2 text-sm font-black text-slate-950">
+                        Открыть →
+                      </div>
+                    </div>
+                  </div>
+                </Link>
+              ))}
             </div>
-
-            <div className="mt-5">
-              <AbcPills abc={totalAbc} />
-            </div>
-          </article>
+          </section>
         </section>
 
-        <section className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
-          <h2 className="text-xl font-bold text-slate-950">Структура ABC по штукам</h2>
-
-          <div className="mt-5 grid gap-5 xl:grid-cols-3">
-            <AbcCard title="WB" abc={wbAbc} />
-            <AbcCard title="Ozon" abc={ozonAbc} />
-            <AbcCard title="Всего WB + Ozon" abc={totalAbc} />
-          </div>
-        </section>
-
-        <section className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
-          <h2 className="text-xl font-bold text-slate-950">Что требует внимания</h2>
-
-          <div className="mt-5 grid gap-5 xl:grid-cols-4">
-            {attentionItems.map((item) => (
-              <Link
-                key={item.title}
-                href={item.href}
-                className={`rounded-3xl border p-5 transition hover:-translate-y-0.5 hover:shadow-md ${
-                  item.level === "danger"
-                    ? "border-red-200 bg-red-50/40"
-                    : item.level === "warning"
-                      ? "border-amber-200 bg-amber-50/40"
-                      : "border-slate-200 bg-white"
-                }`}
-              >
-                <div className="text-2xl">{item.icon}</div>
-
-                <h3 className="mt-4 font-bold text-slate-950">{item.title}</h3>
-
-                <p className="mt-3 text-sm leading-6 text-slate-600">{item.text}</p>
-
-                <div className="mt-4 text-sm font-bold text-slate-950">Открыть →</div>
-              </Link>
-            ))}
-          </div>
-        </section>
-
-        <section className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+        <section className="rounded-[32px] border border-slate-200 bg-white p-6 shadow-sm">
           <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <h2 className="text-xl font-bold text-slate-950">Компании</h2>
-
-              <p className="mt-1 text-sm text-slate-500">
-                Только компании, у которых есть показатели за выбранный период
-                или актуальные остатки.
+              <div className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">
+                Компании
+              </div>
+              <h2 className="mt-2 text-2xl font-black text-slate-950">
+                Разрез по ИП
+              </h2>
+              <p className="mt-2 text-sm text-slate-500">
+                Выручка, реклама, ДРР, кредиты, остатки и ABC по каждой компании.
               </p>
             </div>
 
             <Link
               href="/settings/companies"
-              className="rounded-2xl border border-slate-300 px-5 py-3 text-center text-sm font-semibold transition hover:bg-slate-100"
+              className="rounded-2xl border border-slate-300 px-5 py-3 text-center text-sm font-bold transition hover:bg-slate-100"
             >
               Настройки компаний
             </Link>
@@ -1141,11 +1220,11 @@ export default async function HomePage({ searchParams }: Props) {
                 return (
                   <article
                     key={row.companyName}
-                    className="rounded-3xl border border-slate-200 bg-slate-50 p-5"
+                    className="rounded-[28px] border border-slate-200 bg-slate-50 p-5"
                   >
                     <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                       <div>
-                        <h3 className="text-2xl font-bold text-slate-950">
+                        <h3 className="text-2xl font-black text-slate-950">
                           {row.companyName}
                         </h3>
 
@@ -1155,97 +1234,56 @@ export default async function HomePage({ searchParams }: Props) {
                       </div>
 
                       <div
-                        className={`w-fit rounded-full px-4 py-2 text-sm font-bold ${
-                          row.operatingProfitAfterTax >= 0
-                            ? "bg-emerald-50 text-emerald-700"
-                            : "bg-red-50 text-red-700"
-                        }`}
+                        className={`w-fit rounded-full px-4 py-2 text-sm font-black ring-1 ${valueTone(
+                          row.operatingProfitAfterTax
+                        )}`}
                       >
                         {formatCurrency(row.operatingProfitAfterTax)}
                       </div>
                     </div>
 
-                    <div className="mt-6 grid gap-x-8 gap-y-5 sm:grid-cols-3">
-                      <div>
-                        <div className="text-sm text-slate-500">WB</div>
-                        <div className="mt-1 font-bold text-slate-950">
-                          {formatCurrency(row.wbRevenue)}
-                        </div>
-                      </div>
-
-                      <div>
-                        <div className="text-sm text-slate-500">Ozon</div>
-                        <div className="mt-1 font-bold text-slate-950">
-                          {formatCurrency(row.ozonRevenue)}
-                        </div>
-                      </div>
-
-                      <div>
-                        <div className="text-sm text-slate-500">Всего</div>
-                        <div className="mt-1 font-bold text-slate-950">
-                          {formatCurrency(row.totalRevenue)}
-                        </div>
-                      </div>
-
-                      <div>
-                        <div className="text-sm text-slate-500">Реклама</div>
-                        <div className="mt-1 font-bold text-slate-950">
-                          {formatCurrency(row.adsCost)}
-                        </div>
-                      </div>
-
-                      <div>
-                        <div className="text-sm text-slate-500">ДРР</div>
-                        <div className="mt-1 font-bold text-slate-950">
-                          {row.drr !== null ? formatPercent(row.drr) : "—"}
-                        </div>
-                      </div>
-
-                      <div>
-                        <div className="text-sm text-slate-500">Кредиты</div>
-                        <div className="mt-1 font-bold text-slate-950">
-                          {formatCurrency(row.loanPayments)}
-                        </div>
-                      </div>
-
-                      <div>
-                        <div className="text-sm text-slate-500">
-                          Свободный результат
-                        </div>
-                        <div className={`mt-1 font-bold ${valueColor(row.freeCashResult)}`}>
-                          {formatCurrency(row.freeCashResult)}
-                        </div>
-                      </div>
-
-                      <div>
-                        <div className="text-sm text-slate-500">Остатки WB</div>
-                        <div className="mt-1 font-bold text-slate-950">
-                          {formatNumber(row.wbStockQty)} шт
-                        </div>
-                      </div>
-
-                      <div>
-                        <div className="text-sm text-slate-500">Остатки Ozon</div>
-                        <div className="mt-1 font-bold text-slate-950">
-                          {formatNumber(row.ozonStockQty)} шт
-                        </div>
-                      </div>
+                    <div className="mt-5 grid gap-3 sm:grid-cols-3">
+                      <MiniMetric title="WB" value={formatCurrency(row.wbRevenue)} />
+                      <MiniMetric title="Ozon" value={formatCurrency(row.ozonRevenue)} />
+                      <MiniMetric title="Всего" value={formatCurrency(row.totalRevenue)} />
+                      <MiniMetric title="Реклама" value={formatCurrency(row.adsCost)} />
+                      <MiniMetric
+                        title="ДРР"
+                        value={row.drr !== null ? formatPercent(row.drr) : "—"}
+                        tone={
+                          row.drr !== null && row.drr > 12
+                            ? "text-red-700"
+                            : "text-slate-950"
+                        }
+                      />
+                      <MiniMetric title="Кредиты" value={formatCurrency(row.loanPayments)} />
+                      <MiniMetric
+                        title="Свободный результат"
+                        value={formatCurrency(row.freeCashResult)}
+                        tone={valueColor(row.freeCashResult)}
+                      />
+                      <MiniMetric
+                        title="Остатки WB"
+                        value={`${formatNumber(row.wbStockQty)} шт`}
+                      />
+                      <MiniMetric
+                        title="Остатки Ozon"
+                        value={`${formatNumber(row.ozonStockQty)} шт`}
+                      />
                     </div>
 
-                    <div className="mt-6 grid gap-4 border-t border-slate-200 pt-5 sm:grid-cols-2">
+                    <div className="mt-5 grid gap-4 border-t border-slate-200 pt-5 sm:grid-cols-2">
                       <div>
-                        <div className="mb-3 text-sm font-bold text-slate-700">
+                        <div className="mb-3 text-sm font-black text-slate-700">
                           ABC WB
                         </div>
-
                         <AbcPills abc={rowWbAbc} />
                       </div>
 
                       <div>
-                        <div className="mb-3 text-sm font-bold text-slate-700">
+                        <div className="mb-3 text-sm font-black text-slate-700">
                           ABC Ozon
                         </div>
-
                         <AbcPills abc={rowOzonAbc} />
                       </div>
                     </div>
@@ -1260,29 +1298,34 @@ export default async function HomePage({ searchParams }: Props) {
           )}
         </section>
 
-        <section className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
-          <h2 className="text-xl font-bold text-slate-950">Быстрый доступ</h2>
+        <section className="rounded-[32px] border border-slate-200 bg-white p-6 shadow-sm">
+          <div className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">
+            Быстрый доступ
+          </div>
+          <h2 className="mt-2 text-2xl font-black text-slate-950">
+            Основные разделы
+          </h2>
 
           <div className="mt-5 grid gap-5 md:grid-cols-2 xl:grid-cols-4">
             {quickLinks.map((item) => (
               <Link
                 key={item.href}
                 href={item.href}
-                className="rounded-3xl border border-slate-200 bg-white p-5 transition hover:-translate-y-0.5 hover:shadow-md"
+                className="rounded-3xl border border-slate-200 bg-slate-50 p-5 transition hover:-translate-y-0.5 hover:bg-white hover:shadow-md"
               >
                 <div className="flex items-start gap-4">
-                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-blue-50 text-xl">
+                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-white text-xl shadow-sm">
                     {item.icon}
                   </div>
 
                   <div>
-                    <h3 className="font-bold text-slate-950">{item.title}</h3>
+                    <h3 className="font-black text-slate-950">{item.title}</h3>
 
                     <p className="mt-2 text-sm leading-6 text-slate-500">
                       {item.description}
                     </p>
 
-                    <div className="mt-3 text-sm font-bold text-slate-950">
+                    <div className="mt-3 text-sm font-black text-slate-950">
                       Открыть →
                     </div>
                   </div>
