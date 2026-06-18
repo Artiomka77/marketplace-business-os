@@ -2,175 +2,96 @@ import { NextResponse } from "next/server";
 
 import { prisma } from "@/lib/prisma";
 import { syncWbSales } from "@/lib/wb/syncWb";
+import {
+  getWbCronSkipResult,
+  setWbCronError,
+  setWbCronLastAttempt,
+  setWbCronSuccess,
+  type WbCronCompanyResult,
+  type WbCronConnection,
+} from "@/lib/wb/wbCronProtection";
 
-const WB_SALES_COOLDOWN_MS = 60 * 60 * 1000;
-
-function getErrorMessage(error: unknown) {
-  return error instanceof Error ? error.message : "Неизвестная ошибка";
-}
-
-function isRateLimitMessage(message: string) {
-  const normalizedMessage = message.toLowerCase();
-
-  return (
-    normalizedMessage.includes("429") ||
-    normalizedMessage.includes("too many requests") ||
-    normalizedMessage.includes("limited by global limiter") ||
-    normalizedMessage.includes("rate limit")
-  );
-}
-
-function isRateLimitError(error: unknown) {
-  return isRateLimitMessage(getErrorMessage(error));
-}
-
-function isWbSalesRateLimitText(errorText: string | null) {
-  if (!errorText) {
-    return false;
-  }
-
-  const normalizedText = errorText.toLowerCase();
-
-  return (
-    (normalizedText.includes("wb sales") ||
-      normalizedText.includes("sales api report")) &&
-    isRateLimitMessage(normalizedText)
-  );
-}
-
-function isWbSalesInCooldown(connection: {
-  lastError: string | null;
-  lastAttemptAt: Date | null;
-}) {
-  if (
-    !connection.lastAttemptAt ||
-    !isWbSalesRateLimitText(connection.lastError)
-  ) {
-    return false;
-  }
-
-  return Date.now() - connection.lastAttemptAt.getTime() < WB_SALES_COOLDOWN_MS;
-}
-
-function getCooldownMessage(lastAttemptAt: Date) {
-  const nextTryAt = new Date(lastAttemptAt.getTime() + WB_SALES_COOLDOWN_MS);
-
-  return `WB Sales недавно вернул 429. Чтобы не усиливать блокировку WB, повторный запуск временно пропущен. Повторить можно после ${nextTryAt.toLocaleString("ru-RU")}.`;
-}
+export const dynamic = "force-dynamic";
 
 export async function GET() {
-  const connections = await prisma.marketplaceApiConnection.findMany({
-    where: {
-      marketplace: "WB",
-      isEnabled: true,
-      wbToken: {
-        not: null,
+  const connections: WbCronConnection[] =
+    await prisma.marketplaceApiConnection.findMany({
+      where: {
+        marketplace: "WB",
+        isEnabled: true,
+        wbToken: {
+          not: null,
+        },
       },
-    },
-    select: {
-      companyId: true,
-      lastAttemptAt: true,
-      lastError: true,
-      retryCount: true,
-    },
-  });
+      select: {
+        companyId: true,
+        lastAttemptAt: true,
+        lastError: true,
+        retryCount: true,
+      },
+      orderBy: {
+        companyId: "asc",
+      },
+    });
 
-  const results = [];
+  const results: WbCronCompanyResult[] = [];
 
   for (const connection of connections) {
-    if (isWbSalesInCooldown(connection)) {
-      results.push({
-        companyId: connection.companyId,
-        ok: true,
-        result: {
-          name: "WB Sales",
-          rows: 0,
-          salesRows: 0,
-          skipped: true,
-          reason: "RATE_LIMIT_COOLDOWN",
-          message: getCooldownMessage(connection.lastAttemptAt as Date),
-          retryCount: connection.retryCount,
-        },
-        error: null,
-        isRateLimit: true,
-      });
+    const skipResult = await getWbCronSkipResult({
+      companyId: connection.companyId,
+      syncName: "WB Sales",
+      lastAttemptAt: connection.lastAttemptAt,
+      lastError: connection.lastError,
+      retryCount: connection.retryCount,
+    });
 
+    if (skipResult) {
+      results.push(skipResult);
       continue;
     }
 
     try {
-      await prisma.marketplaceApiConnection.update({
-        where: {
-          companyId_marketplace: {
-            companyId: connection.companyId,
-            marketplace: "WB",
-          },
-        },
-        data: {
-          lastAttemptAt: new Date(),
-        },
-      });
+      await setWbCronLastAttempt(connection.companyId);
 
       const result = await syncWbSales(connection.companyId);
 
-      await prisma.marketplaceApiConnection.update({
-        where: {
-          companyId_marketplace: {
-            companyId: connection.companyId,
-            marketplace: "WB",
-          },
-        },
-        data: {
-          status: "CONNECTED",
-          lastSyncAt: new Date(),
-          retryCount: 0,
-          lastError: null,
-        },
-      });
+      await setWbCronSuccess(connection.companyId);
 
       results.push({
         companyId: connection.companyId,
         ok: true,
+        skipped: false,
+        reason: null,
         result,
         error: null,
         isRateLimit: false,
       });
     } catch (error) {
-      const errorText = getErrorMessage(error);
-      const isRateLimit = isRateLimitError(error);
-
-      await prisma.marketplaceApiConnection.update({
-        where: {
-          companyId_marketplace: {
-            companyId: connection.companyId,
-            marketplace: "WB",
-          },
-        },
-        data: {
-          status: isRateLimit ? "CONNECTED" : "ERROR",
-          lastAttemptAt: new Date(),
-          retryCount: {
-            increment: 1,
-          },
-          lastError: isRateLimit
-            ? `WB Sales rate limit: ${errorText}`.slice(0, 1000)
-            : errorText.slice(0, 1000),
-        },
+      const errorResult = await setWbCronError({
+        companyId: connection.companyId,
+        error,
+        rateLimitPrefix: "WB Sales",
       });
 
       results.push({
         companyId: connection.companyId,
         ok: false,
+        skipped: false,
+        reason: errorResult.isRateLimit
+          ? "WB_RATE_LIMIT"
+          : "WB_SALES_SYNC_ERROR",
         result: null,
-        error: errorText,
-        isRateLimit,
+        error: errorResult.errorText,
+        isRateLimit: errorResult.isRateLimit,
       });
     }
   }
 
   return NextResponse.json({
     success: results.every((result) => result.ok || result.isRateLimit),
-    syncedCompanies: results.length,
+    totalCompanies: results.length,
+    syncedCompanies: results.filter((result) => !result.skipped).length,
+    skippedCompanies: results.filter((result) => result.skipped).length,
     results,
     executedAt: new Date().toISOString(),
   });

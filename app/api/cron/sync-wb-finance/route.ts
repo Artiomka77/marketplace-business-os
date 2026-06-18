@@ -2,110 +2,96 @@ import { NextResponse } from "next/server";
 
 import { prisma } from "@/lib/prisma";
 import { syncWbFinance } from "@/lib/wb/syncWb";
+import {
+  getWbCronSkipResult,
+  setWbCronError,
+  setWbCronLastAttempt,
+  setWbCronSuccess,
+  type WbCronCompanyResult,
+  type WbCronConnection,
+} from "@/lib/wb/wbCronProtection";
 
-function getErrorMessage(error: unknown) {
-  return error instanceof Error ? error.message : "Неизвестная ошибка";
-}
-
-function isRateLimitError(error: unknown) {
-  const message = getErrorMessage(error).toLowerCase();
-
-  return (
-    message.includes("429") ||
-    message.includes("too many requests") ||
-    message.includes("limited by global limiter") ||
-    message.includes("rate limit")
-  );
-}
+export const dynamic = "force-dynamic";
 
 export async function GET() {
-  const connections = await prisma.marketplaceApiConnection.findMany({
-    where: {
-      marketplace: "WB",
-      isEnabled: true,
-      wbToken: {
-        not: null,
+  const connections: WbCronConnection[] =
+    await prisma.marketplaceApiConnection.findMany({
+      where: {
+        marketplace: "WB",
+        isEnabled: true,
+        wbToken: {
+          not: null,
+        },
       },
-    },
-    select: {
-      companyId: true,
-    },
-  });
+      select: {
+        companyId: true,
+        lastAttemptAt: true,
+        lastError: true,
+        retryCount: true,
+      },
+      orderBy: {
+        companyId: "asc",
+      },
+    });
 
-  const results = [];
+  const results: WbCronCompanyResult[] = [];
 
   for (const connection of connections) {
+    const skipResult = await getWbCronSkipResult({
+      companyId: connection.companyId,
+      syncName: "WB Finance",
+      lastAttemptAt: connection.lastAttemptAt,
+      lastError: connection.lastError,
+      retryCount: connection.retryCount,
+    });
+
+    if (skipResult) {
+      results.push(skipResult);
+      continue;
+    }
+
     try {
-      await prisma.marketplaceApiConnection.update({
-        where: {
-          companyId_marketplace: {
-            companyId: connection.companyId,
-            marketplace: "WB",
-          },
-        },
-        data: {
-          lastAttemptAt: new Date(),
-        },
-      });
+      await setWbCronLastAttempt(connection.companyId);
 
       const result = await syncWbFinance(connection.companyId);
 
-      await prisma.marketplaceApiConnection.update({
-        where: {
-          companyId_marketplace: {
-            companyId: connection.companyId,
-            marketplace: "WB",
-          },
-        },
-        data: {
-          status: "CONNECTED",
-          lastSyncAt: new Date(),
-          retryCount: 0,
-          lastError: null,
-        },
-      });
+      await setWbCronSuccess(connection.companyId);
 
       results.push({
         companyId: connection.companyId,
         ok: true,
+        skipped: false,
+        reason: null,
         result,
         error: null,
         isRateLimit: false,
       });
     } catch (error) {
-      const errorText = getErrorMessage(error);
-      const isRateLimit = isRateLimitError(error);
-
-      await prisma.marketplaceApiConnection.update({
-        where: {
-          companyId_marketplace: {
-            companyId: connection.companyId,
-            marketplace: "WB",
-          },
-        },
-        data: {
-          status: isRateLimit ? "CONNECTED" : "ERROR",
-          lastAttemptAt: new Date(),
-          retryCount: {
-            increment: 1,
-          },
-          lastError: errorText.slice(0, 1000),
-        },
+      const errorResult = await setWbCronError({
+        companyId: connection.companyId,
+        error,
+        rateLimitPrefix: "WB Finance",
       });
 
       results.push({
         companyId: connection.companyId,
         ok: false,
+        skipped: false,
+        reason: errorResult.isRateLimit
+          ? "WB_RATE_LIMIT"
+          : "WB_FINANCE_SYNC_ERROR",
         result: null,
-        error: errorText,
-        isRateLimit,
+        error: errorResult.errorText,
+        isRateLimit: errorResult.isRateLimit,
       });
     }
   }
 
   return NextResponse.json({
     success: results.every((result) => result.ok || result.isRateLimit),
-    syncedCompanies: results.length,
+    totalCompanies: results.length,
+    syncedCompanies: results.filter((result) => !result.skipped).length,
+    skippedCompanies: results.filter((result) => result.skipped).length,
     results,
     executedAt: new Date().toISOString(),
   });
