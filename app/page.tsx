@@ -33,12 +33,16 @@ type CompanyDashboardRow = {
   totalRevenue: number;
   operatingProfitAfterTax: number;
   netProfit: number;
+  profitAfterOwnerWithdrawal: number;
   cashFlowResult: number;
   adsCost: number;
   drr: number | null;
   loanPayments: number;
+  creditPrincipal: number;
+  creditInterest: number;
   personalExpenses: number;
   financialExpenses: number;
+  cashOnlyExpenses: number;
   wbStockQty: number;
   ozonStockQty: number;
   wbAbcA: number;
@@ -56,12 +60,16 @@ type DashboardSummary = {
   ozonRevenue: number;
   operatingProfitAfterTax: number;
   netProfit: number;
+  profitAfterOwnerWithdrawal: number;
   cashFlowResult: number;
   adsCost: number;
   drr: number | null;
   loanPayments: number;
+  creditPrincipal: number;
+  creditInterest: number;
   personalExpenses: number;
   financialExpenses: number;
+  cashOnlyExpenses: number;
   wbStockQty: number;
   ozonStockQty: number;
   wbAbc: AbcCounts;
@@ -82,6 +90,30 @@ type MetricTrend = {
   label: string;
   title: string;
   className: string;
+};
+
+type ProfitTreatment =
+  | "AUTO"
+  | "INCLUDE_IN_NET_PROFIT"
+  | "CASH_ONLY"
+  | "CREDIT_PRINCIPAL"
+  | "CREDIT_INTEREST"
+  | "CREDIT_RECEIVED"
+  | "OWNER_WITHDRAWAL"
+  | "IGNORE";
+
+type FinanceCategoryForDashboard = {
+  name: string;
+  categoryType: string;
+  profitTreatment: string | null;
+};
+
+type FinanceTransactionForDashboard = {
+  operationType: string;
+  category: string;
+  subcategory: string | null;
+  amount: unknown;
+  isInternalTransfer: boolean;
 };
 
 const quickLinks = [
@@ -368,37 +400,194 @@ function safeNumber(value: unknown) {
   return Number.isFinite(number) ? number : 0;
 }
 
-function isLoanCategory(category?: string | null) {
-  const value = String(category ?? "").toLowerCase();
+function normalizeSearchText(value?: string | null) {
+  return String(value ?? "")
+    .toLowerCase()
+    .replaceAll("ё", "е")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function categoryKey(categoryType: string, name: string) {
+  return `${normalizeSearchText(categoryType)}::${normalizeSearchText(name)}`;
+}
+
+function isLoanCategory(value?: string | null) {
+  const text = normalizeSearchText(value);
+
+  return text.includes("кредит") || text.includes("займ") || text.includes("заем");
+}
+
+function isCreditInterestCategory(value?: string | null) {
+  const text = normalizeSearchText(value);
 
   return (
-    value.includes("кредит") ||
-    value.includes("займ") ||
-    value.includes("заем")
+    text.includes("процент") ||
+    text.includes("% по кредит") ||
+    text.includes("% по займ") ||
+    text.includes("финансовые проценты")
   );
 }
 
-function isPersonalCategory(category?: string | null) {
-  const value = String(category ?? "").toLowerCase();
+function isCreditReceivedCategory(value?: string | null) {
+  const text = normalizeSearchText(value);
 
   return (
-    value.includes("личн") ||
-    value.includes("собственник") ||
-    value.includes("дивиденд")
+    text.includes("получение кредита") ||
+    text.includes("получение займа") ||
+    text.includes("получение заема") ||
+    text.includes("поступление кредита") ||
+    text.includes("поступление займа") ||
+    text.includes("кредит получен") ||
+    text.includes("займ получен") ||
+    text.includes("заем получен")
   );
 }
 
-function isFinancialExpenseCategory(category?: string | null) {
-  const value = String(category ?? "").toLowerCase();
+function isPersonalCategory(value?: string | null) {
+  const text = normalizeSearchText(value);
 
   return (
-    value.includes("процент") ||
-    value.includes("комиссия банка") ||
-    value.includes("банковская комиссия") ||
-    value.includes("обслуживание счета") ||
-    value.includes("обслуживание счёта") ||
-    value.includes("эквайринг")
+    text.includes("личн") ||
+    text.includes("собственник") ||
+    text.includes("дивиденд") ||
+    text.includes("вывод")
   );
+}
+
+function isCashOnlyCategory(value?: string | null) {
+  const text = normalizeSearchText(value);
+
+  return (
+    text.includes("фулфил") ||
+    text.includes("fulfill") ||
+    text.includes("закуп") ||
+    text.includes("себестоим") ||
+    text.includes("упаков") ||
+    text.includes("доставка до склада") ||
+    text.includes("логистика до склада") ||
+    text.includes("переупаков") ||
+    text.includes("проверка брака") ||
+    text.includes("проверка на брак") ||
+    text.includes("брак") ||
+    text.includes("поставщик")
+  );
+}
+
+function isFinancialExpenseCategory(value?: string | null) {
+  const text = normalizeSearchText(value);
+
+  return (
+    text.includes("процент") ||
+    text.includes("комиссия банка") ||
+    text.includes("банковская комиссия") ||
+    text.includes("обслуживание счета") ||
+    text.includes("обслуживание счета") ||
+    text.includes("эквайринг")
+  );
+}
+
+function normalizeProfitTreatment(value?: string | null): ProfitTreatment {
+  const allowed: ProfitTreatment[] = [
+    "AUTO",
+    "INCLUDE_IN_NET_PROFIT",
+    "CASH_ONLY",
+    "CREDIT_PRINCIPAL",
+    "CREDIT_INTEREST",
+    "CREDIT_RECEIVED",
+    "OWNER_WITHDRAWAL",
+    "IGNORE",
+  ];
+
+  return allowed.includes(value as ProfitTreatment)
+    ? (value as ProfitTreatment)
+    : "AUTO";
+}
+
+function getFallbackProfitTreatment(
+  transaction: FinanceTransactionForDashboard
+): ProfitTreatment {
+  const text = `${transaction.category} ${transaction.subcategory ?? ""}`;
+
+  if (transaction.isInternalTransfer || transaction.operationType === "TRANSFER") {
+    return "IGNORE";
+  }
+
+  if (isCreditReceivedCategory(text)) {
+    return "CREDIT_RECEIVED";
+  }
+
+  if (isLoanCategory(text) && isCreditInterestCategory(text)) {
+    return "CREDIT_INTEREST";
+  }
+
+  if (isLoanCategory(text)) {
+    return "CREDIT_PRINCIPAL";
+  }
+
+  if (transaction.operationType === "PERSONAL" || isPersonalCategory(text)) {
+    return "OWNER_WITHDRAWAL";
+  }
+
+  if (isCashOnlyCategory(text)) {
+    return "CASH_ONLY";
+  }
+
+  if (isFinancialExpenseCategory(text)) {
+    return "INCLUDE_IN_NET_PROFIT";
+  }
+
+  if (transaction.operationType === "INCOME") {
+    return "CASH_ONLY";
+  }
+
+  if (transaction.operationType === "EXPENSE") {
+    return "INCLUDE_IN_NET_PROFIT";
+  }
+
+  if (transaction.operationType === "FINANCING") {
+    return "CREDIT_PRINCIPAL";
+  }
+
+  return "CASH_ONLY";
+}
+
+function getTransactionProfitTreatment(params: {
+  transaction: FinanceTransactionForDashboard;
+  categories: FinanceCategoryForDashboard[];
+}) {
+  const exactCategory = params.categories.find(
+    (category) =>
+      categoryKey(category.categoryType, category.name) ===
+      categoryKey(params.transaction.operationType, params.transaction.category)
+  );
+
+  const byNameCategory = params.categories.find(
+    (category) =>
+      normalizeSearchText(category.name) ===
+      normalizeSearchText(params.transaction.category)
+  );
+
+  const explicitTreatment = normalizeProfitTreatment(
+    exactCategory?.profitTreatment ?? byNameCategory?.profitTreatment
+  );
+
+  if (explicitTreatment !== "AUTO") {
+    return explicitTreatment;
+  }
+
+  return getFallbackProfitTreatment(params.transaction);
+}
+
+function isCashIncomeOperation(params: {
+  transaction: FinanceTransactionForDashboard;
+  treatment: ProfitTreatment;
+}) {
+  if (params.treatment === "CREDIT_RECEIVED") {
+    return true;
+  }
+
+  return params.transaction.operationType === "INCOME";
 }
 
 function valueColor(value: number) {
@@ -506,11 +695,15 @@ function hasAnyCompanyMetric(row: CompanyDashboardRow) {
     row.totalRevenue !== 0 ||
     row.operatingProfitAfterTax !== 0 ||
     row.netProfit !== 0 ||
+    row.profitAfterOwnerWithdrawal !== 0 ||
     row.cashFlowResult !== 0 ||
     row.adsCost !== 0 ||
     row.loanPayments !== 0 ||
+    row.creditPrincipal !== 0 ||
+    row.creditInterest !== 0 ||
     row.personalExpenses !== 0 ||
     row.financialExpenses !== 0 ||
+    row.cashOnlyExpenses !== 0 ||
     row.wbStockQty !== 0 ||
     row.ozonStockQty !== 0 ||
     row.wbAbcA !== 0 ||
@@ -771,73 +964,107 @@ async function getFinanceCashResult(params: {
   const toExclusive = new Date(`${params.dateTo}T00:00:00`);
   toExclusive.setDate(toExclusive.getDate() + 1);
 
-  const rows = await prisma.financeTransaction.findMany({
-    where: {
-      companyName: params.companyName,
-      operationDate: {
-        gte: from,
-        lt: toExclusive,
+  const [rows, categories] = await Promise.all([
+    prisma.financeTransaction.findMany({
+      where: {
+        companyName: params.companyName,
+        operationDate: {
+          gte: from,
+          lt: toExclusive,
+        },
       },
-    },
-  });
+    }),
+    prisma.financeCategory.findMany({
+      select: {
+        name: true,
+        categoryType: true,
+        profitTreatment: true,
+      },
+    }),
+  ]);
 
   let income = 0;
   let cashExpense = 0;
-  let loanPayments = 0;
-  let personalExpenses = 0;
-  let financialExpenses = 0;
+
+  let creditPrincipal = 0;
+  let creditInterest = 0;
+  let ownerWithdrawals = 0;
+  let cashOnlyExpenses = 0;
+
+  let netProfitIncludedIncome = 0;
+  let netProfitIncludedExpenses = 0;
 
   for (const row of rows) {
-    if (row.isInternalTransfer || row.operationType === "TRANSFER") {
+    const transaction: FinanceTransactionForDashboard = {
+      operationType: row.operationType,
+      category: row.category,
+      subcategory: row.subcategory,
+      amount: row.amount,
+      isInternalTransfer: row.isInternalTransfer,
+    };
+
+    const treatment = getTransactionProfitTreatment({
+      transaction,
+      categories,
+    });
+
+    if (treatment === "IGNORE") {
       continue;
     }
 
     const amount = Math.abs(safeNumber(row.amount));
+    const isIncome = isCashIncomeOperation({ transaction, treatment });
 
-    if (row.operationType === "INCOME") {
+    if (isIncome) {
       income += amount;
+
+      if (treatment === "INCLUDE_IN_NET_PROFIT") {
+        netProfitIncludedIncome += amount;
+      }
+
       continue;
     }
 
-    if (row.operationType === "FINANCING") {
-      loanPayments += amount;
-      cashExpense += amount;
+    cashExpense += amount;
+
+    if (treatment === "INCLUDE_IN_NET_PROFIT") {
+      netProfitIncludedExpenses += amount;
       continue;
     }
 
-    if (row.operationType === "PERSONAL") {
-      personalExpenses += amount;
-      cashExpense += amount;
+    if (treatment === "CREDIT_INTEREST") {
+      creditInterest += amount;
+      netProfitIncludedExpenses += amount;
       continue;
     }
 
-    if (row.operationType === "EXPENSE") {
-      cashExpense += amount;
+    if (treatment === "CREDIT_PRINCIPAL") {
+      creditPrincipal += amount;
+      continue;
+    }
 
-      if (isLoanCategory(row.category)) {
-        loanPayments += amount;
-        continue;
-      }
+    if (treatment === "OWNER_WITHDRAWAL") {
+      ownerWithdrawals += amount;
+      continue;
+    }
 
-      if (isPersonalCategory(row.category)) {
-        personalExpenses += amount;
-        continue;
-      }
-
-      if (isFinancialExpenseCategory(row.category)) {
-        financialExpenses += amount;
-      }
+    if (treatment === "CASH_ONLY") {
+      cashOnlyExpenses += amount;
     }
   }
 
-  const profitDeductions = loanPayments + personalExpenses + financialExpenses;
+  const loanPayments = creditPrincipal + creditInterest;
 
   return {
     cashFlowResult: income - cashExpense,
     loanPayments,
-    personalExpenses,
-    financialExpenses,
-    profitDeductions,
+    creditPrincipal,
+    creditInterest,
+    personalExpenses: ownerWithdrawals,
+    financialExpenses: Math.max(0, netProfitIncludedExpenses - creditInterest),
+    cashOnlyExpenses,
+    netProfitIncludedIncome,
+    netProfitIncludedExpenses,
   };
 }
 
@@ -958,19 +1185,30 @@ async function buildCompanyDashboardRows(params: {
     const adsCost = wb.totals.adsCost + ozon.totals.adsCost;
     const drr = totalRevenue > 0 ? (adsCost / totalRevenue) * 100 : null;
 
+    const netProfit =
+      operatingProfitAfterTax +
+      cash.netProfitIncludedIncome -
+      cash.netProfitIncludedExpenses;
+
+    const profitAfterOwnerWithdrawal = netProfit - cash.personalExpenses;
+
     rows.push({
       companyName: company.name,
       wbRevenue,
       ozonRevenue,
       totalRevenue,
       operatingProfitAfterTax,
-      netProfit: operatingProfitAfterTax - cash.profitDeductions,
+      netProfit,
+      profitAfterOwnerWithdrawal,
       cashFlowResult: cash.cashFlowResult,
       adsCost,
       drr,
       loanPayments: cash.loanPayments,
+      creditPrincipal: cash.creditPrincipal,
+      creditInterest: cash.creditInterest,
       personalExpenses: cash.personalExpenses,
       financialExpenses: cash.financialExpenses,
+      cashOnlyExpenses: cash.cashOnlyExpenses,
       wbStockQty,
       ozonStockQty,
       wbAbcA: wbAbc.A,
@@ -999,6 +1237,11 @@ function summarizeDashboardRows(rows: CompanyDashboardRow[]): DashboardSummary {
 
   const netProfit = companyRows.reduce((sum, row) => sum + row.netProfit, 0);
 
+  const profitAfterOwnerWithdrawal = companyRows.reduce(
+    (sum, row) => sum + row.profitAfterOwnerWithdrawal,
+    0
+  );
+
   const cashFlowResult = companyRows.reduce(
     (sum, row) => sum + row.cashFlowResult,
     0
@@ -1008,12 +1251,24 @@ function summarizeDashboardRows(rows: CompanyDashboardRow[]): DashboardSummary {
   const drr = totalRevenue > 0 ? (adsCost / totalRevenue) * 100 : null;
 
   const loanPayments = companyRows.reduce((sum, row) => sum + row.loanPayments, 0);
+  const creditPrincipal = companyRows.reduce(
+    (sum, row) => sum + row.creditPrincipal,
+    0
+  );
+  const creditInterest = companyRows.reduce(
+    (sum, row) => sum + row.creditInterest,
+    0
+  );
   const personalExpenses = companyRows.reduce(
     (sum, row) => sum + row.personalExpenses,
     0
   );
   const financialExpenses = companyRows.reduce(
     (sum, row) => sum + row.financialExpenses,
+    0
+  );
+  const cashOnlyExpenses = companyRows.reduce(
+    (sum, row) => sum + row.cashOnlyExpenses,
     0
   );
 
@@ -1045,12 +1300,16 @@ function summarizeDashboardRows(rows: CompanyDashboardRow[]): DashboardSummary {
     ozonRevenue,
     operatingProfitAfterTax,
     netProfit,
+    profitAfterOwnerWithdrawal,
     cashFlowResult,
     adsCost,
     drr,
     loanPayments,
+    creditPrincipal,
+    creditInterest,
     personalExpenses,
     financialExpenses,
+    cashOnlyExpenses,
     wbStockQty,
     ozonStockQty,
     wbAbc,
@@ -1143,10 +1402,24 @@ export default async function HomePage({ searchParams }: Props) {
         current.netProfit < 0
           ? `Чистая прибыль отрицательная: ${formatCurrency(
               current.netProfit
-            )}. Проверь кредиты, личные и финансовые расходы.`
-          : `Чистая прибыль: ${formatCurrency(current.netProfit)}.`,
+            )}. Проверь проценты по кредитам и расходы, влияющие на прибыль.`
+          : `Чистая прибыль бизнеса: ${formatCurrency(current.netProfit)}.`,
       href: "/finance/cash-flow",
       icon: "💸",
+    },
+    {
+      level: current.profitAfterOwnerWithdrawal < 0 ? "danger" : "ok",
+      title: "После вывода собственника",
+      text:
+        current.profitAfterOwnerWithdrawal < 0
+          ? `После личных расходов и вывода собственника минус ${formatCurrency(
+              Math.abs(current.profitAfterOwnerWithdrawal)
+            )}.`
+          : `После личных расходов и вывода собственника осталось ${formatCurrency(
+              current.profitAfterOwnerWithdrawal
+            )}.`,
+      href: "/finance/operations",
+      icon: "👤",
     },
     {
       level: current.drr !== null && current.drr > 12 ? "warning" : "ok",
@@ -1326,7 +1599,7 @@ export default async function HomePage({ searchParams }: Props) {
           </div>
         </section>
 
-        <section className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-5">
+        <section className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
           <MetricCard
             title="Выручка всего"
             value={
@@ -1363,7 +1636,7 @@ export default async function HomePage({ searchParams }: Props) {
           <MetricCard
             title="Чистая прибыль"
             value={formatCurrency(current.netProfit)}
-            subtitle="Операционная прибыль минус кредиты, личные и финансовые расходы."
+            subtitle="Опер. прибыль ± статьи, которые отмечены как влияющие на прибыль."
             icon="₽"
             accent="bg-red-50 text-red-600"
             valueClassName={valueColor(current.netProfit)}
@@ -1375,9 +1648,25 @@ export default async function HomePage({ searchParams }: Props) {
           />
 
           <MetricCard
+            title="После вывода собственника"
+            value={formatCurrency(current.profitAfterOwnerWithdrawal)}
+            subtitle={`Чистая прибыль минус личные расходы: ${formatCurrency(
+              current.personalExpenses
+            )}`}
+            icon="👤"
+            accent="bg-amber-50 text-amber-600"
+            valueClassName={valueColor(current.profitAfterOwnerWithdrawal)}
+            trend={buildMoneyTrend({
+              current: current.profitAfterOwnerWithdrawal,
+              previous: previous.profitAfterOwnerWithdrawal,
+              goodWhen: "up",
+            })}
+          />
+
+          <MetricCard
             title="Денежный поток"
             value={formatCurrency(current.cashFlowResult)}
-            subtitle="ДДС: поступления минус фактические расходы по операциям."
+            subtitle="ДДС: поступления минус все фактические выплаты."
             icon="💸"
             accent="bg-cyan-50 text-cyan-600"
             valueClassName={valueColor(current.cashFlowResult)}
@@ -1412,23 +1701,63 @@ export default async function HomePage({ searchParams }: Props) {
           ozonRevenue={current.ozonRevenue}
         />
 
-        <section className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-4">
+        <section className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
           <MetricCard
-            title="Кредитные платежи"
+            title="Тело кредита"
             value={
-              current.loanPayments > 0
-                ? formatCurrency(current.loanPayments)
+              current.creditPrincipal > 0
+                ? formatCurrency(current.creditPrincipal)
                 : "Нет данных"
             }
-            subtitle="Кредиты и займы по финансовым операциям за период."
-            icon="💳"
-            accent="bg-orange-50 text-orange-600"
+            subtitle="Погашение основного долга: влияет на ДДС, но не на чистую прибыль."
+            icon="🏦"
+            accent="bg-blue-50 text-blue-600"
             valueClassName={
-              current.loanPayments > 0 ? "text-red-600" : "text-slate-950"
+              current.creditPrincipal > 0 ? "text-red-600" : "text-slate-950"
             }
             trend={buildMoneyTrend({
-              current: current.loanPayments,
-              previous: previous.loanPayments,
+              current: current.creditPrincipal,
+              previous: previous.creditPrincipal,
+              goodWhen: "down",
+            })}
+          />
+
+          <MetricCard
+            title="Проценты по кредиту"
+            value={
+              current.creditInterest > 0
+                ? formatCurrency(current.creditInterest)
+                : "Нет данных"
+            }
+            subtitle="Финансовый расход: влияет и на ДДС, и на чистую прибыль."
+            icon="%"
+            accent="bg-violet-50 text-violet-600"
+            valueClassName={
+              current.creditInterest > 0 ? "text-red-600" : "text-slate-950"
+            }
+            trend={buildMoneyTrend({
+              current: current.creditInterest,
+              previous: previous.creditInterest,
+              goodWhen: "down",
+            })}
+          />
+
+          <MetricCard
+            title="Только ДДС"
+            value={
+              current.cashOnlyExpenses > 0
+                ? formatCurrency(current.cashOnlyExpenses)
+                : "Нет данных"
+            }
+            subtitle="Фулфилмент, закупки и прочие статьи, уже сидящие в себестоимости."
+            icon="📦"
+            accent="bg-cyan-50 text-cyan-600"
+            valueClassName={
+              current.cashOnlyExpenses > 0 ? "text-red-600" : "text-slate-950"
+            }
+            trend={buildMoneyTrend({
+              current: current.cashOnlyExpenses,
+              previous: previous.cashOnlyExpenses,
               goodWhen: "down",
             })}
           />
@@ -1542,8 +1871,8 @@ export default async function HomePage({ searchParams }: Props) {
                 Разрез по ИП
               </h2>
               <p className="mt-2 text-sm text-slate-500">
-                Выручка, реклама, ДРР, кредиты, чистая прибыль, ДДС, остатки и
-                ABC по каждой компании.
+                Выручка, реклама, ДРР, прибыль, вывод собственника, ДДС, кредиты,
+                остатки и ABC по каждой компании.
               </p>
             </div>
 
@@ -1588,10 +1917,10 @@ export default async function HomePage({ searchParams }: Props) {
 
                       <div
                         className={`w-fit rounded-full px-4 py-2 text-sm font-black ring-1 ${valueTone(
-                          row.netProfit
+                          row.profitAfterOwnerWithdrawal
                         )}`}
                       >
-                        {formatCurrency(row.netProfit)}
+                        {formatCurrency(row.profitAfterOwnerWithdrawal)}
                       </div>
                     </div>
 
@@ -1619,13 +1948,22 @@ export default async function HomePage({ searchParams }: Props) {
                         }
                       />
                       <MiniMetric
-                        title="Кредиты"
-                        value={formatCurrency(row.loanPayments)}
+                        title="Тело кредита"
+                        value={formatCurrency(row.creditPrincipal)}
+                      />
+                      <MiniMetric
+                        title="Проценты"
+                        value={formatCurrency(row.creditInterest)}
                       />
                       <MiniMetric
                         title="Чистая прибыль"
                         value={formatCurrency(row.netProfit)}
                         tone={valueColor(row.netProfit)}
+                      />
+                      <MiniMetric
+                        title="После вывода"
+                        value={formatCurrency(row.profitAfterOwnerWithdrawal)}
+                        tone={valueColor(row.profitAfterOwnerWithdrawal)}
                       />
                       <MiniMetric
                         title="Денежный поток"
@@ -1637,7 +1975,11 @@ export default async function HomePage({ searchParams }: Props) {
                         value={formatCurrency(row.personalExpenses)}
                       />
                       <MiniMetric
-                        title="Фин. расходы"
+                        title="Только ДДС"
+                        value={formatCurrency(row.cashOnlyExpenses)}
+                      />
+                      <MiniMetric
+                        title="Расходы в прибыли"
                         value={formatCurrency(row.financialExpenses)}
                       />
                       <MiniMetric

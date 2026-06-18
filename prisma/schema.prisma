@@ -412,13 +412,15 @@ model FinanceCategory {
 
   categoryType String
 
-  sortOrder Int     @default(0)
-  isActive  Boolean @default(true)
+  sortOrder       Int     @default(0)
+  isActive        Boolean @default(true)
+  profitTreatment String  @default("AUTO")
 
   createdAt DateTime @default(now())
 
   @@index([categoryType])
   @@index([name])
+  @@index([profitTreatment])
 }
 
 model FinanceTransaction {
