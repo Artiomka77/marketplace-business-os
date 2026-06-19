@@ -351,31 +351,37 @@ function getCompanyLabel(companyName: string) {
   return companyName;
 }
 
-function getOzonGroupKey(vendorCode: string) {
+function parseOzonVendorCode(vendorCode: string) {
   const clean = cleanText(vendorCode);
-  const match = clean.match(/^(.+?)[-_](\d{2,4})$/);
+  const parts = clean.split(/[-_]+/).filter(Boolean);
+  const sizeParts: string[] = [];
 
-  if (match?.[1]) {
-    return match[1];
+  if (parts.length >= 2 && /^\d{2,4}$/.test(parts[parts.length - 1])) {
+    sizeParts.unshift(parts.pop() ?? "");
+
+    if (parts.length >= 2 && /^\d{2,4}$/.test(parts[parts.length - 1])) {
+      sizeParts.unshift(parts.pop() ?? "");
+    }
   }
 
-  return clean;
+  return {
+    original: clean,
+    baseArticle: parts.join("-") || clean,
+    sizeLabel: sizeParts.filter(Boolean).join(" / ") || clean || "SKU",
+  };
+}
+
+function getOzonGroupKey(vendorCode: string) {
+  return parseOzonVendorCode(vendorCode).baseArticle;
 }
 
 function getOzonSizeLabel(vendorCode: string) {
-  const clean = cleanText(vendorCode);
-  const match = clean.match(/[-_](\d{2,4})$/);
-
-  if (match?.[1]) {
-    return match[1];
-  }
-
-  return clean || "SKU";
+  return parseOzonVendorCode(vendorCode).sizeLabel;
 }
 
 function stripOzonSizeSuffix(value: string) {
   return cleanText(value)
-    .replace(/\s+[-–—]?\s*(\d{2,4})$/g, "")
+    .replace(/(?:[-_\s]+\d{2,4}){1,2}$/g, "")
     .trim();
 }
 
