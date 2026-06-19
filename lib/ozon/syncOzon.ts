@@ -471,7 +471,7 @@ type OzonProductInfoItem = {
   sku?: number;
   fbo_sku?: number;
   fbs_sku?: number;
-  primary_image?: string;
+  primary_image?: string | string[];
   images?: string[];
 };
 
@@ -598,12 +598,32 @@ async function fetchProductPicturesInfoBatch(
   return json.items ?? json.result?.items ?? [];
 }
 
-function firstNonEmpty(values: Array<string | null | undefined>) {
-  return values.find((value) => typeof value === "string" && value.trim()) ?? null;
+function getFirstImageValue(value: unknown): string | null {
+  if (typeof value === "string" && value.trim()) {
+    return value.trim();
+  }
+
+  if (Array.isArray(value)) {
+    const image = value.find(
+      (item) => typeof item === "string" && item.trim()
+    );
+
+    return typeof image === "string" ? image.trim() : null;
+  }
+
+  return null;
 }
 
-function getFirstArrayValue(values?: string[]) {
-  return values?.find((value) => typeof value === "string" && value.trim()) ?? null;
+function firstNonEmpty(values: unknown[]) {
+  for (const value of values) {
+    const image = getFirstImageValue(value);
+
+    if (image) {
+      return image;
+    }
+  }
+
+  return null;
 }
 
 function getOzonProductImageUrl(
@@ -611,11 +631,11 @@ function getOzonProductImageUrl(
   pictures: OzonProductPicturesItem | null | undefined
 ) {
   return firstNonEmpty([
-    getFirstArrayValue(pictures?.primary_photo),
-    getFirstArrayValue(pictures?.photo),
-    getFirstArrayValue(pictures?.color_photo),
+    pictures?.primary_photo,
+    pictures?.photo,
+    pictures?.color_photo,
     info?.primary_image,
-    getFirstArrayValue(info?.images),
+    info?.images,
   ]);
 }
 

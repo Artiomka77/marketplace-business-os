@@ -44,6 +44,7 @@ type ProductMeta = {
 type SkuBreakdownRow = {
   sku: string;
   vendorCode: string;
+  sizeLabel: string;
   revenue: number;
   netSalesQty: number;
   salesQty: number;
@@ -348,6 +349,34 @@ function getSortLabel(sort: SortKey) {
 function getCompanyLabel(companyName: string) {
   if (companyName === "ALL") return "Все компании";
   return companyName;
+}
+
+function getOzonGroupKey(vendorCode: string) {
+  const clean = cleanText(vendorCode);
+  const match = clean.match(/^(.+?)[-_](\d{2,4})$/);
+
+  if (match?.[1]) {
+    return match[1];
+  }
+
+  return clean;
+}
+
+function getOzonSizeLabel(vendorCode: string) {
+  const clean = cleanText(vendorCode);
+  const match = clean.match(/[-_](\d{2,4})$/);
+
+  if (match?.[1]) {
+    return match[1];
+  }
+
+  return clean || "SKU";
+}
+
+function stripOzonSizeSuffix(value: string) {
+  return cleanText(value)
+    .replace(/\s+[-–—]?\s*(\d{2,4})$/g, "")
+    .trim();
 }
 
 function buildOzonProductLookup(products: OzonProductRecord[]) {
@@ -660,6 +689,7 @@ async function buildProductMetaAndSkuRows(params: {
       return {
         sku: skuRow.sku,
         vendorCode: skuRow.vendorCode,
+        sizeLabel: getOzonSizeLabel(skuRow.vendorCode),
         revenue: allocatedRevenue,
         netSalesQty: skuRow.netSalesQty,
         salesQty: skuRow.salesQty,
@@ -681,6 +711,130 @@ async function buildProductMetaAndSkuRows(params: {
     metaByVendorCode,
     skuRowsByVendorCode,
   };
+}
+
+function createSkuRowFromProductRow(row: EnrichedOzonRow): SkuBreakdownRow {
+  return {
+    sku: row.nmId || row.productMeta.sku || row.vendorCode,
+    vendorCode: row.vendorCode,
+    sizeLabel: getOzonSizeLabel(row.vendorCode),
+    revenue: row.revenue,
+    netSalesQty: row.netSalesQty,
+    salesQty: row.salesQty,
+    returnsQty: row.returnsQty,
+    expenses: rowExpenses(row),
+    netProfitAfterTax: row.netProfitAfterTax,
+    buyoutPercent: rowBuyoutPercent(row),
+    marginAfterTaxPercent: row.marginAfterTaxPercent,
+    abcByRevenue: row.abcByRevenue,
+    abcByProfit: row.abcByProfit,
+  };
+}
+
+function recalculateGroupedOzonRow(row: EnrichedOzonRow) {
+  row.drrPercent = row.revenue > 0 ? (row.adsCost / row.revenue) * 100 : 0;
+  row.marginProfitPercent =
+    row.revenue > 0 ? (row.marginProfit / row.revenue) * 100 : 0;
+  row.marginAfterTaxPercent =
+    row.revenue > 0 ? (row.netProfitAfterTax / row.revenue) * 100 : 0;
+  row.costPrice = row.netSalesQty > 0 ? row.totalCost / row.netSalesQty : 0;
+}
+
+function groupOzonRowsByBaseArticle(rows: EnrichedOzonRow[]) {
+  const groups = new Map<string, EnrichedOzonRow>();
+
+  for (const row of rows) {
+    const groupKey = getOzonGroupKey(row.vendorCode);
+    const existing = groups.get(groupKey);
+
+    if (!existing) {
+      const productName =
+        stripOzonSizeSuffix(row.productMeta.productName) ||
+        row.productMeta.productName ||
+        groupKey;
+
+      groups.set(groupKey, {
+        ...row,
+        vendorCode: groupKey,
+        productMeta: {
+          ...row.productMeta,
+          productName,
+          vendorCode: groupKey,
+        },
+        skuRows: [createSkuRowFromProductRow(row)],
+      });
+
+      continue;
+    }
+
+    existing.salesQty += row.salesQty;
+    existing.returnsQty += row.returnsQty;
+    existing.netSalesQty += row.netSalesQty;
+
+    existing.revenue += row.revenue;
+    existing.sellerPayout += row.sellerPayout;
+    existing.wbCommission += row.wbCommission;
+    existing.logisticsCost += row.logisticsCost;
+    existing.storageCost += row.storageCost;
+    existing.acceptanceCost += row.acceptanceCost;
+    existing.penaltiesAmount += row.penaltiesAmount;
+    existing.deductions += row.deductions;
+    existing.paymentServiceCost += row.paymentServiceCost;
+    existing.adsCost += row.adsCost;
+    existing.totalCost += row.totalCost;
+    existing.marginProfit += row.marginProfit;
+    existing.taxesAmount += row.taxesAmount;
+    existing.netProfitAfterTax += row.netProfitAfterTax;
+
+    if (!existing.productMeta.imageUrl && row.productMeta.imageUrl) {
+      existing.productMeta.imageUrl = row.productMeta.imageUrl;
+    }
+
+    existing.skuRows.push(createSkuRowFromProductRow(row));
+  }
+
+  const groupedRows = Array.from(groups.values());
+
+  for (const group of groupedRows) {
+    recalculateGroupedOzonRow(group);
+
+    const childAbcByRevenue = calculateAbcByPositiveValue(
+      group.skuRows,
+      (row) => row.revenue
+    );
+
+    const childAbcByProfit = calculateAbcByPositiveValue(
+      group.skuRows,
+      (row) => row.netProfitAfterTax
+    );
+
+    group.skuRows = group.skuRows
+      .map((row) => ({
+        ...row,
+        abcByRevenue: childAbcByRevenue.get(row) ?? "C",
+        abcByProfit: childAbcByProfit.get(row) ?? "C",
+      }))
+      .sort((a, b) => b.revenue - a.revenue);
+  }
+
+  const totalRevenue = groupedRows.reduce((sum, row) => sum + row.revenue, 0);
+  const groupAbcByRevenue = calculateAbcByPositiveValue(
+    groupedRows,
+    (row) => row.revenue
+  );
+  const groupAbcByProfit = calculateAbcByPositiveValue(
+    groupedRows,
+    (row) => row.netProfitAfterTax
+  );
+
+  for (const row of groupedRows) {
+    row.revenueSharePercent =
+      totalRevenue > 0 ? (row.revenue / totalRevenue) * 100 : 0;
+    row.abcByRevenue = groupAbcByRevenue.get(row) ?? "C";
+    row.abcByProfit = groupAbcByProfit.get(row) ?? "C";
+  }
+
+  return groupedRows;
 }
 
 function polarToCartesian(
@@ -1150,9 +1304,11 @@ function SkuRow({
       <div className="flex items-center gap-3 pl-9">
         <div className="h-8 border-l border-dashed border-slate-300" />
         <div>
-          <div className="font-black text-slate-800">SKU Ozon</div>
+          <div className="font-black text-slate-800">
+            Размер / SKU: {row.sizeLabel}
+          </div>
           <div className="mt-1 text-xs font-semibold text-slate-400">
-            {row.sku || "SKU не указан"}
+            {row.vendorCode} · {row.sku || "SKU не указан"}
           </div>
         </div>
       </div>
@@ -1200,14 +1356,15 @@ function ProductRow({
 }) {
   const expenses = rowExpenses(row);
   const buyoutPercent = rowBuyoutPercent(row);
-  const defaultOpen = index === 0 && row.skuRows.length > 0;
+  const hasSkuDetails = row.skuRows.length > 1;
+  const defaultOpen = index === 0 && hasSkuDetails;
 
   return (
     <details className="group border-t border-slate-100 first:border-t-0" open={defaultOpen}>
       <summary className="grid min-w-[1180px] cursor-pointer list-none grid-cols-[minmax(330px,1.7fr)_minmax(140px,0.8fr)_minmax(150px,0.85fr)_minmax(150px,0.85fr)_minmax(130px,0.7fr)_minmax(150px,0.8fr)] items-center px-5 py-4 transition hover:bg-slate-50">
         <div className="flex min-w-0 items-center gap-4">
           <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-2xl text-slate-500 transition group-open:rotate-180">
-            ⌄
+            {hasSkuDetails ? "⌄" : ""}
           </span>
 
           <ProductImagePlaceholder meta={row.productMeta} />
@@ -1220,7 +1377,7 @@ function ProductRow({
             <div className="mt-1 flex flex-wrap gap-x-2 gap-y-1 text-xs font-semibold text-slate-500">
               <span>Артикул: {row.vendorCode || "—"}</span>
               <span>·</span>
-              <span>SKU Ozon: {row.nmId || row.productMeta.sku || "—"}</span>
+              <span>{hasSkuDetails ? `${row.skuRows.length} SKU / размеров` : `SKU Ozon: ${row.nmId || row.productMeta.sku || "—"}`}</span>
             </div>
 
             <div className="mt-1 text-xs font-semibold text-slate-400">
@@ -1262,7 +1419,7 @@ function ProductRow({
         </div>
       </summary>
 
-      {row.skuRows.length > 0 ? (
+      {hasSkuDetails ? (
         <div>
           {row.skuRows.map((skuRow) => (
             <SkuRow
@@ -1272,11 +1429,7 @@ function ProductRow({
             />
           ))}
         </div>
-      ) : (
-        <div className="min-w-[1180px] border-t border-slate-100 bg-slate-50 px-5 py-4 pl-24 text-sm font-semibold text-slate-400">
-          Детализация по SKU пока недоступна для этого артикула.
-        </div>
-      )}
+      ) : null}
     </details>
   );
 }
@@ -1338,7 +1491,9 @@ export default async function ProfitOzonPage({
     };
   });
 
-  const filteredRows = enrichedRows.filter((row) => {
+  const groupedRows = groupOzonRowsByBaseArticle(enrichedRows);
+
+  const filteredRows = groupedRows.filter((row) => {
     const query = normalizeText(q);
     const haystack = normalizeText(
       [
@@ -1347,6 +1502,7 @@ export default async function ProfitOzonPage({
         row.subject,
         row.productMeta.productName,
         row.productMeta.subject,
+        row.skuRows.map((skuRow) => `${skuRow.vendorCode} ${skuRow.sku}`).join(" "),
       ].join(" ")
     );
 
@@ -1671,8 +1827,7 @@ export default async function ProfitOzonPage({
                   Сводная таблица по артикулам
                 </h2>
                 <p className="mt-2 text-sm leading-6 text-slate-500">
-                  Рабочий список товаров Ozon: выкупы, расходы, прибыль,
-                  процент выкупа и маржинальность.
+                  Рабочий список товаров Ozon: размеры объединены в одну группу по базовому артикулу, внутри видны отдельные SKU.
                 </p>
               </div>
 
@@ -1838,8 +1993,8 @@ export default async function ProfitOzonPage({
           <div className="flex flex-col gap-3 border-t border-slate-200 bg-slate-50 px-5 py-4 text-sm font-semibold text-slate-500 sm:flex-row sm:items-center sm:justify-between">
             <div>
               Показано {formatNumber(displayedRows.length)} из{" "}
-              {formatNumber(sortedRows.length)} SKU после фильтров. Всего в
-              периоде: {formatNumber(rows.length)} SKU.
+              {formatNumber(sortedRows.length)} групп после фильтров. Всего в
+              периоде: {formatNumber(groupedRows.length)} групп / {formatNumber(rows.length)} SKU.
             </div>
 
             <div>Фото Ozon подтягиваются из Ozon Products API после синхронизации товаров.</div>
