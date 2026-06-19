@@ -13,6 +13,7 @@ type Props = {
     dateFrom?: string;
     dateTo?: string;
     chartPreset?: string;
+    marketplaceCompanyName?: string;
   }>;
 };
 
@@ -215,8 +216,9 @@ const chartPresets: ChartPresetConfig[] = [
   },
 ];
 
-const trendWeights = [0.52, 0.68, 0.8, 0.6, 0.92, 0.66, 0.76, 1, 0.74, 0.88, 0.64, 0.96];
-const lineWeights = [0.74, 0.62, 0.7, 0.52, 0.82, 0.64, 0.9, 0.58, 0.72, 0.56, 0.86, 0.66];
+const trendWeights = [0.52, 0.68, 0.8, 0.6, 0.92, 0.66, 0.76, 1, 0.74, 0.88, 0.64, 0.96, 0.7, 0.9];
+const lineWeights = [0.74, 0.62, 0.7, 0.52, 0.82, 0.64, 0.9, 0.58, 0.72, 0.56, 0.86, 0.66, 0.78, 0.6];
+const weekDayLabels = ["Вс", "Пн", "Вт", "Ср", "Чт", "Пт", "Сб"];
 
 const quickActions = [
   {
@@ -300,22 +302,92 @@ function formatChartMetric(value: number, kind: ChartMetricKind) {
   return formatCurrency(value);
 }
 
-function getChartSeries(total: number, kind: ChartMetricKind, weights: number[]) {
-  if (kind === "percent") {
-    const base = Math.max(0, total);
-    return weights.map((weight) => Math.max(0, base * (0.72 + weight * 0.48)));
+function formatCompactMoney(value: number) {
+  const absoluteValue = Math.abs(value);
+
+  if (absoluteValue >= 1_000_000) {
+    return `${(value / 1_000_000).toFixed(1).replace(".", ",")} млн ₽`;
   }
 
-  const safeTotal = Math.abs(total);
-  if (safeTotal === 0) return weights.map(() => 0);
+  if (absoluteValue >= 1_000) {
+    return `${Math.round(value / 1_000)} тыс ₽`;
+  }
 
-  const weightSum = weights.reduce((sum, weight) => sum + weight, 0);
-  return weights.map((weight) => (safeTotal * weight) / weightSum);
+  return `${Math.round(value)} ₽`;
+}
+
+function formatAxisValue(value: number, kind: ChartMetricKind) {
+  if (kind === "percent") return formatPercent(value);
+  return formatCompactMoney(value);
+}
+
+function getChartDates(dateFrom: string, dateTo: string) {
+  const start = parseIsoDate(dateFrom);
+  const end = parseIsoDate(dateTo);
+  const days = getInclusiveDays(dateFrom, dateTo);
+  const visiblePoints = Math.min(Math.max(days, 1), 14);
+
+  if (days <= visiblePoints) {
+    return Array.from({ length: days }, (_, index) => addDays(start, index));
+  }
+
+  return Array.from({ length: visiblePoints }, (_, index) => {
+    const ratio = visiblePoints === 1 ? 0 : index / (visiblePoints - 1);
+    const offset = Math.round((days - 1) * ratio);
+    return addDays(start, offset);
+  }).filter((date) => date.getTime() <= end.getTime());
+}
+
+function formatChartDate(date: Date) {
+  const day = String(date.getUTCDate()).padStart(2, "0");
+  const month = String(date.getUTCMonth() + 1).padStart(2, "0");
+  return {
+    dateLabel: `${day}.${month}`,
+    weekDayLabel: weekDayLabels[date.getUTCDay()],
+  };
+}
+
+function getChartSeries(
+  total: number,
+  kind: ChartMetricKind,
+  weights: number[],
+  pointCount: number
+) {
+  const usedWeights = Array.from(
+    { length: pointCount },
+    (_, index) => weights[index % weights.length]
+  );
+
+  if (kind === "percent") {
+    const base = Math.max(0, total);
+    return usedWeights.map((weight) =>
+      Math.max(0, base * (0.72 + weight * 0.48))
+    );
+  }
+
+  const sign = total < 0 ? -1 : 1;
+  const safeTotal = Math.abs(total);
+  if (safeTotal === 0) return usedWeights.map(() => 0);
+
+  const weightSum = usedWeights.reduce((sum, weight) => sum + weight, 0);
+  return usedWeights.map((weight) => sign * (safeTotal * weight) / weightSum);
 }
 
 function getSeriesHeight(value: number, max: number) {
   if (max <= 0) return 8;
-  return Math.max(12, Math.round((Math.abs(value) / max) * 100));
+  return Math.max(8, Math.round((Math.abs(value) / max) * 100));
+}
+
+function getSeriesStats(values: number[]) {
+  if (values.length === 0) {
+    return { min: 0, avg: 0, max: 0 };
+  }
+
+  return {
+    min: Math.min(...values),
+    avg: values.reduce((sum, value) => sum + value, 0) / values.length,
+    max: Math.max(...values),
+  };
 }
 
 function getChartPreset(value: unknown) {
@@ -707,6 +779,7 @@ function buildDashboardHref(params: {
   dateFrom?: string;
   dateTo?: string;
   chartPreset?: string;
+  marketplaceCompanyName?: string | null;
 }) {
   const searchParams = new URLSearchParams();
 
@@ -723,6 +796,10 @@ function buildDashboardHref(params: {
 
   if (params.chartPreset) {
     searchParams.set("chartPreset", params.chartPreset);
+  }
+
+  if (params.marketplaceCompanyName) {
+    searchParams.set("marketplaceCompanyName", params.marketplaceCompanyName);
   }
 
   return `/?${searchParams.toString()}`;
@@ -911,28 +988,35 @@ function AbcPills({ abc }: { abc: AbcCounts }) {
   );
 }
 
-function DonutSegmentTooltip({
+function DonutHoverZone({
   label,
   value,
   percent,
-  className,
+  tone,
+  zoneClassName,
+  hoverClassName,
 }: {
   label: string;
   value: number;
   percent: number;
-  className: string;
+  tone: string;
+  zoneClassName: string;
+  hoverClassName: string;
 }) {
   return (
-    <div
-      className={`pointer-events-none absolute left-1/2 top-1/2 z-20 hidden -translate-x-1/2 -translate-y-1/2 rounded-2xl border bg-white px-4 py-3 text-center shadow-xl group-hover:block ${className}`}
-    >
-      <div className="text-xs font-black uppercase tracking-[0.12em] text-slate-400">
-        {label}
+    <div className={`group absolute z-20 ${zoneClassName}`}>
+      <div className={`h-full w-full cursor-pointer transition ${hoverClassName}`} />
+      <div className="pointer-events-none absolute left-1/2 top-1/2 z-30 hidden w-44 -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-left shadow-xl group-hover:block">
+        <div className="text-xs font-black uppercase tracking-[0.12em] text-slate-400">
+          {label}
+        </div>
+        <div className="mt-1 text-lg font-black text-slate-950">
+          {formatCurrency(value)}
+        </div>
+        <div className={`mt-1 text-sm font-black ${tone}`}>
+          {formatPercent(percent)}
+        </div>
       </div>
-      <div className="mt-1 text-lg font-black text-slate-950">
-        {formatCurrency(value)}
-      </div>
-      <div className="text-sm font-black">{formatPercent(percent)}</div>
     </div>
   );
 }
@@ -947,72 +1031,41 @@ function InteractiveDonut({
   const total = wbRevenue + ozonRevenue;
   const wbPercent = total > 0 ? (wbRevenue / total) * 100 : 0;
   const ozonPercent = total > 0 ? (ozonRevenue / total) * 100 : 0;
-  const radius = 80;
-  const circumference = 2 * Math.PI * radius;
-  const wbLength = (wbPercent / 100) * circumference;
-  const ozonLength = (ozonPercent / 100) * circumference;
 
   return (
     <div className="relative flex h-64 w-full items-center justify-center rounded-[28px] bg-slate-50 p-6 ring-1 ring-slate-200">
-      <svg viewBox="0 0 220 220" className="h-56 w-56 rotate-[-90deg] overflow-visible">
-        <circle
-          cx="110"
-          cy="110"
-          r={radius}
-          fill="none"
-          stroke="#eef2ff"
-          strokeWidth="34"
+      <div
+        className="relative flex h-52 w-52 items-center justify-center rounded-full transition duration-150 hover:scale-[1.015] hover:shadow-xl hover:shadow-indigo-100"
+        style={{
+          background: `conic-gradient(#7c3aed 0 ${wbPercent}%, #0ea5e9 ${wbPercent}% 100%)`,
+        }}
+        title={`WB: ${formatCurrency(wbRevenue)} · ${formatPercent(wbPercent)} / Ozon: ${formatCurrency(ozonRevenue)} · ${formatPercent(ozonPercent)}`}
+      >
+        <div className="absolute inset-[18px] z-10 rounded-full bg-white shadow-inner shadow-slate-200" />
+
+        <DonutHoverZone
+          label="Wildberries"
+          value={wbRevenue}
+          percent={wbPercent}
+          tone="text-violet-700"
+          zoneClassName="inset-x-0 top-0 h-1/2 rounded-t-full"
+          hoverClassName="rounded-t-full hover:bg-violet-500/15"
         />
 
-        <g className="group cursor-pointer outline-none" tabIndex={0}>
-          <title>{`Wildberries: ${formatCurrency(wbRevenue)} · ${formatPercent(wbPercent)}`}</title>
-          <circle
-            cx="110"
-            cy="110"
-            r={radius}
-            fill="none"
-            stroke="#7c3aed"
-            strokeLinecap="round"
-            strokeWidth="34"
-            strokeDasharray={`${wbLength} ${circumference - wbLength}`}
-            strokeDashoffset="0"
-            className="transition hover:opacity-80"
-          />
-          <DonutSegmentTooltip
-            label="Wildberries"
-            value={wbRevenue}
-            percent={wbPercent}
-            className="text-violet-700 ring-1 ring-violet-100"
-          />
-        </g>
+        <DonutHoverZone
+          label="Ozon"
+          value={ozonRevenue}
+          percent={ozonPercent}
+          tone="text-sky-700"
+          zoneClassName="inset-x-0 bottom-0 h-1/2 rounded-b-full"
+          hoverClassName="rounded-b-full hover:bg-sky-500/15"
+        />
 
-        <g className="group cursor-pointer outline-none" tabIndex={0}>
-          <title>{`Ozon: ${formatCurrency(ozonRevenue)} · ${formatPercent(ozonPercent)}`}</title>
-          <circle
-            cx="110"
-            cy="110"
-            r={radius}
-            fill="none"
-            stroke="#0ea5e9"
-            strokeLinecap="round"
-            strokeWidth="34"
-            strokeDasharray={`${ozonLength} ${circumference - ozonLength}`}
-            strokeDashoffset={-wbLength}
-            className="transition hover:opacity-80"
-          />
-          <DonutSegmentTooltip
-            label="Ozon"
-            value={ozonRevenue}
-            percent={ozonPercent}
-            className="text-sky-700 ring-1 ring-sky-100"
-          />
-        </g>
-      </svg>
-
-      <div className="pointer-events-none absolute flex h-28 w-28 flex-col items-center justify-center rounded-full bg-white text-center shadow-sm ring-1 ring-slate-100">
-        <div className="text-xs font-bold text-slate-400">Выручка всего</div>
-        <div className="mt-1 text-xl font-black text-slate-950">
-          {formatCurrency(total)}
+        <div className="pointer-events-none relative z-30 flex h-28 w-28 flex-col items-center justify-center rounded-full bg-white text-center shadow-sm ring-1 ring-slate-100">
+          <div className="text-xs font-bold text-slate-400">Выручка всего</div>
+          <div className="mt-1 text-xl font-black text-slate-950">
+            {formatCurrency(total)}
+          </div>
         </div>
       </div>
     </div>
@@ -1048,77 +1101,236 @@ function InteractiveTrendChart({
   preset,
   primaryTotal,
   secondaryTotal,
+  dateFrom,
+  dateTo,
 }: {
   preset: ChartPresetConfig;
   primaryTotal: number;
   secondaryTotal: number;
+  dateFrom: string;
+  dateTo: string;
 }) {
-  const primarySeries = getChartSeries(primaryTotal, preset.primary.kind, trendWeights);
-  const secondarySeries = getChartSeries(secondaryTotal, preset.secondary.kind, lineWeights);
-  const maxPrimary = Math.max(...primarySeries, 0);
-  const maxSecondary = Math.max(...secondarySeries, 0);
-  const points = secondarySeries
+  const chartDates = getChartDates(dateFrom, dateTo);
+  const primarySeries = getChartSeries(
+    primaryTotal,
+    preset.primary.kind,
+    trendWeights,
+    chartDates.length
+  );
+  const secondarySeries = getChartSeries(
+    secondaryTotal,
+    preset.secondary.kind,
+    lineWeights,
+    chartDates.length
+  );
+  const maxPrimary = Math.max(...primarySeries.map(Math.abs), 0);
+  const maxSecondary = Math.max(...secondarySeries.map(Math.abs), 0);
+  const primaryStats = getSeriesStats(primarySeries);
+  const secondaryStats = getSeriesStats(secondarySeries);
+  const chartWidth = 520;
+  const chartHeight = 210;
+  const plotLeft = 54;
+  const plotRight = 44;
+  const plotTop = 22;
+  const plotBottom = 44;
+  const plotWidth = chartWidth - plotLeft - plotRight;
+  const plotHeight = chartHeight - plotTop - plotBottom;
+  const pointGap = chartDates.length > 1 ? plotWidth / (chartDates.length - 1) : 0;
+
+  const linePoints = secondarySeries
     .map((value, index) => {
-      const x = index * (320 / (secondarySeries.length - 1));
+      const x = plotLeft + index * pointGap;
       const height = getSeriesHeight(value, maxSecondary);
-      const y = 112 - height;
+      const y = plotTop + plotHeight - (height / 100) * plotHeight;
       return `${x},${y}`;
     })
     .join(" ");
 
+  const gridLines = [0, 0.25, 0.5, 0.75, 1];
+
   return (
-    <div className="relative mt-5 h-52 overflow-hidden rounded-3xl bg-white p-4 ring-1 ring-slate-100">
-      <div className="absolute inset-x-4 top-10 border-t border-dashed border-slate-200" />
-      <div className="absolute inset-x-4 top-24 border-t border-dashed border-slate-200" />
-      <div className="absolute inset-x-4 top-38 border-t border-dashed border-slate-200" />
+    <div className="mt-5 rounded-3xl bg-white p-4 ring-1 ring-slate-100">
+      <div className="relative overflow-hidden rounded-2xl border border-slate-200 bg-white">
+        <svg
+          viewBox={`0 0 ${chartWidth} ${chartHeight}`}
+          className="h-[310px] w-full overflow-visible"
+          role="img"
+          aria-label={`${preset.primary.label} и ${preset.secondary.label} по дням`}
+        >
+          {gridLines.map((line) => {
+            const y = plotTop + plotHeight * line;
+            const primaryValue = maxPrimary * (1 - line);
+            const secondaryValue = maxSecondary * (1 - line);
 
-      <svg
-        viewBox="0 0 320 120"
-        className="pointer-events-none absolute inset-x-4 top-8 h-32 w-[calc(100%-2rem)] overflow-visible"
-        aria-hidden="true"
-      >
-        <polyline
-          fill="none"
-          stroke={preset.secondary.strokeColor}
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          strokeWidth="4"
-          points={points}
-        />
-      </svg>
-
-      <div className="relative z-10 flex h-full items-end gap-3 pt-12">
-        {primarySeries.map((value, index) => {
-          const secondaryValue = secondarySeries[index] ?? 0;
-          const height = getSeriesHeight(value, maxPrimary);
-
-          return (
-            <div key={index} className="group relative flex flex-1 flex-col items-center gap-2">
-              <div className="pointer-events-none absolute bottom-full left-1/2 z-30 mb-3 hidden w-56 -translate-x-1/2 rounded-2xl border border-slate-200 bg-white p-3 text-left shadow-xl group-hover:block">
-                <div className="text-xs font-black uppercase tracking-[0.12em] text-slate-400">
-                  Точка {index + 1}
-                </div>
-                <div className={`mt-2 text-sm font-black ${preset.primary.colorClassName}`}>
-                  {preset.primary.label}: {formatChartMetric(value, preset.primary.kind)}
-                </div>
-                <div className={`mt-1 text-sm font-black ${preset.secondary.colorClassName}`}>
-                  {preset.secondary.label}: {formatChartMetric(secondaryValue, preset.secondary.kind)}
-                </div>
-              </div>
-
-              <div className="relative flex h-32 w-full items-end overflow-hidden rounded-full bg-slate-100">
-                <div
-                  className={`w-full rounded-full bg-gradient-to-t ${preset.primary.barFromClassName} ${preset.primary.barToClassName} transition group-hover:brightness-110`}
-                  style={{ height: `${height}%` }}
-                  title={`${preset.primary.label}: ${formatChartMetric(value, preset.primary.kind)} · ${preset.secondary.label}: ${formatChartMetric(secondaryValue, preset.secondary.kind)}`}
+            return (
+              <g key={line}>
+                <line
+                  x1={plotLeft}
+                  x2={chartWidth - plotRight}
+                  y1={y}
+                  y2={y}
+                  stroke="#e2e8f0"
+                  strokeDasharray="4 6"
                 />
+                <text
+                  x={plotLeft - 10}
+                  y={y + 4}
+                  textAnchor="end"
+                  className="fill-slate-400 text-[10px] font-bold"
+                >
+                  {formatAxisValue(primaryValue, preset.primary.kind)}
+                </text>
+                <text
+                  x={chartWidth - plotRight + 10}
+                  y={y + 4}
+                  textAnchor="start"
+                  className="fill-slate-400 text-[10px] font-bold"
+                >
+                  {formatAxisValue(secondaryValue, preset.secondary.kind)}
+                </text>
+              </g>
+            );
+          })}
+
+          <text x={plotLeft} y={12} className="fill-slate-500 text-[10px] font-black">
+            {preset.primary.label}, {preset.primary.kind === "percent" ? "%" : "₽"}
+          </text>
+          <text
+            x={chartWidth - plotRight}
+            y={12}
+            textAnchor="end"
+            className="fill-slate-500 text-[10px] font-black"
+          >
+            {preset.secondary.label}, {preset.secondary.kind === "percent" ? "%" : "₽"}
+          </text>
+
+          {primarySeries.map((value, index) => {
+            const x = plotLeft + index * pointGap;
+            const height = (getSeriesHeight(value, maxPrimary) / 100) * plotHeight;
+            const barWidth = Math.min(28, Math.max(14, pointGap * 0.42));
+            const y = plotTop + plotHeight - height;
+            const { dateLabel, weekDayLabel } = formatChartDate(chartDates[index]);
+
+            return (
+              <g key={index}>
+                <rect
+                  x={x - barWidth / 2}
+                  y={y}
+                  width={barWidth}
+                  height={height}
+                  rx={barWidth / 2}
+                  fill="url(#primaryGradient)"
+                  opacity="0.92"
+                />
+                <text
+                  x={x}
+                  y={plotTop + plotHeight + 20}
+                  textAnchor="middle"
+                  className="fill-slate-500 text-[10px] font-black"
+                >
+                  {dateLabel}
+                </text>
+                <text
+                  x={x}
+                  y={plotTop + plotHeight + 36}
+                  textAnchor="middle"
+                  className="fill-slate-400 text-[10px] font-bold"
+                >
+                  {weekDayLabel}
+                </text>
+              </g>
+            );
+          })}
+
+          <polyline
+            fill="none"
+            stroke={preset.secondary.strokeColor}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth="4"
+            points={linePoints}
+          />
+
+          {secondarySeries.map((value, index) => {
+            const x = plotLeft + index * pointGap;
+            const height = getSeriesHeight(value, maxSecondary);
+            const y = plotTop + plotHeight - (height / 100) * plotHeight;
+
+            return (
+              <circle
+                key={index}
+                cx={x}
+                cy={y}
+                r="4.5"
+                fill="white"
+                stroke={preset.secondary.strokeColor}
+                strokeWidth="3"
+              />
+            );
+          })}
+
+          <defs>
+            <linearGradient id="primaryGradient" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor={preset.primary.strokeColor} />
+              <stop offset="100%" stopColor="#c4b5fd" />
+            </linearGradient>
+          </defs>
+        </svg>
+
+        <div className="absolute inset-x-[54px] top-[22px] flex h-[210px] items-stretch">
+          {primarySeries.map((value, index) => {
+            const secondaryValue = secondarySeries[index] ?? 0;
+            const { dateLabel, weekDayLabel } = formatChartDate(chartDates[index]);
+            const tooltipPosition =
+              index <= 1
+                ? "left-0 translate-x-0"
+                : index >= primarySeries.length - 2
+                  ? "right-0 translate-x-0"
+                  : "left-1/2 -translate-x-1/2";
+
+            return (
+              <div key={index} className="group relative flex-1 cursor-crosshair">
+                <div className="absolute inset-y-0 left-1/2 hidden w-px bg-indigo-300 group-hover:block" />
+                <div
+                  className={`pointer-events-none absolute top-10 z-30 hidden w-56 rounded-2xl border border-slate-200 bg-white p-3 text-left shadow-xl group-hover:block ${tooltipPosition}`}
+                >
+                  <div className="text-xs font-black uppercase tracking-[0.12em] text-slate-400">
+                    {dateLabel} ({weekDayLabel})
+                  </div>
+                  <div className={`mt-2 text-sm font-black ${preset.primary.colorClassName}`}>
+                    {preset.primary.label}: {formatChartMetric(value, preset.primary.kind)}
+                  </div>
+                  <div className={`mt-1 text-sm font-black ${preset.secondary.colorClassName}`}>
+                    {preset.secondary.label}: {formatChartMetric(secondaryValue, preset.secondary.kind)}
+                  </div>
+                </div>
               </div>
-              <span className="text-[10px] font-bold text-slate-400">
-                {index + 1}
-              </span>
-            </div>
-          );
-        })}
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="mt-3 grid gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-3 text-xs sm:grid-cols-2">
+        <div>
+          <div className={`font-black ${preset.primary.colorClassName}`}>
+            {preset.primary.label}
+          </div>
+          <div className="mt-2 grid grid-cols-3 gap-2 text-slate-600">
+            <span>Мин: {formatChartMetric(primaryStats.min, preset.primary.kind)}</span>
+            <span>Сред: {formatChartMetric(primaryStats.avg, preset.primary.kind)}</span>
+            <span>Макс: {formatChartMetric(primaryStats.max, preset.primary.kind)}</span>
+          </div>
+        </div>
+        <div>
+          <div className={`font-black ${preset.secondary.colorClassName}`}>
+            {preset.secondary.label}
+          </div>
+          <div className="mt-2 grid grid-cols-3 gap-2 text-slate-600">
+            <span>Мин: {formatChartMetric(secondaryStats.min, preset.secondary.kind)}</span>
+            <span>Сред: {formatChartMetric(secondaryStats.avg, preset.secondary.kind)}</span>
+            <span>Макс: {formatChartMetric(secondaryStats.max, preset.secondary.kind)}</span>
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -1131,6 +1343,8 @@ function MarketplaceShare({
   selectedPreset,
   period,
   companyName,
+  marketplaceCompanyName,
+  companies,
 }: {
   wbRevenue: number;
   ozonRevenue: number;
@@ -1138,6 +1352,8 @@ function MarketplaceShare({
   selectedPreset: ChartPresetConfig;
   period: PeriodOption;
   companyName: string;
+  marketplaceCompanyName: string;
+  companies: { name: string }[];
 }) {
   const total = wbRevenue + ozonRevenue;
   const wbPercent = total > 0 ? (wbRevenue / total) * 100 : 0;
@@ -1165,10 +1381,37 @@ function MarketplaceShare({
             Доля выручки WB / Ozon
           </h2>
           <p className="mt-2 text-sm leading-6 text-slate-500">
-            Наведи на сегмент или карточку, чтобы увидеть сумму и долю.
+            Выбор компании синхронно меняет долю WB/Ozon и график динамики.
           </p>
 
-          <div className="mt-6 space-y-4">
+          <div className="mt-4 flex flex-wrap gap-2">
+            {[{ name: "ALL", label: "Все компании" }, ...companies.map((company) => ({ name: company.name, label: company.name }))].map((option) => {
+              const isActive = option.name === marketplaceCompanyName;
+
+              return (
+                <Link
+                  key={option.name}
+                  href={buildDashboardHref({
+                    period: period.key,
+                    companyName,
+                    marketplaceCompanyName: option.name,
+                    dateFrom: period.key === "custom" ? period.dateFrom : undefined,
+                    dateTo: period.key === "custom" ? period.dateTo : undefined,
+                    chartPreset: selectedPreset.key,
+                  })}
+                  className={`rounded-2xl border px-3 py-2 text-xs font-black transition ${
+                    isActive
+                      ? "border-indigo-600 bg-indigo-600 text-white shadow-sm shadow-indigo-100"
+                      : "border-slate-200 bg-white text-slate-500 hover:border-indigo-200 hover:bg-indigo-50 hover:text-indigo-700"
+                  }`}
+                >
+                  {option.label}
+                </Link>
+              );
+            })}
+          </div>
+
+          <div className="mt-5 space-y-4">
             <div className="group flex cursor-default items-center justify-between gap-4 rounded-2xl border border-violet-100 bg-violet-50/50 px-4 py-3 transition hover:border-violet-300 hover:bg-violet-50 hover:shadow-sm">
               <div className="flex items-center gap-3">
                 <span className="h-3 w-3 rounded-full bg-violet-600" />
@@ -1244,6 +1487,7 @@ function MarketplaceShare({
                   href={buildDashboardHref({
                     period: period.key,
                     companyName,
+                    marketplaceCompanyName,
                     dateFrom: period.key === "custom" ? period.dateFrom : undefined,
                     dateTo: period.key === "custom" ? period.dateTo : undefined,
                     chartPreset: preset.key,
@@ -1256,6 +1500,8 @@ function MarketplaceShare({
               preset={selectedPreset}
               primaryTotal={primaryTotal}
               secondaryTotal={secondaryTotal}
+              dateFrom={period.dateFrom}
+              dateTo={period.dateTo}
             />
           </div>
         </div>
@@ -1768,27 +2014,45 @@ export default async function HomePage({ searchParams }: Props) {
     },
   });
 
-  const selectedCompanies = selectedCompanyName
-    ? companies.filter((company) => company.name === selectedCompanyName)
-    : companies;
-
-  const [currentRows, previousRows] = await Promise.all([
+  const [allCurrentRows, allPreviousRows] = await Promise.all([
     buildCompanyDashboardRows({
-      companies: selectedCompanies,
+      companies,
       dateFrom: selectedPeriod.dateFrom,
       dateTo: selectedPeriod.dateTo,
     }),
     buildCompanyDashboardRows({
-      companies: selectedCompanies,
+      companies,
       dateFrom: previousPeriod.dateFrom,
       dateTo: previousPeriod.dateTo,
     }),
   ]);
 
+  const currentRows = selectedCompanyName
+    ? allCurrentRows.filter((row) => row.companyName === selectedCompanyName)
+    : allCurrentRows;
+
+  const previousRows = selectedCompanyName
+    ? allPreviousRows.filter((row) => row.companyName === selectedCompanyName)
+    : allPreviousRows;
+
   const current = summarizeDashboardRows(currentRows);
   const previous = summarizeDashboardRows(previousRows);
 
   const selectedCompanyValue = params.companyName ?? "ALL";
+  const rawMarketplaceCompanyValue =
+    params.marketplaceCompanyName ?? selectedCompanyValue ?? "ALL";
+  const selectedMarketplaceCompanyValue = companies.some(
+    (company) => company.name === rawMarketplaceCompanyValue
+  )
+    ? rawMarketplaceCompanyValue
+    : "ALL";
+  const marketplaceCurrent = summarizeDashboardRows(
+    selectedMarketplaceCompanyValue === "ALL"
+      ? allCurrentRows
+      : allCurrentRows.filter(
+          (row) => row.companyName === selectedMarketplaceCompanyValue
+        )
+  );
   const selectedChartPreset = getChartPreset(params.chartPreset);
   const presetPeriods = periodOptions.filter((period) => period.key !== "custom");
 
@@ -1888,6 +2152,7 @@ export default async function HomePage({ searchParams }: Props) {
                             href={buildDashboardHref({
                               period: period.key,
                               companyName: selectedCompanyValue,
+                              marketplaceCompanyName: selectedMarketplaceCompanyValue,
                               chartPreset: selectedChartPreset.key,
                             })}
                             className={`rounded-2xl border p-3 transition active:scale-[0.99] ${
@@ -1911,6 +2176,7 @@ export default async function HomePage({ searchParams }: Props) {
 
                     <form action="/" className="mt-4 rounded-3xl bg-slate-50 p-4 ring-1 ring-slate-200">
                       <input type="hidden" name="chartPreset" value={selectedChartPreset.key} />
+                      <input type="hidden" name="marketplaceCompanyName" value={selectedMarketplaceCompanyValue} />
                       <div className="grid gap-3 lg:grid-cols-[1fr_1fr_1fr]">
                         <label className="text-sm font-medium text-slate-500">
                           Компания
@@ -2025,12 +2291,14 @@ export default async function HomePage({ searchParams }: Props) {
 
         <section className="grid gap-5 2xl:grid-cols-[1fr_420px]">
           <MarketplaceShare
-            wbRevenue={current.wbRevenue}
-            ozonRevenue={current.ozonRevenue}
-            current={current}
+            wbRevenue={marketplaceCurrent.wbRevenue}
+            ozonRevenue={marketplaceCurrent.ozonRevenue}
+            current={marketplaceCurrent}
             selectedPreset={selectedChartPreset}
             period={selectedPeriod}
             companyName={selectedCompanyValue}
+            marketplaceCompanyName={selectedMarketplaceCompanyValue}
+            companies={companies}
           />
 
           <section className="panel p-5 sm:p-6">
