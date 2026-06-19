@@ -631,57 +631,108 @@ async function buildProductMetaAndSizeRows(params: {
   };
 }
 
+function MiniTrendLine({
+  points,
+  tone = "indigo",
+}: {
+  points?: number[];
+  tone?: "indigo" | "emerald" | "red" | "orange";
+}) {
+  const values = points && points.length >= 2 ? points : [8, 14, 10, 18, 16, 24, 20, 28];
+  const width = 88;
+  const height = 40;
+  const padding = 4;
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const range = max - min || 1;
+
+  const linePoints = values
+    .map((value, index) => {
+      const x = padding + (index * (width - padding * 2)) / (values.length - 1);
+      const y = height - padding - ((value - min) / range) * (height - padding * 2);
+      return `${x},${y}`;
+    })
+    .join(" ");
+
+  const areaPoints = `${padding},${height - padding} ${linePoints} ${width - padding},${height - padding}`;
+
+  const stroke =
+    tone === "emerald"
+      ? "#10b981"
+      : tone === "red"
+        ? "#ef4444"
+        : tone === "orange"
+          ? "#f97316"
+          : "#7c3aed";
+
+  return (
+    <svg viewBox={`0 0 ${width} ${height}`} className="h-10 w-24 shrink-0">
+      <path d={`M ${areaPoints}`} fill={stroke} fillOpacity="0.08" />
+      <polyline
+        fill="none"
+        stroke={stroke}
+        strokeWidth="2.2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        points={linePoints}
+      />
+      {linePoints ? (
+        <circle
+          cx={linePoints.split(" ").slice(-1)[0].split(",")[0]}
+          cy={linePoints.split(" ").slice(-1)[0].split(",")[1]}
+          r="2.5"
+          fill={stroke}
+        />
+      ) : null}
+    </svg>
+  );
+}
+
 function KpiCard({
   title,
   value,
   helper,
   delta,
   inverseDelta = false,
-  spark = true,
+  sparkTone = "indigo",
+  sparkPoints,
 }: {
   title: string;
   value: ReactNode;
   helper: ReactNode;
   delta?: number;
   inverseDelta?: boolean;
-  spark?: boolean;
+  sparkTone?: "indigo" | "emerald" | "red" | "orange";
+  sparkPoints?: number[];
 }) {
   const formattedDelta =
     typeof delta === "number" ? formatDeltaPercent(delta, inverseDelta) : null;
 
   return (
-    <div className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/40">
+    <div className="rounded-[26px] border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/40">
       <div className="flex items-center gap-1 text-sm font-black text-slate-700">
-        {title}
+        <span>{title}</span>
         <span className="text-slate-300">ⓘ</span>
       </div>
 
-      <div className="mt-3 text-2xl font-black tracking-tight text-slate-950">
+      <div className="mt-2 text-[1.9rem] font-black leading-none tracking-tight text-slate-950">
         {value}
       </div>
 
-      <div className="mt-2 flex items-center justify-between gap-3">
+      <div className="mt-3 flex items-end justify-between gap-3">
         <div>
           {formattedDelta ? (
             <div className={`text-sm font-black ${formattedDelta.className}`}>
               {formattedDelta.text}
             </div>
-          ) : null}
+          ) : (
+            <div className="text-sm font-black text-slate-400">&nbsp;</div>
+          )}
 
           <div className="mt-1 text-xs font-semibold text-slate-500">{helper}</div>
         </div>
 
-        {spark ? (
-          <div className="flex h-10 w-16 items-end gap-1">
-            {[18, 28, 20, 34, 30, 42].map((height, index) => (
-              <span
-                key={index}
-                className="w-1.5 rounded-full bg-indigo-500/80"
-                style={{ height }}
-              />
-            ))}
-          </div>
-        ) : null}
+        <MiniTrendLine points={sparkPoints} tone={sparkTone} />
       </div>
     </div>
   );
@@ -1008,56 +1059,75 @@ function AttentionItem({
   value: string;
   tone: "red" | "orange" | "blue" | "violet";
 }) {
-  const toneClass =
+  const styles =
     tone === "red"
-      ? "border-red-100 bg-red-50 text-red-700"
+      ? {
+          row: "border-red-100 bg-red-50/70",
+          icon: "bg-red-100 text-red-500 ring-red-100",
+          title: "text-red-700",
+          value: "text-red-600",
+        }
       : tone === "orange"
-        ? "border-orange-100 bg-orange-50 text-orange-700"
+        ? {
+            row: "border-orange-100 bg-orange-50/70",
+            icon: "bg-orange-100 text-orange-500 ring-orange-100",
+            title: "text-orange-700",
+            value: "text-orange-600",
+          }
         : tone === "blue"
-          ? "border-sky-100 bg-sky-50 text-sky-700"
-          : "border-violet-100 bg-violet-50 text-violet-700";
+          ? {
+              row: "border-sky-100 bg-sky-50/70",
+              icon: "bg-sky-100 text-sky-500 ring-sky-100",
+              title: "text-sky-700",
+              value: "text-sky-600",
+            }
+          : {
+              row: "border-violet-100 bg-violet-50/70",
+              icon: "bg-violet-100 text-violet-500 ring-violet-100",
+              title: "text-violet-700",
+              value: "text-violet-600",
+            };
+
+  const icon = tone === "red" ? "!" : tone === "orange" ? "△" : tone === "blue" ? "◻" : "◔";
 
   return (
-    <div className={`rounded-3xl border p-4 ${toneClass}`}>
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <div className="text-sm font-black">{title}</div>
-          <div className="mt-1 text-xs font-semibold text-slate-500">{text}</div>
+    <div className={`rounded-[22px] border px-4 py-4 ${styles.row}`}>
+      <div className="flex items-center gap-3">
+        <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-black ring-1 ${styles.icon}`}>
+          {icon}
+        </span>
+
+        <div className="min-w-0 flex-1">
+          <div className={`text-base font-black ${styles.title}`}>{title}</div>
+          <div className="mt-1 text-sm font-semibold text-slate-500">{text}</div>
         </div>
-        <div className="shrink-0 text-sm font-black">{value}</div>
+
+        <div className={`shrink-0 text-right text-xl font-black ${styles.value}`}>{value}</div>
+        <span className="shrink-0 text-lg font-black text-slate-400">›</span>
       </div>
     </div>
   );
 }
 
-function StructureRow({
+function StructureLegendRow({
   label,
   value,
   share,
-  colorClassName,
+  colorHex,
 }: {
   label: string;
   value: number;
   share: number;
-  colorClassName: string;
+  colorHex: string;
 }) {
   return (
-    <div className="grid grid-cols-[minmax(150px,1fr)_110px_70px] items-center gap-3">
-      <div className="min-w-0">
-        <div className="truncate text-sm font-bold text-slate-700">{label}</div>
-        <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-100">
-          <div
-            className={`h-full rounded-full ${colorClassName}`}
-            style={{ width: `${clamp(share, 0, 100)}%` }}
-          />
-        </div>
+    <div className="grid grid-cols-[minmax(0,1fr)_120px_70px] items-center gap-3 text-sm">
+      <div className="flex min-w-0 items-center gap-3">
+        <span className="h-3 w-3 shrink-0 rounded-full" style={{ backgroundColor: colorHex }} />
+        <span className="truncate font-bold text-slate-600">{label}</span>
       </div>
-      <div className="text-right text-sm font-black text-slate-950">
-        {formatCompactMoney(value)}
-      </div>
-      <div className="text-right text-xs font-bold text-slate-500">
-        {formatPercent(share)}
-      </div>
+      <div className="text-right font-black text-slate-900">{formatMoney(value)}</div>
+      <div className="text-right font-bold text-slate-500">{formatPercent(share)}</div>
     </div>
   );
 }
@@ -1202,7 +1272,7 @@ export default async function ProfitPage({
       colorHex: "#f87171",
     },
     {
-      label: "Платные услуги",
+      label: "Прочие расходы",
       value: totals.paymentServiceCost,
       colorClassName: "bg-slate-500",
       colorHex: "#64748b",
@@ -1307,10 +1377,12 @@ export default async function ProfitPage({
 
         <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-6">
           <KpiCard
-            title="Выручка WB"
+            title="Выручка"
             value={formatMoney(totals.revenue)}
             helper="к пред. периоду"
             delta={comparison.revenue.diffPercent}
+            sparkTone="indigo"
+            sparkPoints={[10, 12, 18, 14, 14, 21, 19, 28]}
           />
 
           <KpiCard
@@ -1318,21 +1390,27 @@ export default async function ProfitPage({
             value={formatMoney(totals.marginProfit)}
             helper={`${formatPercent(totals.marginProfitPercent)} от выручки`}
             delta={comparison.marginProfit.diffPercent}
+            sparkTone="emerald"
+            sparkPoints={[8, 12, 10, 13, 21, 19, 28, 22]}
           />
 
           <KpiCard
-            title="После налогов"
+            title="Прибыль после налогов"
             value={formatMoney(totals.netProfitAfterTax)}
             helper={`${formatPercent(totals.marginAfterTaxPercent)} от выручки`}
             delta={comparison.netProfitAfterTax.diffPercent}
+            sparkTone="emerald"
+            sparkPoints={[7, 9, 15, 13, 18, 17, 24, 16]}
           />
 
           <KpiCard
-            title="Реклама / ДРР"
+            title="Реклама (ДРР)"
             value={formatMoney(totals.adsCost)}
             helper={`${formatPercent(totals.drrPercent)} от выручки`}
             delta={comparison.adsCost.diffPercent}
             inverseDelta
+            sparkTone="orange"
+            sparkPoints={[18, 17, 22, 16, 14, 13, 15, 23]}
           />
 
           <KpiCard
@@ -1341,60 +1419,56 @@ export default async function ProfitPage({
             helper={`${formatShare(totals.totalCost, totals.revenue)}`}
             delta={comparison.totalCost.diffPercent}
             inverseDelta
+            sparkTone="red"
+            sparkPoints={[9, 10, 12, 14, 13, 18, 20, 22]}
           />
 
           <KpiCard
-            title="SKU с прибылью / в риске"
-            value={
-              <span>
-                {formatNumber(profitableSkuCount)} /{" "}
-                <span className="text-red-600">{formatNumber(riskSkuCount)}</span>
-              </span>
-            }
-            helper={`${formatNumber(rows.length)} SKU всего`}
-            spark={false}
+            title="Комиссии и логистика"
+            value={formatMoney(totals.wbCommission + totals.logisticsCost)}
+            helper={`${formatShare(totals.wbCommission + totals.logisticsCost, totals.revenue)}`}
+            delta={(() => {
+              const currentCombined = comparison.wbCommission.current + comparison.logisticsCost.current;
+              const previousCombined = comparison.wbCommission.previous + comparison.logisticsCost.previous;
+              return previousCombined !== 0 ? ((currentCombined - previousCombined) / previousCombined) * 100 : 0;
+            })()}
+            inverseDelta
+            sparkTone="orange"
+            sparkPoints={[8, 10, 9, 15, 14, 18, 23, 21]}
           />
         </section>
 
         <section className="grid gap-5 xl:grid-cols-[minmax(0,4fr)_minmax(340px,2fr)]">
           <section className="panel min-w-0 p-5 sm:p-6">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <div className="section-eyebrow">Структура прибыли WB</div>
-                <h2 className="mt-1 text-2xl font-black tracking-tight text-slate-950">
-                  Из чего складывается результат
-                </h2>
-              </div>
-
-              <div className="rounded-2xl bg-emerald-50 px-4 py-2 text-sm font-black text-emerald-700 ring-1 ring-emerald-100">
-                После налогов: {formatMoney(totals.netProfitAfterTax)}
-              </div>
+            <div className="flex items-center gap-2">
+              <h2 className="text-[1.7rem] font-black tracking-tight text-slate-950">
+                Структура прибыли WB
+              </h2>
+              <span className="text-slate-300">ⓘ</span>
             </div>
 
-            <div className="mt-5 grid gap-5 lg:grid-cols-[260px_minmax(0,1fr)]">
-              <div className="flex items-center justify-center rounded-[28px] border border-slate-200 bg-slate-50 p-6">
+            <div className="mt-5 grid gap-6 lg:grid-cols-[220px_minmax(0,1fr)] lg:items-center">
+              <div className="flex justify-center">
                 <ExpenseDonut rows={structureRows} revenue={totals.revenue} />
               </div>
 
-              <div className="space-y-4">
+              <div className="space-y-3">
                 {structureRows.map((row) => (
-                  <StructureRow
+                  <StructureLegendRow
                     key={row.label}
                     label={row.label}
                     value={row.value}
                     share={totals.revenue > 0 ? (row.value / totals.revenue) * 100 : 0}
-                    colorClassName={row.colorClassName}
+                    colorHex={row.colorHex}
                   />
                 ))}
 
-                <div className="grid grid-cols-[minmax(150px,1fr)_110px_70px] items-center gap-3 border-t border-slate-100 pt-4">
-                  <div className="text-sm font-black text-emerald-700">
-                    Прибыль после налогов
+                <div className="grid grid-cols-[minmax(0,1fr)_120px_70px] items-center gap-3 border-t border-slate-100 pt-4">
+                  <div className="font-black text-emerald-600">Прибыль после налогов</div>
+                  <div className="text-right font-black text-emerald-600">
+                    {formatMoney(totals.netProfitAfterTax)}
                   </div>
-                  <div className="text-right text-sm font-black text-emerald-700">
-                    {formatCompactMoney(totals.netProfitAfterTax)}
-                  </div>
-                  <div className="text-right text-xs font-black text-emerald-700">
+                  <div className="text-right font-black text-emerald-600">
                     {formatPercent(totals.marginAfterTaxPercent)}
                   </div>
                 </div>
@@ -1404,16 +1478,19 @@ export default async function ProfitPage({
 
           <aside className="panel min-w-0 p-5 sm:p-6">
             <div className="flex items-center justify-between gap-3">
-              <div>
-                <div className="section-eyebrow">Контроль</div>
-                <h2 className="mt-1 text-2xl font-black tracking-tight text-slate-950">
+              <div className="flex items-center gap-2">
+                <h2 className="text-[1.7rem] font-black tracking-tight text-slate-950">
                   Что требует внимания
                 </h2>
+                <span className="text-slate-300">ⓘ</span>
               </div>
 
-              <span className="flex h-9 w-9 items-center justify-center rounded-full bg-indigo-50 text-sm font-black text-indigo-700 ring-1 ring-indigo-100">
-                4
-              </span>
+              <button
+                type="button"
+                className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2 text-sm font-black text-slate-500 transition hover:bg-slate-100 hover:text-slate-700"
+              >
+                Смотреть все
+              </button>
             </div>
 
             <div className="mt-5 space-y-3">
@@ -1433,7 +1510,7 @@ export default async function ProfitPage({
 
               <AttentionItem
                 title="Низкая маржинальность (<10%)"
-                text={`${formatNumber(lowMarginRows.length)} SKU с маржой ниже 10%`}
+                text={`${formatNumber(lowMarginRows.length)} SKU с маржинальностью ниже 10%`}
                 value={formatMoney(lowMarginRows.reduce((sum, row) => sum + row.revenue, 0))}
                 tone="blue"
               />
