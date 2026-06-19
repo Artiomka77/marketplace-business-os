@@ -1033,15 +1033,15 @@ function InteractiveDonut({
   const ozonPercent = total > 0 ? (ozonRevenue / total) * 100 : 0;
 
   return (
-    <div className="relative flex h-64 w-full items-center justify-center rounded-[28px] bg-slate-50 p-6 ring-1 ring-slate-200">
+    <div className="relative flex h-40 w-full items-center justify-center rounded-[24px] bg-slate-50 p-4 ring-1 ring-slate-200 sm:h-44">
       <div
-        className="relative flex h-52 w-52 items-center justify-center rounded-full transition duration-150 hover:scale-[1.015] hover:shadow-xl hover:shadow-indigo-100"
+        className="relative flex h-32 w-32 items-center justify-center rounded-full transition duration-150 hover:scale-[1.03] hover:shadow-xl hover:shadow-indigo-100 sm:h-36 sm:w-36"
         style={{
           background: `conic-gradient(#7c3aed 0 ${wbPercent}%, #0ea5e9 ${wbPercent}% 100%)`,
         }}
         title={`WB: ${formatCurrency(wbRevenue)} · ${formatPercent(wbPercent)} / Ozon: ${formatCurrency(ozonRevenue)} · ${formatPercent(ozonPercent)}`}
       >
-        <div className="absolute inset-[18px] z-10 rounded-full bg-white shadow-inner shadow-slate-200" />
+        <div className="absolute inset-[14px] z-10 rounded-full bg-white shadow-inner shadow-slate-200" />
 
         <DonutHoverZone
           label="Wildberries"
@@ -1061,9 +1061,9 @@ function InteractiveDonut({
           hoverClassName="rounded-b-full hover:bg-sky-500/15"
         />
 
-        <div className="pointer-events-none relative z-30 flex h-28 w-28 flex-col items-center justify-center rounded-full bg-white text-center shadow-sm ring-1 ring-slate-100">
-          <div className="text-xs font-bold text-slate-400">Выручка всего</div>
-          <div className="mt-1 text-xl font-black text-slate-950">
+        <div className="pointer-events-none relative z-30 flex h-20 w-20 flex-col items-center justify-center rounded-full bg-white text-center shadow-sm ring-1 ring-slate-100 sm:h-24 sm:w-24">
+          <div className="text-[10px] font-bold text-slate-400 sm:text-xs">Выручка всего</div>
+          <div className="mt-1 text-sm font-black text-slate-950 sm:text-base">
             {formatCurrency(total)}
           </div>
         </div>
@@ -1086,7 +1086,7 @@ function ChartPresetLink({
   return (
     <Link
       href={href}
-      className={`rounded-2xl border px-3 py-2 text-xs font-black transition active:scale-[0.99] ${
+      className={`rounded-2xl border px-3 py-1.5 text-xs font-black transition active:scale-[0.99] ${
         isActive
           ? "border-indigo-600 bg-indigo-600 text-white shadow-sm shadow-indigo-100"
           : "border-slate-200 bg-white text-slate-500 hover:border-indigo-200 hover:bg-indigo-50 hover:text-indigo-700"
@@ -1128,11 +1128,11 @@ function InteractiveTrendChart({
   const primaryStats = getSeriesStats(primarySeries);
   const secondaryStats = getSeriesStats(secondarySeries);
   const chartWidth = 520;
-  const chartHeight = 210;
+  const chartHeight = 176;
   const plotLeft = 54;
   const plotRight = 44;
-  const plotTop = 22;
-  const plotBottom = 44;
+  const plotTop = 18;
+  const plotBottom = 36;
   const plotWidth = chartWidth - plotLeft - plotRight;
   const plotHeight = chartHeight - plotTop - plotBottom;
   const pointGap = chartDates.length > 1 ? plotWidth / (chartDates.length - 1) : 0;
@@ -1149,11 +1149,11 @@ function InteractiveTrendChart({
   const gridLines = [0, 0.25, 0.5, 0.75, 1];
 
   return (
-    <div className="mt-5 rounded-3xl bg-white p-4 ring-1 ring-slate-100">
+    <div className="mt-4 rounded-[24px] bg-white p-3 ring-1 ring-slate-100">
       <div className="relative overflow-hidden rounded-2xl border border-slate-200 bg-white">
         <svg
           viewBox={`0 0 ${chartWidth} ${chartHeight}`}
-          className="h-[310px] w-full overflow-visible"
+          className="h-[240px] w-full overflow-visible"
           role="img"
           aria-label={`${preset.primary.label} и ${preset.secondary.label} по дням`}
         >
@@ -1277,7 +1277,7 @@ function InteractiveTrendChart({
           </defs>
         </svg>
 
-        <div className="absolute inset-x-[54px] top-[22px] flex h-[210px] items-stretch">
+        <div className="absolute inset-x-[54px] top-[18px] flex h-[176px] items-stretch">
           {primarySeries.map((value, index) => {
             const secondaryValue = secondarySeries[index] ?? 0;
             const { dateLabel, weekDayLabel } = formatChartDate(chartDates[index]);
@@ -1310,12 +1310,12 @@ function InteractiveTrendChart({
         </div>
       </div>
 
-      <div className="mt-3 grid gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-3 text-xs sm:grid-cols-2">
+      <div className="mt-2 grid gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-3 text-[11px] lg:grid-cols-2">
         <div>
           <div className={`font-black ${preset.primary.colorClassName}`}>
             {preset.primary.label}
           </div>
-          <div className="mt-2 grid grid-cols-3 gap-2 text-slate-600">
+          <div className="mt-1 grid grid-cols-3 gap-2 text-slate-600">
             <span>Мин: {formatChartMetric(primaryStats.min, preset.primary.kind)}</span>
             <span>Сред: {formatChartMetric(primaryStats.avg, preset.primary.kind)}</span>
             <span>Макс: {formatChartMetric(primaryStats.max, preset.primary.kind)}</span>
@@ -1325,7 +1325,7 @@ function InteractiveTrendChart({
           <div className={`font-black ${preset.secondary.colorClassName}`}>
             {preset.secondary.label}
           </div>
-          <div className="mt-2 grid grid-cols-3 gap-2 text-slate-600">
+          <div className="mt-1 grid grid-cols-3 gap-2 text-slate-600">
             <span>Мин: {formatChartMetric(secondaryStats.min, preset.secondary.kind)}</span>
             <span>Сред: {formatChartMetric(secondaryStats.avg, preset.secondary.kind)}</span>
             <span>Макс: {formatChartMetric(secondaryStats.max, preset.secondary.kind)}</span>
@@ -1378,18 +1378,18 @@ function MarketplaceShare({
 
   return (
     <section className="space-y-5">
-      <section className="panel p-5 sm:p-6">
-        <div className="grid gap-6 xl:grid-cols-[minmax(300px,420px)_1fr] xl:items-center">
+      <section className="panel p-4 sm:p-5">
+        <div className="grid gap-4 xl:grid-cols-[minmax(260px,380px)_1fr] xl:items-center">
           <div>
             <div className="section-eyebrow">Разрез по маркетплейсам</div>
-            <h2 className="mt-2 text-2xl font-black tracking-tight text-slate-950">
+            <h2 className="mt-1 text-xl font-black tracking-tight text-slate-950">
               Доля выручки WB / Ozon
             </h2>
-            <p className="mt-2 text-sm leading-6 text-slate-500">
+            <p className="mt-1 text-sm leading-6 text-slate-500">
               Выбор компании синхронно меняет долю WB/Ozon и график динамики.
             </p>
 
-            <div className="mt-4 flex flex-wrap gap-2">
+            <div className="mt-3 flex flex-wrap gap-2">
               {companyOptions.map((option) => {
                 const isActive = option.name === marketplaceCompanyName;
 
@@ -1416,7 +1416,7 @@ function MarketplaceShare({
               })}
             </div>
 
-            <div className="mt-5 space-y-4">
+            <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
               <div className="group flex cursor-default items-center justify-between gap-4 rounded-2xl border border-violet-100 bg-violet-50/50 px-4 py-3 transition hover:border-violet-300 hover:bg-violet-50 hover:shadow-sm">
                 <div className="flex items-center gap-3">
                   <span className="h-3 w-3 rounded-full bg-violet-600" />
@@ -1455,17 +1455,17 @@ function MarketplaceShare({
         </div>
       </section>
 
-      <section className="panel p-5 sm:p-6">
-        <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+      <section className="panel p-4 sm:p-5">
+        <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
           <div>
             <div className="section-eyebrow">Динамика</div>
-            <h3 className="mt-2 text-2xl font-black tracking-tight text-slate-950">
+            <h3 className="mt-1 text-xl font-black tracking-tight text-slate-950">
               {selectedPreset.title}
             </h3>
             <p className="mt-1 text-sm leading-5 text-slate-500">
               {selectedPreset.description}
             </p>
-            <div className="mt-3 flex flex-wrap gap-3 text-xs font-bold">
+            <div className="mt-2 flex flex-wrap gap-3 text-xs font-bold">
               <span className={`inline-flex items-center gap-2 ${selectedPreset.primary.colorClassName}`}>
                 <span className={`h-2.5 w-2.5 rounded-full ${selectedPreset.primary.dotClassName}`} />
                 {selectedPreset.primary.label}
@@ -1478,13 +1478,13 @@ function MarketplaceShare({
           </div>
           <Link
             href="/analytics"
-            className="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-indigo-600 transition hover:bg-indigo-50"
+            className="rounded-2xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-indigo-600 transition hover:bg-indigo-50"
           >
             Открыть →
           </Link>
         </div>
 
-        <div className="mt-4 flex flex-wrap gap-2">
+        <div className="mt-3 flex flex-wrap gap-2">
           {chartPresets.map((preset) => (
             <ChartPresetLink
               key={preset.key}
@@ -2297,7 +2297,7 @@ export default async function HomePage({ searchParams }: Props) {
           />
         </section>
 
-        <section className="grid gap-5 2xl:grid-cols-[1fr_420px]">
+        <section className="grid items-start gap-5 2xl:grid-cols-[minmax(0,1fr)_390px]">
           <MarketplaceShare
             wbRevenue={marketplaceCurrent.wbRevenue}
             ozonRevenue={marketplaceCurrent.ozonRevenue}
@@ -2309,7 +2309,7 @@ export default async function HomePage({ searchParams }: Props) {
             companies={marketplaceCompanies}
           />
 
-          <section className="panel p-5 sm:p-6">
+          <section className="panel p-4 sm:p-5">
             <div className="flex items-center justify-between gap-4">
               <div>
                 <div className="section-eyebrow">Инсайты</div>
@@ -2322,15 +2322,15 @@ export default async function HomePage({ searchParams }: Props) {
               </span>
             </div>
 
-            <div className="mt-5 space-y-3">
+            <div className="mt-4 space-y-3">
               {attentionItems.map((item) => (
                 <Link
                   key={item.title}
                   href={item.href}
-                  className="group flex items-center gap-4 rounded-2xl border border-slate-200 bg-white p-4 transition hover:border-indigo-200 hover:bg-indigo-50/30"
+                  className="group flex items-center gap-3 rounded-2xl border border-slate-200 bg-white p-3 transition hover:border-indigo-200 hover:bg-indigo-50/30"
                 >
                   <div
-                    className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl text-sm font-black ${
+                    className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl text-sm font-black ${
                       item.level === "danger"
                         ? "bg-red-50 text-red-600"
                         : item.level === "warning"
@@ -2341,8 +2341,8 @@ export default async function HomePage({ searchParams }: Props) {
                     {item.icon}
                   </div>
                   <div className="min-w-0 flex-1">
-                    <div className="font-black text-slate-950">{item.title}</div>
-                    <p className="mt-1 text-sm leading-5 text-slate-500">{item.text}</p>
+                    <div className="text-sm font-black text-slate-950">{item.title}</div>
+                    <p className="mt-1 text-xs leading-5 text-slate-500">{item.text}</p>
                   </div>
                   <div className="text-lg font-black text-slate-300 transition group-hover:translate-x-1 group-hover:text-indigo-500">
                     →
@@ -2357,7 +2357,7 @@ export default async function HomePage({ searchParams }: Props) {
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div>
               <div className="section-eyebrow">Компании</div>
-              <h2 className="mt-2 text-2xl font-black tracking-tight text-slate-950">
+              <h2 className="mt-1 text-xl font-black tracking-tight text-slate-950">
                 Разрез по компаниям
               </h2>
               <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">
@@ -2391,7 +2391,7 @@ export default async function HomePage({ searchParams }: Props) {
         <section className="panel p-5 sm:p-6">
           <div>
             <div className="section-eyebrow">Навигация</div>
-            <h2 className="mt-2 text-2xl font-black tracking-tight text-slate-950">
+            <h2 className="mt-1 text-xl font-black tracking-tight text-slate-950">
               Быстрые действия
             </h2>
           </div>
