@@ -227,14 +227,14 @@ const quickActions = [
   {
     title: "Сравнить периоды",
     description: "Динамика и тренды",
-    href: "/",
+    href: "/analytics",
     icon: "↔",
     tone: "bg-violet-50 text-violet-700",
   },
   {
     title: "План / Факт",
     description: "Планирование прибыли",
-    href: "/finance",
+    href: "/finance/plan-fact",
     icon: "◉",
     tone: "bg-fuchsia-50 text-fuchsia-700",
   },
@@ -489,6 +489,42 @@ function formatRevenuePercent(value: number, revenue: number) {
 
   return `${formatPercent(percent)} от выручки`;
 }
+
+function calculateCompanyDelta(current: number, previous?: number | null) {
+  const previousValue = previous ?? 0;
+
+  if (previousValue === 0) {
+    if (current === 0) return { label: "0.0%", className: "text-slate-400" };
+    return { label: "новый показатель", className: "text-indigo-600" };
+  }
+
+  const delta = ((current - previousValue) / Math.abs(previousValue)) * 100;
+
+  return {
+    label: formatSignedPercent(delta),
+    className: delta >= 0 ? "text-emerald-600" : "text-red-600",
+  };
+}
+
+function CompanyKpiMeta({
+  revenuePercent,
+  current,
+  previous,
+}: {
+  revenuePercent?: string | null;
+  current: number;
+  previous?: number | null;
+}) {
+  const delta = calculateCompanyDelta(current, previous);
+
+  return (
+    <div className="mt-1 space-y-0.5 text-[11px] font-bold leading-4">
+      {revenuePercent ? <div className="text-slate-500">{revenuePercent}</div> : null}
+      <div className={delta.className}>{delta.label} к сравнению</div>
+    </div>
+  );
+}
+
 
 function formatDate(value: string | Date) {
   const date =
@@ -2154,10 +2190,12 @@ function CompanyDetailColumn({
 
 function CompanyCard({
   row,
+  previousRow,
   dateFrom,
   dateTo,
 }: {
   row: CompanyDashboardRow;
+  previousRow?: CompanyDashboardRow;
   dateFrom: string;
   dateTo: string;
 }) {
@@ -2212,9 +2250,10 @@ function CompanyCard({
             <div className="mt-1 text-base font-black text-slate-950">
               {formatCurrency(row.totalRevenue)}
             </div>
-            <div className="mt-1 text-[11px] font-bold text-emerald-600">
-              {formatRevenuePercent(row.totalRevenue, row.totalRevenue)}
-            </div>
+            <CompanyKpiMeta
+              current={row.totalRevenue}
+              previous={previousRow?.totalRevenue}
+            />
           </div>
 
           <div className="rounded-2xl border border-slate-200 bg-white p-3">
@@ -2222,9 +2261,11 @@ function CompanyCard({
             <div className={`mt-1 text-base font-black ${valueColor(row.operatingProfitAfterTax)}`}>
               {formatCurrency(row.operatingProfitAfterTax)}
             </div>
-            <div className="mt-1 text-[11px] font-bold text-emerald-600">
-              {formatRevenuePercent(row.operatingProfitAfterTax, row.totalRevenue)}
-            </div>
+            <CompanyKpiMeta
+              revenuePercent={formatRevenuePercent(row.operatingProfitAfterTax, row.totalRevenue)}
+              current={row.operatingProfitAfterTax}
+              previous={previousRow?.operatingProfitAfterTax}
+            />
           </div>
 
           <div className="rounded-2xl border border-slate-200 bg-white p-3">
@@ -2232,9 +2273,11 @@ function CompanyCard({
             <div className={`mt-1 text-base font-black ${valueColor(row.netProfit)}`}>
               {formatCurrency(row.netProfit)}
             </div>
-            <div className="mt-1 text-[11px] font-bold text-emerald-600">
-              {formatRevenuePercent(row.netProfit, row.totalRevenue)}
-            </div>
+            <CompanyKpiMeta
+              revenuePercent={formatRevenuePercent(row.netProfit, row.totalRevenue)}
+              current={row.netProfit}
+              previous={previousRow?.netProfit}
+            />
           </div>
 
           <div className="rounded-2xl border border-slate-200 bg-white p-3">
@@ -2242,9 +2285,11 @@ function CompanyCard({
             <div className={`mt-1 text-base font-black ${valueColor(row.cashFlowResult)}`}>
               {formatCurrency(row.cashFlowResult)}
             </div>
-            <div className={`mt-1 text-[11px] font-bold ${valueColor(row.cashFlowResult)}`}>
-              {formatRevenuePercent(row.cashFlowResult, row.totalRevenue)}
-            </div>
+            <CompanyKpiMeta
+              revenuePercent={formatRevenuePercent(row.cashFlowResult, row.totalRevenue)}
+              current={row.cashFlowResult}
+              previous={previousRow?.cashFlowResult}
+            />
           </div>
         </div>
       </div>
@@ -2808,6 +2853,10 @@ export default async function HomePage({ searchParams }: Props) {
     },
   ];
 
+  const previousCompanyRowsByName = new Map(
+    previous.companyRows.map((row) => [row.companyName, row])
+  );
+
   return (
     <main className="page-shell">
       <div className="page-container">
@@ -3161,6 +3210,7 @@ export default async function HomePage({ searchParams }: Props) {
                   <CompanyCard
                     key={row.companyName}
                     row={row}
+                    previousRow={previousCompanyRowsByName.get(row.companyName)}
                     dateFrom={selectedPeriod.dateFrom}
                     dateTo={selectedPeriod.dateTo}
                   />
