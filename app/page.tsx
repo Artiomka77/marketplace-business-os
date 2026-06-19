@@ -1499,6 +1499,7 @@ function DynamicInsights({
   const secondarySeries = getChartSeries(secondaryTotal, preset.secondary.kind, lineWeights, chartDates.length);
   const primaryStats = getSeriesStats(primarySeries);
   const secondaryStats = getSeriesStats(secondarySeries);
+  const isDrrPreset = preset.secondary.label === "ДРР";
 
   const bestPrimaryIndex = primarySeries.indexOf(primaryStats.max);
   const weakPrimaryIndex = primarySeries.indexOf(primaryStats.min);
@@ -1535,12 +1536,67 @@ function DynamicInsights({
     { icon: preset.secondary.kind === "percent" ? "↟" : "◔", title: `Пик: ${preset.secondary.label}`, data: peak, tone: "bg-orange-50 text-orange-600" },
   ];
 
+  const headerClassName = isDrrPreset
+    ? "grid grid-cols-[30px_minmax(78px,1fr)_58px_76px_82px_44px] items-center gap-2 px-3 py-2"
+    : "grid grid-cols-[30px_minmax(88px,1.15fr)_64px_1fr_1fr] items-center gap-2 px-3 py-2";
+  const rowClassName = isDrrPreset
+    ? "grid grid-cols-[30px_minmax(78px,1fr)_58px_76px_82px_44px] items-center gap-2 border-b border-slate-100 px-3 py-2.5 last:border-b-0"
+    : "grid grid-cols-[30px_minmax(88px,1.15fr)_64px_1fr_1fr] items-center gap-2 border-b border-slate-100 px-3 py-2.5 last:border-b-0";
+
+  function adsValue(primaryValue: number, secondaryValue: number) {
+    return primaryValue * (secondaryValue / 100);
+  }
+
+  function renderInsightCells(data: {
+    dateLabel: string;
+    weekDayLabel: string;
+    primaryValue: number;
+    secondaryValue: number;
+  }) {
+    if (isDrrPreset) {
+      return (
+        <>
+          <div className={`text-xs font-black ${preset.primary.colorClassName}`}>
+            {formatChartMetric(data.primaryValue, preset.primary.kind)}
+          </div>
+          <div className="text-xs font-black text-orange-700">
+            {formatCurrency(adsValue(data.primaryValue, data.secondaryValue))}
+          </div>
+          <div className="text-xs font-black text-emerald-600">
+            {formatPercent(data.secondaryValue)}
+          </div>
+        </>
+      );
+    }
+
+    return (
+      <>
+        <div className={`text-xs font-black ${preset.primary.colorClassName}`}>
+          {formatChartMetric(data.primaryValue, preset.primary.kind)}
+        </div>
+        <div className={`text-xs font-black ${preset.secondary.colorClassName}`}>
+          {formatSecondaryInsight({
+            preset,
+            primaryValue: data.primaryValue,
+            secondaryValue: data.secondaryValue,
+          })}
+        </div>
+      </>
+    );
+  }
+
+  const averageRow = {
+    dateLabel: "—",
+    weekDayLabel: "за период",
+    primaryValue: avgPrimary,
+    secondaryValue: avgSecondary,
+  };
+
   return (
-    <section className="panel p-4">
+    <section className="panel min-w-0 p-4">
       <div className="flex items-center justify-between gap-4">
         <div>
-          <div className="section-eyebrow">Динамика</div>
-          <h2 className="mt-1 text-xl font-black tracking-tight text-slate-950">
+          <h2 className="text-xl font-black tracking-tight text-slate-950">
             Выводы по динамике
           </h2>
         </div>
@@ -1550,42 +1606,47 @@ function DynamicInsights({
       </div>
 
       <div className="mt-4 overflow-hidden rounded-2xl border border-slate-200 bg-white">
+        <div className={`${headerClassName} border-b border-slate-100 text-[10px] font-black uppercase tracking-[0.08em] text-slate-400`}>
+          <div />
+          <div>Показатель</div>
+          <div>День</div>
+          <div>{preset.primary.label}</div>
+          {isDrrPreset ? (
+            <>
+              <div>Реклама</div>
+              <div>ДРР</div>
+            </>
+          ) : (
+            <div>{preset.secondary.label}</div>
+          )}
+        </div>
+
         {rows.map((item) => (
-          <div key={item.title} className="grid grid-cols-[42px_1fr_1fr_1fr] items-center gap-3 border-b border-slate-100 p-3 last:border-b-0">
-            <div className={`flex h-9 w-9 items-center justify-center rounded-2xl text-sm font-black ${item.tone}`}>{item.icon}</div>
-            <div>
-              <div className="text-sm font-black text-slate-950">{item.title}</div>
-              <div className="mt-1 text-xs font-bold text-slate-500">{item.data.dateLabel} / {item.data.weekDayLabel}</div>
+          <div key={item.title} className={rowClassName}>
+            <div className={`flex h-8 w-8 items-center justify-center rounded-2xl text-xs font-black ${item.tone}`}>
+              {item.icon}
             </div>
-            <InsightValue
-              label={preset.primary.label}
-              value={formatChartMetric(item.data.primaryValue, preset.primary.kind)}
-              tone={preset.primary.colorClassName}
-            />
-            <InsightValue
-              label={preset.secondary.label === "ДРР" ? "Реклама / ДРР" : preset.secondary.label}
-              value={formatSecondaryInsight({ preset, primaryValue: item.data.primaryValue, secondaryValue: item.data.secondaryValue })}
-              tone={preset.secondary.colorClassName}
-            />
+            <div>
+              <div className="text-xs font-black text-slate-950">{item.title}</div>
+            </div>
+            <div className="text-xs font-bold leading-4 text-slate-600">
+              <div>{item.data.dateLabel}</div>
+              <div className="text-slate-400">{item.data.weekDayLabel}</div>
+            </div>
+            {renderInsightCells(item.data)}
           </div>
         ))}
 
-        <div className="grid grid-cols-[42px_1fr_1fr_1fr] items-center gap-3 p-3">
-          <div className="flex h-9 w-9 items-center justify-center rounded-2xl bg-blue-50 text-sm font-black text-blue-600">≈</div>
+        <div className={rowClassName}>
+          <div className="flex h-8 w-8 items-center justify-center rounded-2xl bg-blue-50 text-xs font-black text-blue-600">≈</div>
           <div>
-            <div className="text-sm font-black text-slate-950">Средний день</div>
-            <div className="mt-1 text-xs font-bold text-slate-500">за период</div>
+            <div className="text-xs font-black text-slate-950">Средний день</div>
           </div>
-          <InsightValue
-            label={preset.primary.label}
-            value={formatChartMetric(avgPrimary, preset.primary.kind)}
-            tone={preset.primary.colorClassName}
-          />
-          <InsightValue
-            label={preset.secondary.label === "ДРР" ? "Реклама / ДРР" : preset.secondary.label}
-            value={formatSecondaryInsight({ preset, primaryValue: avgPrimary, secondaryValue: avgSecondary })}
-            tone={preset.secondary.colorClassName}
-          />
+          <div className="text-xs font-bold leading-4 text-slate-600">
+            <div>{averageRow.dateLabel}</div>
+            <div className="text-slate-400">{averageRow.weekDayLabel}</div>
+          </div>
+          {renderInsightCells(averageRow)}
         </div>
       </div>
 
@@ -2589,8 +2650,8 @@ export default async function HomePage({ searchParams }: Props) {
           />
         </section>
 
-        <section className="grid items-start gap-4 2xl:grid-cols-6">
-          <div className="2xl:col-span-4">
+        <section className="grid items-start gap-4 2xl:grid-cols-[repeat(6,minmax(0,1fr))]">
+          <div className="min-w-0 2xl:col-span-4">
             <MarketplaceShare
               wbRevenue={marketplaceCurrent.wbRevenue}
               ozonRevenue={marketplaceCurrent.ozonRevenue}
@@ -2606,11 +2667,10 @@ export default async function HomePage({ searchParams }: Props) {
             />
           </div>
 
-          <section className="panel p-4 2xl:col-span-2">
+          <section className="panel min-w-0 p-4 2xl:col-span-2">
             <div className="flex items-center justify-between gap-4">
               <div>
-                <div className="section-eyebrow">Инсайты</div>
-                <h2 className="mt-2 text-xl font-black text-slate-950">
+                <h2 className="text-xl font-black text-slate-950">
                   Что требует внимания
                 </h2>
               </div>
@@ -2650,17 +2710,13 @@ export default async function HomePage({ searchParams }: Props) {
           </section>
         </section>
 
-        <section className="grid items-start gap-4 2xl:grid-cols-6">
-          <section className="panel p-4 2xl:col-span-4">
+        <section className="grid items-start gap-4 2xl:grid-cols-[repeat(6,minmax(0,1fr))]">
+          <section className="panel min-w-0 p-4 2xl:col-span-4">
             <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
               <div>
-                <div className="section-eyebrow">Динамика</div>
-                <h3 className="mt-1 text-xl font-black tracking-tight text-slate-950">
-                  {selectedChartPreset.title}
+                <h3 className="text-xl font-black tracking-tight text-slate-950">
+                  Динамика: {selectedChartPreset.title}
                 </h3>
-                <p className="mt-1 text-sm leading-5 text-slate-500">
-                  {selectedChartPreset.description}
-                </p>
               </div>
               <Link
                 href="/analytics"
@@ -2705,7 +2761,7 @@ export default async function HomePage({ searchParams }: Props) {
             />
           </section>
 
-          <div className="2xl:col-span-2">
+          <div className="min-w-0 2xl:col-span-2">
             <DynamicInsights
               preset={selectedChartPreset}
               current={marketplaceCurrent}
