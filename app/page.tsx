@@ -1429,16 +1429,28 @@ function InteractiveTrendChart({
               <div key={index} className="group relative flex-1 cursor-crosshair">
                 <div className="absolute inset-y-0 left-1/2 hidden w-px bg-indigo-300 group-hover:block" />
                 <div
-                  className={`pointer-events-none absolute top-4 z-30 hidden w-64 rounded-2xl border border-slate-200 bg-white p-3 text-left shadow-xl group-hover:block ${tooltipPosition}`}
+                  className={`pointer-events-none absolute top-3 z-30 hidden w-48 rounded-xl border border-slate-200 bg-white p-2 text-left shadow-lg group-hover:block ${tooltipPosition}`}
                 >
-                  <div className="text-xs font-black uppercase tracking-[0.12em] text-slate-400">
-                    {dateLabel} ({weekDayLabel})
+                  <div className="text-[10px] font-black uppercase tracking-[0.1em] text-slate-400">
+                    {dateLabel} · {weekDayLabel}
                   </div>
-                  <div className="mt-2 text-sm font-black text-indigo-700">
-                    Текущий: {preset.primary.label} {formatChartMetric(value, preset.primary.kind)} · {preset.secondary.label} {formatChartMetric(secondaryValue, preset.secondary.kind)}
+                  <div className="mt-1 border-b border-slate-100 pb-1">
+                    <div className="text-[10px] font-bold text-slate-400">Текущий</div>
+                    <div className={`text-xs font-black ${preset.primary.colorClassName}`}>
+                      {preset.primary.label}: {formatChartMetric(value, preset.primary.kind)}
+                    </div>
+                    <div className={`text-xs font-black ${preset.secondary.colorClassName}`}>
+                      {preset.secondary.label}: {formatChartMetric(secondaryValue, preset.secondary.kind)}
+                    </div>
                   </div>
-                  <div className="mt-1 text-sm font-black text-slate-500">
-                    Сравнение: {preset.primary.label} {formatChartMetric(previousPrimaryValue, preset.primary.kind)} · {preset.secondary.label} {formatChartMetric(previousSecondaryValue, preset.secondary.kind)}
+                  <div className="mt-1">
+                    <div className="text-[10px] font-bold text-slate-400">Сравнение</div>
+                    <div className="text-xs font-black text-slate-600">
+                      {preset.primary.label}: {formatChartMetric(previousPrimaryValue, preset.primary.kind)}
+                    </div>
+                    <div className="text-xs font-black text-slate-600">
+                      {preset.secondary.label}: {formatChartMetric(previousSecondaryValue, preset.secondary.kind)}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -2562,7 +2574,7 @@ export default async function HomePage({ searchParams }: Props) {
           />
         </section>
 
-        <section className="grid items-start gap-5 2xl:grid-cols-2">
+        <section className="grid items-start gap-5 2xl:grid-cols-[minmax(0,7fr)_minmax(320px,3fr)]">
           <MarketplaceShare
             wbRevenue={marketplaceCurrent.wbRevenue}
             ozonRevenue={marketplaceCurrent.ozonRevenue}
@@ -2621,7 +2633,7 @@ export default async function HomePage({ searchParams }: Props) {
           </section>
         </section>
 
-        <section className="grid items-start gap-5 2xl:grid-cols-2">
+        <section className="grid items-start gap-5 2xl:grid-cols-[minmax(0,7fr)_minmax(320px,3fr)]">
           <section className="panel p-4">
             <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
               <div>
