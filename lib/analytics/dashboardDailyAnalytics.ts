@@ -16,6 +16,19 @@ export type DashboardDailyPoint = {
   creditInterest: number;
 };
 
+export type DashboardDailyExpectedTotals = {
+  wbRevenue: number;
+  ozonRevenue: number;
+  revenue: number;
+  adsCost: number;
+  operatingProfitAfterTax: number;
+  netProfit: number;
+  cashFlowResult: number;
+  loanPayments: number;
+  creditPrincipal: number;
+  creditInterest: number;
+};
+
 type InternalDailyPoint = DashboardDailyPoint & {
   marketplaceProfitBeforeTax: number;
   taxesAmount: number;
@@ -287,10 +300,160 @@ function pointValues(pointsByDate: Map<string, InternalDailyPoint>) {
   }
 }
 
+
+function sumPoints(
+  points: InternalDailyPoint[],
+  selector: (point: InternalDailyPoint) => number
+) {
+  return points.reduce((sum, point) => sum + selector(point), 0);
+}
+
+function getDistributionWeights(points: InternalDailyPoint[]) {
+  const revenueTotal = sumPoints(points, (point) => Math.max(0, point.revenue));
+
+  if (revenueTotal > 0) {
+    return points.map((point) => Math.max(0, point.revenue) / revenueTotal);
+  }
+
+  const equalWeight = points.length > 0 ? 1 / points.length : 0;
+  return points.map(() => equalWeight);
+}
+
+function alignMoneySeriesToExpectedTotal(params: {
+  points: InternalDailyPoint[];
+  expectedTotal: number;
+  getValue: (point: InternalDailyPoint) => number;
+  setValue: (point: InternalDailyPoint, value: number) => void;
+}) {
+  const { points, expectedTotal, getValue, setValue } = params;
+
+  if (points.length === 0) return;
+  if (!Number.isFinite(expectedTotal)) return;
+
+  const currentTotal = sumPoints(points, getValue);
+  const diff = expectedTotal - currentTotal;
+
+  if (Math.abs(diff) < 0.01) return;
+
+  if (Math.abs(currentTotal) > 0.01) {
+    const ratio = expectedTotal / currentTotal;
+
+    for (const point of points) {
+      setValue(point, getValue(point) * ratio);
+    }
+
+    return;
+  }
+
+  const weights = getDistributionWeights(points);
+
+  points.forEach((point, index) => {
+    setValue(point, expectedTotal * weights[index]);
+  });
+}
+
+function alignDailyPointsToExpectedTotals(
+  pointsByDate: Map<string, InternalDailyPoint>,
+  expectedTotals: DashboardDailyExpectedTotals
+) {
+  const points = Array.from(pointsByDate.values());
+
+  alignMoneySeriesToExpectedTotal({
+    points,
+    expectedTotal: expectedTotals.wbRevenue,
+    getValue: (point) => point.wbRevenue,
+    setValue: (point, value) => {
+      point.wbRevenue = value;
+    },
+  });
+
+  alignMoneySeriesToExpectedTotal({
+    points,
+    expectedTotal: expectedTotals.ozonRevenue,
+    getValue: (point) => point.ozonRevenue,
+    setValue: (point, value) => {
+      point.ozonRevenue = value;
+    },
+  });
+
+  for (const point of points) {
+    point.revenue = point.wbRevenue + point.ozonRevenue;
+  }
+
+  alignMoneySeriesToExpectedTotal({
+    points,
+    expectedTotal: expectedTotals.adsCost,
+    getValue: (point) => point.adsCost,
+    setValue: (point, value) => {
+      point.adsCost = value;
+    },
+  });
+
+  alignMoneySeriesToExpectedTotal({
+    points,
+    expectedTotal: expectedTotals.operatingProfitAfterTax,
+    getValue: (point) => point.operatingProfitAfterTax,
+    setValue: (point, value) => {
+      point.operatingProfitAfterTax = value;
+    },
+  });
+
+  alignMoneySeriesToExpectedTotal({
+    points,
+    expectedTotal: expectedTotals.netProfit,
+    getValue: (point) => point.netProfit,
+    setValue: (point, value) => {
+      point.netProfit = value;
+    },
+  });
+
+  alignMoneySeriesToExpectedTotal({
+    points,
+    expectedTotal: expectedTotals.cashFlowResult,
+    getValue: (point) => point.cashFlowResult,
+    setValue: (point, value) => {
+      point.cashFlowResult = value;
+    },
+  });
+
+  alignMoneySeriesToExpectedTotal({
+    points,
+    expectedTotal: expectedTotals.loanPayments,
+    getValue: (point) => point.loanPayments,
+    setValue: (point, value) => {
+      point.loanPayments = value;
+    },
+  });
+
+  alignMoneySeriesToExpectedTotal({
+    points,
+    expectedTotal: expectedTotals.creditPrincipal,
+    getValue: (point) => point.creditPrincipal,
+    setValue: (point, value) => {
+      point.creditPrincipal = value;
+    },
+  });
+
+  alignMoneySeriesToExpectedTotal({
+    points,
+    expectedTotal: expectedTotals.creditInterest,
+    getValue: (point) => point.creditInterest,
+    setValue: (point, value) => {
+      point.creditInterest = value;
+    },
+  });
+
+  for (const point of points) {
+    point.revenue = point.wbRevenue + point.ozonRevenue;
+    point.drr = point.revenue > 0 ? (point.adsCost / point.revenue) * 100 : null;
+  }
+}
+
 export async function getDashboardDailyAnalytics(params: {
   dateFrom: string;
   dateTo: string;
   companyName?: string | null;
+  expectedTotals?: DashboardDailyExpectedTotals;
 }): Promise<DashboardDailyPoint[]> {
   const companyName =
     params.companyName && params.companyName !== "ALL" ? params.companyName : null;
@@ -551,6 +714,10 @@ export async function getDashboardDailyAnalytics(params: {
   }
 
   pointValues(pointsByDate);
+
+  if (params.expectedTotals) {
+    alignDailyPointsToExpectedTotals(pointsByDate, params.expectedTotals);
+  }
 
   return Array.from(pointsByDate.values()).map((point) => ({
     date: point.date,

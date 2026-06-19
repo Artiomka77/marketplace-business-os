@@ -1820,6 +1820,21 @@ function buildReconciliationRows(summary: DashboardSummary, points: DashboardDai
   ];
 }
 
+function createDailyExpectedTotals(summary: DashboardSummary) {
+  return {
+    wbRevenue: summary.wbRevenue,
+    ozonRevenue: summary.ozonRevenue,
+    revenue: summary.totalRevenue,
+    adsCost: summary.adsCost,
+    operatingProfitAfterTax: summary.operatingProfitAfterTax,
+    netProfit: summary.netProfit,
+    cashFlowResult: summary.cashFlowResult,
+    loanPayments: summary.loanPayments,
+    creditPrincipal: summary.creditPrincipal,
+    creditInterest: summary.creditInterest,
+  };
+}
+
 function formatReconciliationValue(value: number | null, kind: ReconciliationKind) {
   if (value === null) return "—";
   if (kind === "percent") return formatPercent(value);
@@ -2683,11 +2698,13 @@ export default async function HomePage({ searchParams }: Props) {
       dateFrom: selectedPeriod.dateFrom,
       dateTo: selectedPeriod.dateTo,
       companyName: dailyCompanyName,
+      expectedTotals: createDailyExpectedTotals(marketplaceCurrent),
     }),
     getDashboardDailyAnalytics({
       dateFrom: previousPeriod.dateFrom,
       dateTo: previousPeriod.dateTo,
       companyName: dailyCompanyName,
+      expectedTotals: createDailyExpectedTotals(marketplacePrevious),
     }),
   ]);
   const currentReconciliationRows = buildReconciliationRows(marketplaceCurrent, currentDailyPoints);
