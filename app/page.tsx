@@ -1165,6 +1165,8 @@ function InteractiveTrendChart({
   previousSecondaryTotal,
   dateFrom,
   dateTo,
+  previousDateFrom,
+  previousDateTo,
 }: {
   preset: ChartPresetConfig;
   primaryTotal: number;
@@ -1173,8 +1175,11 @@ function InteractiveTrendChart({
   previousSecondaryTotal: number;
   dateFrom: string;
   dateTo: string;
+  previousDateFrom: string;
+  previousDateTo: string;
 }) {
   const chartDates = getChartDates(dateFrom, dateTo);
+  const previousChartDates = getChartDates(previousDateFrom, previousDateTo);
   const primarySeries = getChartSeries(
     primaryTotal,
     preset.primary.kind,
@@ -1418,6 +1423,11 @@ function InteractiveTrendChart({
             const previousPrimaryValue = previousPrimarySeries[index] ?? 0;
             const previousSecondaryValue = previousSecondarySeries[index] ?? 0;
             const { dateLabel, weekDayLabel } = formatChartDate(chartDates[index]);
+            const comparisonDate = previousChartDates[index] ?? previousChartDates[previousChartDates.length - 1] ?? chartDates[index];
+            const {
+              dateLabel: comparisonDateLabel,
+              weekDayLabel: comparisonWeekDayLabel,
+            } = formatChartDate(comparisonDate);
             const tooltipPosition =
               index <= 1
                 ? "left-0 translate-x-0"
@@ -1452,7 +1462,7 @@ function InteractiveTrendChart({
                     </div>
                     <div className="my-1 h-px bg-slate-100" />
                     <div className="text-[9px] uppercase tracking-[0.08em] text-slate-400">
-                      Сравнение
+                      Сравнение: {comparisonDateLabel} · {comparisonWeekDayLabel}
                     </div>
                     <div className="flex items-center justify-between gap-2">
                       <span className="truncate text-slate-500">{preset.primary.label}</span>
@@ -2758,6 +2768,8 @@ export default async function HomePage({ searchParams }: Props) {
               previousSecondaryTotal={previousChartSecondaryTotal}
               dateFrom={selectedPeriod.dateFrom}
               dateTo={selectedPeriod.dateTo}
+              previousDateFrom={previousPeriod.dateFrom}
+              previousDateTo={previousPeriod.dateTo}
             />
           </section>
 
