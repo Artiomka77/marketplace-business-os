@@ -865,6 +865,7 @@ function buildDashboardHref(params: {
   dateTo?: string;
   chartPreset?: string;
   marketplaceCompanyName?: string | null;
+  debug?: boolean;
 }) {
   const searchParams = new URLSearchParams();
 
@@ -885,6 +886,10 @@ function buildDashboardHref(params: {
 
   if (params.marketplaceCompanyName) {
     searchParams.set("marketplaceCompanyName", params.marketplaceCompanyName);
+  }
+
+  if (params.debug) {
+    searchParams.set("debug", "1");
   }
 
   return `/?${searchParams.toString()}`;
@@ -2685,6 +2690,23 @@ export default async function HomePage({ searchParams }: Props) {
       companyName: dailyCompanyName,
     }),
   ]);
+  const currentReconciliationRows = buildReconciliationRows(marketplaceCurrent, currentDailyPoints);
+  const previousReconciliationRows = buildReconciliationRows(marketplacePrevious, previousDailyPoints);
+  const currentReconciliationProblems = currentReconciliationRows.filter((row) => !row.isOk).length;
+  const previousReconciliationProblems = previousReconciliationRows.filter((row) => !row.isOk).length;
+  const totalReconciliationProblems = currentReconciliationProblems + previousReconciliationProblems;
+  const hasDataQualityIssues = totalReconciliationProblems > 0;
+
+  const debugHref = buildDashboardHref({
+    period: selectedPeriod.key,
+    companyName: selectedCompanyValue,
+    marketplaceCompanyName: selectedMarketplaceCompanyValue,
+    dateFrom: selectedPeriod.key === "custom" ? selectedPeriod.dateFrom : undefined,
+    dateTo: selectedPeriod.key === "custom" ? selectedPeriod.dateTo : undefined,
+    chartPreset: selectedChartPreset.key,
+    debug: true,
+  });
+
   const presetPeriods = periodOptions.filter((period) => period.key !== "custom");
 
   const attentionItems = [
@@ -2752,6 +2774,20 @@ export default async function HomePage({ searchParams }: Props) {
                 <span className="rounded-2xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 shadow-sm">
                   {selectedCompanyName ?? "Все компании"}
                 </span>
+
+                {hasDataQualityIssues ? (
+                  <Link
+                    href={debugHref}
+                    className="inline-flex items-center gap-1.5 rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-black text-amber-700 shadow-sm transition hover:border-amber-300 hover:bg-amber-100"
+                    title="Обнаружено расхождение между итогами периода и дневной детализацией. Нажмите, чтобы открыть техническую сверку."
+                  >
+                    <span>⚠</span>
+                    <span>Данные требуют проверки</span>
+                    <span className="rounded-full bg-white/70 px-1.5 py-0.5 text-[10px] text-amber-700 ring-1 ring-amber-200">
+                      {totalReconciliationProblems}
+                    </span>
+                  </Link>
+                ) : null}
               </div>
 
               <span className="shrink-0 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-[11px] font-black text-slate-600 shadow-sm transition hover:bg-slate-50">
@@ -3036,7 +3072,7 @@ export default async function HomePage({ searchParams }: Props) {
           </div>
         </section>
 
-        {showDebug ? (
+        {showDebug && hasDataQualityIssues ? (
           <DailyDataReconciliation
             currentSummary={marketplaceCurrent}
             previousSummary={marketplacePrevious}
