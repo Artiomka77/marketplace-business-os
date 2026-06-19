@@ -1209,10 +1209,10 @@ function InteractiveTrendChart({
     ...previousSecondarySeries.map(Math.abs),
     0
   );
-  const chartWidth = 520;
+  const chartWidth = 760;
   const chartHeight = 176;
-  const plotLeft = 54;
-  const plotRight = 44;
+  const plotLeft = 58;
+  const plotRight = 54;
   const plotTop = 18;
   const plotBottom = 36;
   const plotWidth = chartWidth - plotLeft - plotRight;
@@ -1412,7 +1412,7 @@ function InteractiveTrendChart({
           </defs>
         </svg>
 
-        <div className="absolute inset-x-[54px] top-[56px] flex h-[122px] items-stretch">
+        <div className="absolute inset-x-[64px] top-[56px] flex h-[122px] items-stretch">
           {primarySeries.map((value, index) => {
             const secondaryValue = secondarySeries[index] ?? 0;
             const previousPrimaryValue = previousPrimarySeries[index] ?? 0;
@@ -1429,33 +1429,39 @@ function InteractiveTrendChart({
               <div key={index} className="group relative flex-1 cursor-crosshair">
                 <div className="absolute inset-y-0 left-1/2 hidden w-px bg-indigo-300 group-hover:block" />
                 <div
-                  className={`pointer-events-none absolute top-4 z-30 hidden w-28 rounded-xl border border-slate-200 bg-white px-2 py-1.5 text-left shadow-lg group-hover:block ${tooltipPosition}`}
+                  className={`pointer-events-none absolute top-4 z-30 hidden w-36 rounded-xl border border-slate-200 bg-white px-2.5 py-2 text-left shadow-lg group-hover:block ${tooltipPosition}`}
                 >
                   <div className="text-[9px] font-black uppercase tracking-[0.06em] text-slate-400">
                     {dateLabel} · {weekDayLabel}
                   </div>
-                  <div className="mt-1 space-y-0.5 text-[10px] font-black leading-4">
-                    <div className="flex items-center justify-between gap-1">
-                      <span className="text-slate-400">Т</span>
+                  <div className="mt-1.5 space-y-1 text-[10px] font-black leading-4">
+                    <div className="text-[9px] uppercase tracking-[0.08em] text-slate-400">
+                      Текущий
+                    </div>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="truncate text-slate-500">{preset.primary.label}</span>
                       <span className={preset.primary.colorClassName}>
                         {formatAxisValue(value, preset.primary.kind)}
                       </span>
                     </div>
-                    <div className="flex items-center justify-between gap-1">
-                      <span className="text-slate-400">Д</span>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="truncate text-slate-500">{preset.secondary.label}</span>
                       <span className={preset.secondary.colorClassName}>
                         {formatAxisValue(secondaryValue, preset.secondary.kind)}
                       </span>
                     </div>
                     <div className="my-1 h-px bg-slate-100" />
-                    <div className="flex items-center justify-between gap-1">
-                      <span className="text-slate-400">С</span>
+                    <div className="text-[9px] uppercase tracking-[0.08em] text-slate-400">
+                      Сравнение
+                    </div>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="truncate text-slate-500">{preset.primary.label}</span>
                       <span className="text-slate-600">
                         {formatAxisValue(previousPrimaryValue, preset.primary.kind)}
                       </span>
                     </div>
-                    <div className="flex items-center justify-between gap-1">
-                      <span className="text-slate-400">Д</span>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="truncate text-slate-500">{preset.secondary.label}</span>
                       <span className="text-slate-600">
                         {formatAxisValue(previousSecondaryValue, preset.secondary.kind)}
                       </span>
@@ -2583,22 +2589,24 @@ export default async function HomePage({ searchParams }: Props) {
           />
         </section>
 
-        <section className="grid items-start gap-4 2xl:grid-cols-[minmax(0,calc(66.666667%_-_5px))_minmax(0,calc(33.333333%_-_11px))]">
-          <MarketplaceShare
-            wbRevenue={marketplaceCurrent.wbRevenue}
-            ozonRevenue={marketplaceCurrent.ozonRevenue}
-            previousWbRevenue={marketplacePrevious.wbRevenue}
-            previousOzonRevenue={marketplacePrevious.ozonRevenue}
-            current={marketplaceCurrent}
-            previous={marketplacePrevious}
-            selectedPreset={selectedChartPreset}
-            period={selectedPeriod}
-            companyName={selectedCompanyValue}
-            marketplaceCompanyName={selectedMarketplaceCompanyValue}
-            companies={marketplaceCompanies}
-          />
+        <section className="grid items-start gap-4 2xl:grid-cols-6">
+          <div className="2xl:col-span-4">
+            <MarketplaceShare
+              wbRevenue={marketplaceCurrent.wbRevenue}
+              ozonRevenue={marketplaceCurrent.ozonRevenue}
+              previousWbRevenue={marketplacePrevious.wbRevenue}
+              previousOzonRevenue={marketplacePrevious.ozonRevenue}
+              current={marketplaceCurrent}
+              previous={marketplacePrevious}
+              selectedPreset={selectedChartPreset}
+              period={selectedPeriod}
+              companyName={selectedCompanyValue}
+              marketplaceCompanyName={selectedMarketplaceCompanyValue}
+              companies={marketplaceCompanies}
+            />
+          </div>
 
-          <section className="panel p-4">
+          <section className="panel p-4 2xl:col-span-2">
             <div className="flex items-center justify-between gap-4">
               <div>
                 <div className="section-eyebrow">Инсайты</div>
@@ -2642,8 +2650,8 @@ export default async function HomePage({ searchParams }: Props) {
           </section>
         </section>
 
-        <section className="grid items-start gap-4 2xl:grid-cols-[minmax(0,calc(66.666667%_-_5px))_minmax(0,calc(33.333333%_-_11px))]">
-          <section className="panel p-4">
+        <section className="grid items-start gap-4 2xl:grid-cols-6">
+          <section className="panel p-4 2xl:col-span-4">
             <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
               <div>
                 <div className="section-eyebrow">Динамика</div>
@@ -2697,13 +2705,15 @@ export default async function HomePage({ searchParams }: Props) {
             />
           </section>
 
-          <DynamicInsights
-            preset={selectedChartPreset}
-            current={marketplaceCurrent}
-            previous={marketplacePrevious}
-            dateFrom={selectedPeriod.dateFrom}
-            dateTo={selectedPeriod.dateTo}
-          />
+          <div className="2xl:col-span-2">
+            <DynamicInsights
+              preset={selectedChartPreset}
+              current={marketplaceCurrent}
+              previous={marketplacePrevious}
+              dateFrom={selectedPeriod.dateFrom}
+              dateTo={selectedPeriod.dateTo}
+            />
+          </div>
         </section>
 
         <section className="panel p-5 sm:p-6">
