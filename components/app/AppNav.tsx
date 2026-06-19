@@ -1,12 +1,26 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { usePathname } from "next/navigation";
 
 const SIDEBAR_STORAGE_KEY = "marketplace-os-sidebar-collapsed";
 
-const items = [
+type NavChild = {
+  title: string;
+  href: string;
+  description?: string;
+};
+
+type NavSection = {
+  title: string;
+  href: string;
+  icon: string;
+  activePrefix?: string;
+  children?: NavChild[];
+};
+
+const sections: NavSection[] = [
   {
     title: "Главная",
     href: "/",
@@ -20,49 +34,175 @@ const items = [
   {
     title: "Аналитика",
     href: "/analytics",
+    activePrefix: "/analytics",
     icon: "▦",
-  },
-  {
-    title: "Финансы",
-    href: "/finance",
-    icon: "₽",
+    children: [
+      {
+        title: "Общая аналитика",
+        href: "/analytics",
+      },
+      {
+        title: "Прибыль WB",
+        href: "/profit-wb",
+      },
+      {
+        title: "Прибыль Ozon",
+        href: "/profit-ozon",
+      },
+      {
+        title: "ABC-анализ",
+        href: "/abc",
+      },
+      {
+        title: "Остатки",
+        href: "/stocks",
+      },
+    ],
   },
   {
     title: "Реклама",
     href: "/ads-mapping",
+    activePrefix: "/ads-mapping",
     icon: "↗",
+    children: [
+      {
+        title: "Связки кампаний",
+        href: "/ads-mapping",
+      },
+    ],
   },
   {
-    title: "Остатки",
-    href: "/stocks",
-    icon: "▣",
-  },
-  {
-    title: "ABC / ассортимент",
-    href: "/abc",
-    icon: "◔",
+    title: "Финансы",
+    href: "/finance",
+    activePrefix: "/finance",
+    icon: "₽",
+    children: [
+      {
+        title: "Финансовый Dashboard",
+        href: "/finance",
+      },
+      {
+        title: "Операции",
+        href: "/finance/operations",
+      },
+      {
+        title: "ОДДС",
+        href: "/finance/cashflow",
+      },
+      {
+        title: "План / Факт",
+        href: "/finance/plan-fact",
+      },
+      {
+        title: "Платёжный календарь",
+        href: "/finance/calendar",
+      },
+      {
+        title: "Прогноз ликвидности",
+        href: "/finance/forecast",
+      },
+      {
+        title: "Счета",
+        href: "/finance/accounts",
+      },
+      {
+        title: "Кредиты",
+        href: "/finance/loans",
+      },
+      {
+        title: "Бюджет",
+        href: "/finance/budget",
+      },
+      {
+        title: "Статьи / категории",
+        href: "/finance/categories",
+      },
+    ],
   },
   {
     title: "Импорт",
     href: "/import",
+    activePrefix: "/import",
     icon: "⇧",
+    children: [
+      {
+        title: "Загрузка файлов",
+        href: "/import",
+      },
+      {
+        title: "История импортов",
+        href: "/imports",
+      },
+    ],
   },
   {
     title: "Настройки",
     href: "/settings/companies",
     activePrefix: "/settings",
     icon: "⚙",
+    children: [
+      {
+        title: "Компании",
+        href: "/settings/companies",
+      },
+      {
+        title: "API-подключения",
+        href: "/settings/api-connections",
+      },
+    ],
   },
 ];
 
-function isItemActive(pathname: string, item: (typeof items)[number]) {
-  if (item.href === "/") return pathname === "/";
-  return pathname.startsWith(item.activePrefix ?? item.href);
+function isExactOrNested(pathname: string, href: string) {
+  if (href === "/") return pathname === "/";
+  return pathname === href || pathname.startsWith(`${href}/`);
+}
+
+function isChildActive(pathname: string, child: NavChild) {
+  return isExactOrNested(pathname, child.href);
+}
+
+function isSectionActive(pathname: string, section: NavSection) {
+  if (section.href === "/") return pathname === "/";
+
+  const childActive = section.children?.some((child) =>
+    isChildActive(pathname, child)
+  );
+
+  if (childActive) return true;
+
+  if (section.activePrefix) {
+    return pathname === section.href || pathname.startsWith(section.activePrefix);
+  }
+
+  return isExactOrNested(pathname, section.href);
+}
+
+function getActiveSectionTitles(pathname: string) {
+  return sections
+    .filter((section) => isSectionActive(pathname, section))
+    .map((section) => section.title);
+}
+
+function flattenSections() {
+  return sections.flatMap((section) => [
+    {
+      title: section.title,
+      href: section.href,
+    },
+    ...(section.children ?? []),
+  ]);
 }
 
 export default function AppNav() {
   const pathname = usePathname();
   const [isCollapsed, setIsCollapsed] = useState(false);
+  const [openSections, setOpenSections] = useState<Record<string, boolean>>({});
+
+  const activeSectionTitles = useMemo(
+    () => getActiveSectionTitles(pathname),
+    [pathname]
+  );
 
   useEffect(() => {
     const savedValue = window.localStorage.getItem(SIDEBAR_STORAGE_KEY);
@@ -80,6 +220,27 @@ export default function AppNav() {
       ? "collapsed"
       : "expanded";
   }, [isCollapsed]);
+
+  useEffect(() => {
+    setOpenSections((current) => {
+      const next = { ...current };
+
+      for (const title of activeSectionTitles) {
+        next[title] = true;
+      }
+
+      return next;
+    });
+  }, [activeSectionTitles]);
+
+  const toggleSection = (title: string) => {
+    setOpenSections((current) => ({
+      ...current,
+      [title]: !current[title],
+    }));
+  };
+
+  const mobileLinks = flattenSections();
 
   return (
     <>
@@ -129,33 +290,92 @@ export default function AppNav() {
 
         <nav className="flex-1 overflow-y-auto px-3 py-5">
           <div className="space-y-1">
-            {items.map((item) => {
-              const active = isItemActive(pathname, item);
+            {sections.map((section) => {
+              const active = isSectionActive(pathname, section);
+              const hasChildren = Boolean(section.children?.length);
+              const isOpen = Boolean(openSections[section.title]);
 
               return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  title={item.title}
-                  className={`group flex items-center rounded-2xl px-3 py-3 text-sm font-bold transition ${
-                    isCollapsed ? "justify-center" : "gap-3"
-                  } ${
-                    active
-                      ? "bg-indigo-50 text-indigo-700 shadow-sm ring-1 ring-indigo-100"
-                      : "text-slate-600 hover:bg-slate-50 hover:text-slate-950"
-                  }`}
-                >
-                  <span
-                    className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-sm transition ${
+                <div key={section.title}>
+                  <div
+                    className={`group flex items-center rounded-2xl text-sm font-bold transition ${
                       active
-                        ? "bg-white text-indigo-700 shadow-sm"
-                        : "bg-slate-100 text-slate-500 group-hover:bg-white group-hover:text-slate-950"
+                        ? "bg-indigo-50 text-indigo-700 shadow-sm ring-1 ring-indigo-100"
+                        : "text-slate-600 hover:bg-slate-50 hover:text-slate-950"
                     }`}
                   >
-                    {item.icon}
-                  </span>
-                  {!isCollapsed ? <span className="truncate">{item.title}</span> : null}
-                </Link>
+                    <Link
+                      href={section.href}
+                      title={section.title}
+                      className={`flex min-w-0 flex-1 items-center px-3 py-3 ${
+                        isCollapsed ? "justify-center" : "gap-3"
+                      }`}
+                    >
+                      <span
+                        className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-sm transition ${
+                          active
+                            ? "bg-white text-indigo-700 shadow-sm"
+                            : "bg-slate-100 text-slate-500 group-hover:bg-white group-hover:text-slate-950"
+                        }`}
+                      >
+                        {section.icon}
+                      </span>
+
+                      {!isCollapsed ? (
+                        <span className="truncate">{section.title}</span>
+                      ) : null}
+                    </Link>
+
+                    {!isCollapsed && hasChildren ? (
+                      <button
+                        type="button"
+                        onClick={() => toggleSection(section.title)}
+                        className="mr-2 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-slate-400 transition hover:bg-white hover:text-indigo-700"
+                        title={isOpen ? "Свернуть раздел" : "Раскрыть раздел"}
+                        aria-label={isOpen ? "Свернуть раздел" : "Раскрыть раздел"}
+                      >
+                        <span
+                          className={`text-xs transition-transform ${
+                            isOpen ? "rotate-90" : ""
+                          }`}
+                        >
+                          ›
+                        </span>
+                      </button>
+                    ) : null}
+                  </div>
+
+                  {!isCollapsed && hasChildren && isOpen ? (
+                    <div className="ml-[30px] mt-1 space-y-1 border-l border-slate-100 pl-4">
+                      {section.children?.map((child) => {
+                        const childActive = isChildActive(pathname, child);
+
+                        return (
+                          <Link
+                            key={child.href}
+                            href={child.href}
+                            className={`group flex items-center justify-between gap-3 rounded-2xl px-3 py-2 text-xs font-bold transition ${
+                              childActive
+                                ? "bg-white text-indigo-700 shadow-sm ring-1 ring-indigo-100"
+                                : "text-slate-500 hover:bg-white hover:text-slate-950"
+                            }`}
+                          >
+                            <span className="truncate">{child.title}</span>
+                            <span
+                              className={`text-sm transition ${
+                                childActive
+                                  ? "text-indigo-500"
+                                  : "text-slate-300 group-hover:text-indigo-400"
+                              }`}
+                            >
+                              →
+                            </span>
+                          </Link>
+                        );
+                      })}
+                    </div>
+                  ) : null}
+                </div>
               );
             })}
           </div>
@@ -165,10 +385,11 @@ export default function AppNav() {
           {!isCollapsed ? (
             <div className="rounded-3xl bg-slate-50 p-4 ring-1 ring-slate-200">
               <div className="text-sm font-black text-slate-950">
-                Нужна помощь?
+                Быстрая навигация
               </div>
               <p className="mt-1 text-xs leading-5 text-slate-500">
-                Открой настройки, импорт или финансовые разделы из меню слева.
+                Разделы раскрываются в меню. Технические страницы открываются из
+                своих модулей.
               </p>
             </div>
           ) : null}
@@ -205,12 +426,12 @@ export default function AppNav() {
         </div>
 
         <nav className="flex gap-2 overflow-x-auto px-4 pb-3">
-          {items.map((item) => {
-            const active = isItemActive(pathname, item);
+          {mobileLinks.map((item) => {
+            const active = isExactOrNested(pathname, item.href);
 
             return (
               <Link
-                key={item.href}
+                key={`${item.href}-${item.title}`}
                 href={item.href}
                 className={`whitespace-nowrap rounded-2xl px-4 py-2 text-sm font-bold ${
                   active
