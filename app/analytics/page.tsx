@@ -1,181 +1,231 @@
 import Link from "next/link";
 
-const primaryCards = [
+const analyticsModules = [
   {
-    title: "Прибыль WB",
+    title: "Прибыль по SKU WB",
     subtitle: "Wildberries",
     description:
-      "Прибыль по SKU, реклама, себестоимость, налоги, маржинальность и ABC по товарам WB.",
+      "Какие товары зарабатывают, а какие убыточны на Wildberries.",
     href: "/profit-wb",
     icon: "WB",
     tone: "bg-violet-50 text-violet-700 ring-violet-100",
-    accent: "from-violet-600 to-violet-300",
-    metrics: ["SKU", "Прибыль", "ДРР", "ABC"],
+    buttonTone:
+      "border-violet-200 bg-violet-50 text-violet-700 hover:bg-violet-100",
+    checks: [
+      "Unit-экономика по SKU",
+      "Маржинальность и налоги",
+      "Детализация по заказам и складам",
+    ],
   },
   {
-    title: "Прибыль Ozon",
+    title: "Прибыль по SKU Ozon",
     subtitle: "Ozon",
     description:
-      "Unit-экономика Ozon: выручка, комиссии, логистика, реклама, себестоимость и прибыль.",
+      "Где прибыль съедают комиссии, логистика и реклама на Ozon.",
     href: "/profit-ozon",
     icon: "OZ",
     tone: "bg-sky-50 text-sky-700 ring-sky-100",
-    accent: "from-sky-500 to-sky-200",
-    metrics: ["SKU", "Комиссии", "Реклама", "Налоги"],
+    buttonTone: "border-sky-200 bg-sky-50 text-sky-700 hover:bg-sky-100",
+    checks: [
+      "Unit-экономика по SKU",
+      "Комиссии, логистика, реклама",
+      "Маржинальность и прибыль",
+    ],
   },
   {
     title: "ABC-анализ",
     subtitle: "Ассортимент",
     description:
-      "Классификация товаров по прибыли и выручке: какие SKU дают результат, а какие замораживают деньги.",
+      "Классификация товаров по прибыли и выручке для управленческих решений.",
     href: "/abc",
     icon: "ABC",
     tone: "bg-emerald-50 text-emerald-700 ring-emerald-100",
-    accent: "from-emerald-500 to-emerald-200",
-    metrics: ["A", "B", "C", "SKU"],
+    buttonTone:
+      "border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100",
+    checks: [
+      "ABC по прибыли и выручке",
+      "Доля в прибыли и выручке",
+      "Рекомендации по ассортименту",
+    ],
   },
   {
     title: "Остатки",
     subtitle: "Склады",
     description:
-      "Текущие остатки WB и Ozon, товары в пути и контроль складских запасов по артикулам.",
+      "Где деньги заморожены в товаре и какие запасы требуют внимания.",
     href: "/stocks",
     icon: "▣",
-    tone: "bg-amber-50 text-amber-700 ring-amber-100",
-    accent: "from-amber-500 to-amber-200",
-    metrics: ["WB", "Ozon", "В пути", "Склады"],
+    tone: "bg-orange-50 text-orange-700 ring-orange-100",
+    buttonTone:
+      "border-orange-200 bg-orange-50 text-orange-700 hover:bg-orange-100",
+    checks: [
+      "Остатки по складам и маркетплейсам",
+      "Товары в пути",
+      "Оборачиваемость и заморозка",
+    ],
   },
 ];
 
-const quickActions = [
+const routeSteps = [
   {
-    title: "Центр прибыли",
-    description: "Сводка по прибыли, рекламе и проблемным зонам.",
-    href: "/insights",
-    icon: "◎",
+    number: "1",
+    title: "Сначала прибыль",
+    text:
+      "Найдите прибыльные и убыточные SKU. Проверьте маржинальность, налоги и себестоимость.",
+    tone: "border-emerald-100 bg-emerald-50/70",
+    numberTone: "text-emerald-700",
   },
   {
-    title: "Связки рекламы",
-    description: "Распределить кампании между артикулами.",
+    number: "2",
+    title: "Потом реклама",
+    text:
+      "Оцените эффективность рекламы. Проверьте ДРР и связки кампаний с артикулами.",
+    tone: "border-indigo-100 bg-indigo-50/70",
+    numberTone: "text-indigo-700",
+  },
+  {
+    number: "3",
+    title: "Затем остатки и ABC",
+    text:
+      "Проверьте остатки и оборачиваемость. Используйте ABC для решений по ассортименту.",
+    tone: "border-orange-100 bg-orange-50/70",
+    numberTone: "text-orange-700",
+  },
+];
+
+const nextActions = [
+  {
+    title: "Рекламные связки",
+    description: "Проверьте распределение кампаний по артикулам.",
     href: "/ads-mapping",
+    icon: "🔗",
+    tone: "bg-violet-50 text-violet-700 ring-violet-100",
+  },
+  {
+    title: "Сравнить периоды",
+    description: "Оцените динамику выручки и прибыли.",
+    href: "/analytics",
     icon: "↗",
+    tone: "bg-sky-50 text-sky-700 ring-sky-100",
   },
   {
     title: "План / Факт",
-    description: "Сравнить фактический результат с планом.",
+    description: "Сравните плановые и фактические показатели.",
     href: "/finance/plan-fact",
-    icon: "≋",
+    icon: "▦",
+    tone: "bg-emerald-50 text-emerald-700 ring-emerald-100",
   },
   {
     title: "Импорт данных",
-    description: "Загрузить отчёты WB, Ozon, рекламу и остатки.",
+    description: "Загрузите новые отчёты WB, Ozon и других систем.",
     href: "/import",
     icon: "⇧",
+    tone: "bg-orange-50 text-orange-700 ring-orange-100",
   },
   {
     title: "API-подключения",
-    description: "Настроить автоматическую загрузку данных.",
+    description: "Настройте и проверьте подключения к API.",
     href: "/settings/api-connections",
     icon: "⚙",
+    tone: "bg-slate-100 text-slate-700 ring-slate-200",
   },
 ];
 
-const focusItems = [
+const decisionRules = [
   {
-    title: "Сначала прибыль",
-    text: "Начинай с WB/Ozon прибыли по SKU: там видно, какие товары реально зарабатывают.",
-    tone: "border-emerald-100 bg-emerald-50/60 text-emerald-700",
+    title: "Выручка без прибыли — не результат.",
+    text: "Смотрите на чистую прибыль и маржинальность, а не только на оборот.",
+    icon: "✓",
+    tone: "bg-emerald-50 text-emerald-700 ring-emerald-100",
   },
   {
-    title: "Потом реклама",
-    text: "Если ДРР растёт быстрее прибыли, проверь связки рекламных кампаний.",
-    tone: "border-violet-100 bg-violet-50/60 text-violet-700",
+    title: "ДРР смотреть только вместе с маржинальностью.",
+    text: "Высокий ДРР допустим, если он окупается прибылью.",
+    icon: "↗",
+    tone: "bg-sky-50 text-sky-700 ring-sky-100",
   },
   {
-    title: "Затем остатки",
-    text: "Остатки и ABC показывают, где деньги заморожены в товаре.",
-    tone: "border-amber-100 bg-amber-50/60 text-amber-700",
+    title: "ABC использовать для решений по ассортименту.",
+    text: "A — усиливать, B — поддерживать, C — распродавать или пересматривать.",
+    icon: "▣",
+    tone: "bg-orange-50 text-orange-700 ring-orange-100",
   },
 ];
 
-function ModuleCard({
-  card,
-}: {
-  card: (typeof primaryCards)[number];
-}) {
+function CheckItem({ children }: { children: string }) {
   return (
-    <Link
-      href={card.href}
-      className="group flex min-h-[230px] flex-col rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm shadow-slate-200/50 transition hover:-translate-y-0.5 hover:border-indigo-200 hover:shadow-md"
-    >
-      <div className="flex items-start justify-between gap-4">
-        <div className={`flex h-12 w-12 items-center justify-center rounded-2xl text-sm font-black ring-1 ${card.tone}`}>
-          {card.icon}
-        </div>
-
-        <div className="rounded-full bg-slate-50 px-3 py-1 text-xs font-black text-slate-400 ring-1 ring-slate-200 transition group-hover:bg-indigo-50 group-hover:text-indigo-700 group-hover:ring-indigo-100">
-          Открыть →
-        </div>
-      </div>
-
-      <div className="mt-5">
-        <div className="text-xs font-black uppercase tracking-[0.14em] text-slate-400">
-          {card.subtitle}
-        </div>
-
-        <h2 className="mt-2 text-2xl font-black tracking-tight text-slate-950">
-          {card.title}
-        </h2>
-
-        <p className="mt-3 text-sm leading-6 text-slate-500">
-          {card.description}
-        </p>
-      </div>
-
-      <div className="mt-auto pt-5">
-        <div className="h-2 overflow-hidden rounded-full bg-slate-100">
-          <div className={`h-full w-2/3 rounded-full bg-gradient-to-r ${card.accent}`} />
-        </div>
-
-        <div className="mt-4 flex flex-wrap gap-2">
-          {card.metrics.map((metric) => (
-            <span
-              key={metric}
-              className="rounded-full bg-slate-50 px-3 py-1 text-xs font-bold text-slate-500 ring-1 ring-slate-200"
-            >
-              {metric}
-            </span>
-          ))}
-        </div>
-      </div>
-    </Link>
+    <li className="flex items-start gap-3 text-sm leading-6 text-slate-600">
+      <span className="mt-1 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-indigo-50 text-xs font-black text-indigo-700 ring-1 ring-indigo-100">
+        ✓
+      </span>
+      <span>{children}</span>
+    </li>
   );
 }
 
-function QuickAction({
+function AnalyticsModuleCard({
   item,
 }: {
-  item: (typeof quickActions)[number];
+  item: (typeof analyticsModules)[number];
 }) {
+  return (
+    <article className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm shadow-slate-200/50">
+      <div className="flex items-start gap-4">
+        <div
+          className={`flex h-14 w-14 shrink-0 items-center justify-center rounded-3xl text-base font-black ring-1 ${item.tone}`}
+        >
+          {item.icon}
+        </div>
+
+        <div className="min-w-0">
+          <div className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
+            {item.subtitle}
+          </div>
+          <h2 className="mt-2 text-xl font-black tracking-tight text-slate-950">
+            {item.title}
+          </h2>
+          <p className="mt-2 text-sm leading-6 text-slate-500">
+            {item.description}
+          </p>
+        </div>
+      </div>
+
+      <ul className="mt-5 space-y-2">
+        {item.checks.map((check) => (
+          <CheckItem key={check}>{check}</CheckItem>
+        ))}
+      </ul>
+
+      <Link
+        href={item.href}
+        className={`mt-5 inline-flex items-center justify-center rounded-2xl border px-4 py-2 text-sm font-black transition ${item.buttonTone}`}
+      >
+        Открыть раздел →
+      </Link>
+    </article>
+  );
+}
+
+function NextActionCard({ item }: { item: (typeof nextActions)[number] }) {
   return (
     <Link
       href={item.href}
-      className="group flex items-center gap-3 rounded-2xl border border-slate-200 bg-white p-3 transition hover:border-indigo-200 hover:bg-indigo-50/30"
+      className="group flex min-h-[150px] flex-col rounded-3xl border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/40 transition hover:-translate-y-0.5 hover:border-indigo-200 hover:shadow-md"
     >
-      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-indigo-50 text-sm font-black text-indigo-700 ring-1 ring-indigo-100">
+      <div
+        className={`flex h-11 w-11 items-center justify-center rounded-2xl text-sm font-black ring-1 ${item.tone}`}
+      >
         {item.icon}
       </div>
 
-      <div className="min-w-0 flex-1">
-        <div className="truncate text-sm font-black text-slate-950">
-          {item.title}
-        </div>
-        <p className="mt-1 line-clamp-2 text-xs leading-5 text-slate-500">
-          {item.description}
-        </p>
+      <div className="mt-4 text-sm font-black text-slate-950">
+        {item.title}
       </div>
+      <p className="mt-2 text-xs leading-5 text-slate-500">
+        {item.description}
+      </p>
 
-      <div className="text-base font-black text-slate-300 transition group-hover:translate-x-0.5 group-hover:text-indigo-500">
+      <div className="mt-auto pt-3 text-right text-base font-black text-slate-300 transition group-hover:translate-x-0.5 group-hover:text-indigo-500">
         →
       </div>
     </Link>
@@ -187,67 +237,85 @@ export default function AnalyticsPage() {
     <main className="page-shell">
       <div className="page-container">
         <section className="panel p-5 sm:p-6">
-          <div className="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
+          <div className="grid gap-6 xl:grid-cols-[minmax(0,1.15fr)_minmax(520px,0.85fr)] xl:items-center">
             <div>
               <div className="section-eyebrow">Аналитика</div>
               <h1 className="mt-2 text-3xl font-black tracking-tight text-slate-950 sm:text-4xl">
                 Аналитика маркетплейсов
               </h1>
-              <p className="mt-3 max-w-3xl text-base leading-7 text-slate-500">
-                Единый вход в прибыль по SKU, рекламу, остатки и ABC-анализ.
-                Начинай с прибыли, затем проверяй рекламу и ассортимент.
+              <p className="mt-4 max-w-3xl text-base leading-7 text-slate-500">
+                Выберите, что хотите проверить: прибыль, рекламу, ассортимент
+                или остатки. Начните с главного, затем углубляйтесь в детали.
               </p>
             </div>
 
-            <div className="grid gap-3 sm:grid-cols-3 xl:min-w-[560px]">
-              <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
-                <div className="text-xs font-black uppercase tracking-[0.12em] text-slate-400">
-                  Главный фокус
+            <div className="grid gap-3 rounded-[28px] border border-slate-200 bg-white p-3 shadow-sm md:grid-cols-3">
+              <div className="flex items-center gap-3 rounded-3xl bg-slate-50 p-4 ring-1 ring-slate-200">
+                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-violet-50 text-xl text-violet-700 ring-1 ring-violet-100">
+                  ↗
                 </div>
-                <div className="mt-2 text-lg font-black text-slate-950">
-                  Прибыль по SKU
-                </div>
-              </div>
-
-              <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
-                <div className="text-xs font-black uppercase tracking-[0.12em] text-slate-400">
-                  Контроль
-                </div>
-                <div className="mt-2 text-lg font-black text-slate-950">
-                  Реклама / ДРР
+                <div>
+                  <div className="text-sm font-black text-slate-950">
+                    Прибыль
+                  </div>
+                  <div className="mt-1 text-xs leading-5 text-slate-500">
+                    Что приносит прибыль
+                  </div>
                 </div>
               </div>
 
-              <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
-                <div className="text-xs font-black uppercase tracking-[0.12em] text-slate-400">
-                  Деньги в товаре
+              <div className="flex items-center gap-3 rounded-3xl bg-slate-50 p-4 ring-1 ring-slate-200">
+                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-sky-50 text-xl text-sky-700 ring-1 ring-sky-100">
+                  📣
                 </div>
-                <div className="mt-2 text-lg font-black text-slate-950">
-                  Остатки / ABC
+                <div>
+                  <div className="text-sm font-black text-slate-950">
+                    Реклама
+                  </div>
+                  <div className="mt-1 text-xs leading-5 text-slate-500">
+                    Эффективность кампаний
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-3 rounded-3xl bg-slate-50 p-4 ring-1 ring-slate-200">
+                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-emerald-50 text-xl text-emerald-700 ring-1 ring-emerald-100">
+                  ◇
+                </div>
+                <div>
+                  <div className="text-sm font-black text-slate-950">
+                    Остатки и ABC
+                  </div>
+                  <div className="mt-1 text-xs leading-5 text-slate-500">
+                    Деньги в товаре
+                  </div>
                 </div>
               </div>
             </div>
           </div>
         </section>
 
-        <section className="grid gap-5 xl:grid-cols-[minmax(0,4fr)_minmax(320px,2fr)]">
+        <section className="grid gap-5 xl:grid-cols-[minmax(0,4fr)_minmax(340px,2fr)]">
           <section className="panel min-w-0 p-5 sm:p-6">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div>
-                <div className="section-eyebrow">Разделы аналитики</div>
+                <div className="section-eyebrow">Основные разделы аналитики</div>
                 <h2 className="mt-1 text-2xl font-black tracking-tight text-slate-950">
                   Что смотреть собственнику
                 </h2>
               </div>
 
-              <Link href="/" className="secondary-button">
+              <Link
+                href="/"
+                className="inline-flex items-center justify-center rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-black text-slate-700 shadow-sm transition hover:bg-slate-50 hover:text-slate-950"
+              >
                 Вернуться на Dashboard
               </Link>
             </div>
 
             <div className="mt-5 grid gap-4 md:grid-cols-2">
-              {primaryCards.map((card) => (
-                <ModuleCard key={card.href} card={card} />
+              {analyticsModules.map((item) => (
+                <AnalyticsModuleCard key={item.href} item={item} />
               ))}
             </div>
           </section>
@@ -261,20 +329,24 @@ export default function AnalyticsPage() {
             </div>
 
             <div className="mt-5 space-y-3">
-              {focusItems.map((item, index) => (
+              {routeSteps.map((step) => (
                 <div
-                  key={item.title}
-                  className={`rounded-3xl border p-4 ${item.tone}`}
+                  key={step.number}
+                  className={`rounded-3xl border p-4 ${step.tone}`}
                 >
                   <div className="flex items-start gap-3">
-                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-2xl bg-white text-sm font-black shadow-sm">
-                      {index + 1}
+                    <div
+                      className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl bg-white text-sm font-black shadow-sm ${step.numberTone}`}
+                    >
+                      {step.number}
                     </div>
 
                     <div>
-                      <div className="text-sm font-black">{item.title}</div>
+                      <div className={`text-sm font-black ${step.numberTone}`}>
+                        {step.title}
+                      </div>
                       <p className="mt-1 text-sm leading-6 text-slate-600">
-                        {item.text}
+                        {step.text}
                       </p>
                     </div>
                   </div>
@@ -282,62 +354,73 @@ export default function AnalyticsPage() {
               ))}
             </div>
 
-            <div className="mt-5 rounded-3xl border border-slate-200 bg-white p-4">
-              <div className="text-sm font-black text-slate-950">
-                Быстрый вывод
+            <div className="mt-4 rounded-3xl border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/40">
+              <div className="flex items-start gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-slate-100 text-slate-600 ring-1 ring-slate-200">
+                  ⚙
+                </div>
+                <div>
+                  <div className="text-sm font-black text-slate-950">
+                    Главная цель
+                  </div>
+                  <p className="mt-1 text-sm leading-6 text-slate-500">
+                    Максимизировать прибыль, управляя рекламой, ассортиментом и
+                    запасами.
+                  </p>
+                </div>
               </div>
-              <p className="mt-2 text-sm leading-6 text-slate-500">
-                Если прибыль просела — не начинай с рекламы вслепую. Сначала
-                проверь SKU, потом рекламные связки, затем остатки и ABC.
-              </p>
             </div>
           </aside>
         </section>
 
-        <section className="grid gap-5 xl:grid-cols-[minmax(0,4fr)_minmax(320px,2fr)]">
+        <section className="grid gap-5 xl:grid-cols-[minmax(0,4fr)_minmax(340px,2fr)]">
           <section className="panel min-w-0 p-5 sm:p-6">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-              <div>
-                <div className="section-eyebrow">Связанные страницы</div>
-                <h2 className="mt-1 text-2xl font-black tracking-tight text-slate-950">
-                  Быстрый переход к деталям
-                </h2>
-              </div>
+            <div>
+              <div className="section-eyebrow">Следующий шаг</div>
+              <h2 className="mt-1 text-2xl font-black tracking-tight text-slate-950">
+                Что сделать дальше
+              </h2>
             </div>
 
-            <div className="mt-5 grid gap-3 md:grid-cols-2">
-              {quickActions.map((item) => (
-                <QuickAction key={item.href + item.title} item={item} />
+            <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-5 xl:grid-cols-5">
+              {nextActions.map((item) => (
+                <NextActionCard key={item.href + item.title} item={item} />
               ))}
             </div>
           </section>
 
           <aside className="panel min-w-0 p-5 sm:p-6">
             <div>
-              <div className="section-eyebrow">Качество решения</div>
+              <div className="section-eyebrow">Правила принятия решений</div>
               <h2 className="mt-1 text-2xl font-black tracking-tight text-slate-950">
                 Как читать аналитику
               </h2>
             </div>
 
-            <div className="mt-5 space-y-3 text-sm leading-6 text-slate-600">
-              <p className="rounded-2xl bg-slate-50 p-4 ring-1 ring-slate-200">
-                <span className="font-black text-slate-950">Прибыль</span> —
-                главный фильтр. Высокая выручка без прибыли не является хорошим
-                результатом.
-              </p>
+            <div className="mt-5 space-y-3">
+              {decisionRules.map((rule) => (
+                <div
+                  key={rule.title}
+                  className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/40"
+                >
+                  <div className="flex items-start gap-3">
+                    <div
+                      className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl text-sm font-black ring-1 ${rule.tone}`}
+                    >
+                      {rule.icon}
+                    </div>
 
-              <p className="rounded-2xl bg-slate-50 p-4 ring-1 ring-slate-200">
-                <span className="font-black text-slate-950">ДРР</span> нужно
-                смотреть вместе с маржинальностью. Низкий ДРР не спасает товар,
-                если себестоимость и логистика съедают прибыль.
-              </p>
-
-              <p className="rounded-2xl bg-slate-50 p-4 ring-1 ring-slate-200">
-                <span className="font-black text-slate-950">ABC</span> помогает
-                не спорить с эмоциями: A — усиливать, C — проверять на заморозку
-                денег.
-              </p>
+                    <div>
+                      <div className="text-sm font-black text-slate-950">
+                        {rule.title}
+                      </div>
+                      <p className="mt-1 text-sm leading-6 text-slate-500">
+                        {rule.text}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              ))}
             </div>
           </aside>
         </section>
