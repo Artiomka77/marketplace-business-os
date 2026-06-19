@@ -1429,27 +1429,36 @@ function InteractiveTrendChart({
               <div key={index} className="group relative flex-1 cursor-crosshair">
                 <div className="absolute inset-y-0 left-1/2 hidden w-px bg-indigo-300 group-hover:block" />
                 <div
-                  className={`pointer-events-none absolute top-3 z-30 hidden w-40 rounded-xl border border-slate-200 bg-white p-1.5 text-left shadow-lg group-hover:block ${tooltipPosition}`}
+                  className={`pointer-events-none absolute top-4 z-30 hidden w-28 rounded-xl border border-slate-200 bg-white px-2 py-1.5 text-left shadow-lg group-hover:block ${tooltipPosition}`}
                 >
-                  <div className="text-[9px] font-black uppercase tracking-[0.08em] text-slate-400">
+                  <div className="text-[9px] font-black uppercase tracking-[0.06em] text-slate-400">
                     {dateLabel} · {weekDayLabel}
                   </div>
-                  <div className="mt-1 border-b border-slate-100 pb-1">
-                    <div className="text-[9px] font-bold text-slate-400">Тек.</div>
-                    <div className={`text-[11px] font-black ${preset.primary.colorClassName}`}>
-                      {preset.primary.label}: {formatChartMetric(value, preset.primary.kind)}
+                  <div className="mt-1 space-y-0.5 text-[10px] font-black leading-4">
+                    <div className="flex items-center justify-between gap-1">
+                      <span className="text-slate-400">Т</span>
+                      <span className={preset.primary.colorClassName}>
+                        {formatAxisValue(value, preset.primary.kind)}
+                      </span>
                     </div>
-                    <div className={`text-[11px] font-black ${preset.secondary.colorClassName}`}>
-                      {preset.secondary.label}: {formatChartMetric(secondaryValue, preset.secondary.kind)}
+                    <div className="flex items-center justify-between gap-1">
+                      <span className="text-slate-400">Д</span>
+                      <span className={preset.secondary.colorClassName}>
+                        {formatAxisValue(secondaryValue, preset.secondary.kind)}
+                      </span>
                     </div>
-                  </div>
-                  <div className="mt-1">
-                    <div className="text-[9px] font-bold text-slate-400">Сравн.</div>
-                    <div className="text-[11px] font-black text-slate-600">
-                      {preset.primary.label}: {formatChartMetric(previousPrimaryValue, preset.primary.kind)}
+                    <div className="my-1 h-px bg-slate-100" />
+                    <div className="flex items-center justify-between gap-1">
+                      <span className="text-slate-400">С</span>
+                      <span className="text-slate-600">
+                        {formatAxisValue(previousPrimaryValue, preset.primary.kind)}
+                      </span>
                     </div>
-                    <div className="text-[11px] font-black text-slate-600">
-                      {preset.secondary.label}: {formatChartMetric(previousSecondaryValue, preset.secondary.kind)}
+                    <div className="flex items-center justify-between gap-1">
+                      <span className="text-slate-400">Д</span>
+                      <span className="text-slate-600">
+                        {formatAxisValue(previousSecondaryValue, preset.secondary.kind)}
+                      </span>
                     </div>
                   </div>
                 </div>
@@ -2574,7 +2583,7 @@ export default async function HomePage({ searchParams }: Props) {
           />
         </section>
 
-        <section className="grid items-start gap-5 2xl:grid-cols-[minmax(0,4fr)_minmax(320px,2fr)]">
+        <section className="grid items-start gap-4 2xl:grid-cols-[minmax(0,calc(66.666667%_-_5px))_minmax(0,calc(33.333333%_-_11px))]">
           <MarketplaceShare
             wbRevenue={marketplaceCurrent.wbRevenue}
             ozonRevenue={marketplaceCurrent.ozonRevenue}
@@ -2633,7 +2642,7 @@ export default async function HomePage({ searchParams }: Props) {
           </section>
         </section>
 
-        <section className="grid items-start gap-5 2xl:grid-cols-[minmax(0,4fr)_minmax(320px,2fr)]">
+        <section className="grid items-start gap-4 2xl:grid-cols-[minmax(0,calc(66.666667%_-_5px))_minmax(0,calc(33.333333%_-_11px))]">
           <section className="panel p-4">
             <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
               <div>
