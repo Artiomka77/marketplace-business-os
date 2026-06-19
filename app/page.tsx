@@ -2861,137 +2861,167 @@ export default async function HomePage({ searchParams }: Props) {
     <main className="page-shell">
       <div className="page-container">
         <section className="sticky top-0 z-40 -mx-4 border-b border-slate-200 bg-background/90 px-4 py-2.5 backdrop-blur-xl sm:-mx-6 sm:px-6 xl:-mx-8 xl:px-8">
-          <details open className="group">
-            <summary className="flex cursor-pointer list-none items-center justify-between gap-3 rounded-2xl px-1 py-1 transition hover:bg-slate-50/70">
-              <div className="flex min-w-0 flex-wrap items-center gap-2">
-                <span className="rounded-2xl bg-indigo-600 px-3 py-2 text-xs font-black text-white shadow-sm shadow-indigo-200">
-                  Дашборд собственника
-                </span>
-
-                <span className="rounded-2xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 shadow-sm">
-                  Период: {selectedPeriod.description}
-                </span>
-
-                <span className="hidden rounded-2xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 shadow-sm md:inline-flex">
-                  Сравнение: {previousPeriod.description}
-                </span>
-
-                <span className="rounded-2xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 shadow-sm">
-                  {selectedCompanyName ?? "Все компании"}
-                </span>
-
-                {hasDataQualityIssues ? (
-                  <Link
-                    href={debugHref}
-                    className="inline-flex items-center gap-1.5 rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-black text-amber-700 shadow-sm transition hover:border-amber-300 hover:bg-amber-100"
-                    title="Обнаружено расхождение между итогами периода и дневной детализацией. Нажмите, чтобы открыть техническую сверку."
-                  >
-                    <span>⚠</span>
-                    <span>Данные требуют проверки</span>
-                    <span className="rounded-full bg-white/70 px-1.5 py-0.5 text-[10px] text-amber-700 ring-1 ring-amber-200">
-                      {totalReconciliationProblems}
-                    </span>
-                  </Link>
-                ) : null}
-              </div>
-
-              <span className="shrink-0 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-[11px] font-black text-slate-600 shadow-sm transition hover:bg-slate-50">
-                <span className="hidden group-open:inline">Скрыть панель ↑</span>
-                <span className="group-open:hidden">Показать панель ↓</span>
+          <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex min-w-0 flex-wrap items-center gap-2">
+              <span className="rounded-2xl bg-indigo-600 px-3 py-2 text-xs font-black text-white shadow-sm shadow-indigo-200">
+                Дашборд собственника
               </span>
-            </summary>
 
-            <div className="mt-2 flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-              <div className="hidden min-w-0 text-sm leading-6 text-slate-500 lg:block">
-                Главные показатели бизнеса за выбранный период. Фильтры можно скрыть, чтобы освободить экран.
-              </div>
+              <details className="group/period relative">
+                <summary className="inline-flex cursor-pointer list-none items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 shadow-sm transition hover:border-indigo-200 hover:bg-indigo-50 hover:text-indigo-700">
+                  <span>Период: {selectedPeriod.description}</span>
+                  <span className="text-slate-400 transition group-open/period:rotate-180">↓</span>
+                </summary>
 
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center xl:shrink-0">
-                <details className="group/filter relative">
-                  <summary className="secondary-button cursor-pointer list-none gap-2 py-2.5">
-                    Фильтры и период
-                    <span className="text-slate-400 transition group-open/filter:rotate-180">↓</span>
-                  </summary>
+                <div className="absolute left-0 top-full z-50 mt-2 w-[760px] max-w-[92vw] rounded-[28px] border border-slate-200 bg-white p-4 shadow-2xl shadow-slate-300/40">
+                  <div className="grid gap-2 sm:grid-cols-3">
+                    {presetPeriods.map((period) => {
+                      const isActive = selectedPeriodOption.key === period.key;
 
-                  <div className="mt-3 max-h-[75vh] w-full overflow-y-auto rounded-[28px] border border-slate-200 bg-white p-4 shadow-2xl xl:absolute xl:right-0 xl:top-full xl:z-50 xl:w-[760px]">
-                    <div className="grid gap-2 sm:grid-cols-3">
-                      {presetPeriods.map((period) => {
-                        const isActive = selectedPeriodOption.key === period.key;
-
-                        return (
-                          <Link
-                            key={period.key}
-                            href={buildDashboardHref({
-                              period: period.key,
-                              companyName: selectedCompanyValue,
-                              marketplaceCompanyName: selectedMarketplaceCompanyValue,
-                              chartPreset: selectedChartPreset.key,
-                            })}
-                            className={`rounded-2xl border p-3 transition active:scale-[0.99] ${
-                              isActive
-                                ? "border-indigo-600 bg-indigo-600 text-white"
-                                : "border-slate-200 bg-slate-50 text-slate-800 hover:bg-white"
+                      return (
+                        <Link
+                          key={period.key}
+                          href={buildDashboardHref({
+                            period: period.key,
+                            companyName: selectedCompanyValue,
+                            marketplaceCompanyName: selectedMarketplaceCompanyValue,
+                            chartPreset: selectedChartPreset.key,
+                          })}
+                          className={`rounded-2xl border p-3 transition active:scale-[0.99] ${
+                            isActive
+                              ? "border-indigo-600 bg-indigo-600 text-white"
+                              : "border-slate-200 bg-slate-50 text-slate-800 hover:bg-white"
+                          }`}
+                        >
+                          <div className="text-sm font-black">{period.shortLabel}</div>
+                          <div
+                            className={`mt-1 text-xs leading-5 ${
+                              isActive ? "text-indigo-100" : "text-slate-500"
                             }`}
                           >
-                            <div className="text-sm font-black">{period.shortLabel}</div>
-                            <div
-                              className={`mt-1 text-xs leading-5 ${
-                                isActive ? "text-indigo-100" : "text-slate-500"
-                              }`}
-                            >
-                              {period.description}
-                            </div>
-                          </Link>
-                        );
-                      })}
-                    </div>
-
-                    <form action="/" className="mt-4 rounded-3xl bg-slate-50 p-4 ring-1 ring-slate-200">
-                      <input type="hidden" name="chartPreset" value={selectedChartPreset.key} />
-                      <input type="hidden" name="marketplaceCompanyName" value={selectedMarketplaceCompanyValue} />
-                      <div className="grid gap-3 lg:grid-cols-[1fr_1fr_1fr]">
-                        <label className="text-sm font-medium text-slate-500">
-                          Компания
-                          <select name="companyName" defaultValue={selectedCompanyValue} className="filter-control mt-1">
-                            <option value="ALL">Все компании</option>
-                            {companies.map((company) => (
-                              <option key={company.id} value={company.name}>
-                                {company.name}
-                              </option>
-                            ))}
-                          </select>
-                        </label>
-
-                        <label className="text-sm font-medium text-slate-500">
-                          Дата от
-                          <input type="date" name="dateFrom" defaultValue={selectedPeriod.dateFrom} className="filter-control mt-1" />
-                        </label>
-
-                        <label className="text-sm font-medium text-slate-500">
-                          Дата до
-                          <input type="date" name="dateTo" defaultValue={selectedPeriod.dateTo} className="filter-control mt-1" />
-                        </label>
-                      </div>
-
-                      <div className="mt-4 flex flex-wrap gap-3">
-                        <button type="submit" name="period" value="custom" className="primary-button">
-                          Показать выбранные даты
-                        </button>
-
-                        <Link href="/" className="secondary-button">
-                          Сбросить
+                            {period.description}
+                          </div>
                         </Link>
-                      </div>
-                    </form>
+                      );
+                    })}
                   </div>
-                </details>
 
-                <Link href="/import" className="primary-button gap-2 py-2.5">
-                  ⇧ Импорт данных
+                  <form action="/" className="mt-4 rounded-3xl bg-slate-50 p-4 ring-1 ring-slate-200">
+                    <input type="hidden" name="period" value="custom" />
+                    <input type="hidden" name="companyName" value={selectedCompanyValue} />
+                    <input type="hidden" name="marketplaceCompanyName" value={selectedMarketplaceCompanyValue} />
+                    <input type="hidden" name="chartPreset" value={selectedChartPreset.key} />
+
+                    <div className="grid gap-3 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
+                      <label className="text-sm font-medium text-slate-500">
+                        Дата от
+                        <input
+                          type="date"
+                          name="dateFrom"
+                          defaultValue={selectedPeriod.dateFrom}
+                          className="filter-control mt-1"
+                        />
+                      </label>
+
+                      <label className="text-sm font-medium text-slate-500">
+                        Дата до
+                        <input
+                          type="date"
+                          name="dateTo"
+                          defaultValue={selectedPeriod.dateTo}
+                          className="filter-control mt-1"
+                        />
+                      </label>
+
+                      <button type="submit" className="primary-button h-11">
+                        Применить
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              </details>
+
+              <span className="hidden rounded-2xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 shadow-sm md:inline-flex">
+                Сравнение: {previousPeriod.description}
+              </span>
+
+              <details className="group/company relative">
+                <summary className="inline-flex cursor-pointer list-none items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 shadow-sm transition hover:border-indigo-200 hover:bg-indigo-50 hover:text-indigo-700">
+                  <span>{selectedCompanyName ?? "Все компании"}</span>
+                  <span className="text-slate-400 transition group-open/company:rotate-180">↓</span>
+                </summary>
+
+                <div className="absolute left-0 top-full z-50 mt-2 w-64 overflow-hidden rounded-[24px] border border-slate-200 bg-white p-2 shadow-2xl shadow-slate-300/40">
+                  <Link
+                    href={buildDashboardHref({
+                      period: selectedPeriod.key,
+                      companyName: "ALL",
+                      marketplaceCompanyName: "ALL",
+                      dateFrom: selectedPeriod.key === "custom" ? selectedPeriod.dateFrom : undefined,
+                      dateTo: selectedPeriod.key === "custom" ? selectedPeriod.dateTo : undefined,
+                      chartPreset: selectedChartPreset.key,
+                    })}
+                    className={`flex items-center justify-between rounded-2xl px-3 py-2.5 text-sm font-black transition ${
+                      selectedCompanyValue === "ALL"
+                        ? "bg-indigo-50 text-indigo-700 ring-1 ring-indigo-100"
+                        : "text-slate-600 hover:bg-slate-50 hover:text-slate-950"
+                    }`}
+                  >
+                    Все компании
+                    {selectedCompanyValue === "ALL" ? <span>✓</span> : null}
+                  </Link>
+
+                  {companies.map((company) => {
+                    const isActive = selectedCompanyValue === company.name;
+
+                    return (
+                      <Link
+                        key={company.id}
+                        href={buildDashboardHref({
+                          period: selectedPeriod.key,
+                          companyName: company.name,
+                          marketplaceCompanyName: company.name,
+                          dateFrom: selectedPeriod.key === "custom" ? selectedPeriod.dateFrom : undefined,
+                          dateTo: selectedPeriod.key === "custom" ? selectedPeriod.dateTo : undefined,
+                          chartPreset: selectedChartPreset.key,
+                        })}
+                        className={`mt-1 flex items-center justify-between rounded-2xl px-3 py-2.5 text-sm font-black transition ${
+                          isActive
+                            ? "bg-indigo-50 text-indigo-700 ring-1 ring-indigo-100"
+                            : "text-slate-600 hover:bg-slate-50 hover:text-slate-950"
+                        }`}
+                      >
+                        {company.name}
+                        {isActive ? <span>✓</span> : null}
+                      </Link>
+                    );
+                  })}
+                </div>
+              </details>
+
+              {hasDataQualityIssues ? (
+                <Link
+                  href={debugHref}
+                  className="inline-flex items-center gap-1.5 rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-black text-amber-700 shadow-sm transition hover:border-amber-300 hover:bg-amber-100"
+                  title="Обнаружено расхождение между итогами периода и дневной детализацией. Нажмите, чтобы открыть техническую сверку."
+                >
+                  <span>⚠</span>
+                  <span>Данные требуют проверки</span>
+                  <span className="rounded-full bg-white/70 px-1.5 py-0.5 text-[10px] text-amber-700 ring-1 ring-amber-200">
+                    {totalReconciliationProblems}
+                  </span>
                 </Link>
-              </div>
+              ) : null}
             </div>
-          </details>
+
+            <Link href="/import" className="primary-button w-fit gap-2 py-2.5">
+              ⇧ Импорт данных
+            </Link>
+          </div>
+
+          <div className="mt-2 hidden text-sm leading-6 text-slate-500 lg:block">
+            Главные показатели бизнеса за выбранный период. Период и компанию можно поменять прямо в закреплённой панели.
+          </div>
         </section>
 
         <section className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
