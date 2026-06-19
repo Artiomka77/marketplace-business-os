@@ -1024,9 +1024,11 @@ function DonutHoverZone({
 function InteractiveDonut({
   wbRevenue,
   ozonRevenue,
+  compact = false,
 }: {
   wbRevenue: number;
   ozonRevenue: number;
+  compact?: boolean;
 }) {
   const total = wbRevenue + ozonRevenue;
   const wbPercent = total > 0 ? (wbRevenue / total) * 100 : 0;
@@ -1277,7 +1279,7 @@ function InteractiveTrendChart({
           </defs>
         </svg>
 
-        <div className="absolute inset-x-[54px] top-[18px] flex h-[176px] items-stretch">
+        <div className="absolute inset-x-[46px] top-[18px] flex h-[162px] items-stretch">
           {primarySeries.map((value, index) => {
             const secondaryValue = secondarySeries[index] ?? 0;
             const { dateLabel, weekDayLabel } = formatChartDate(chartDates[index]);
@@ -1310,7 +1312,7 @@ function InteractiveTrendChart({
         </div>
       </div>
 
-      <div className="mt-2 grid gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-3 text-[11px] lg:grid-cols-2">
+      <div className="mt-2 grid gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-3 text-[11px] lg:grid-cols-3">
         <div>
           <div className={`font-black ${preset.primary.colorClassName}`}>
             {preset.primary.label}
@@ -1377,9 +1379,9 @@ function MarketplaceShare({
   ];
 
   return (
-    <section className="space-y-5">
-      <section className="panel p-4 sm:p-5">
-        <div className="grid gap-4 xl:grid-cols-[minmax(260px,380px)_1fr] xl:items-center">
+    <section className="space-y-4">
+      <section className="panel p-4">
+        <div className="grid gap-4 xl:grid-cols-[minmax(300px,360px)_minmax(260px,1fr)] xl:items-center">
           <div>
             <div className="section-eyebrow">Разрез по маркетплейсам</div>
             <h2 className="mt-1 text-xl font-black tracking-tight text-slate-950">
@@ -1416,7 +1418,7 @@ function MarketplaceShare({
               })}
             </div>
 
-            <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
+            <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
               <div className="group flex cursor-default items-center justify-between gap-4 rounded-2xl border border-violet-100 bg-violet-50/50 px-4 py-3 transition hover:border-violet-300 hover:bg-violet-50 hover:shadow-sm">
                 <div className="flex items-center gap-3">
                   <span className="h-3 w-3 rounded-full bg-violet-600" />
@@ -1451,11 +1453,11 @@ function MarketplaceShare({
             </div>
           </div>
 
-          <InteractiveDonut wbRevenue={wbRevenue} ozonRevenue={ozonRevenue} />
+          <div className="xl:justify-self-end"><InteractiveDonut wbRevenue={wbRevenue} ozonRevenue={ozonRevenue} compact /></div>
         </div>
       </section>
 
-      <section className="panel p-4 sm:p-5">
+      <section className="panel p-4">
         <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
           <div>
             <div className="section-eyebrow">Динамика</div>
@@ -2309,7 +2311,7 @@ export default async function HomePage({ searchParams }: Props) {
             companies={marketplaceCompanies}
           />
 
-          <section className="panel p-4 sm:p-5">
+          <section className="panel p-4">
             <div className="flex items-center justify-between gap-4">
               <div>
                 <div className="section-eyebrow">Инсайты</div>
