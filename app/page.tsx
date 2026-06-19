@@ -12,6 +12,7 @@ type Props = {
     companyName?: string;
     dateFrom?: string;
     dateTo?: string;
+    chartPreset?: string;
   }>;
 };
 
@@ -93,6 +94,130 @@ type MetricTrend = {
   className: string;
 };
 
+type ChartPresetKey =
+  | "revenue-drr"
+  | "revenue-profit"
+  | "revenue-credits"
+  | "profit-cashflow";
+
+type ChartMetricKind = "money" | "percent";
+
+type ChartMetricConfig = {
+  label: string;
+  kind: ChartMetricKind;
+  colorClassName: string;
+  dotClassName: string;
+  strokeColor: string;
+  barFromClassName: string;
+  barToClassName: string;
+};
+
+type ChartPresetConfig = {
+  key: ChartPresetKey;
+  title: string;
+  description: string;
+  primary: ChartMetricConfig;
+  secondary: ChartMetricConfig;
+};
+
+const chartPresets: ChartPresetConfig[] = [
+  {
+    key: "revenue-drr",
+    title: "Выручка и ДРР",
+    description: "Оборот и рекламная нагрузка за период.",
+    primary: {
+      label: "Выручка",
+      kind: "money",
+      colorClassName: "text-violet-700",
+      dotClassName: "bg-violet-600",
+      strokeColor: "#7c3aed",
+      barFromClassName: "from-violet-600",
+      barToClassName: "to-violet-300",
+    },
+    secondary: {
+      label: "ДРР",
+      kind: "percent",
+      colorClassName: "text-orange-700",
+      dotClassName: "bg-orange-500",
+      strokeColor: "#f97316",
+      barFromClassName: "from-orange-500",
+      barToClassName: "to-orange-200",
+    },
+  },
+  {
+    key: "revenue-profit",
+    title: "Выручка и прибыль",
+    description: "Сравнение оборота с операционной прибылью.",
+    primary: {
+      label: "Выручка",
+      kind: "money",
+      colorClassName: "text-violet-700",
+      dotClassName: "bg-violet-600",
+      strokeColor: "#7c3aed",
+      barFromClassName: "from-violet-600",
+      barToClassName: "to-violet-300",
+    },
+    secondary: {
+      label: "Опер. прибыль",
+      kind: "money",
+      colorClassName: "text-emerald-700",
+      dotClassName: "bg-emerald-500",
+      strokeColor: "#10b981",
+      barFromClassName: "from-emerald-500",
+      barToClassName: "to-emerald-200",
+    },
+  },
+  {
+    key: "revenue-credits",
+    title: "Выручка и кредиты",
+    description: "Оборот рядом с кредитной нагрузкой.",
+    primary: {
+      label: "Выручка",
+      kind: "money",
+      colorClassName: "text-violet-700",
+      dotClassName: "bg-violet-600",
+      strokeColor: "#7c3aed",
+      barFromClassName: "from-violet-600",
+      barToClassName: "to-violet-300",
+    },
+    secondary: {
+      label: "Кредиты",
+      kind: "money",
+      colorClassName: "text-red-700",
+      dotClassName: "bg-red-500",
+      strokeColor: "#ef4444",
+      barFromClassName: "from-red-500",
+      barToClassName: "to-red-200",
+    },
+  },
+  {
+    key: "profit-cashflow",
+    title: "Прибыль и ДДС",
+    description: "Чистая прибыль рядом с денежным потоком.",
+    primary: {
+      label: "Чистая прибыль",
+      kind: "money",
+      colorClassName: "text-emerald-700",
+      dotClassName: "bg-emerald-500",
+      strokeColor: "#10b981",
+      barFromClassName: "from-emerald-500",
+      barToClassName: "to-emerald-200",
+    },
+    secondary: {
+      label: "Денежный поток",
+      kind: "money",
+      colorClassName: "text-sky-700",
+      dotClassName: "bg-sky-500",
+      strokeColor: "#0ea5e9",
+      barFromClassName: "from-sky-500",
+      barToClassName: "to-sky-200",
+    },
+  },
+];
+
+const trendWeights = [0.52, 0.68, 0.8, 0.6, 0.92, 0.66, 0.76, 1, 0.74, 0.88, 0.64, 0.96];
+const lineWeights = [0.74, 0.62, 0.7, 0.52, 0.82, 0.64, 0.9, 0.58, 0.72, 0.56, 0.86, 0.66];
+
 const quickActions = [
   {
     title: "Аналитика",
@@ -168,6 +293,35 @@ function formatNumber(value: number) {
 
 function formatPercent(value: number) {
   return `${value.toFixed(1)}%`;
+}
+
+function formatChartMetric(value: number, kind: ChartMetricKind) {
+  if (kind === "percent") return formatPercent(value);
+  return formatCurrency(value);
+}
+
+function getChartSeries(total: number, kind: ChartMetricKind, weights: number[]) {
+  if (kind === "percent") {
+    const base = Math.max(0, total);
+    return weights.map((weight) => Math.max(0, base * (0.72 + weight * 0.48)));
+  }
+
+  const safeTotal = Math.abs(total);
+  if (safeTotal === 0) return weights.map(() => 0);
+
+  const weightSum = weights.reduce((sum, weight) => sum + weight, 0);
+  return weights.map((weight) => (safeTotal * weight) / weightSum);
+}
+
+function getSeriesHeight(value: number, max: number) {
+  if (max <= 0) return 8;
+  return Math.max(12, Math.round((Math.abs(value) / max) * 100));
+}
+
+function getChartPreset(value: unknown) {
+  return (
+    chartPresets.find((preset) => preset.key === value) ?? chartPresets[0]
+  );
 }
 
 function formatSignedPercent(value: number) {
@@ -552,6 +706,7 @@ function buildDashboardHref(params: {
   companyName?: string | null;
   dateFrom?: string;
   dateTo?: string;
+  chartPreset?: string;
 }) {
   const searchParams = new URLSearchParams();
 
@@ -564,6 +719,10 @@ function buildDashboardHref(params: {
 
   if (params.dateTo) {
     searchParams.set("dateTo", params.dateTo);
+  }
+
+  if (params.chartPreset) {
+    searchParams.set("chartPreset", params.chartPreset);
   }
 
   return `/?${searchParams.toString()}`;
@@ -752,7 +911,33 @@ function AbcPills({ abc }: { abc: AbcCounts }) {
   );
 }
 
-function MarketplaceShare({
+function DonutSegmentTooltip({
+  label,
+  value,
+  percent,
+  className,
+}: {
+  label: string;
+  value: number;
+  percent: number;
+  className: string;
+}) {
+  return (
+    <div
+      className={`pointer-events-none absolute left-1/2 top-1/2 z-20 hidden -translate-x-1/2 -translate-y-1/2 rounded-2xl border bg-white px-4 py-3 text-center shadow-xl group-hover:block ${className}`}
+    >
+      <div className="text-xs font-black uppercase tracking-[0.12em] text-slate-400">
+        {label}
+      </div>
+      <div className="mt-1 text-lg font-black text-slate-950">
+        {formatCurrency(value)}
+      </div>
+      <div className="text-sm font-black">{formatPercent(percent)}</div>
+    </div>
+  );
+}
+
+function InteractiveDonut({
   wbRevenue,
   ozonRevenue,
 }: {
@@ -762,6 +947,214 @@ function MarketplaceShare({
   const total = wbRevenue + ozonRevenue;
   const wbPercent = total > 0 ? (wbRevenue / total) * 100 : 0;
   const ozonPercent = total > 0 ? (ozonRevenue / total) * 100 : 0;
+  const radius = 80;
+  const circumference = 2 * Math.PI * radius;
+  const wbLength = (wbPercent / 100) * circumference;
+  const ozonLength = (ozonPercent / 100) * circumference;
+
+  return (
+    <div className="relative flex h-64 w-full items-center justify-center rounded-[28px] bg-slate-50 p-6 ring-1 ring-slate-200">
+      <svg viewBox="0 0 220 220" className="h-56 w-56 rotate-[-90deg] overflow-visible">
+        <circle
+          cx="110"
+          cy="110"
+          r={radius}
+          fill="none"
+          stroke="#eef2ff"
+          strokeWidth="34"
+        />
+
+        <g className="group cursor-pointer outline-none" tabIndex={0}>
+          <title>{`Wildberries: ${formatCurrency(wbRevenue)} · ${formatPercent(wbPercent)}`}</title>
+          <circle
+            cx="110"
+            cy="110"
+            r={radius}
+            fill="none"
+            stroke="#7c3aed"
+            strokeLinecap="round"
+            strokeWidth="34"
+            strokeDasharray={`${wbLength} ${circumference - wbLength}`}
+            strokeDashoffset="0"
+            className="transition hover:opacity-80"
+          />
+          <DonutSegmentTooltip
+            label="Wildberries"
+            value={wbRevenue}
+            percent={wbPercent}
+            className="text-violet-700 ring-1 ring-violet-100"
+          />
+        </g>
+
+        <g className="group cursor-pointer outline-none" tabIndex={0}>
+          <title>{`Ozon: ${formatCurrency(ozonRevenue)} · ${formatPercent(ozonPercent)}`}</title>
+          <circle
+            cx="110"
+            cy="110"
+            r={radius}
+            fill="none"
+            stroke="#0ea5e9"
+            strokeLinecap="round"
+            strokeWidth="34"
+            strokeDasharray={`${ozonLength} ${circumference - ozonLength}`}
+            strokeDashoffset={-wbLength}
+            className="transition hover:opacity-80"
+          />
+          <DonutSegmentTooltip
+            label="Ozon"
+            value={ozonRevenue}
+            percent={ozonPercent}
+            className="text-sky-700 ring-1 ring-sky-100"
+          />
+        </g>
+      </svg>
+
+      <div className="pointer-events-none absolute flex h-28 w-28 flex-col items-center justify-center rounded-full bg-white text-center shadow-sm ring-1 ring-slate-100">
+        <div className="text-xs font-bold text-slate-400">Выручка всего</div>
+        <div className="mt-1 text-xl font-black text-slate-950">
+          {formatCurrency(total)}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ChartPresetLink({
+  preset,
+  selectedPreset,
+  href,
+}: {
+  preset: ChartPresetConfig;
+  selectedPreset: ChartPresetConfig;
+  href: string;
+}) {
+  const isActive = preset.key === selectedPreset.key;
+
+  return (
+    <Link
+      href={href}
+      className={`rounded-2xl border px-3 py-2 text-xs font-black transition active:scale-[0.99] ${
+        isActive
+          ? "border-indigo-600 bg-indigo-600 text-white shadow-sm shadow-indigo-100"
+          : "border-slate-200 bg-white text-slate-500 hover:border-indigo-200 hover:bg-indigo-50 hover:text-indigo-700"
+      }`}
+    >
+      {preset.primary.label} + {preset.secondary.label}
+    </Link>
+  );
+}
+
+function InteractiveTrendChart({
+  preset,
+  primaryTotal,
+  secondaryTotal,
+}: {
+  preset: ChartPresetConfig;
+  primaryTotal: number;
+  secondaryTotal: number;
+}) {
+  const primarySeries = getChartSeries(primaryTotal, preset.primary.kind, trendWeights);
+  const secondarySeries = getChartSeries(secondaryTotal, preset.secondary.kind, lineWeights);
+  const maxPrimary = Math.max(...primarySeries, 0);
+  const maxSecondary = Math.max(...secondarySeries, 0);
+  const points = secondarySeries
+    .map((value, index) => {
+      const x = index * (320 / (secondarySeries.length - 1));
+      const height = getSeriesHeight(value, maxSecondary);
+      const y = 112 - height;
+      return `${x},${y}`;
+    })
+    .join(" ");
+
+  return (
+    <div className="relative mt-5 h-52 overflow-hidden rounded-3xl bg-white p-4 ring-1 ring-slate-100">
+      <div className="absolute inset-x-4 top-10 border-t border-dashed border-slate-200" />
+      <div className="absolute inset-x-4 top-24 border-t border-dashed border-slate-200" />
+      <div className="absolute inset-x-4 top-38 border-t border-dashed border-slate-200" />
+
+      <svg
+        viewBox="0 0 320 120"
+        className="pointer-events-none absolute inset-x-4 top-8 h-32 w-[calc(100%-2rem)] overflow-visible"
+        aria-hidden="true"
+      >
+        <polyline
+          fill="none"
+          stroke={preset.secondary.strokeColor}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth="4"
+          points={points}
+        />
+      </svg>
+
+      <div className="relative z-10 flex h-full items-end gap-3 pt-12">
+        {primarySeries.map((value, index) => {
+          const secondaryValue = secondarySeries[index] ?? 0;
+          const height = getSeriesHeight(value, maxPrimary);
+
+          return (
+            <div key={index} className="group relative flex flex-1 flex-col items-center gap-2">
+              <div className="pointer-events-none absolute bottom-full left-1/2 z-30 mb-3 hidden w-56 -translate-x-1/2 rounded-2xl border border-slate-200 bg-white p-3 text-left shadow-xl group-hover:block">
+                <div className="text-xs font-black uppercase tracking-[0.12em] text-slate-400">
+                  Точка {index + 1}
+                </div>
+                <div className={`mt-2 text-sm font-black ${preset.primary.colorClassName}`}>
+                  {preset.primary.label}: {formatChartMetric(value, preset.primary.kind)}
+                </div>
+                <div className={`mt-1 text-sm font-black ${preset.secondary.colorClassName}`}>
+                  {preset.secondary.label}: {formatChartMetric(secondaryValue, preset.secondary.kind)}
+                </div>
+              </div>
+
+              <div className="relative flex h-32 w-full items-end overflow-hidden rounded-full bg-slate-100">
+                <div
+                  className={`w-full rounded-full bg-gradient-to-t ${preset.primary.barFromClassName} ${preset.primary.barToClassName} transition group-hover:brightness-110`}
+                  style={{ height: `${height}%` }}
+                  title={`${preset.primary.label}: ${formatChartMetric(value, preset.primary.kind)} · ${preset.secondary.label}: ${formatChartMetric(secondaryValue, preset.secondary.kind)}`}
+                />
+              </div>
+              <span className="text-[10px] font-bold text-slate-400">
+                {index + 1}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function MarketplaceShare({
+  wbRevenue,
+  ozonRevenue,
+  current,
+  selectedPreset,
+  period,
+  companyName,
+}: {
+  wbRevenue: number;
+  ozonRevenue: number;
+  current: DashboardSummary;
+  selectedPreset: ChartPresetConfig;
+  period: PeriodOption;
+  companyName: string;
+}) {
+  const total = wbRevenue + ozonRevenue;
+  const wbPercent = total > 0 ? (wbRevenue / total) * 100 : 0;
+  const ozonPercent = total > 0 ? (ozonRevenue / total) * 100 : 0;
+
+  function metricTotal(metric: ChartMetricConfig) {
+    if (metric.label === "Выручка") return current.totalRevenue;
+    if (metric.label === "ДРР") return current.drr ?? 0;
+    if (metric.label === "Опер. прибыль") return current.operatingProfitAfterTax;
+    if (metric.label === "Кредиты") return current.loanPayments;
+    if (metric.label === "Чистая прибыль") return current.netProfit;
+    if (metric.label === "Денежный поток") return current.cashFlowResult;
+    return 0;
+  }
+
+  const primaryTotal = metricTotal(selectedPreset.primary);
+  const secondaryTotal = metricTotal(selectedPreset.secondary);
 
   return (
     <section className="panel p-5 sm:p-6">
@@ -772,11 +1165,11 @@ function MarketplaceShare({
             Доля выручки WB / Ozon
           </h2>
           <p className="mt-2 text-sm leading-6 text-slate-500">
-            Цвета разделены: Wildberries — фиолетовый, Ozon — голубой.
+            Наведи на сегмент или карточку, чтобы увидеть сумму и долю.
           </p>
 
           <div className="mt-6 space-y-4">
-            <div className="flex items-center justify-between gap-4 rounded-2xl border border-violet-100 bg-violet-50/50 px-4 py-3">
+            <div className="group flex cursor-default items-center justify-between gap-4 rounded-2xl border border-violet-100 bg-violet-50/50 px-4 py-3 transition hover:border-violet-300 hover:bg-violet-50 hover:shadow-sm">
               <div className="flex items-center gap-3">
                 <span className="h-3 w-3 rounded-full bg-violet-600" />
                 <div>
@@ -793,7 +1186,7 @@ function MarketplaceShare({
               </div>
             </div>
 
-            <div className="flex items-center justify-between gap-4 rounded-2xl border border-sky-100 bg-sky-50/60 px-4 py-3">
+            <div className="group flex cursor-default items-center justify-between gap-4 rounded-2xl border border-sky-100 bg-sky-50/60 px-4 py-3 transition hover:border-sky-300 hover:bg-sky-50 hover:shadow-sm">
               <div className="flex items-center gap-3">
                 <span className="h-3 w-3 rounded-full bg-sky-500" />
                 <div>
@@ -811,39 +1204,26 @@ function MarketplaceShare({
         </div>
 
         <div className="grid gap-5 lg:grid-cols-[320px_1fr]">
-          <div className="flex items-center justify-center rounded-[28px] bg-slate-50 p-6 ring-1 ring-slate-200">
-            <div
-              className="flex h-52 w-52 items-center justify-center rounded-full"
-              style={{
-                background: `conic-gradient(#7c3aed 0 ${wbPercent}%, #0ea5e9 ${wbPercent}% 100%)`,
-              }}
-            >
-              <div className="flex h-32 w-32 flex-col items-center justify-center rounded-full bg-white shadow-sm">
-                <div className="text-xs font-bold text-slate-400">
-                  Выручка всего
-                </div>
-                <div className="mt-1 text-xl font-black text-slate-950">
-                  {formatCurrency(total)}
-                </div>
-              </div>
-            </div>
-          </div>
+          <InteractiveDonut wbRevenue={wbRevenue} ozonRevenue={ozonRevenue} />
 
           <div className="rounded-[28px] bg-slate-50 p-5 ring-1 ring-slate-200">
-            <div className="flex items-center justify-between gap-3">
+            <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
               <div>
                 <div className="section-eyebrow">Динамика</div>
                 <h3 className="mt-2 text-xl font-black text-slate-950">
-                  Выручка и ДРР
+                  {selectedPreset.title}
                 </h3>
-                <div className="mt-2 flex flex-wrap gap-3 text-xs font-bold">
-                  <span className="inline-flex items-center gap-2 text-violet-700">
-                    <span className="h-2.5 w-2.5 rounded-full bg-violet-600" />
-                    Выручка
+                <p className="mt-1 text-sm leading-5 text-slate-500">
+                  {selectedPreset.description}
+                </p>
+                <div className="mt-3 flex flex-wrap gap-3 text-xs font-bold">
+                  <span className={`inline-flex items-center gap-2 ${selectedPreset.primary.colorClassName}`}>
+                    <span className={`h-2.5 w-2.5 rounded-full ${selectedPreset.primary.dotClassName}`} />
+                    {selectedPreset.primary.label}
                   </span>
-                  <span className="inline-flex items-center gap-2 text-orange-700">
-                    <span className="h-2.5 w-2.5 rounded-full bg-orange-500" />
-                    ДРР
+                  <span className={`inline-flex items-center gap-2 ${selectedPreset.secondary.colorClassName}`}>
+                    <span className={`h-2.5 w-2.5 rounded-full ${selectedPreset.secondary.dotClassName}`} />
+                    {selectedPreset.secondary.label}
                   </span>
                 </div>
               </div>
@@ -855,52 +1235,28 @@ function MarketplaceShare({
               </Link>
             </div>
 
-            <div className="relative mt-7 h-44 overflow-hidden rounded-3xl bg-white p-4 ring-1 ring-slate-100">
-              <div className="absolute inset-x-4 top-8 border-t border-dashed border-slate-200" />
-              <div className="absolute inset-x-4 top-20 border-t border-dashed border-slate-200" />
-              <div className="absolute inset-x-4 top-32 border-t border-dashed border-slate-200" />
-
-              <svg
-                viewBox="0 0 320 120"
-                className="absolute inset-x-4 top-5 h-28 w-[calc(100%-2rem)] overflow-visible"
-                aria-hidden="true"
-              >
-                <polyline
-                  fill="none"
-                  stroke="#f97316"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth="5"
-                  points="0,70 30,56 60,64 90,38 120,58 150,46 180,28 210,54 240,42 270,62 300,34 320,48"
+            <div className="mt-4 flex flex-wrap gap-2">
+              {chartPresets.map((preset) => (
+                <ChartPresetLink
+                  key={preset.key}
+                  preset={preset}
+                  selectedPreset={selectedPreset}
+                  href={buildDashboardHref({
+                    period: period.key,
+                    companyName,
+                    dateFrom: period.key === "custom" ? period.dateFrom : undefined,
+                    dateTo: period.key === "custom" ? period.dateTo : undefined,
+                    chartPreset: preset.key,
+                  })}
                 />
-                {[0, 30, 60, 90, 120, 150, 180, 210, 240, 270, 300, 320].map(
-                  (x, index) => {
-                    const y = [70, 56, 64, 38, 58, 46, 28, 54, 42, 62, 34, 48][index];
-                    return (
-                      <circle key={index} cx={x} cy={y} r="4.5" fill="#f97316" stroke="white" strokeWidth="2" />
-                    );
-                  }
-                )}
-              </svg>
-
-              <div className="relative z-10 flex h-full items-end gap-3 pt-10">
-                {[42, 58, 74, 46, 82, 54, 68, 90, 62, 78, 52, 86].map(
-                  (height, index) => (
-                    <div key={index} className="flex flex-1 flex-col items-center gap-2">
-                      <div className="relative flex h-28 w-full items-end overflow-hidden rounded-full bg-violet-50">
-                        <div
-                          className="w-full rounded-full bg-gradient-to-t from-violet-600 to-violet-300"
-                          style={{ height: `${height}%` }}
-                        />
-                      </div>
-                      <span className="text-[10px] font-bold text-slate-400">
-                        {index + 1}
-                      </span>
-                    </div>
-                  )
-                )}
-              </div>
+              ))}
             </div>
+
+            <InteractiveTrendChart
+              preset={selectedPreset}
+              primaryTotal={primaryTotal}
+              secondaryTotal={secondaryTotal}
+            />
           </div>
         </div>
       </div>
@@ -1433,6 +1789,7 @@ export default async function HomePage({ searchParams }: Props) {
   const previous = summarizeDashboardRows(previousRows);
 
   const selectedCompanyValue = params.companyName ?? "ALL";
+  const selectedChartPreset = getChartPreset(params.chartPreset);
   const presetPeriods = periodOptions.filter((period) => period.key !== "custom");
 
   const attentionItems = [
@@ -1531,6 +1888,7 @@ export default async function HomePage({ searchParams }: Props) {
                             href={buildDashboardHref({
                               period: period.key,
                               companyName: selectedCompanyValue,
+                              chartPreset: selectedChartPreset.key,
                             })}
                             className={`rounded-2xl border p-3 transition active:scale-[0.99] ${
                               isActive
@@ -1552,6 +1910,7 @@ export default async function HomePage({ searchParams }: Props) {
                     </div>
 
                     <form action="/" className="mt-4 rounded-3xl bg-slate-50 p-4 ring-1 ring-slate-200">
+                      <input type="hidden" name="chartPreset" value={selectedChartPreset.key} />
                       <div className="grid gap-3 lg:grid-cols-[1fr_1fr_1fr]">
                         <label className="text-sm font-medium text-slate-500">
                           Компания
@@ -1665,7 +2024,14 @@ export default async function HomePage({ searchParams }: Props) {
         </section>
 
         <section className="grid gap-5 2xl:grid-cols-[1fr_420px]">
-          <MarketplaceShare wbRevenue={current.wbRevenue} ozonRevenue={current.ozonRevenue} />
+          <MarketplaceShare
+            wbRevenue={current.wbRevenue}
+            ozonRevenue={current.ozonRevenue}
+            current={current}
+            selectedPreset={selectedChartPreset}
+            period={selectedPeriod}
+            companyName={selectedCompanyValue}
+          />
 
           <section className="panel p-5 sm:p-6">
             <div className="flex items-center justify-between gap-4">
