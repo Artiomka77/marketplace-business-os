@@ -225,60 +225,46 @@ const weekDayLabels = ["Вс", "Пн", "Вт", "Ср", "Чт", "Пт", "Сб"];
 
 const quickActions = [
   {
-    title: "Аналитика",
-    description: "Детальные отчёты и графики",
-    href: "/analytics",
-    icon: "▦",
-    tone: "bg-indigo-50 text-indigo-700",
-  },
-  {
-    title: "Маркетплейсы",
-    description: "Каналы, продажи и доля",
-    href: "/analytics",
-    icon: "◌",
+    title: "Сравнить периоды",
+    description: "Динамика и тренды",
+    href: "/",
+    icon: "↔",
     tone: "bg-violet-50 text-violet-700",
   },
   {
-    title: "Реклама",
-    description: "Кампании и эффективность",
+    title: "План / Факт",
+    description: "Планирование прибыли",
+    href: "/finance",
+    icon: "◉",
+    tone: "bg-fuchsia-50 text-fuchsia-700",
+  },
+  {
+    title: "Отчёт по рекламе",
+    description: "Эффективность кампаний",
     href: "/ads-mapping",
-    icon: "↗",
+    icon: "▸",
     tone: "bg-emerald-50 text-emerald-700",
   },
   {
-    title: "Финансы",
-    description: "Прибыль и денежный поток",
-    href: "/finance",
-    icon: "₽",
-    tone: "bg-amber-50 text-amber-700",
-  },
-  {
-    title: "Кредиты и выводы",
-    description: "Тело, проценты и выплаты",
-    href: "/finance/loans",
-    icon: "⌁",
-    tone: "bg-orange-50 text-orange-700",
-  },
-  {
-    title: "Остатки и ABC",
+    title: "ABC-анализ",
     description: "Ассортимент и оборачиваемость",
-    href: "/stocks",
-    icon: "◔",
+    href: "/abc",
+    icon: "▥",
     tone: "bg-blue-50 text-blue-700",
   },
   {
-    title: "Импорт",
-    description: "Файлы, API и загрузка данных",
-    href: "/import",
-    icon: "⇧",
-    tone: "bg-cyan-50 text-cyan-700",
+    title: "Склады и остатки",
+    description: "Движение и остатки",
+    href: "/stocks",
+    icon: "▣",
+    tone: "bg-amber-50 text-amber-700",
   },
   {
-    title: "Настройки",
-    description: "Компании и параметры",
-    href: "/settings/companies",
-    icon: "⚙",
-    tone: "bg-slate-100 text-slate-700",
+    title: "Экспорт данных",
+    description: "В Excel / CSV",
+    href: "/import",
+    icon: "⇩",
+    tone: "bg-indigo-50 text-indigo-700",
   },
 ];
 
@@ -2189,121 +2175,174 @@ function CompanyCard({
 
   const totalAbc = abcTotal(rowWbAbc) + abcTotal(rowOzonAbc);
   const drrText = row.drr !== null ? formatPercent(row.drr) : "—";
+  const openCompanyHref = buildDashboardHref({
+    period: "custom",
+    companyName: row.companyName,
+    marketplaceCompanyName: row.companyName,
+    dateFrom,
+    dateTo,
+  });
 
   return (
-    <article className="overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-sm shadow-slate-200/60">
-      <div className="border-b border-slate-100 bg-gradient-to-br from-white to-slate-50 p-5">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-          <div>
+    <article className="h-full overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-sm shadow-slate-200/60 transition hover:border-indigo-200 hover:shadow-md">
+      <div className="border-b border-slate-100 p-4">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
-              <h3 className="text-xl font-black tracking-tight text-slate-950">
+              <h3 className="truncate text-lg font-black tracking-tight text-slate-950">
                 {row.companyName}
               </h3>
-              <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-black text-slate-500 ring-1 ring-slate-200">
+              <span className="rounded-full bg-slate-50 px-2 py-0.5 text-[10px] font-black text-slate-500 ring-1 ring-slate-200">
                 WB / Ozon
               </span>
             </div>
           </div>
 
-          <div
-            className={`w-fit rounded-full px-4 py-2 text-sm font-black ring-1 ${valueTone(
-              row.profitAfterOwnerWithdrawal
-            )}`}
+          <Link
+            href={openCompanyHref}
+            className="shrink-0 text-xs font-black text-indigo-600 transition hover:text-indigo-800"
           >
-            После вывода: {formatCurrency(row.profitAfterOwnerWithdrawal)}
-          </div>
+            Открыть →
+          </Link>
         </div>
 
-        <div className="mt-5 grid gap-3 sm:grid-cols-2 2xl:grid-cols-4">
-          <MiniMetric
-            title="Выручка"
-            value={formatCurrency(row.totalRevenue)}
-            subtitle="100%"
-          />
-          <MiniMetric
-            title="Опер. прибыль"
-            value={formatCurrency(row.operatingProfitAfterTax)}
-            subtitle={formatRevenuePercent(row.operatingProfitAfterTax, row.totalRevenue)}
-            tone={valueColor(row.operatingProfitAfterTax)}
-          />
-          <MiniMetric
-            title="Чистая прибыль"
-            value={formatCurrency(row.netProfit)}
-            subtitle={formatRevenuePercent(row.netProfit, row.totalRevenue)}
-            tone={valueColor(row.netProfit)}
-          />
-          <MiniMetric
-            title="Ден. поток"
-            value={formatCurrency(row.cashFlowResult)}
-            subtitle={formatRevenuePercent(row.cashFlowResult, row.totalRevenue)}
-            tone={valueColor(row.cashFlowResult)}
-          />
+        <div className="mt-4 grid grid-cols-2 gap-2 xl:grid-cols-4">
+          <div className="rounded-2xl border border-slate-200 bg-white p-3">
+            <div className="text-[10px] font-bold text-slate-500">Выручка</div>
+            <div className="mt-1 text-base font-black text-slate-950">
+              {formatCurrency(row.totalRevenue)}
+            </div>
+            <div className="mt-1 text-[11px] font-bold text-emerald-600">
+              {formatRevenuePercent(row.totalRevenue, row.totalRevenue)}
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-slate-200 bg-white p-3">
+            <div className="text-[10px] font-bold text-slate-500">Опер. прибыль</div>
+            <div className={`mt-1 text-base font-black ${valueColor(row.operatingProfitAfterTax)}`}>
+              {formatCurrency(row.operatingProfitAfterTax)}
+            </div>
+            <div className="mt-1 text-[11px] font-bold text-emerald-600">
+              {formatRevenuePercent(row.operatingProfitAfterTax, row.totalRevenue)}
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-slate-200 bg-white p-3">
+            <div className="text-[10px] font-bold text-slate-500">Чистая прибыль</div>
+            <div className={`mt-1 text-base font-black ${valueColor(row.netProfit)}`}>
+              {formatCurrency(row.netProfit)}
+            </div>
+            <div className="mt-1 text-[11px] font-bold text-emerald-600">
+              {formatRevenuePercent(row.netProfit, row.totalRevenue)}
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-slate-200 bg-white p-3">
+            <div className="text-[10px] font-bold text-slate-500">Ден. поток</div>
+            <div className={`mt-1 text-base font-black ${valueColor(row.cashFlowResult)}`}>
+              {formatCurrency(row.cashFlowResult)}
+            </div>
+            <div className={`mt-1 text-[11px] font-bold ${valueColor(row.cashFlowResult)}`}>
+              {formatRevenuePercent(row.cashFlowResult, row.totalRevenue)}
+            </div>
+          </div>
         </div>
       </div>
 
-      <div className="p-5">
-        <div className="grid gap-3 md:grid-cols-2 2xl:grid-cols-4">
-          <CompanyDetailColumn title="Каналы" href="/analytics">
-            <CompactStat
-              label="WB"
-              value={`${formatCurrency(row.wbRevenue)} (${formatPercent(getRevenuePercent(row.wbRevenue, row.totalRevenue) ?? 0)})`}
-            />
-            <CompactStat
-              label="Ozon"
-              value={`${formatCurrency(row.ozonRevenue)} (${formatPercent(getRevenuePercent(row.ozonRevenue, row.totalRevenue) ?? 0)})`}
-            />
-          </CompanyDetailColumn>
-
-          <CompanyDetailColumn title="Реклама" href="/ads-mapping">
-            <CompactStat
-              label="Расходы"
-              value={formatCurrency(row.adsCost)}
-              tone={row.adsCost > 0 ? "text-red-600" : "text-slate-950"}
-            />
-            <CompactStat
-              label="ДРР"
-              value={drrText}
-              tone={row.drr !== null && row.drr > 12 ? "text-red-600" : "text-slate-950"}
-            />
-          </CompanyDetailColumn>
-
-          <CompanyDetailColumn
-            title="Кредиты и деньги"
-            href={buildOperationsHref({
-              companyName: row.companyName,
-              dateFrom,
-              dateTo,
-              operationType: "ALL",
-              search: "кредит",
-            })}
-          >
-            <CompactStat label="Кредиты" value={formatCurrency(row.loanPayments)} tone={row.loanPayments > 0 ? "text-red-600" : "text-slate-950"} />
-            <CompactStat label="Тело" value={formatCurrency(row.creditPrincipal)} tone={row.creditPrincipal > 0 ? "text-red-600" : "text-slate-950"} />
-            <CompactStat label="Проценты" value={formatCurrency(row.creditInterest)} tone={row.creditInterest > 0 ? "text-red-600" : "text-slate-950"} />
-          </CompanyDetailColumn>
-
-          <CompanyDetailColumn title="Ассортимент (ABC)" href="/abc">
-            <CompactStat label="ABC всего" value={`${formatNumber(totalAbc)} SKU`} />
-            <CompactStat label="WB" value={`${formatNumber(abcTotal(rowWbAbc))} SKU`} />
-            <CompactStat label="Ozon" value={`${formatNumber(abcTotal(rowOzonAbc))} SKU`} />
-          </CompanyDetailColumn>
-        </div>
-
-        <div className="mt-5 grid gap-4 border-t border-slate-100 pt-4 sm:grid-cols-2">
-          <div>
-            <div className="mb-3 text-sm font-black text-slate-700">ABC WB</div>
-            <AbcPills abc={rowWbAbc} />
+      <div className="grid gap-4 p-4 sm:grid-cols-4">
+        <Link href="/analytics" className="group min-w-0">
+          <div className="flex items-center justify-between gap-2">
+            <div className="text-xs font-black text-slate-950">Каналы</div>
+            <span className="text-slate-300 transition group-hover:translate-x-1 group-hover:text-indigo-500">→</span>
           </div>
-          <div>
-            <div className="mb-3 text-sm font-black text-slate-700">ABC Ozon</div>
-            <AbcPills abc={rowOzonAbc} />
+          <div className="mt-3 space-y-2 text-[11px] leading-4">
+            <div>
+              <div className="font-bold uppercase tracking-[0.08em] text-slate-400">WB</div>
+              <div className="font-black text-slate-950">
+                {formatCurrency(row.wbRevenue)} ({formatPercent(getRevenuePercent(row.wbRevenue, row.totalRevenue) ?? 0)})
+              </div>
+            </div>
+            <div>
+              <div className="font-bold uppercase tracking-[0.08em] text-slate-400">Ozon</div>
+              <div className="font-black text-slate-950">
+                {formatCurrency(row.ozonRevenue)} ({formatPercent(getRevenuePercent(row.ozonRevenue, row.totalRevenue) ?? 0)})
+              </div>
+            </div>
           </div>
-        </div>
+        </Link>
+
+        <Link href="/ads-mapping" className="group min-w-0">
+          <div className="flex items-center justify-between gap-2">
+            <div className="text-xs font-black text-slate-950">Реклама</div>
+            <span className="text-slate-300 transition group-hover:translate-x-1 group-hover:text-indigo-500">→</span>
+          </div>
+          <div className="mt-3 space-y-2 text-[11px] leading-4">
+            <div>
+              <div className="font-bold uppercase tracking-[0.08em] text-slate-400">Расходы</div>
+              <div className={row.adsCost > 0 ? "font-black text-red-600" : "font-black text-slate-950"}>
+                {formatCurrency(row.adsCost)}
+              </div>
+            </div>
+            <div>
+              <div className="font-bold uppercase tracking-[0.08em] text-slate-400">ДРР</div>
+              <div className={row.drr !== null && row.drr > 12 ? "font-black text-red-600" : "font-black text-slate-950"}>
+                {drrText}
+              </div>
+            </div>
+          </div>
+        </Link>
+
+        <Link
+          href={buildOperationsHref({
+            companyName: row.companyName,
+            dateFrom,
+            dateTo,
+            operationType: "ALL",
+            search: "кредит",
+          })}
+          className="group min-w-0"
+        >
+          <div className="flex items-center justify-between gap-2">
+            <div className="text-xs font-black text-slate-950">Кредиты и деньги</div>
+            <span className="text-slate-300 transition group-hover:translate-x-1 group-hover:text-indigo-500">→</span>
+          </div>
+          <div className="mt-3 space-y-2 text-[11px] leading-4">
+            <div>
+              <div className="font-bold uppercase tracking-[0.08em] text-slate-400">Кредиты</div>
+              <div className={row.loanPayments > 0 ? "font-black text-red-600" : "font-black text-slate-950"}>
+                {formatCurrency(row.loanPayments)}
+              </div>
+            </div>
+            <div>
+              <div className="font-bold uppercase tracking-[0.08em] text-slate-400">Тело / проценты</div>
+              <div className="font-black text-slate-950">
+                {formatCurrency(row.creditPrincipal)} / {formatCurrency(row.creditInterest)}
+              </div>
+            </div>
+          </div>
+        </Link>
+
+        <Link href="/abc" className="group min-w-0">
+          <div className="flex items-center justify-between gap-2">
+            <div className="text-xs font-black text-slate-950">Ассортимент</div>
+            <span className="text-slate-300 transition group-hover:translate-x-1 group-hover:text-indigo-500">→</span>
+          </div>
+          <div className="mt-3 space-y-2 text-[11px] leading-4">
+            <div>
+              <div className="font-bold uppercase tracking-[0.08em] text-slate-400">ABC всего</div>
+              <div className="font-black text-slate-950">{formatNumber(totalAbc)} SKU</div>
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              <span className="rounded-full bg-emerald-50 px-2 py-0.5 font-bold text-emerald-700">A {formatNumber(rowWbAbc.A + rowOzonAbc.A)}</span>
+              <span className="rounded-full bg-amber-50 px-2 py-0.5 font-bold text-amber-700">B {formatNumber(rowWbAbc.B + rowOzonAbc.B)}</span>
+              <span className="rounded-full bg-red-50 px-2 py-0.5 font-bold text-red-700">C {formatNumber(rowWbAbc.C + rowOzonAbc.C)}</span>
+            </div>
+          </div>
+        </Link>
       </div>
     </article>
   );
 }
-
 async function getFinanceCashResult(params: {
   companyName: string;
   dateFrom: string;
@@ -3098,71 +3137,75 @@ export default async function HomePage({ searchParams }: Props) {
           />
         ) : null}
 
-        <section className="panel p-5 sm:p-6">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+        <section className="grid items-stretch gap-5 2xl:grid-cols-6">
+          <section className="panel h-full p-5 sm:p-6 2xl:col-span-4">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+              <div>
+                <div className="section-eyebrow">Компании</div>
+                <h2 className="mt-1 text-xl font-black tracking-tight text-slate-950">
+                  Разрез по компаниям
+                </h2>
+                <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">
+                  Главное по каждой компании: выручка, прибыль, ДДС, реклама, кредиты и ассортимент.
+                </p>
+              </div>
+
+              <Link href="/settings/companies" className="secondary-button">
+                Настройки компаний
+              </Link>
+            </div>
+
+            {current.companyRows.length > 0 ? (
+              <div className="mt-5 grid gap-4 xl:grid-cols-2">
+                {current.companyRows.map((row) => (
+                  <CompanyCard
+                    key={row.companyName}
+                    row={row}
+                    dateFrom={selectedPeriod.dateFrom}
+                    dateTo={selectedPeriod.dateTo}
+                  />
+                ))}
+              </div>
+            ) : (
+              <div className="mt-6 rounded-2xl border border-slate-200 bg-slate-50 p-8 text-center text-slate-500">
+                Нет компаний с показателями за выбранный период.
+              </div>
+            )}
+          </section>
+
+          <section className="panel h-full p-5 sm:p-6 2xl:col-span-2">
             <div>
-              <div className="section-eyebrow">Компании</div>
-              <h2 className="mt-1 text-xl font-black tracking-tight text-slate-950">
-                Разрез по компаниям
+              <h2 className="text-xl font-black tracking-tight text-slate-950">
+                Быстрые действия
               </h2>
-              <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">
-                Главное по каждой компании без перегруза: выручка, прибыль, ДДС, реклама, кредиты и ассортимент.
+              <p className="mt-2 text-sm leading-6 text-slate-500">
+                Быстрый переход к действиям после просмотра Dashboard.
               </p>
             </div>
 
-            <Link href="/settings/companies" className="secondary-button">
-              Настройки компаний
-            </Link>
-          </div>
+            <div className="mt-5 grid gap-3 sm:grid-cols-2">
+              {quickActions.map((item) => (
+                <Link
+                  key={item.href + item.title}
+                  href={item.href}
+                  className="group flex items-center gap-3 rounded-2xl border border-slate-200 bg-white p-4 transition hover:border-indigo-200 hover:bg-indigo-50/30"
+                >
+                  <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl text-base font-black ${item.tone}`}>
+                    {item.icon}
+                  </div>
 
-          {current.companyRows.length > 0 ? (
-            <div className="mt-6 grid gap-5 xl:grid-cols-2">
-              {current.companyRows.map((row) => (
-                <CompanyCard
-                  key={row.companyName}
-                  row={row}
-                  dateFrom={selectedPeriod.dateFrom}
-                  dateTo={selectedPeriod.dateTo}
-                />
+                  <div className="min-w-0 flex-1">
+                    <div className="text-sm font-black leading-5 text-slate-950">{item.title}</div>
+                    <p className="mt-1 text-xs leading-4 text-slate-500">{item.description}</p>
+                  </div>
+
+                  <div className="text-base font-black text-slate-300 transition group-hover:translate-x-1 group-hover:text-indigo-500">
+                    →
+                  </div>
+                </Link>
               ))}
             </div>
-          ) : (
-            <div className="mt-6 rounded-2xl border border-slate-200 bg-slate-50 p-8 text-center text-slate-500">
-              Нет компаний с показателями за выбранный период.
-            </div>
-          )}
-        </section>
-
-        <section className="panel p-5 sm:p-6">
-          <div>
-            <div className="section-eyebrow">Навигация</div>
-            <h2 className="mt-1 text-xl font-black tracking-tight text-slate-950">
-              Быстрые действия
-            </h2>
-          </div>
-
-          <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-            {quickActions.map((item) => (
-              <Link
-                key={item.href + item.title}
-                href={item.href}
-                className="group flex items-center gap-4 rounded-2xl border border-slate-200 bg-white p-4 transition hover:border-indigo-200 hover:bg-indigo-50/30"
-              >
-                <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl text-base font-black ${item.tone}`}>
-                  {item.icon}
-                </div>
-
-                <div className="min-w-0 flex-1">
-                  <div className="font-black text-slate-950">{item.title}</div>
-                  <p className="mt-1 text-sm leading-5 text-slate-500">{item.description}</p>
-                </div>
-
-                <div className="text-lg font-black text-slate-300 transition group-hover:translate-x-1 group-hover:text-indigo-500">
-                  →
-                </div>
-              </Link>
-            ))}
-          </div>
+          </section>
         </section>
       </div>
     </main>
