@@ -5,6 +5,7 @@ import { sleep } from "@/lib/sleep";
 import { requestWithRetry } from "@/lib/wbApi/requestWithRetry";
 import { syncWbAds } from "@/lib/wb/syncWbAds";
 import { syncWbStock } from "@/lib/wb/syncWbStock";
+import { syncWbProductCards } from "@/lib/wb/syncWbProductCards";
 
 type CompanyRow = {
   id: string;
@@ -872,6 +873,9 @@ export async function syncWbAll(companyId: string) {
 
   const results: SyncStepResult[] = [];
 
+  results.push(
+    await runSyncStep("WB Product Cards", () => syncWbProductCards(companyId))
+  );
   results.push(await runSyncStep("WB Stock", () => syncWbStock(companyId)));
   results.push(await runSyncStep("WB Ads", () => syncWbAds(companyId)));
   results.push(await runSyncStep("WB Finance", () => syncWbFinance(companyId)));

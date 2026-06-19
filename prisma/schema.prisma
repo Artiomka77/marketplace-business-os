@@ -259,6 +259,34 @@ model WbStock {
   @@index([chrtId])
 }
 
+model WbProductCard {
+  id String @id @default(cuid())
+
+  companyName String
+
+  nmId       String
+  vendorCode String?
+
+  title       String?
+  brand       String?
+  subjectName String?
+
+  photoSmallUrl String?
+  photoBigUrl   String?
+
+  updatedAtFromApi DateTime?
+  lastSyncedAt     DateTime @default(now())
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([companyName, nmId])
+  @@index([companyName])
+  @@index([nmId])
+  @@index([vendorCode])
+  @@index([lastSyncedAt])
+}
+
 model ProductCost {
   id String @id @default(cuid())
 

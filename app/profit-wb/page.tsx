@@ -452,7 +452,38 @@ async function buildProductMetaAndSizeRows(params: {
 }) {
   const companyName = params.companyName === "ALL" ? null : params.companyName;
 
-  const [salesRows, productCosts] = await Promise.all([
+  const rowNmIds = Array.from(
+    new Set(
+      params.rows
+        .map((row) => String(row.nmId ?? "").trim())
+        .filter(Boolean)
+    )
+  );
+
+  const rowVendorCodes = Array.from(
+    new Set(
+      params.rows
+        .map((row) => String(row.vendorCode ?? "").trim())
+        .filter(Boolean)
+    )
+  );
+
+  const productCardWhere =
+    rowNmIds.length > 0 || rowVendorCodes.length > 0
+      ? {
+          ...(companyName ? { companyName } : {}),
+          OR: [
+            ...(rowNmIds.length > 0 ? [{ nmId: { in: rowNmIds } }] : []),
+            ...(rowVendorCodes.length > 0
+              ? [{ vendorCode: { in: rowVendorCodes } }]
+              : []),
+          ],
+        }
+      : {
+          ...(companyName ? { companyName } : {}),
+        };
+
+  const [salesRows, productCosts, productCards] = await Promise.all([
     findWbSaleRowsForBreakdown({
       dateFrom: params.dateFrom,
       dateTo: params.dateTo,
@@ -468,10 +499,30 @@ async function buildProductMetaAndSizeRows(params: {
         costDate: "desc",
       },
     }),
+    prisma.wbProductCard.findMany({
+      where: productCardWhere,
+      orderBy: {
+        lastSyncedAt: "desc",
+      },
+    }),
   ]);
 
   const metaByVendorCode = new Map<string, ProductMeta>();
   const rawSizesByVendorCode = new Map<string, Map<string, RawSizeMetric>>();
+
+  for (const card of productCards) {
+    const key = normalizeText(card.vendorCode || card.nmId);
+
+    if (!key) continue;
+
+    metaByVendorCode.set(key, {
+      productName: card.title ?? card.vendorCode ?? card.nmId,
+      subject: card.subjectName ?? "",
+      nmId: card.nmId,
+      vendorCode: card.vendorCode ?? "",
+      imageUrl: card.photoSmallUrl ?? card.photoBigUrl,
+    });
+  }
 
   for (const cost of productCosts) {
     const key = normalizeText(cost.vendorCode);
@@ -501,10 +552,10 @@ async function buildProductMetaAndSizeRows(params: {
         currentMeta?.productName && currentMeta.productName !== currentMeta.vendorCode
           ? currentMeta.productName
           : sale.productName || sale.subject || vendorCode,
-      subject: sale.subject ?? currentMeta?.subject ?? "",
-      nmId: sale.nmId ?? currentMeta?.nmId ?? "",
-      vendorCode: sale.vendorCode ?? currentMeta?.vendorCode ?? vendorCode,
-      imageUrl: null,
+      subject: currentMeta?.subject || sale.subject || "",
+      nmId: currentMeta?.nmId || sale.nmId || "",
+      vendorCode: currentMeta?.vendorCode || sale.vendorCode || vendorCode,
+      imageUrl: currentMeta?.imageUrl ?? null,
     });
 
     const size = String(sale.size ?? "Без размера").trim() || "Без размера";

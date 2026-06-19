@@ -974,6 +974,15 @@ export default async function ApiConnectionsPage({
                         </SubmitButton>
 
                         <SubmitButton
+                          formAction="/api/settings/api-connections/sync-wb-product-cards"
+                          formMethod="POST"
+                          pendingText="Обновляем карточки WB..."
+                          className={`${buttonBase} border border-violet-300 bg-violet-50 text-violet-700`}
+                        >
+                          Обновить карточки WB
+                        </SubmitButton>
+
+                        <SubmitButton
                           name="action"
                           value="delete"
                           pendingText="Удаляем..."
