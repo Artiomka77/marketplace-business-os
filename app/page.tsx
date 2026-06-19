@@ -18,6 +18,7 @@ type Props = {
     dateTo?: string;
     chartPreset?: string;
     marketplaceCompanyName?: string;
+    debug?: string;
   }>;
 };
 
@@ -471,6 +472,23 @@ function formatSignedPercent(value: number) {
 function formatSignedPoints(value: number) {
   const prefix = value > 0 ? "+" : "";
   return `${prefix}${value.toFixed(1)} п.п.`;
+}
+
+function formatSignedCurrency(value: number) {
+  const prefix = value > 0 ? "+" : "";
+  return `${prefix}${formatCurrency(value)}`;
+}
+
+function isNearlySameMoney(periodValue: number, dailyValue: number) {
+  const diff = Math.abs(dailyValue - periodValue);
+  const base = Math.max(Math.abs(periodValue), Math.abs(dailyValue), 1);
+  return diff <= 1 || diff / base <= 0.005;
+}
+
+function isNearlySamePercent(periodValue: number | null, dailyValue: number | null) {
+  if (periodValue === null && dailyValue === null) return true;
+  if (periodValue === null || dailyValue === null) return false;
+  return Math.abs(dailyValue - periodValue) <= 0.1;
 }
 
 function getRevenuePercent(value: number, revenue: number) {
@@ -1717,6 +1735,213 @@ function DynamicInsights({
   );
 }
 
+type ReconciliationKind = "money" | "percent";
+
+type ReconciliationRow = {
+  label: string;
+  kind: ReconciliationKind;
+  periodValue: number | null;
+  dailyValue: number | null;
+  diff: number | null;
+  isOk: boolean;
+};
+
+function summarizeDailyForReconciliation(points: DashboardDailyPoint[]) {
+  const revenue = sumDailyValue(points, (point) => point.revenue);
+  const wbRevenue = sumDailyValue(points, (point) => point.wbRevenue);
+  const ozonRevenue = sumDailyValue(points, (point) => point.ozonRevenue);
+  const adsCost = sumDailyValue(points, (point) => point.adsCost);
+  const operatingProfitAfterTax = sumDailyValue(points, (point) => point.operatingProfitAfterTax);
+  const netProfit = sumDailyValue(points, (point) => point.netProfit);
+  const cashFlowResult = sumDailyValue(points, (point) => point.cashFlowResult);
+  const loanPayments = sumDailyValue(points, (point) => point.loanPayments);
+
+  return {
+    revenue,
+    wbRevenue,
+    ozonRevenue,
+    adsCost,
+    drr: revenue > 0 ? (adsCost / revenue) * 100 : null,
+    operatingProfitAfterTax,
+    netProfit,
+    cashFlowResult,
+    loanPayments,
+  };
+}
+
+function makeMoneyReconciliationRow(label: string, periodValue: number, dailyValue: number): ReconciliationRow {
+  const diff = dailyValue - periodValue;
+
+  return {
+    label,
+    kind: "money",
+    periodValue,
+    dailyValue,
+    diff,
+    isOk: isNearlySameMoney(periodValue, dailyValue),
+  };
+}
+
+function makePercentReconciliationRow(
+  label: string,
+  periodValue: number | null,
+  dailyValue: number | null
+): ReconciliationRow {
+  const diff = periodValue === null || dailyValue === null ? null : dailyValue - periodValue;
+
+  return {
+    label,
+    kind: "percent",
+    periodValue,
+    dailyValue,
+    diff,
+    isOk: isNearlySamePercent(periodValue, dailyValue),
+  };
+}
+
+function buildReconciliationRows(summary: DashboardSummary, points: DashboardDailyPoint[]) {
+  const daily = summarizeDailyForReconciliation(points);
+
+  return [
+    makeMoneyReconciliationRow("Выручка всего", summary.totalRevenue, daily.revenue),
+    makeMoneyReconciliationRow("Выручка WB", summary.wbRevenue, daily.wbRevenue),
+    makeMoneyReconciliationRow("Выручка Ozon", summary.ozonRevenue, daily.ozonRevenue),
+    makeMoneyReconciliationRow("Реклама", summary.adsCost, daily.adsCost),
+    makePercentReconciliationRow("ДРР", summary.drr, daily.drr),
+    makeMoneyReconciliationRow("Опер. прибыль", summary.operatingProfitAfterTax, daily.operatingProfitAfterTax),
+    makeMoneyReconciliationRow("Чистая прибыль", summary.netProfit, daily.netProfit),
+    makeMoneyReconciliationRow("Денежный поток", summary.cashFlowResult, daily.cashFlowResult),
+    makeMoneyReconciliationRow("Кредиты", summary.loanPayments, daily.loanPayments),
+  ];
+}
+
+function formatReconciliationValue(value: number | null, kind: ReconciliationKind) {
+  if (value === null) return "—";
+  if (kind === "percent") return formatPercent(value);
+  return formatCurrency(value);
+}
+
+function formatReconciliationDiff(value: number | null, kind: ReconciliationKind) {
+  if (value === null) return "—";
+  if (kind === "percent") return formatSignedPoints(value);
+  return formatSignedCurrency(value);
+}
+
+function ReconciliationTable({
+  title,
+  rows,
+}: {
+  title: string;
+  rows: ReconciliationRow[];
+}) {
+  const problemRows = rows.filter((row) => !row.isOk);
+
+  return (
+    <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+      <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-4 py-3">
+        <div className="text-sm font-black text-slate-950">{title}</div>
+        <span
+          className={`rounded-full px-2.5 py-1 text-[10px] font-black ring-1 ${
+            problemRows.length === 0
+              ? "bg-emerald-50 text-emerald-700 ring-emerald-100"
+              : "bg-amber-50 text-amber-700 ring-amber-100"
+          }`}
+        >
+          {problemRows.length === 0 ? "OK" : `${problemRows.length} расх.`}
+        </span>
+      </div>
+
+      <div className="divide-y divide-slate-100">
+        <div className="grid grid-cols-[minmax(110px,1.2fr)_1fr_1fr_0.9fr_64px] gap-3 px-4 py-2 text-[10px] font-black uppercase tracking-[0.08em] text-slate-400">
+          <div>Показатель</div>
+          <div>Итог</div>
+          <div>По дням</div>
+          <div>Разница</div>
+          <div>Статус</div>
+        </div>
+
+        {rows.map((row) => (
+          <div
+            key={row.label}
+            className="grid grid-cols-[minmax(110px,1.2fr)_1fr_1fr_0.9fr_64px] items-center gap-3 px-4 py-2 text-xs"
+          >
+            <div className="font-bold text-slate-700">{row.label}</div>
+            <div className="font-black text-slate-950">{formatReconciliationValue(row.periodValue, row.kind)}</div>
+            <div className="font-black text-slate-950">{formatReconciliationValue(row.dailyValue, row.kind)}</div>
+            <div className={row.diff !== null && row.diff < 0 ? "font-black text-red-600" : "font-black text-emerald-600"}>
+              {formatReconciliationDiff(row.diff, row.kind)}
+            </div>
+            <div>
+              <span
+                className={`rounded-full px-2 py-1 text-[10px] font-black ring-1 ${
+                  row.isOk
+                    ? "bg-emerald-50 text-emerald-700 ring-emerald-100"
+                    : "bg-red-50 text-red-700 ring-red-100"
+                }`}
+              >
+                {row.isOk ? "OK" : "Нет"}
+              </span>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function DailyDataReconciliation({
+  currentSummary,
+  previousSummary,
+  currentPoints,
+  previousPoints,
+}: {
+  currentSummary: DashboardSummary;
+  previousSummary: DashboardSummary;
+  currentPoints: DashboardDailyPoint[];
+  previousPoints: DashboardDailyPoint[];
+}) {
+  const currentRows = buildReconciliationRows(currentSummary, currentPoints);
+  const previousRows = buildReconciliationRows(previousSummary, previousPoints);
+  const currentProblems = currentRows.filter((row) => !row.isOk).length;
+  const previousProblems = previousRows.filter((row) => !row.isOk).length;
+  const totalProblems = currentProblems + previousProblems;
+
+  return (
+    <section className="panel p-5 sm:p-6">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+        <div>
+          <div className="section-eyebrow">Контроль данных</div>
+          <h2 className="mt-1 text-xl font-black tracking-tight text-slate-950">
+            Сверка: сумма по дням = итог периода
+          </h2>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">
+            Сравниваем агрегаты Dashboard с суммой реальных дневных точек, которые используются в графике динамики.
+          </p>
+        </div>
+
+        <span
+          className={`w-fit rounded-full px-3 py-1.5 text-xs font-black ring-1 ${
+            totalProblems === 0
+              ? "bg-emerald-50 text-emerald-700 ring-emerald-100"
+              : "bg-amber-50 text-amber-700 ring-amber-100"
+          }`}
+        >
+          {totalProblems === 0 ? "Сверка пройдена" : `Есть расхождения: ${totalProblems}`}
+        </span>
+      </div>
+
+      <div className="mt-5 grid gap-4 xl:grid-cols-2">
+        <ReconciliationTable title="Текущий период" rows={currentRows} />
+        <ReconciliationTable title="Период сравнения" rows={previousRows} />
+      </div>
+
+      <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm leading-6 text-slate-600">
+        Если есть расхождения, это не обязательно ошибка интерфейса. Чаще всего причина в разных источниках расчёта: итог WB может брать недельный финансовый отчёт, а дневной график — строки продаж по датам. Следующий шаг — выровнять источник расчёта для тех показателей, где сверка не сошлась.
+      </div>
+    </section>
+  );
+}
+
 function MarketplaceShare({
   wbRevenue,
   ozonRevenue,
@@ -2358,6 +2583,7 @@ function summarizeDashboardRows(rows: CompanyDashboardRow[]): DashboardSummary {
 
 export default async function HomePage({ searchParams }: Props) {
   const params = searchParams ? await searchParams : {};
+  const showDebug = params.debug === "1";
 
   const periodOptions = createPeriodOptions();
   const selectedPeriodOption =
@@ -2809,6 +3035,15 @@ export default async function HomePage({ searchParams }: Props) {
             />
           </div>
         </section>
+
+        {showDebug ? (
+          <DailyDataReconciliation
+            currentSummary={marketplaceCurrent}
+            previousSummary={marketplacePrevious}
+            currentPoints={currentDailyPoints}
+            previousPoints={previousDailyPoints}
+          />
+        ) : null}
 
         <section className="panel p-5 sm:p-6">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
