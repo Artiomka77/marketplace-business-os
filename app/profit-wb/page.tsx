@@ -835,30 +835,117 @@ function InfoTooltip({ text }: { text: string }) {
   );
 }
 
+function polarToCartesian(
+  centerX: number,
+  centerY: number,
+  radius: number,
+  angleInDegrees: number
+) {
+  const angleInRadians = ((angleInDegrees - 90) * Math.PI) / 180;
+
+  return {
+    x: centerX + radius * Math.cos(angleInRadians),
+    y: centerY + radius * Math.sin(angleInRadians),
+  };
+}
+
+function describeDonutArc(
+  startAngle: number,
+  endAngle: number,
+  outerRadius: number,
+  innerRadius: number
+) {
+  const center = 130;
+  const startOuter = polarToCartesian(center, center, outerRadius, endAngle);
+  const endOuter = polarToCartesian(center, center, outerRadius, startAngle);
+  const startInner = polarToCartesian(center, center, innerRadius, startAngle);
+  const endInner = polarToCartesian(center, center, innerRadius, endAngle);
+  const largeArcFlag = endAngle - startAngle <= 180 ? "0" : "1";
+
+  return [
+    "M",
+    startOuter.x,
+    startOuter.y,
+    "A",
+    outerRadius,
+    outerRadius,
+    0,
+    largeArcFlag,
+    0,
+    endOuter.x,
+    endOuter.y,
+    "L",
+    startInner.x,
+    startInner.y,
+    "A",
+    innerRadius,
+    innerRadius,
+    0,
+    largeArcFlag,
+    1,
+    endInner.x,
+    endInner.y,
+    "Z",
+  ].join(" ");
+}
+
 function ExpenseDonut({
   rows,
   revenue,
 }: {
-  rows: { value: number; colorHex: string }[];
+  rows: { label: string; value: number; colorHex: string }[];
   revenue: number;
 }) {
   const positiveRows = rows.filter((row) => row.value > 0);
   const positiveTotal = positiveRows.reduce((sum, row) => sum + row.value, 0);
 
   let cursor = 0;
+
   const segments = positiveRows.map((row) => {
-    const start = cursor;
+    const share = positiveTotal > 0 ? (row.value / positiveTotal) * 100 : 0;
     const size = positiveTotal > 0 ? (row.value / positiveTotal) * 360 : 0;
+    const startAngle = cursor;
+    const endAngle = cursor + Math.max(size, positiveRows.length === 1 ? 359.99 : 0);
     cursor += size;
-    return `${row.colorHex} ${start.toFixed(2)}deg ${cursor.toFixed(2)}deg`;
+
+    return {
+      ...row,
+      share,
+      startAngle,
+      endAngle,
+      path: describeDonutArc(startAngle, endAngle, 112, 68),
+    };
   });
 
-  const background =
-    segments.length > 0 ? `conic-gradient(${segments.join(", ")})` : "#e2e8f0";
-
   return (
-    <div className="relative flex h-48 w-48 items-center justify-center rounded-full shadow-inner" style={{ background }}>
-      <div className="flex h-28 w-28 items-center justify-center rounded-full bg-white shadow-sm">
+    <div className="relative flex h-64 w-64 items-center justify-center">
+      <svg
+        viewBox="0 0 260 260"
+        className="h-64 w-64 drop-shadow-sm"
+        role="img"
+        aria-label="Структура расходов WB"
+      >
+        <circle cx="130" cy="130" r="112" fill="#f1f5f9" />
+
+        {segments.map((segment) => (
+          <path
+            key={segment.label}
+            d={segment.path}
+            fill={segment.colorHex}
+            className="cursor-help transition hover:opacity-80"
+          >
+            <title>
+              {`${segment.label}: ${formatMoney(segment.value)} · ${formatPercent(
+                revenue > 0 ? (segment.value / revenue) * 100 : 0
+              )} от выручки`}
+            </title>
+          </path>
+        ))}
+
+        <circle cx="130" cy="130" r="68" fill="white" />
+      </svg>
+
+      <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
         <div className="text-center">
           <div className="text-2xl font-black text-slate-950">
             {formatCompactMoney(revenue)}
@@ -1121,7 +1208,7 @@ function StructureLegendRow({
   colorHex: string;
 }) {
   return (
-    <div className="grid grid-cols-[minmax(0,1fr)_120px_70px] items-center gap-3 text-sm">
+    <div className="grid grid-cols-[minmax(0,1fr)_105px_62px] items-center gap-3 text-sm">
       <div className="flex min-w-0 items-center gap-3">
         <span className="h-3 w-3 shrink-0 rounded-full" style={{ backgroundColor: colorHex }} />
         <span className="truncate font-bold text-slate-600">{label}</span>
@@ -1447,7 +1534,7 @@ export default async function ProfitPage({
               <span className="text-slate-300">ⓘ</span>
             </div>
 
-            <div className="mt-5 grid gap-6 lg:grid-cols-[220px_minmax(0,1fr)] lg:items-center">
+            <div className="mt-5 grid gap-6 lg:grid-cols-[300px_minmax(0,1fr)] lg:items-center">
               <div className="flex justify-center">
                 <ExpenseDonut rows={structureRows} revenue={totals.revenue} />
               </div>
@@ -1463,7 +1550,7 @@ export default async function ProfitPage({
                   />
                 ))}
 
-                <div className="grid grid-cols-[minmax(0,1fr)_120px_70px] items-center gap-3 border-t border-slate-100 pt-4">
+                <div className="grid grid-cols-[minmax(0,1fr)_105px_62px] items-center gap-3 border-t border-slate-100 pt-4">
                   <div className="font-black text-emerald-600">Прибыль после налогов</div>
                   <div className="text-right font-black text-emerald-600">
                     {formatMoney(totals.netProfitAfterTax)}
