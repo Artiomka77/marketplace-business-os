@@ -93,30 +93,62 @@ type MetricTrend = {
   className: string;
 };
 
-const quickLinks = [
+const quickActions = [
   {
-    title: "Центр прибыли",
-    description: "Прибыль WB/Ozon, проблемные SKU, реклама и маржинальность.",
+    title: "Аналитика",
+    description: "Детальные отчёты и графики",
     href: "/analytics",
-    icon: "📊",
+    icon: "▦",
+    tone: "bg-indigo-50 text-indigo-700",
   },
   {
-    title: "Кредиты",
-    description: "Графики платежей, факт/план и долговая нагрузка.",
+    title: "Маркетплейсы",
+    description: "Каналы, продажи и доля",
+    href: "/analytics",
+    icon: "◌",
+    tone: "bg-violet-50 text-violet-700",
+  },
+  {
+    title: "Реклама",
+    description: "Кампании и эффективность",
+    href: "/ads-mapping",
+    icon: "↗",
+    tone: "bg-emerald-50 text-emerald-700",
+  },
+  {
+    title: "Финансы",
+    description: "Прибыль и денежный поток",
+    href: "/finance",
+    icon: "₽",
+    tone: "bg-amber-50 text-amber-700",
+  },
+  {
+    title: "Кредиты и выводы",
+    description: "Тело, проценты и выплаты",
     href: "/finance/loans",
-    icon: "🏦",
+    icon: "⌁",
+    tone: "bg-orange-50 text-orange-700",
   },
   {
-    title: "Платёжный календарь",
-    description: "Ближайшие обязательства и контроль кассовых разрывов.",
-    href: "/finance/calendar",
-    icon: "📅",
+    title: "Остатки и ABC",
+    description: "Ассортимент и оборачиваемость",
+    href: "/stocks",
+    icon: "◔",
+    tone: "bg-blue-50 text-blue-700",
   },
   {
-    title: "Импорт отчётов",
-    description: "Загрузка WB, Ozon, рекламы, остатков и себестоимости.",
+    title: "Импорт",
+    description: "Файлы, API и загрузка данных",
     href: "/import",
-    icon: "📥",
+    icon: "⇧",
+    tone: "bg-cyan-50 text-cyan-700",
+  },
+  {
+    title: "Настройки",
+    description: "Компании и параметры",
+    href: "/settings/companies",
+    icon: "⚙",
+    tone: "bg-slate-100 text-slate-700",
   },
 ];
 
@@ -537,6 +569,30 @@ function buildDashboardHref(params: {
   return `/?${searchParams.toString()}`;
 }
 
+function buildOperationsHref(params: {
+  companyName?: string | null;
+  dateFrom: string;
+  dateTo: string;
+  operationType?: string;
+  category?: string;
+  search?: string;
+}) {
+  const searchParams = new URLSearchParams();
+
+  searchParams.set("company", params.companyName || "ALL");
+  searchParams.set("operationType", params.operationType || "ALL");
+  searchParams.set("category", params.category || "ALL");
+  searchParams.set("dateFrom", params.dateFrom);
+  searchParams.set("dateTo", params.dateTo);
+  searchParams.set("rows", "100");
+
+  if (params.search) {
+    searchParams.set("search", params.search);
+  }
+
+  return `/finance/operations?${searchParams.toString()}`;
+}
+
 function MetricCard({
   title,
   value,
@@ -544,6 +600,7 @@ function MetricCard({
   icon,
   accent,
   trend,
+  href,
   valueClassName = "text-slate-950",
 }: {
   title: string;
@@ -552,10 +609,14 @@ function MetricCard({
   icon: ReactNode;
   accent: string;
   trend?: MetricTrend;
+  href: string;
   valueClassName?: string;
 }) {
   return (
-    <article className="group rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
+    <Link
+      href={href}
+      className="group rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm shadow-slate-200/60 transition hover:-translate-y-0.5 hover:border-indigo-200 hover:shadow-lg hover:shadow-indigo-100/50"
+    >
       <div className="flex items-start justify-between gap-4">
         <div
           className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl text-lg ${accent}`}
@@ -577,18 +638,22 @@ function MetricCard({
         )}
       </div>
 
-      <div className="mt-5 text-sm font-semibold text-slate-500">{title}</div>
+      <div className="mt-5 text-sm font-bold text-slate-600">{title}</div>
 
       <div
-        className={`mt-3 break-words text-[28px] font-black leading-tight tracking-tight ${valueClassName}`}
+        className={`mt-3 break-words text-[26px] font-black leading-tight tracking-tight ${valueClassName}`}
       >
         {value}
       </div>
 
-      <p className="mt-3 min-h-[44px] text-sm leading-6 text-slate-500">
+      <p className="mt-3 min-h-[42px] text-sm leading-6 text-slate-500">
         {subtitle}
       </p>
-    </article>
+
+      <div className="mt-4 text-sm font-black text-indigo-600 opacity-90 transition group-hover:translate-x-1">
+        Подробнее →
+      </div>
+    </Link>
   );
 }
 
@@ -597,30 +662,18 @@ function MiniMetric({
   value,
   subtitle,
   tone = "text-slate-950",
-  strong = false,
 }: {
   title: string;
   value: string;
   subtitle?: string;
   tone?: string;
-  strong?: boolean;
 }) {
   return (
-    <div
-      className={`rounded-2xl border px-4 py-3 shadow-sm ${
-        strong
-          ? "border-slate-300 bg-white"
-          : "border-slate-200 bg-white/80"
-      }`}
-    >
+    <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3">
       <div className="text-xs font-bold uppercase tracking-[0.08em] text-slate-500">
         {title}
       </div>
-      <div
-        className={`mt-2 break-words ${
-          strong ? "text-xl" : "text-lg"
-        } font-black leading-tight ${tone}`}
-      >
+      <div className={`mt-2 break-words text-lg font-black leading-tight ${tone}`}>
         {value}
       </div>
 
@@ -629,6 +682,25 @@ function MiniMetric({
           {subtitle}
         </div>
       ) : null}
+    </div>
+  );
+}
+
+function CompactStat({
+  label,
+  value,
+  tone = "text-slate-950",
+}: {
+  label: string;
+  value: string;
+  tone?: string;
+}) {
+  return (
+    <div>
+      <div className="text-[11px] font-bold uppercase tracking-[0.08em] text-slate-400">
+        {label}
+      </div>
+      <div className={`mt-1 text-sm font-black ${tone}`}>{value}</div>
     </div>
   );
 }
@@ -680,50 +752,6 @@ function AbcPills({ abc }: { abc: AbcCounts }) {
   );
 }
 
-function AbcBar({ abc }: { abc: AbcCounts }) {
-  const total = abcTotal(abc);
-  const a = abcPercentNumber(abc.A, total);
-  const b = abcPercentNumber(abc.B, total);
-  const c = abcPercentNumber(abc.C, total);
-
-  return (
-    <div className="mt-4 h-3 overflow-hidden rounded-full bg-slate-100">
-      <div className="flex h-full w-full">
-        <div className="h-full bg-emerald-400" style={{ width: `${a}%` }} />
-        <div className="h-full bg-amber-400" style={{ width: `${b}%` }} />
-        <div className="h-full bg-red-400" style={{ width: `${c}%` }} />
-      </div>
-    </div>
-  );
-}
-
-function AbcCard({ title, abc }: { title: string; abc: AbcCounts }) {
-  const total = abcTotal(abc);
-
-  return (
-    <article className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h3 className="text-lg font-black text-slate-950">{title}</h3>
-          <p className="mt-1 text-sm text-slate-500">
-            {formatNumber(total)} SKU
-          </p>
-        </div>
-
-        <div className="rounded-2xl bg-slate-100 px-3 py-2 text-sm font-bold text-slate-700">
-          ABC
-        </div>
-      </div>
-
-      <AbcBar abc={abc} />
-
-      <div className="mt-4">
-        <AbcPills abc={abc} />
-      </div>
-    </article>
-  );
-}
-
 function MarketplaceShare({
   wbRevenue,
   ozonRevenue,
@@ -736,46 +764,286 @@ function MarketplaceShare({
   const ozonPercent = total > 0 ? (ozonRevenue / total) * 100 : 0;
 
   return (
-    <section className="rounded-[32px] border border-slate-200 bg-white p-6 shadow-sm">
-      <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+    <section className="panel p-5 sm:p-6">
+      <div className="grid gap-6 xl:grid-cols-[340px_1fr]">
         <div>
-          <div className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">
-            Маркетплейсы
-          </div>
-          <h2 className="mt-2 text-2xl font-black text-slate-950">
-            Выручка WB / Ozon
+          <div className="section-eyebrow">Разрез по маркетплейсам</div>
+          <h2 className="mt-2 text-2xl font-black tracking-tight text-slate-950">
+            Доля выручки WB / Ozon
           </h2>
           <p className="mt-2 text-sm leading-6 text-slate-500">
-            Быстрая оценка, где сейчас формируется оборот за выбранный период.
+            Где сейчас формируется оборот за выбранный период.
           </p>
+
+          <div className="mt-6 space-y-4">
+            <div className="flex items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <span className="h-3 w-3 rounded-full bg-indigo-500" />
+                <div>
+                  <div className="text-sm font-bold text-slate-600">
+                    Wildberries
+                  </div>
+                  <div className="text-lg font-black text-slate-950">
+                    {formatCurrency(wbRevenue)}
+                  </div>
+                </div>
+              </div>
+              <div className="text-lg font-black text-slate-500">
+                {formatPercent(wbPercent)}
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <span className="h-3 w-3 rounded-full bg-blue-500" />
+                <div>
+                  <div className="text-sm font-bold text-slate-600">Ozon</div>
+                  <div className="text-lg font-black text-slate-950">
+                    {formatCurrency(ozonRevenue)}
+                  </div>
+                </div>
+              </div>
+              <div className="text-lg font-black text-slate-500">
+                {formatPercent(ozonPercent)}
+              </div>
+            </div>
+          </div>
         </div>
 
-        <div className="grid gap-3 sm:grid-cols-2 xl:min-w-[460px]">
-          <MiniMetric
-            title="Wildberries"
-            value={`${formatCurrency(wbRevenue)} · ${formatPercent(wbPercent)}`}
-            tone="text-blue-700"
-          />
-          <MiniMetric
-            title="Ozon"
-            value={`${formatCurrency(ozonRevenue)} · ${formatPercent(
-              ozonPercent
-            )}`}
-            tone="text-violet-700"
-          />
-        </div>
-      </div>
+        <div className="grid gap-5 lg:grid-cols-[320px_1fr]">
+          <div className="flex items-center justify-center rounded-[28px] bg-slate-50 p-6 ring-1 ring-slate-200">
+            <div
+              className="flex h-52 w-52 items-center justify-center rounded-full"
+              style={{
+                background: `conic-gradient(#6366f1 0 ${wbPercent}%, #3b82f6 ${wbPercent}% 100%)`,
+              }}
+            >
+              <div className="flex h-32 w-32 flex-col items-center justify-center rounded-full bg-white shadow-sm">
+                <div className="text-xs font-bold text-slate-400">
+                  Выручка всего
+                </div>
+                <div className="mt-1 text-xl font-black text-slate-950">
+                  {formatCurrency(total)}
+                </div>
+              </div>
+            </div>
+          </div>
 
-      <div className="mt-5 h-4 overflow-hidden rounded-full bg-slate-100">
-        <div className="flex h-full w-full">
-          <div className="h-full bg-blue-500" style={{ width: `${wbPercent}%` }} />
-          <div
-            className="h-full bg-violet-500"
-            style={{ width: `${ozonPercent}%` }}
-          />
+          <div className="rounded-[28px] bg-slate-50 p-5 ring-1 ring-slate-200">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <div className="section-eyebrow">Динамика</div>
+                <h3 className="mt-2 text-xl font-black text-slate-950">
+                  Выручка и ДРР
+                </h3>
+              </div>
+              <Link
+                href="/analytics"
+                className="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-indigo-600 transition hover:bg-indigo-50"
+              >
+                Открыть аналитику →
+              </Link>
+            </div>
+
+            <div className="mt-7 flex h-44 items-end gap-3">
+              {[42, 58, 74, 46, 82, 54, 68, 90, 62, 78, 52, 86].map(
+                (height, index) => (
+                  <div key={index} className="flex flex-1 flex-col items-center gap-2">
+                    <div className="relative flex h-36 w-full items-end overflow-hidden rounded-full bg-white">
+                      <div
+                        className="w-full rounded-full bg-gradient-to-t from-indigo-500 to-blue-400"
+                        style={{ height: `${height}%` }}
+                      />
+                    </div>
+                    <span className="text-[10px] font-bold text-slate-400">
+                      {index + 1}
+                    </span>
+                  </div>
+                )
+              )}
+            </div>
+          </div>
         </div>
       </div>
     </section>
+  );
+}
+
+function CompanyGroupRow({
+  icon,
+  title,
+  href,
+  children,
+}: {
+  icon: ReactNode;
+  title: string;
+  href: string;
+  children: ReactNode;
+}) {
+  return (
+    <Link
+      href={href}
+      className="group flex items-center gap-4 rounded-2xl border border-slate-200 bg-white p-4 transition hover:border-indigo-200 hover:bg-indigo-50/30"
+    >
+      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-slate-50 text-base text-indigo-600 ring-1 ring-slate-200">
+        {icon}
+      </div>
+
+      <div className="min-w-0 flex-1">
+        <div className="text-sm font-black text-slate-950">{title}</div>
+        <div className="mt-2 grid gap-3 sm:grid-cols-3">{children}</div>
+      </div>
+
+      <div className="text-lg font-black text-slate-300 transition group-hover:translate-x-1 group-hover:text-indigo-500">
+        →
+      </div>
+    </Link>
+  );
+}
+
+function CompanyCard({
+  row,
+  dateFrom,
+  dateTo,
+}: {
+  row: CompanyDashboardRow;
+  dateFrom: string;
+  dateTo: string;
+}) {
+  const rowWbAbc = {
+    A: row.wbAbcA,
+    B: row.wbAbcB,
+    C: row.wbAbcC,
+  };
+
+  const rowOzonAbc = {
+    A: row.ozonAbcA,
+    B: row.ozonAbcB,
+    C: row.ozonAbcC,
+  };
+
+  const totalAbc = abcTotal(rowWbAbc) + abcTotal(rowOzonAbc);
+  const drrText = row.drr !== null ? formatPercent(row.drr) : "—";
+
+  return (
+    <article className="overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-sm shadow-slate-200/60">
+      <div className="border-b border-slate-100 bg-gradient-to-br from-white to-slate-50 p-5">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <h3 className="text-xl font-black tracking-tight text-slate-950">
+              {row.companyName}
+            </h3>
+            <p className="mt-1 text-sm font-semibold text-slate-500">
+              WB / Ozon
+            </p>
+          </div>
+
+          <div
+            className={`w-fit rounded-full px-4 py-2 text-sm font-black ring-1 ${valueTone(
+              row.profitAfterOwnerWithdrawal
+            )}`}
+          >
+            После вывода: {formatCurrency(row.profitAfterOwnerWithdrawal)}
+          </div>
+        </div>
+
+        <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <MiniMetric
+            title="Выручка"
+            value={formatCurrency(row.totalRevenue)}
+            subtitle="100%"
+          />
+          <MiniMetric
+            title="Опер. прибыль"
+            value={formatCurrency(row.operatingProfitAfterTax)}
+            subtitle={formatRevenuePercent(row.operatingProfitAfterTax, row.totalRevenue)}
+            tone={valueColor(row.operatingProfitAfterTax)}
+          />
+          <MiniMetric
+            title="Чистая прибыль"
+            value={formatCurrency(row.netProfit)}
+            subtitle={formatRevenuePercent(row.netProfit, row.totalRevenue)}
+            tone={valueColor(row.netProfit)}
+          />
+          <MiniMetric
+            title="Ден. поток"
+            value={formatCurrency(row.cashFlowResult)}
+            subtitle={formatRevenuePercent(row.cashFlowResult, row.totalRevenue)}
+            tone={valueColor(row.cashFlowResult)}
+          />
+        </div>
+      </div>
+
+      <div className="space-y-3 p-5">
+        <CompanyGroupRow
+          icon="◌"
+          title="Каналы и реклама"
+          href="/analytics"
+        >
+          <CompactStat
+            label="WB"
+            value={`${formatCurrency(row.wbRevenue)} · ${formatRevenuePercent(
+              row.wbRevenue,
+              row.totalRevenue
+            )}`}
+          />
+          <CompactStat
+            label="Ozon"
+            value={`${formatCurrency(row.ozonRevenue)} · ${formatRevenuePercent(
+              row.ozonRevenue,
+              row.totalRevenue
+            )}`}
+          />
+          <CompactStat
+            label="Реклама"
+            value={`${formatCurrency(row.adsCost)} · ДРР ${drrText}`}
+            tone={row.drr !== null && row.drr > 12 ? "text-red-600" : "text-slate-950"}
+          />
+        </CompanyGroupRow>
+
+        <CompanyGroupRow
+          icon="₽"
+          title="Кредиты и вывод денег"
+          href={buildOperationsHref({
+            companyName: row.companyName,
+            dateFrom,
+            dateTo,
+            operationType: "ALL",
+            search: "кредит",
+          })}
+        >
+          <CompactStat label="Кредиты всего" value={formatCurrency(row.loanPayments)} tone={row.loanPayments > 0 ? "text-red-600" : "text-slate-950"} />
+          <CompactStat label="Тело" value={formatCurrency(row.creditPrincipal)} tone={row.creditPrincipal > 0 ? "text-red-600" : "text-slate-950"} />
+          <CompactStat label="Проценты" value={formatCurrency(row.creditInterest)} tone={row.creditInterest > 0 ? "text-red-600" : "text-slate-950"} />
+        </CompanyGroupRow>
+
+        <CompanyGroupRow icon="◔" title="Остатки и ассортимент" href="/stocks">
+          <CompactStat
+            label="Остатки WB"
+            value={row.wbStockQty > 0 ? `${formatNumber(row.wbStockQty)} шт` : "Нет данных"}
+          />
+          <CompactStat
+            label="Остатки Ozon"
+            value={row.ozonStockQty > 0 ? `${formatNumber(row.ozonStockQty)} шт` : "Нет данных"}
+          />
+          <CompactStat
+            label="ABC"
+            value={`${formatNumber(totalAbc)} SKU`}
+          />
+        </CompanyGroupRow>
+
+        <div className="grid gap-4 border-t border-slate-100 pt-4 sm:grid-cols-2">
+          <div>
+            <div className="mb-3 text-sm font-black text-slate-700">ABC WB</div>
+            <AbcPills abc={rowWbAbc} />
+          </div>
+          <div>
+            <div className="mb-3 text-sm font-black text-slate-700">ABC Ozon</div>
+            <AbcPills abc={rowOzonAbc} />
+          </div>
+        </div>
+      </div>
+    </article>
   );
 }
 
@@ -1140,44 +1408,14 @@ export default async function HomePage({ searchParams }: Props) {
 
   const attentionItems = [
     {
-      level: current.operatingProfitAfterTax < 0 ? "danger" : "ok",
-      title: "Операционная прибыль",
+      level: current.cashFlowResult < 0 ? "danger" : "ok",
+      title: "Денежный поток",
       text:
-        current.operatingProfitAfterTax < 0
-          ? `Операционная прибыль после налогов отрицательная: ${formatCurrency(
-              current.operatingProfitAfterTax
-            )}.`
-          : `Операционная прибыль после налогов: ${formatCurrency(
-              current.operatingProfitAfterTax
-            )}.`,
-      href: "/analytics",
-      icon: "⚠️",
-    },
-    {
-      level: current.netProfit < 0 ? "danger" : "ok",
-      title: "Чистая прибыль",
-      text:
-        current.netProfit < 0
-          ? `Чистая прибыль отрицательная: ${formatCurrency(
-              current.netProfit
-            )}. Проверь проценты по кредитам и расходы, влияющие на прибыль.`
-          : `Чистая прибыль бизнеса: ${formatCurrency(current.netProfit)}.`,
+        current.cashFlowResult < 0
+          ? `Отрицательный ДДС за период: ${formatCurrency(current.cashFlowResult)}.`
+          : `Денежный поток положительный: ${formatCurrency(current.cashFlowResult)}.`,
       href: "/finance/cashflow",
-      icon: "💸",
-    },
-    {
-      level: current.profitAfterOwnerWithdrawal < 0 ? "danger" : "ok",
-      title: "После вывода собственника",
-      text:
-        current.profitAfterOwnerWithdrawal < 0
-          ? `После личных расходов и вывода собственника минус ${formatCurrency(
-              Math.abs(current.profitAfterOwnerWithdrawal)
-            )}.`
-          : `После личных расходов и вывода собственника осталось ${formatCurrency(
-              current.profitAfterOwnerWithdrawal
-            )}.`,
-      href: "/finance/operations",
-      icon: "👤",
+      icon: "↓",
     },
     {
       level: current.drr !== null && current.drr > 12 ? "warning" : "ok",
@@ -1185,54 +1423,72 @@ export default async function HomePage({ searchParams }: Props) {
       text:
         current.drr !== null && current.drr > 12
           ? `ДРР ${formatPercent(current.drr)}. Нужно проверить кампании.`
-          : "ДРР в пределах контроля или данных недостаточно.",
+          : `ДРР ${current.drr !== null ? formatPercent(current.drr) : "—"}.`,
       href: "/ads-mapping",
-      icon: "📣",
+      icon: "↗",
+    },
+    {
+      level: current.netProfit < 0 ? "danger" : "ok",
+      title: "Чистая прибыль",
+      text:
+        current.netProfit < 0
+          ? `Чистая прибыль отрицательная: ${formatCurrency(current.netProfit)}.`
+          : `Чистая прибыль: ${formatCurrency(current.netProfit)}.`,
+      href: "/finance/operations",
+      icon: "₽",
     },
     {
       level: current.loanPayments > 0 ? "warning" : "ok",
       title: "Кредиты",
       text:
         current.loanPayments > 0
-          ? `Платежи по кредитам за период: ${formatCurrency(
-              current.loanPayments
-            )}.`
+          ? `Платежи по кредитам: ${formatCurrency(current.loanPayments)}.`
           : "В выбранном периоде платежей по кредитам не найдено.",
       href: "/finance/loans",
-      icon: "🏦",
+      icon: "⌁",
     },
   ];
 
   return (
-    <main className="min-h-screen bg-slate-100 px-4 py-6 sm:px-6 xl:px-10">
-      <div className="mx-auto max-w-[1800px] space-y-6">
-        <section className="fixed left-4 right-4 top-4 z-50 mx-auto max-w-[1800px] rounded-[32px] border border-slate-200 bg-white/90 p-4 shadow-xl shadow-slate-300/40 backdrop-blur-xl supports-[backdrop-filter]:bg-white/80 sm:left-6 sm:right-6 sm:p-5 xl:left-10 xl:right-10">
+    <main className="page-shell">
+      <div className="page-container">
+        <section className="sticky top-0 z-40 -mx-4 border-b border-slate-200 bg-background/90 px-4 py-4 backdrop-blur-xl sm:-mx-6 sm:px-6 xl:-mx-8 xl:px-8">
           <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-            <div className="flex min-w-0 flex-wrap items-center gap-3">
-              <span className="rounded-full bg-slate-950 px-4 py-2 text-xs font-black uppercase tracking-[0.22em] text-white shadow-sm">
-                Dashboard собственника
-              </span>
-
-              <span className="rounded-full bg-slate-100 px-4 py-2 text-xs font-bold text-slate-700 ring-1 ring-slate-200">
-                {selectedPeriod.description}
-              </span>
-
-              <span className="rounded-full bg-slate-100 px-4 py-2 text-xs font-bold text-slate-700 ring-1 ring-slate-200">
-                Сравнение: {previousPeriod.description}
-              </span>
-
-              <span className="rounded-full bg-slate-100 px-4 py-2 text-xs font-bold text-slate-700 ring-1 ring-slate-200">
-                {selectedCompanyName ?? "Все компании"}
-              </span>
+            <div>
+              <div className="text-sm font-black text-indigo-600">
+                Дашборд собственника
+              </div>
+              <h1 className="mt-1 text-2xl font-black tracking-tight text-slate-950">
+                Главная панель бизнеса
+              </h1>
             </div>
 
-            <div className="flex w-full flex-col gap-3 sm:flex-row xl:w-auto xl:shrink-0">
-              <details className="group relative w-full sm:w-auto">
-                <summary className="flex cursor-pointer list-none items-center justify-center rounded-2xl border border-slate-200 bg-slate-50 px-5 py-3 text-sm font-black text-slate-950 transition hover:bg-white">
+            <div className="flex flex-col gap-3 xl:flex-row xl:items-center">
+              <div className="grid gap-3 sm:grid-cols-3 xl:min-w-[760px]">
+                <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+                  <div className="text-xs font-bold text-slate-400">Период</div>
+                  <div className="mt-1 text-sm font-black text-slate-950">
+                    {selectedPeriod.description}
+                  </div>
+                </div>
+                <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+                  <div className="text-xs font-bold text-slate-400">Сравнение</div>
+                  <div className="mt-1 text-sm font-black text-slate-950">
+                    {previousPeriod.description}
+                  </div>
+                </div>
+                <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+                  <div className="text-xs font-bold text-slate-400">Компании</div>
+                  <div className="mt-1 text-sm font-black text-slate-950">
+                    {selectedCompanyName ?? "Все компании"}
+                  </div>
+                </div>
+              </div>
+
+              <details className="group relative">
+                <summary className="secondary-button cursor-pointer list-none gap-2">
                   Фильтры и период
-                  <span className="ml-2 text-slate-400 transition group-open:rotate-180">
-                    ↓
-                  </span>
+                  <span className="text-slate-400 transition group-open:rotate-180">↓</span>
                 </summary>
 
                 <div className="mt-3 max-h-[75vh] w-full overflow-y-auto rounded-[28px] border border-slate-200 bg-white p-4 shadow-2xl xl:absolute xl:right-0 xl:top-full xl:z-50 xl:w-[760px]">
@@ -1249,16 +1505,14 @@ export default async function HomePage({ searchParams }: Props) {
                           })}
                           className={`rounded-2xl border p-3 transition active:scale-[0.99] ${
                             isActive
-                              ? "border-slate-950 bg-slate-950 text-white"
+                              ? "border-indigo-600 bg-indigo-600 text-white"
                               : "border-slate-200 bg-slate-50 text-slate-800 hover:bg-white"
                           }`}
                         >
-                          <div className="text-sm font-black">
-                            {period.shortLabel}
-                          </div>
+                          <div className="text-sm font-black">{period.shortLabel}</div>
                           <div
                             className={`mt-1 text-xs leading-5 ${
-                              isActive ? "text-slate-200" : "text-slate-500"
+                              isActive ? "text-indigo-100" : "text-slate-500"
                             }`}
                           >
                             {period.description}
@@ -1268,26 +1522,15 @@ export default async function HomePage({ searchParams }: Props) {
                     })}
                   </div>
 
-                  <form
-                    action="/"
-                    className="mt-4 rounded-3xl bg-slate-50 p-4 ring-1 ring-slate-200"
-                  >
+                  <form action="/" className="mt-4 rounded-3xl bg-slate-50 p-4 ring-1 ring-slate-200">
                     <div className="grid gap-3 lg:grid-cols-[1fr_1fr_1fr]">
                       <label className="text-sm font-medium text-slate-500">
                         Компания
-                        <select
-                          name="companyName"
-                          defaultValue={selectedCompanyValue}
-                          className="mt-1 h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-950 outline-none transition focus:border-slate-900 focus:ring-2 focus:ring-slate-200"
-                        >
+                        <select name="companyName" defaultValue={selectedCompanyValue} className="filter-control mt-1">
                           <option value="ALL">Все компании</option>
-
-                          {current.companyRows.map((company) => (
-                            <option
-                              key={company.companyName}
-                              value={company.companyName}
-                            >
-                              {company.companyName}
+                          {companies.map((company) => (
+                            <option key={company.id} value={company.name}>
+                              {company.name}
                             </option>
                           ))}
                         </select>
@@ -1295,39 +1538,21 @@ export default async function HomePage({ searchParams }: Props) {
 
                       <label className="text-sm font-medium text-slate-500">
                         Дата от
-                        <input
-                          type="date"
-                          name="dateFrom"
-                          defaultValue={selectedPeriod.dateFrom}
-                          className="mt-1 h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 font-semibold text-slate-950 outline-none transition focus:border-slate-900 focus:ring-2 focus:ring-slate-200"
-                        />
+                        <input type="date" name="dateFrom" defaultValue={selectedPeriod.dateFrom} className="filter-control mt-1" />
                       </label>
 
                       <label className="text-sm font-medium text-slate-500">
                         Дата до
-                        <input
-                          type="date"
-                          name="dateTo"
-                          defaultValue={selectedPeriod.dateTo}
-                          className="mt-1 h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 font-semibold text-slate-950 outline-none transition focus:border-slate-900 focus:ring-2 focus:ring-slate-200"
-                        />
+                        <input type="date" name="dateTo" defaultValue={selectedPeriod.dateTo} className="filter-control mt-1" />
                       </label>
                     </div>
 
                     <div className="mt-4 flex flex-wrap gap-3">
-                      <button
-                        type="submit"
-                        name="period"
-                        value="custom"
-                        className="rounded-2xl bg-slate-950 px-5 py-3 text-sm font-bold text-white transition hover:bg-slate-800 active:scale-95"
-                      >
+                      <button type="submit" name="period" value="custom" className="primary-button">
                         Показать выбранные даты
                       </button>
 
-                      <Link
-                        href="/"
-                        className="rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-bold text-slate-600 transition hover:bg-slate-100 active:scale-95"
-                      >
+                      <Link href="/" className="secondary-button">
                         Сбросить
                       </Link>
                     </div>
@@ -1335,297 +1560,120 @@ export default async function HomePage({ searchParams }: Props) {
                 </div>
               </details>
 
-              <Link
-                href="/import"
-                className="inline-flex items-center justify-center gap-2 rounded-2xl bg-slate-950 px-5 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-slate-800 active:scale-95"
-              >
-                <span>📥</span>
-                Импорт
+              <Link href="/import" className="primary-button gap-2">
+                ⇧ Импорт данных
               </Link>
             </div>
           </div>
         </section>
 
-        <div className="h-[132px] sm:h-[108px] xl:h-[92px]" aria-hidden="true" />
-
-        <section className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
+        <section className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
           <MetricCard
             title="Выручка всего"
-            value={
-              current.totalRevenue > 0
-                ? formatCurrency(current.totalRevenue)
-                : "Нет данных"
-            }
-            subtitle={`WB: ${formatCurrency(
-              current.wbRevenue
-            )} · Ozon: ${formatCurrency(current.ozonRevenue)}`}
-            icon="💼"
-            accent="bg-blue-50 text-blue-600"
-            trend={buildMoneyTrend({
-              current: current.totalRevenue,
-              previous: previous.totalRevenue,
-              goodWhen: "up",
-            })}
+            value={current.totalRevenue > 0 ? formatCurrency(current.totalRevenue) : "Нет данных"}
+            subtitle={`WB: ${formatCurrency(current.wbRevenue)} · Ozon: ${formatCurrency(current.ozonRevenue)}`}
+            icon="▣"
+            accent="bg-indigo-50 text-indigo-700"
+            href="/analytics"
+            trend={buildMoneyTrend({ current: current.totalRevenue, previous: previous.totalRevenue, goodWhen: "up" })}
           />
 
           <MetricCard
             title="Операционная прибыль"
             value={formatCurrency(current.operatingProfitAfterTax)}
-            subtitle={`После себестоимости, рекламы, логистики, хранения и налогов · ${formatRevenuePercent(
-              current.operatingProfitAfterTax,
-              current.totalRevenue
-            )}`}
+            subtitle={`После себестоимости, рекламы, логистики и налогов · ${formatRevenuePercent(current.operatingProfitAfterTax, current.totalRevenue)}`}
             icon="↗"
-            accent="bg-emerald-50 text-emerald-600"
+            accent="bg-emerald-50 text-emerald-700"
             valueClassName={valueColor(current.operatingProfitAfterTax)}
-            trend={buildMoneyTrend({
-              current: current.operatingProfitAfterTax,
-              previous: previous.operatingProfitAfterTax,
-              goodWhen: "up",
-            })}
+            href="/analytics"
+            trend={buildMoneyTrend({ current: current.operatingProfitAfterTax, previous: previous.operatingProfitAfterTax, goodWhen: "up" })}
           />
 
           <MetricCard
             title="Чистая прибыль"
             value={formatCurrency(current.netProfit)}
-            subtitle={`Опер. прибыль ± статьи, которые отмечены как влияющие на прибыль · ${formatRevenuePercent(
-              current.netProfit,
-              current.totalRevenue
-            )}`}
+            subtitle={`Опер. прибыль ± финансовые статьи · ${formatRevenuePercent(current.netProfit, current.totalRevenue)}`}
             icon="₽"
-            accent="bg-red-50 text-red-600"
+            accent="bg-red-50 text-red-700"
             valueClassName={valueColor(current.netProfit)}
-            trend={buildMoneyTrend({
-              current: current.netProfit,
-              previous: previous.netProfit,
-              goodWhen: "up",
-            })}
+            href={buildOperationsHref({ dateFrom: selectedPeriod.dateFrom, dateTo: selectedPeriod.dateTo })}
+            trend={buildMoneyTrend({ current: current.netProfit, previous: previous.netProfit, goodWhen: "up" })}
           />
 
           <MetricCard
             title="После вывода собственника"
             value={formatCurrency(current.profitAfterOwnerWithdrawal)}
-            subtitle={`Чистая прибыль минус личные расходы: ${formatCurrency(
-              current.personalExpenses
-            )} · ${formatRevenuePercent(
-              current.profitAfterOwnerWithdrawal,
-              current.totalRevenue
-            )}`}
-            icon="👤"
-            accent="bg-amber-50 text-amber-600"
+            subtitle={`Чистая прибыль минус личные расходы: ${formatCurrency(current.personalExpenses)} · ${formatRevenuePercent(current.profitAfterOwnerWithdrawal, current.totalRevenue)}`}
+            icon="●"
+            accent="bg-blue-50 text-blue-700"
             valueClassName={valueColor(current.profitAfterOwnerWithdrawal)}
-            trend={buildMoneyTrend({
-              current: current.profitAfterOwnerWithdrawal,
-              previous: previous.profitAfterOwnerWithdrawal,
-              goodWhen: "up",
-            })}
+            href={buildOperationsHref({ dateFrom: selectedPeriod.dateFrom, dateTo: selectedPeriod.dateTo, operationType: "PERSONAL" })}
+            trend={buildMoneyTrend({ current: current.profitAfterOwnerWithdrawal, previous: previous.profitAfterOwnerWithdrawal, goodWhen: "up" })}
           />
 
           <MetricCard
             title="Денежный поток"
             value={formatCurrency(current.cashFlowResult)}
-            subtitle={`ДДС: поступления минус все фактические выплаты · ${formatRevenuePercent(
-              current.cashFlowResult,
-              current.totalRevenue
-            )}`}
-            icon="💸"
-            accent="bg-cyan-50 text-cyan-600"
+            subtitle={`ДДС: поступления минус фактические выплаты · ${formatRevenuePercent(current.cashFlowResult, current.totalRevenue)}`}
+            icon="⇄"
+            accent="bg-cyan-50 text-cyan-700"
             valueClassName={valueColor(current.cashFlowResult)}
-            trend={buildMoneyTrend({
-              current: current.cashFlowResult,
-              previous: previous.cashFlowResult,
-              goodWhen: "up",
-            })}
+            href="/finance/cashflow"
+            trend={buildMoneyTrend({ current: current.cashFlowResult, previous: previous.cashFlowResult, goodWhen: "up" })}
           />
 
           <MetricCard
-            title="ДРР общий"
+            title="Реклама / ДРР"
             value={current.drr !== null ? formatPercent(current.drr) : "Нет данных"}
-            subtitle={`Реклама всего: ${formatCurrency(
-              current.adsCost
-            )} · ${formatRevenuePercent(current.adsCost, current.totalRevenue)}`}
-            icon="📣"
-            accent="bg-violet-50 text-violet-600"
-            valueClassName={
-              current.drr !== null && current.drr > 12
-                ? "text-red-600"
-                : "text-slate-950"
-            }
-            trend={buildPercentTrend({
-              current: current.drr,
-              previous: previous.drr,
-              goodWhen: "down",
-            })}
+            subtitle={`Реклама всего: ${formatCurrency(current.adsCost)} · ${formatRevenuePercent(current.adsCost, current.totalRevenue)}`}
+            icon="↗"
+            accent="bg-orange-50 text-orange-700"
+            valueClassName={current.drr !== null && current.drr > 12 ? "text-red-600" : "text-slate-950"}
+            href="/ads-mapping"
+            trend={buildPercentTrend({ current: current.drr, previous: previous.drr, goodWhen: "down" })}
           />
         </section>
 
-        <MarketplaceShare
-          wbRevenue={current.wbRevenue}
-          ozonRevenue={current.ozonRevenue}
-        />
+        <section className="grid gap-5 2xl:grid-cols-[1fr_420px]">
+          <MarketplaceShare wbRevenue={current.wbRevenue} ozonRevenue={current.ozonRevenue} />
 
-        <section className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
-          <MetricCard
-            title="Тело кредита"
-            value={
-              current.creditPrincipal > 0
-                ? formatCurrency(current.creditPrincipal)
-                : "Нет данных"
-            }
-            subtitle={`Погашение основного долга: влияет на ДДС, но не на чистую прибыль · ${formatRevenuePercent(
-              current.creditPrincipal,
-              current.totalRevenue
-            )}`}
-            icon="🏦"
-            accent="bg-blue-50 text-blue-600"
-            valueClassName={
-              current.creditPrincipal > 0 ? "text-red-600" : "text-slate-950"
-            }
-            trend={buildMoneyTrend({
-              current: current.creditPrincipal,
-              previous: previous.creditPrincipal,
-              goodWhen: "down",
-            })}
-          />
-
-          <MetricCard
-            title="Проценты по кредиту"
-            value={
-              current.creditInterest > 0
-                ? formatCurrency(current.creditInterest)
-                : "Нет данных"
-            }
-            subtitle={`Финансовый расход: влияет и на ДДС, и на чистую прибыль · ${formatRevenuePercent(
-              current.creditInterest,
-              current.totalRevenue
-            )}`}
-            icon="%"
-            accent="bg-violet-50 text-violet-600"
-            valueClassName={
-              current.creditInterest > 0 ? "text-red-600" : "text-slate-950"
-            }
-            trend={buildMoneyTrend({
-              current: current.creditInterest,
-              previous: previous.creditInterest,
-              goodWhen: "down",
-            })}
-          />
-
-          <MetricCard
-            title="Денежные расходы вне прибыли"
-            value={
-              current.cashOnlyExpenses > 0
-                ? formatCurrency(current.cashOnlyExpenses)
-                : "Нет данных"
-            }
-            subtitle={`Двигают деньги, но не должны повторно уменьшать чистую прибыль · ${formatRevenuePercent(
-              current.cashOnlyExpenses,
-              current.totalRevenue
-            )}`}
-            icon="📦"
-            accent="bg-cyan-50 text-cyan-600"
-            valueClassName={
-              current.cashOnlyExpenses > 0 ? "text-red-600" : "text-slate-950"
-            }
-            trend={buildMoneyTrend({
-              current: current.cashOnlyExpenses,
-              previous: previous.cashOnlyExpenses,
-              goodWhen: "down",
-            })}
-          />
-
-          <MetricCard
-            title="Остатки WB"
-            value={
-              current.wbStockQty > 0
-                ? `${formatNumber(current.wbStockQty)} шт`
-                : "Нет данных"
-            }
-            subtitle={`ABC: A ${current.wbAbc.A} · B ${current.wbAbc.B} · C ${current.wbAbc.C}`}
-            icon="▣"
-            accent="bg-blue-50 text-blue-600"
-          />
-
-          <MetricCard
-            title="Остатки Ozon"
-            value={
-              current.ozonStockQty > 0
-                ? `${formatNumber(current.ozonStockQty)} шт`
-                : "Нет данных"
-            }
-            subtitle={`ABC: A ${current.ozonAbc.A} · B ${current.ozonAbc.B} · C ${current.ozonAbc.C}`}
-            icon="▣"
-            accent="bg-indigo-50 text-indigo-600"
-          />
-
-          <MetricCard
-            title="ABC всего"
-            value={`${formatNumber(abcTotal(current.totalAbc))} SKU`}
-            subtitle={`A ${current.totalAbc.A} · B ${current.totalAbc.B} · C ${current.totalAbc.C}`}
-            icon="◔"
-            accent="bg-violet-50 text-violet-600"
-          />
-        </section>
-
-        <section className="grid gap-5 xl:grid-cols-[1fr_1fr]">
-          <section className="rounded-[32px] border border-slate-200 bg-white p-6 shadow-sm">
-            <div className="flex items-start justify-between gap-4">
+          <section className="panel p-5 sm:p-6">
+            <div className="flex items-center justify-between gap-4">
               <div>
-                <div className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">
-                  ABC структура
-                </div>
-                <h2 className="mt-2 text-2xl font-black text-slate-950">
-                  Качество ассортимента
+                <div className="section-eyebrow">Инсайты</div>
+                <h2 className="mt-2 text-xl font-black text-slate-950">
+                  Что требует внимания
                 </h2>
               </div>
-
-              <div className="rounded-2xl bg-slate-100 px-4 py-2 text-sm font-black text-slate-700">
-                {formatNumber(abcTotal(current.totalAbc))} SKU
-              </div>
+              <span className="rounded-full bg-red-50 px-3 py-1 text-xs font-black text-red-600 ring-1 ring-red-100">
+                {attentionItems.filter((item) => item.level !== "ok").length}
+              </span>
             </div>
 
-            <div className="mt-5 grid gap-4">
-              <AbcCard title="WB" abc={current.wbAbc} />
-              <AbcCard title="Ozon" abc={current.ozonAbc} />
-              <AbcCard title="Всего WB + Ozon" abc={current.totalAbc} />
-            </div>
-          </section>
-
-          <section className="rounded-[32px] border border-slate-200 bg-white p-6 shadow-sm">
-            <div className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">
-              Контроль собственника
-            </div>
-            <h2 className="mt-2 text-2xl font-black text-slate-950">
-              Что требует внимания
-            </h2>
-
-            <div className="mt-5 grid gap-3">
+            <div className="mt-5 space-y-3">
               {attentionItems.map((item) => (
                 <Link
                   key={item.title}
                   href={item.href}
-                  className={`rounded-3xl border p-4 transition hover:-translate-y-0.5 hover:shadow-md ${
-                    item.level === "danger"
-                      ? "border-red-200 bg-red-50/50"
-                      : item.level === "warning"
-                        ? "border-amber-200 bg-amber-50/50"
-                        : "border-slate-200 bg-slate-50"
-                  }`}
+                  className="group flex items-center gap-4 rounded-2xl border border-slate-200 bg-white p-4 transition hover:border-indigo-200 hover:bg-indigo-50/30"
                 >
-                  <div className="flex items-start gap-4">
-                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-white text-xl shadow-sm">
-                      {item.icon}
-                    </div>
-
-                    <div>
-                      <h3 className="font-black text-slate-950">{item.title}</h3>
-                      <p className="mt-2 text-sm leading-6 text-slate-600">
-                        {item.text}
-                      </p>
-                      <div className="mt-2 text-sm font-black text-slate-950">
-                        Открыть →
-                      </div>
-                    </div>
+                  <div
+                    className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl text-sm font-black ${
+                      item.level === "danger"
+                        ? "bg-red-50 text-red-600"
+                        : item.level === "warning"
+                          ? "bg-amber-50 text-amber-600"
+                          : "bg-emerald-50 text-emerald-600"
+                    }`}
+                  >
+                    {item.icon}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="font-black text-slate-950">{item.title}</div>
+                    <p className="mt-1 text-sm leading-5 text-slate-500">{item.text}</p>
+                  </div>
+                  <div className="text-lg font-black text-slate-300 transition group-hover:translate-x-1 group-hover:text-indigo-500">
+                    →
                   </div>
                 </Link>
               ))}
@@ -1633,275 +1681,67 @@ export default async function HomePage({ searchParams }: Props) {
           </section>
         </section>
 
-        <section className="rounded-[32px] border border-slate-200 bg-white p-6 shadow-sm">
-          <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <section className="panel p-5 sm:p-6">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div>
-              <div className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">
-                Компании
-              </div>
-              <h2 className="mt-2 text-2xl font-black text-slate-950">
+              <div className="section-eyebrow">Компании</div>
+              <h2 className="mt-2 text-2xl font-black tracking-tight text-slate-950">
                 Разрез по компаниям
               </h2>
-              <p className="mt-2 text-sm text-slate-500">
-                Главное по каждой компании: выручка, прибыль, денежный поток,
-                реклама, кредиты, остатки и ABC.
+              <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">
+                Главное по каждой компании без перегруза: выручка, прибыль, ДДС, реклама, кредиты и ассортимент.
               </p>
             </div>
 
-            <Link
-              href="/settings/companies"
-              className="rounded-2xl border border-slate-300 px-5 py-3 text-center text-sm font-bold transition hover:bg-slate-100"
-            >
+            <Link href="/settings/companies" className="secondary-button">
               Настройки компаний
             </Link>
           </div>
 
           {current.companyRows.length > 0 ? (
-            <div className="grid gap-5 xl:grid-cols-2">
-              {current.companyRows.map((row) => {
-                const rowWbAbc = {
-                  A: row.wbAbcA,
-                  B: row.wbAbcB,
-                  C: row.wbAbcC,
-                };
-
-                const rowOzonAbc = {
-                  A: row.ozonAbcA,
-                  B: row.ozonAbcB,
-                  C: row.ozonAbcC,
-                };
-
-                return (
-                  <article
-                    key={row.companyName}
-                    className="overflow-hidden rounded-[32px] border border-slate-200 bg-white shadow-sm"
-                  >
-                    <div className="border-b border-slate-200 bg-slate-50 p-5">
-                      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-                        <div>
-                          <h3 className="text-2xl font-black text-slate-950">
-                            {row.companyName}
-                          </h3>
-
-                          <p className="mt-1 text-sm text-slate-500">
-                            WB / Ozon / прибыль / деньги / остатки
-                          </p>
-                        </div>
-
-                        <div
-                          className={`w-fit rounded-full px-4 py-2 text-sm font-black ring-1 ${valueTone(
-                            row.profitAfterOwnerWithdrawal
-                          )}`}
-                        >
-                          После вывода: {formatCurrency(row.profitAfterOwnerWithdrawal)}
-                        </div>
-                      </div>
-
-                      <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                        <MiniMetric
-                          title="Выручка всего"
-                          value={formatCurrency(row.totalRevenue)}
-                          subtitle="100% выручки"
-                          strong
-                        />
-                        <MiniMetric
-                          title="Опер. прибыль"
-                          value={formatCurrency(row.operatingProfitAfterTax)}
-                          subtitle={formatRevenuePercent(
-                            row.operatingProfitAfterTax,
-                            row.totalRevenue
-                          )}
-                          tone={valueColor(row.operatingProfitAfterTax)}
-                          strong
-                        />
-                        <MiniMetric
-                          title="Чистая прибыль"
-                          value={formatCurrency(row.netProfit)}
-                          subtitle={formatRevenuePercent(row.netProfit, row.totalRevenue)}
-                          tone={valueColor(row.netProfit)}
-                          strong
-                        />
-                        <MiniMetric
-                          title="Денежный поток"
-                          value={formatCurrency(row.cashFlowResult)}
-                          subtitle={formatRevenuePercent(
-                            row.cashFlowResult,
-                            row.totalRevenue
-                          )}
-                          tone={valueColor(row.cashFlowResult)}
-                          strong
-                        />
-                      </div>
-                    </div>
-
-                    <div className="space-y-5 p-5">
-                      <div>
-                        <div className="mb-3 text-xs font-bold uppercase tracking-[0.16em] text-slate-400">
-                          Каналы и реклама
-                        </div>
-                        <div className="grid gap-3 sm:grid-cols-3">
-                          <MiniMetric
-                            title="Выручка WB"
-                            value={formatCurrency(row.wbRevenue)}
-                            subtitle={formatRevenuePercent(
-                              row.wbRevenue,
-                              row.totalRevenue
-                            )}
-                          />
-                          <MiniMetric
-                            title="Выручка Ozon"
-                            value={formatCurrency(row.ozonRevenue)}
-                            subtitle={formatRevenuePercent(
-                              row.ozonRevenue,
-                              row.totalRevenue
-                            )}
-                          />
-                          <MiniMetric
-                            title="Реклама"
-                            value={formatCurrency(row.adsCost)}
-                            subtitle={formatRevenuePercent(row.adsCost, row.totalRevenue)}
-                            tone={
-                              row.drr !== null && row.drr > 12
-                                ? "text-red-700"
-                                : "text-slate-950"
-                            }
-                          />
-                        </div>
-                      </div>
-
-                      <div>
-                        <div className="mb-3 text-xs font-bold uppercase tracking-[0.16em] text-slate-400">
-                          Кредиты и вывод денег
-                        </div>
-                        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                          <MiniMetric
-                            title="Кредиты всего"
-                            value={formatCurrency(row.loanPayments)}
-                            subtitle="тело + проценты"
-                            tone={row.loanPayments > 0 ? "text-red-700" : "text-slate-950"}
-                          />
-                          <MiniMetric
-                            title="Тело кредита"
-                            value={formatCurrency(row.creditPrincipal)}
-                            subtitle="уменьшает деньги, не прибыль"
-                            tone={
-                              row.creditPrincipal > 0
-                                ? "text-red-700"
-                                : "text-slate-950"
-                            }
-                          />
-                          <MiniMetric
-                            title="Проценты"
-                            value={formatCurrency(row.creditInterest)}
-                            subtitle="уменьшают деньги и прибыль"
-                            tone={
-                              row.creditInterest > 0
-                                ? "text-red-700"
-                                : "text-slate-950"
-                            }
-                          />
-                          <MiniMetric
-                            title="Личные расходы"
-                            value={formatCurrency(row.personalExpenses)}
-                            subtitle={formatRevenuePercent(
-                              row.personalExpenses,
-                              row.totalRevenue
-                            )}
-                          />
-                        </div>
-                      </div>
-
-                      <div>
-                        <div className="mb-3 text-xs font-bold uppercase tracking-[0.16em] text-slate-400">
-                          Остатки и ассортимент
-                        </div>
-                        <div className="grid gap-3 sm:grid-cols-3">
-                          <MiniMetric
-                            title="Остатки WB"
-                            value={
-                              row.wbStockQty > 0
-                                ? `${formatNumber(row.wbStockQty)} шт`
-                                : "Нет данных"
-                            }
-                          />
-                          <MiniMetric
-                            title="Остатки Ozon"
-                            value={
-                              row.ozonStockQty > 0
-                                ? `${formatNumber(row.ozonStockQty)} шт`
-                                : "Нет данных"
-                            }
-                          />
-                          <MiniMetric
-                            title="ABC"
-                            value={`${formatNumber(
-                              abcTotal(rowWbAbc) + abcTotal(rowOzonAbc)
-                            )} SKU`}
-                            subtitle={`WB: ${abcTotal(rowWbAbc)} · Ozon: ${abcTotal(
-                              rowOzonAbc
-                            )}`}
-                          />
-                        </div>
-                      </div>
-
-                      <div className="grid gap-4 border-t border-slate-200 pt-5 sm:grid-cols-2">
-                        <div>
-                          <div className="mb-3 text-sm font-black text-slate-700">
-                            ABC WB
-                          </div>
-                          <AbcPills abc={rowWbAbc} />
-                        </div>
-
-                        <div>
-                          <div className="mb-3 text-sm font-black text-slate-700">
-                            ABC Ozon
-                          </div>
-                          <AbcPills abc={rowOzonAbc} />
-                        </div>
-                      </div>
-                    </div>
-                  </article>
-                );
-              })}
+            <div className="mt-6 grid gap-5 xl:grid-cols-2">
+              {current.companyRows.map((row) => (
+                <CompanyCard
+                  key={row.companyName}
+                  row={row}
+                  dateFrom={selectedPeriod.dateFrom}
+                  dateTo={selectedPeriod.dateTo}
+                />
+              ))}
             </div>
           ) : (
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-8 text-center text-slate-500">
+            <div className="mt-6 rounded-2xl border border-slate-200 bg-slate-50 p-8 text-center text-slate-500">
               Нет компаний с показателями за выбранный период.
             </div>
           )}
         </section>
 
-        <section className="rounded-[32px] border border-slate-200 bg-white p-6 shadow-sm">
-          <div className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">
-            Быстрый доступ
+        <section className="panel p-5 sm:p-6">
+          <div>
+            <div className="section-eyebrow">Навигация</div>
+            <h2 className="mt-2 text-2xl font-black tracking-tight text-slate-950">
+              Быстрые действия
+            </h2>
           </div>
-          <h2 className="mt-2 text-2xl font-black text-slate-950">
-            Основные разделы
-          </h2>
 
-          <div className="mt-5 grid gap-5 md:grid-cols-2 xl:grid-cols-4">
-            {quickLinks.map((item) => (
+          <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            {quickActions.map((item) => (
               <Link
-                key={item.href}
+                key={item.href + item.title}
                 href={item.href}
-                className="rounded-3xl border border-slate-200 bg-slate-50 p-5 transition hover:-translate-y-0.5 hover:bg-white hover:shadow-md"
+                className="group flex items-center gap-4 rounded-2xl border border-slate-200 bg-white p-4 transition hover:border-indigo-200 hover:bg-indigo-50/30"
               >
-                <div className="flex items-start gap-4">
-                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-white text-xl shadow-sm">
-                    {item.icon}
-                  </div>
+                <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl text-base font-black ${item.tone}`}>
+                  {item.icon}
+                </div>
 
-                  <div>
-                    <h3 className="font-black text-slate-950">{item.title}</h3>
+                <div className="min-w-0 flex-1">
+                  <div className="font-black text-slate-950">{item.title}</div>
+                  <p className="mt-1 text-sm leading-5 text-slate-500">{item.description}</p>
+                </div>
 
-                    <p className="mt-2 text-sm leading-6 text-slate-500">
-                      {item.description}
-                    </p>
-
-                    <div className="mt-3 text-sm font-black text-slate-950">
-                      Открыть →
-                    </div>
-                  </div>
+                <div className="text-lg font-black text-slate-300 transition group-hover:translate-x-1 group-hover:text-indigo-500">
+                  →
                 </div>
               </Link>
             ))}

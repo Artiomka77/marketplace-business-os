@@ -5,68 +5,172 @@ import { usePathname } from "next/navigation";
 
 const items = [
   {
-    title: "Dashboard",
+    title: "Главная",
     href: "/",
+    icon: "⌂",
   },
   {
     title: "Центр прибыли",
     href: "/insights",
+    icon: "◎",
   },
   {
     title: "Аналитика",
     href: "/analytics",
+    icon: "▦",
   },
   {
     title: "Финансы",
     href: "/finance",
+    icon: "₽",
+  },
+  {
+    title: "Реклама",
+    href: "/ads-mapping",
+    icon: "↗",
+  },
+  {
+    title: "Остатки",
+    href: "/stocks",
+    icon: "▣",
+  },
+  {
+    title: "ABC / ассортимент",
+    href: "/abc",
+    icon: "◔",
   },
   {
     title: "Импорт",
     href: "/import",
+    icon: "⇧",
   },
   {
     title: "Настройки",
     href: "/settings/companies",
     activePrefix: "/settings",
+    icon: "⚙",
   },
 ];
+
+function isItemActive(pathname: string, item: (typeof items)[number]) {
+  if (item.href === "/") return pathname === "/";
+  return pathname.startsWith(item.activePrefix ?? item.href);
+}
 
 export default function AppNav() {
   const pathname = usePathname();
 
   return (
-    <div className="sticky top-0 z-50 border-b border-slate-200 bg-white">
-      <div className="mx-auto flex max-w-[1800px] items-center justify-between gap-4 px-8 py-3">
-        <div className="flex gap-2 overflow-x-auto">
+    <>
+      <aside className="fixed inset-y-0 left-0 z-[80] hidden w-72 flex-col border-r border-slate-200 bg-white/90 shadow-xl shadow-slate-200/40 backdrop-blur-xl lg:flex">
+        <div className="flex h-20 items-center gap-3 border-b border-slate-100 px-6">
+          <Link
+            href="/"
+            className="flex h-11 w-11 items-center justify-center rounded-2xl bg-indigo-600 text-lg font-black text-white shadow-lg shadow-indigo-200"
+            aria-label="Marketplace OS"
+          >
+            OS
+          </Link>
+
+          <div>
+            <div className="text-base font-black leading-tight tracking-tight text-slate-950">
+              Marketplace OS
+            </div>
+            <div className="mt-1 text-xs font-semibold text-slate-500">
+              Аналитика бизнеса
+            </div>
+          </div>
+        </div>
+
+        <nav className="flex-1 overflow-y-auto px-4 py-5">
+          <div className="space-y-1">
+            {items.map((item) => {
+              const active = isItemActive(pathname, item);
+
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={`group flex items-center gap-3 rounded-2xl px-4 py-3 text-sm font-bold transition ${
+                    active
+                      ? "bg-indigo-50 text-indigo-700 shadow-sm ring-1 ring-indigo-100"
+                      : "text-slate-600 hover:bg-slate-50 hover:text-slate-950"
+                  }`}
+                >
+                  <span
+                    className={`flex h-9 w-9 items-center justify-center rounded-xl text-sm transition ${
+                      active
+                        ? "bg-white text-indigo-700 shadow-sm"
+                        : "bg-slate-100 text-slate-500 group-hover:bg-white group-hover:text-slate-950"
+                    }`}
+                  >
+                    {item.icon}
+                  </span>
+                  <span>{item.title}</span>
+                </Link>
+              );
+            })}
+          </div>
+        </nav>
+
+        <div className="border-t border-slate-100 p-4">
+          <div className="rounded-3xl bg-slate-50 p-4 ring-1 ring-slate-200">
+            <div className="text-sm font-black text-slate-950">
+              Нужна помощь?
+            </div>
+            <p className="mt-1 text-xs leading-5 text-slate-500">
+              Открой настройки, импорт или финансовые разделы из меню слева.
+            </p>
+          </div>
+
+          <a
+            href="/auth/sign-out"
+            className="mt-3 flex items-center justify-center rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-600 transition hover:bg-slate-50 hover:text-slate-950"
+          >
+            Выйти
+          </a>
+        </div>
+      </aside>
+
+      <header className="sticky top-0 z-[80] border-b border-slate-200 bg-white/90 backdrop-blur-xl lg:hidden">
+        <div className="flex items-center justify-between gap-3 px-4 py-3">
+          <Link href="/" className="flex items-center gap-2">
+            <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-indigo-600 text-sm font-black text-white">
+              OS
+            </span>
+            <span className="text-sm font-black text-slate-950">
+              Marketplace OS
+            </span>
+          </Link>
+
+          <a
+            href="/auth/sign-out"
+            className="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-600"
+          >
+            Выйти
+          </a>
+        </div>
+
+        <nav className="flex gap-2 overflow-x-auto px-4 pb-3">
           {items.map((item) => {
-            const isActive =
-              item.href === "/"
-                ? pathname === "/"
-                : pathname.startsWith(item.activePrefix ?? item.href);
+            const active = isItemActive(pathname, item);
 
             return (
               <Link
                 key={item.href}
                 href={item.href}
-                className={`whitespace-nowrap rounded-xl px-4 py-2 text-sm font-semibold transition ${
-                  isActive
-                    ? "bg-slate-900 text-white"
-                    : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+                className={`whitespace-nowrap rounded-2xl px-4 py-2 text-sm font-bold ${
+                  active
+                    ? "bg-indigo-50 text-indigo-700 ring-1 ring-indigo-100"
+                    : "bg-slate-50 text-slate-600"
                 }`}
               >
                 {item.title}
               </Link>
             );
           })}
-        </div>
-
-        <a
-          href="/auth/sign-out"
-          className="whitespace-nowrap rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
-        >
-          Выйти
-        </a>
-      </div>
-    </div>
+        </nav>
+      </header>
+    </>
   );
 }

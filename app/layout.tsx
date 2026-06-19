@@ -15,9 +15,9 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="ru">
-      <body className="bg-slate-100 font-sans text-slate-900 antialiased">
+      <body className="bg-background font-sans text-slate-950 antialiased">
         <AppNav />
-        {children}
+        <div className="min-h-screen lg:pl-72">{children}</div>
       </body>
     </html>
   );
