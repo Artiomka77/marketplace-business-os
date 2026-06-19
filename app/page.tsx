@@ -109,7 +109,7 @@ const quickLinks = [
   {
     title: "Платёжный календарь",
     description: "Ближайшие обязательства и контроль кассовых разрывов.",
-    href: "/finance/payment-calendar",
+    href: "/finance/calendar",
     icon: "📅",
   },
   {
@@ -597,19 +597,35 @@ function MiniMetric({
   value,
   subtitle,
   tone = "text-slate-950",
+  strong = false,
 }: {
   title: string;
   value: string;
   subtitle?: string;
   tone?: string;
+  strong?: boolean;
 }) {
   return (
-    <div className="rounded-2xl bg-slate-50 px-4 py-3 ring-1 ring-slate-200">
-      <div className="text-xs font-semibold text-slate-500">{title}</div>
-      <div className={`mt-1 text-lg font-black ${tone}`}>{value}</div>
+    <div
+      className={`rounded-2xl border px-4 py-3 shadow-sm ${
+        strong
+          ? "border-slate-300 bg-white"
+          : "border-slate-200 bg-white/80"
+      }`}
+    >
+      <div className="text-xs font-bold uppercase tracking-[0.08em] text-slate-500">
+        {title}
+      </div>
+      <div
+        className={`mt-2 break-words ${
+          strong ? "text-xl" : "text-lg"
+        } font-black leading-tight ${tone}`}
+      >
+        {value}
+      </div>
 
       {subtitle ? (
-        <div className="mt-1 text-xs font-semibold text-slate-500">
+        <div className="mt-2 text-xs font-semibold leading-5 text-slate-500">
           {subtitle}
         </div>
       ) : null}
@@ -1146,7 +1162,7 @@ export default async function HomePage({ searchParams }: Props) {
               current.netProfit
             )}. Проверь проценты по кредитам и расходы, влияющие на прибыль.`
           : `Чистая прибыль бизнеса: ${formatCurrency(current.netProfit)}.`,
-      href: "/finance/cash-flow",
+      href: "/finance/cashflow",
       icon: "💸",
     },
     {
@@ -1190,39 +1206,28 @@ export default async function HomePage({ searchParams }: Props) {
   return (
     <main className="min-h-screen bg-slate-100 px-4 py-6 sm:px-6 xl:px-10">
       <div className="mx-auto max-w-[1800px] space-y-6">
-        <section className="rounded-[36px] border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
-          <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
-            <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-3">
-                <span className="rounded-full bg-slate-950 px-4 py-2 text-xs font-bold uppercase tracking-[0.18em] text-white">
-                  Dashboard собственника
-                </span>
+        <section className="sticky top-3 z-40 rounded-[32px] border border-slate-200 bg-white/90 p-4 shadow-lg shadow-slate-200/60 backdrop-blur-xl supports-[backdrop-filter]:bg-white/80 sm:p-5">
+          <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+            <div className="flex min-w-0 flex-wrap items-center gap-3">
+              <span className="rounded-full bg-slate-950 px-4 py-2 text-xs font-black uppercase tracking-[0.22em] text-white shadow-sm">
+                Dashboard собственника
+              </span>
 
-                <span className="rounded-full bg-slate-100 px-4 py-2 text-xs font-bold text-slate-600 ring-1 ring-slate-200">
-                  {selectedPeriod.description}
-                </span>
+              <span className="rounded-full bg-slate-100 px-4 py-2 text-xs font-bold text-slate-700 ring-1 ring-slate-200">
+                {selectedPeriod.description}
+              </span>
 
-                <span className="rounded-full bg-slate-100 px-4 py-2 text-xs font-bold text-slate-600 ring-1 ring-slate-200">
-                  Сравнение: {previousPeriod.description}
-                </span>
+              <span className="rounded-full bg-slate-100 px-4 py-2 text-xs font-bold text-slate-700 ring-1 ring-slate-200">
+                Сравнение: {previousPeriod.description}
+              </span>
 
-                <span className="rounded-full bg-slate-100 px-4 py-2 text-xs font-bold text-slate-600 ring-1 ring-slate-200">
-                  {selectedCompanyName ?? "Все компании"}
-                </span>
-              </div>
-
-              <h1 className="mt-5 text-3xl font-black tracking-tight text-slate-950 sm:text-4xl">
-                Главная панель бизнеса
-              </h1>
-
-              <p className="mt-3 max-w-3xl text-base leading-7 text-slate-500">
-                Деньги, прибыль, реклама, остатки, ABC и кредитная нагрузка по
-                Wildberries и Ozon за выбранный период.
-              </p>
+              <span className="rounded-full bg-slate-100 px-4 py-2 text-xs font-bold text-slate-700 ring-1 ring-slate-200">
+                {selectedCompanyName ?? "Все компании"}
+              </span>
             </div>
 
-            <div className="flex flex-col gap-3 sm:flex-row xl:shrink-0">
-              <details className="group">
+            <div className="flex w-full flex-col gap-3 sm:flex-row xl:w-auto xl:shrink-0">
+              <details className="group relative w-full sm:w-auto">
                 <summary className="flex cursor-pointer list-none items-center justify-center rounded-2xl border border-slate-200 bg-slate-50 px-5 py-3 text-sm font-black text-slate-950 transition hover:bg-white">
                   Фильтры и период
                   <span className="ml-2 text-slate-400 transition group-open:rotate-180">
@@ -1230,7 +1235,7 @@ export default async function HomePage({ searchParams }: Props) {
                   </span>
                 </summary>
 
-                <div className="mt-3 w-full rounded-[28px] border border-slate-200 bg-white p-4 shadow-xl xl:absolute xl:right-10 xl:z-20 xl:w-[760px]">
+                <div className="mt-3 max-h-[75vh] w-full overflow-y-auto rounded-[28px] border border-slate-200 bg-white p-4 shadow-2xl xl:absolute xl:right-0 xl:top-full xl:z-50 xl:w-[760px]">
                   <div className="grid gap-2 sm:grid-cols-3">
                     {presetPeriods.map((period) => {
                       const isActive = selectedPeriodOption.key === period.key;
@@ -1337,6 +1342,42 @@ export default async function HomePage({ searchParams }: Props) {
                 <span>📥</span>
                 Импорт
               </Link>
+            </div>
+          </div>
+        </section>
+
+        <section className="rounded-[36px] border border-slate-200 bg-white p-6 shadow-sm">
+          <div className="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
+            <div>
+              <h1 className="text-3xl font-black tracking-tight text-slate-950 sm:text-4xl">
+                Главная панель бизнеса
+              </h1>
+
+              <p className="mt-3 max-w-3xl text-base leading-7 text-slate-500">
+                Деньги, прибыль, реклама, остатки, ABC и кредитная нагрузка по
+                Wildberries и Ozon за выбранный период.
+              </p>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-3 xl:min-w-[620px]">
+              <MiniMetric
+                title="Период"
+                value={selectedPeriod.description}
+                subtitle="основные показатели"
+                strong
+              />
+              <MiniMetric
+                title="Сравнение"
+                value={previousPeriod.description}
+                subtitle="предыдущий период"
+                strong
+              />
+              <MiniMetric
+                title="Компании"
+                value={selectedCompanyName ?? "Все компании"}
+                subtitle="текущий фильтр"
+                strong
+              />
             </div>
           </div>
         </section>
@@ -1505,7 +1546,7 @@ export default async function HomePage({ searchParams }: Props) {
           />
 
           <MetricCard
-            title="Только ДДС"
+            title="Только денежный поток"
             value={
               current.cashOnlyExpenses > 0
                 ? formatCurrency(current.cashOnlyExpenses)
@@ -1636,8 +1677,8 @@ export default async function HomePage({ searchParams }: Props) {
                 Разрез по ИП
               </h2>
               <p className="mt-2 text-sm text-slate-500">
-                Выручка, реклама, ДРР, прибыль, вывод собственника, ДДС, кредиты,
-                остатки и ABC по каждой компании.
+                Главное по каждой компании: выручка, операционная прибыль,
+                чистая прибыль, денежный поток, реклама, кредиты, остатки и ABC.
               </p>
             </div>
 
@@ -1664,152 +1705,207 @@ export default async function HomePage({ searchParams }: Props) {
                   C: row.ozonAbcC,
                 };
 
+                const rowDrrText =
+                  row.drr !== null ? formatPercent(row.drr) : "—";
+
                 return (
                   <article
                     key={row.companyName}
-                    className="rounded-[28px] border border-slate-200 bg-slate-50 p-5"
+                    className="overflow-hidden rounded-[32px] border border-slate-200 bg-white shadow-sm"
                   >
-                    <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-                      <div>
-                        <h3 className="text-2xl font-black text-slate-950">
-                          {row.companyName}
-                        </h3>
+                    <div className="border-b border-slate-200 bg-slate-50 p-5">
+                      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                        <div>
+                          <h3 className="text-2xl font-black text-slate-950">
+                            {row.companyName}
+                          </h3>
 
-                        <p className="mt-1 text-sm text-slate-500">
-                          WB / Ozon / финансы / остатки
-                        </p>
+                          <p className="mt-1 text-sm text-slate-500">
+                            WB / Ozon / прибыль / деньги / остатки
+                          </p>
+                        </div>
+
+                        <div
+                          className={`w-fit rounded-full px-4 py-2 text-sm font-black ring-1 ${valueTone(
+                            row.profitAfterOwnerWithdrawal
+                          )}`}
+                        >
+                          После вывода:{" "}
+                          {formatCurrency(row.profitAfterOwnerWithdrawal)}
+                        </div>
                       </div>
 
-                      <div
-                        className={`w-fit rounded-full px-4 py-2 text-sm font-black ring-1 ${valueTone(
-                          row.profitAfterOwnerWithdrawal
-                        )}`}
-                      >
-                        {formatCurrency(row.profitAfterOwnerWithdrawal)}
+                      <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                        <MiniMetric
+                          title="Выручка всего"
+                          value={formatCurrency(row.totalRevenue)}
+                          subtitle="100% выручки"
+                          strong
+                        />
+                        <MiniMetric
+                          title="Опер. прибыль"
+                          value={formatCurrency(row.operatingProfitAfterTax)}
+                          subtitle={formatRevenuePercent(
+                            row.operatingProfitAfterTax,
+                            row.totalRevenue
+                          )}
+                          tone={valueColor(row.operatingProfitAfterTax)}
+                          strong
+                        />
+                        <MiniMetric
+                          title="Чистая прибыль"
+                          value={formatCurrency(row.netProfit)}
+                          subtitle={formatRevenuePercent(
+                            row.netProfit,
+                            row.totalRevenue
+                          )}
+                          tone={valueColor(row.netProfit)}
+                          strong
+                        />
+                        <MiniMetric
+                          title="Денежный поток"
+                          value={formatCurrency(row.cashFlowResult)}
+                          subtitle={formatRevenuePercent(
+                            row.cashFlowResult,
+                            row.totalRevenue
+                          )}
+                          tone={valueColor(row.cashFlowResult)}
+                          strong
+                        />
                       </div>
                     </div>
 
-                    <div className="mt-5 grid gap-3 sm:grid-cols-3">
-                      <MiniMetric
-                        title="WB"
-                        value={formatCurrency(row.wbRevenue)}
-                        subtitle={formatRevenuePercent(
-                          row.wbRevenue,
-                          row.totalRevenue
-                        )}
-                      />
-                      <MiniMetric
-                        title="Ozon"
-                        value={formatCurrency(row.ozonRevenue)}
-                        subtitle={formatRevenuePercent(
-                          row.ozonRevenue,
-                          row.totalRevenue
-                        )}
-                      />
-                      <MiniMetric
-                        title="Всего"
-                        value={formatCurrency(row.totalRevenue)}
-                        subtitle="100% выручки"
-                      />
-                      <MiniMetric
-                        title="Реклама"
-                        value={formatCurrency(row.adsCost)}
-                        subtitle={formatRevenuePercent(row.adsCost, row.totalRevenue)}
-                      />
-                      <MiniMetric
-                        title="ДРР"
-                        value={row.drr !== null ? formatPercent(row.drr) : "—"}
-                        subtitle="Реклама / выручка"
-                        tone={
-                          row.drr !== null && row.drr > 12
-                            ? "text-red-700"
-                            : "text-slate-950"
-                        }
-                      />
-                      <MiniMetric
-                        title="Тело кредита"
-                        value={formatCurrency(row.creditPrincipal)}
-                        subtitle={formatRevenuePercent(
-                          row.creditPrincipal,
-                          row.totalRevenue
-                        )}
-                      />
-                      <MiniMetric
-                        title="Проценты"
-                        value={formatCurrency(row.creditInterest)}
-                        subtitle={formatRevenuePercent(
-                          row.creditInterest,
-                          row.totalRevenue
-                        )}
-                      />
-                      <MiniMetric
-                        title="Чистая прибыль"
-                        value={formatCurrency(row.netProfit)}
-                        subtitle={formatRevenuePercent(row.netProfit, row.totalRevenue)}
-                        tone={valueColor(row.netProfit)}
-                      />
-                      <MiniMetric
-                        title="После вывода"
-                        value={formatCurrency(row.profitAfterOwnerWithdrawal)}
-                        subtitle={formatRevenuePercent(
-                          row.profitAfterOwnerWithdrawal,
-                          row.totalRevenue
-                        )}
-                        tone={valueColor(row.profitAfterOwnerWithdrawal)}
-                      />
-                      <MiniMetric
-                        title="Денежный поток"
-                        value={formatCurrency(row.cashFlowResult)}
-                        subtitle={formatRevenuePercent(row.cashFlowResult, row.totalRevenue)}
-                        tone={valueColor(row.cashFlowResult)}
-                      />
-                      <MiniMetric
-                        title="Личные расходы"
-                        value={formatCurrency(row.personalExpenses)}
-                        subtitle={formatRevenuePercent(
-                          row.personalExpenses,
-                          row.totalRevenue
-                        )}
-                      />
-                      <MiniMetric
-                        title="Только ДДС"
-                        value={formatCurrency(row.cashOnlyExpenses)}
-                        subtitle={formatRevenuePercent(
-                          row.cashOnlyExpenses,
-                          row.totalRevenue
-                        )}
-                      />
-                      <MiniMetric
-                        title="Расходы в прибыли"
-                        value={formatCurrency(row.financialExpenses)}
-                        subtitle={formatRevenuePercent(
-                          row.financialExpenses,
-                          row.totalRevenue
-                        )}
-                      />
-                      <MiniMetric
-                        title="Остатки WB"
-                        value={`${formatNumber(row.wbStockQty)} шт`}
-                      />
-                      <MiniMetric
-                        title="Остатки Ozon"
-                        value={`${formatNumber(row.ozonStockQty)} шт`}
-                      />
-                    </div>
-
-                    <div className="mt-5 grid gap-4 border-t border-slate-200 pt-5 sm:grid-cols-2">
-                      <div>
-                        <div className="mb-3 text-sm font-black text-slate-700">
-                          ABC WB
-                        </div>
-                        <AbcPills abc={rowWbAbc} />
+                    <div className="p-5">
+                      <div className="grid gap-3 sm:grid-cols-3">
+                        <MiniMetric
+                          title="Выручка WB"
+                          value={formatCurrency(row.wbRevenue)}
+                          subtitle={formatRevenuePercent(
+                            row.wbRevenue,
+                            row.totalRevenue
+                          )}
+                        />
+                        <MiniMetric
+                          title="Выручка Ozon"
+                          value={formatCurrency(row.ozonRevenue)}
+                          subtitle={formatRevenuePercent(
+                            row.ozonRevenue,
+                            row.totalRevenue
+                          )}
+                        />
+                        <MiniMetric
+                          title="Реклама"
+                          value={formatCurrency(row.adsCost)}
+                          subtitle={`ДРР: ${rowDrrText} · ${formatRevenuePercent(
+                            row.adsCost,
+                            row.totalRevenue
+                          )}`}
+                          tone={
+                            row.drr !== null && row.drr > 12
+                              ? "text-red-700"
+                              : "text-slate-950"
+                          }
+                        />
+                        <MiniMetric
+                          title="Тело кредита"
+                          value={formatCurrency(row.creditPrincipal)}
+                          subtitle={formatRevenuePercent(
+                            row.creditPrincipal,
+                            row.totalRevenue
+                          )}
+                          tone={
+                            row.creditPrincipal > 0
+                              ? "text-red-700"
+                              : "text-slate-950"
+                          }
+                        />
+                        <MiniMetric
+                          title="Проценты"
+                          value={formatCurrency(row.creditInterest)}
+                          subtitle={formatRevenuePercent(
+                            row.creditInterest,
+                            row.totalRevenue
+                          )}
+                          tone={
+                            row.creditInterest > 0
+                              ? "text-red-700"
+                              : "text-slate-950"
+                          }
+                        />
+                        <MiniMetric
+                          title="Личные расходы"
+                          value={formatCurrency(row.personalExpenses)}
+                          subtitle={formatRevenuePercent(
+                            row.personalExpenses,
+                            row.totalRevenue
+                          )}
+                        />
+                        <MiniMetric
+                          title="После вывода"
+                          value={formatCurrency(row.profitAfterOwnerWithdrawal)}
+                          subtitle={formatRevenuePercent(
+                            row.profitAfterOwnerWithdrawal,
+                            row.totalRevenue
+                          )}
+                          tone={valueColor(row.profitAfterOwnerWithdrawal)}
+                        />
+                        <MiniMetric
+                          title="Только денежный поток"
+                          value={formatCurrency(row.cashOnlyExpenses)}
+                          subtitle={formatRevenuePercent(
+                            row.cashOnlyExpenses,
+                            row.totalRevenue
+                          )}
+                        />
+                        <MiniMetric
+                          title="Расходы, влияющие на прибыль"
+                          value={formatCurrency(row.financialExpenses)}
+                          subtitle={formatRevenuePercent(
+                            row.financialExpenses,
+                            row.totalRevenue
+                          )}
+                        />
+                        <MiniMetric
+                          title="Остатки WB"
+                          value={
+                            row.wbStockQty > 0
+                              ? `${formatNumber(row.wbStockQty)} шт`
+                              : "Нет данных"
+                          }
+                        />
+                        <MiniMetric
+                          title="Остатки Ozon"
+                          value={
+                            row.ozonStockQty > 0
+                              ? `${formatNumber(row.ozonStockQty)} шт`
+                              : "Нет данных"
+                          }
+                        />
+                        <MiniMetric
+                          title="ABC"
+                          value={`${formatNumber(
+                            abcTotal(rowWbAbc) + abcTotal(rowOzonAbc)
+                          )} SKU`}
+                          subtitle={`WB: ${abcTotal(rowWbAbc)} · Ozon: ${abcTotal(
+                            rowOzonAbc
+                          )}`}
+                        />
                       </div>
 
-                      <div>
-                        <div className="mb-3 text-sm font-black text-slate-700">
-                          ABC Ozon
+                      <div className="mt-5 grid gap-4 border-t border-slate-200 pt-5 sm:grid-cols-2">
+                        <div>
+                          <div className="mb-3 text-sm font-black text-slate-700">
+                            ABC WB
+                          </div>
+                          <AbcPills abc={rowWbAbc} />
                         </div>
-                        <AbcPills abc={rowOzonAbc} />
+
+                        <div>
+                          <div className="mb-3 text-sm font-black text-slate-700">
+                            ABC Ozon
+                          </div>
+                          <AbcPills abc={rowOzonAbc} />
+                        </div>
                       </div>
                     </div>
                   </article>
