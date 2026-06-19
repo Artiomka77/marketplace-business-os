@@ -1603,7 +1603,7 @@ function DynamicInsights({
   };
 
   return (
-    <section className="panel min-w-0 p-4">
+    <section className="panel h-full min-w-0 p-4">
       <div className="flex items-center justify-between gap-4">
         <div>
           <h2 className="text-xl font-black tracking-tight text-slate-950">
@@ -1716,16 +1716,13 @@ function MarketplaceShare({
   ];
 
   return (
-    <section className="panel p-4 sm:p-5">
+    <section className="panel h-full p-4 sm:p-5">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div>
           <div className="section-eyebrow">Разрез по маркетплейсам</div>
           <h2 className="mt-1 text-xl font-black tracking-tight text-slate-950">
             Доля выручки WB / Ozon
           </h2>
-          <p className="mt-1 text-sm leading-6 text-slate-500">
-            Выбор компании синхронно меняет долю WB/Ozon и график динамики.
-          </p>
         </div>
 
         <div className="flex flex-wrap gap-2">
@@ -1757,7 +1754,7 @@ function MarketplaceShare({
       </div>
 
       <div className="mt-5 space-y-4">
-        <div className="grid gap-4 md:grid-cols-[180px_1fr_68px] md:items-center">
+        <div className="grid gap-4 md:grid-cols-[160px_1fr_58px] md:items-center">
           <div className="flex items-start gap-3">
             <span className="mt-1 h-3 w-3 rounded-full bg-violet-600" />
             <div>
@@ -1785,7 +1782,7 @@ function MarketplaceShare({
           </div>
         </div>
 
-        <div className="grid gap-4 md:grid-cols-[180px_1fr_68px] md:items-center">
+        <div className="grid gap-4 md:grid-cols-[160px_1fr_58px] md:items-center">
           <div className="flex items-start gap-3">
             <span className="mt-1 h-3 w-3 rounded-full bg-sky-500" />
             <div>
@@ -2660,7 +2657,7 @@ export default async function HomePage({ searchParams }: Props) {
           />
         </section>
 
-        <section className="grid items-start gap-4 2xl:grid-cols-[repeat(6,minmax(0,1fr))]">
+        <section className="grid items-stretch gap-4 2xl:grid-cols-[repeat(6,minmax(0,1fr))]">
           <div className="min-w-0 2xl:col-span-4">
             <MarketplaceShare
               wbRevenue={marketplaceCurrent.wbRevenue}
@@ -2677,7 +2674,7 @@ export default async function HomePage({ searchParams }: Props) {
             />
           </div>
 
-          <section className="panel min-w-0 p-4 2xl:col-span-2">
+          <section className="panel h-full min-w-0 p-4 2xl:col-span-2">
             <div className="flex items-center justify-between gap-4">
               <div>
                 <h2 className="text-xl font-black text-slate-950">
@@ -2720,8 +2717,8 @@ export default async function HomePage({ searchParams }: Props) {
           </section>
         </section>
 
-        <section className="grid items-start gap-4 2xl:grid-cols-[repeat(6,minmax(0,1fr))]">
-          <section className="panel min-w-0 p-4 2xl:col-span-4">
+        <section className="grid items-stretch gap-4 2xl:grid-cols-[repeat(6,minmax(0,1fr))]">
+          <section className="panel h-full min-w-0 p-4 2xl:col-span-4">
             <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
               <div>
                 <h3 className="text-xl font-black tracking-tight text-slate-950">
