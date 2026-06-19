@@ -269,20 +269,21 @@ function isChunkDoneResult(result: unknown) {
   return true;
 }
 
-function throwIfSkippedResult(result: unknown) {
+function getSkippedMessage(result: unknown) {
   if (
     typeof result === "object" &&
     result !== null &&
     "skipped" in result &&
     result.skipped === true
   ) {
-    const message =
-      "message" in result && typeof result.message === "string"
-        ? result.message
-        : "Историческая задача была пропущена.";
+    if ("message" in result && typeof result.message === "string") {
+      return result.message;
+    }
 
-    throw new Error(message);
+    return "Историческая задача была пропущена.";
   }
+
+  return null;
 }
 
 async function findNextHistoricalJob(options: RunHistoricalSyncJobOptions) {
@@ -342,6 +343,20 @@ async function markJobProgress(jobId: string, nextCursorOffset: number | null) {
 }
 
 async function markJobSuccess(jobId: string) {
+  return prisma.historicalSyncJob.update({
+    where: { id: jobId },
+    data: {
+      status: "SUCCESS",
+      completedSteps: 1,
+      finishedAt: new Date(),
+      lastError: null,
+      cursorDate: null,
+      cursorOffset: null,
+    },
+  });
+}
+
+async function markJobSkipped(jobId: string) {
   return prisma.historicalSyncJob.update({
     where: { id: jobId },
     data: {
@@ -479,10 +494,32 @@ export async function runNextHistoricalSyncJob(
 
   try {
     const result = await runMarketplaceJob(job);
-
-    throwIfSkippedResult(result);
-
+    const skippedMessage = getSkippedMessage(result);
     const rows = getRowsFromResult(result);
+
+    if (skippedMessage) {
+      await markJobSkipped(job.id);
+
+      return {
+        ok: true,
+        skipped: true,
+        partial: false,
+        jobId: job.id,
+        companyId: job.companyId,
+        companyName: job.companyName,
+        marketplace: job.marketplace,
+        dataType: job.dataType,
+        cursorReportNumber: job.cursorReportNumber,
+        cursorOffset: job.cursorOffset ?? 0,
+        nextCursorOffset: null,
+        dateFrom: job.dateFrom.toISOString().slice(0, 10),
+        dateTo: job.dateTo.toISOString().slice(0, 10),
+        rows,
+        message: skippedMessage,
+        result,
+      };
+    }
+
     const isDone = isChunkDoneResult(result);
     const nextCursorOffset = getNextCursorOffsetFromResult(result);
 
