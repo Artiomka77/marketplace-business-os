@@ -1099,16 +1099,78 @@ function ChartPresetLink({
   );
 }
 
+function InsightValue({
+  label,
+  value,
+  tone = "text-slate-950",
+}: {
+  label: string;
+  value: string;
+  tone?: string;
+}) {
+  return (
+    <div>
+      <div className="text-[11px] font-bold text-slate-400">{label}</div>
+      <div className={`mt-1 text-sm font-black ${tone}`}>{value}</div>
+    </div>
+  );
+}
+
+function metricTotalFromSummary(summary: DashboardSummary, metric: ChartMetricConfig) {
+  if (metric.label === "Выручка") return summary.totalRevenue;
+  if (metric.label === "ДРР") return summary.drr ?? 0;
+  if (metric.label === "Опер. прибыль") return summary.operatingProfitAfterTax;
+  if (metric.label === "Кредиты") return summary.loanPayments;
+  if (metric.label === "Чистая прибыль") return summary.netProfit;
+  if (metric.label === "Денежный поток") return summary.cashFlowResult;
+  return 0;
+}
+
+function percentDelta(currentValue: number, previousValue: number) {
+  if (previousValue === 0) return null;
+  return ((currentValue - previousValue) / Math.abs(previousValue)) * 100;
+}
+
+function formatDelta(value: number | null, kind: ChartMetricKind) {
+  if (value === null) return "—";
+  if (kind === "percent") return formatSignedPoints(value);
+  return formatSignedPercent(value);
+}
+
+function formatSecondaryInsight(params: {
+  preset: ChartPresetConfig;
+  primaryValue: number;
+  secondaryValue: number;
+}) {
+  const { preset, primaryValue, secondaryValue } = params;
+
+  if (preset.secondary.label === "ДРР") {
+    const adsCost = primaryValue * (secondaryValue / 100);
+    return `${formatCurrency(adsCost)} / ${formatPercent(secondaryValue)}`;
+  }
+
+  if (preset.primary.label === "Выручка" && preset.secondary.kind === "money") {
+    const share = primaryValue !== 0 ? (secondaryValue / primaryValue) * 100 : 0;
+    return `${formatCurrency(secondaryValue)} / ${formatPercent(share)}`;
+  }
+
+  return formatChartMetric(secondaryValue, preset.secondary.kind);
+}
+
 function InteractiveTrendChart({
   preset,
   primaryTotal,
   secondaryTotal,
+  previousPrimaryTotal,
+  previousSecondaryTotal,
   dateFrom,
   dateTo,
 }: {
   preset: ChartPresetConfig;
   primaryTotal: number;
   secondaryTotal: number;
+  previousPrimaryTotal: number;
+  previousSecondaryTotal: number;
   dateFrom: string;
   dateTo: string;
 }) {
@@ -1125,10 +1187,28 @@ function InteractiveTrendChart({
     lineWeights,
     chartDates.length
   );
-  const maxPrimary = Math.max(...primarySeries.map(Math.abs), 0);
-  const maxSecondary = Math.max(...secondarySeries.map(Math.abs), 0);
-  const primaryStats = getSeriesStats(primarySeries);
-  const secondaryStats = getSeriesStats(secondarySeries);
+  const previousPrimarySeries = getChartSeries(
+    previousPrimaryTotal,
+    preset.primary.kind,
+    trendWeights.slice().reverse(),
+    chartDates.length
+  );
+  const previousSecondarySeries = getChartSeries(
+    previousSecondaryTotal,
+    preset.secondary.kind,
+    lineWeights.slice().reverse(),
+    chartDates.length
+  );
+  const maxPrimary = Math.max(
+    ...primarySeries.map(Math.abs),
+    ...previousPrimarySeries.map(Math.abs),
+    0
+  );
+  const maxSecondary = Math.max(
+    ...secondarySeries.map(Math.abs),
+    ...previousSecondarySeries.map(Math.abs),
+    0
+  );
   const chartWidth = 520;
   const chartHeight = 176;
   const plotLeft = 54;
@@ -1148,10 +1228,38 @@ function InteractiveTrendChart({
     })
     .join(" ");
 
+  const previousLinePoints = previousSecondarySeries
+    .map((value, index) => {
+      const x = plotLeft + index * pointGap;
+      const height = getSeriesHeight(value, maxSecondary);
+      const y = plotTop + plotHeight - (height / 100) * plotHeight;
+      return `${x},${y}`;
+    })
+    .join(" ");
+
   const gridLines = [0, 0.25, 0.5, 0.75, 1];
 
   return (
     <div className="mt-4 rounded-[24px] bg-white p-3 ring-1 ring-slate-100">
+      <div className="mb-3 flex flex-wrap items-center gap-4 text-xs font-bold text-slate-500">
+        <span className="inline-flex items-center gap-2">
+          <span className="h-2.5 w-2.5 rounded-sm bg-violet-600" />
+          {preset.primary.label}
+        </span>
+        <span className="inline-flex items-center gap-2">
+          <span className="h-2.5 w-2.5 rounded-sm border border-violet-300 bg-violet-100" />
+          Сравнение
+        </span>
+        <span className="inline-flex items-center gap-2">
+          <span className="h-2.5 w-2.5 rounded-full bg-orange-500" />
+          {preset.secondary.label}
+        </span>
+        <span className="inline-flex items-center gap-2">
+          <span className="h-px w-5 border-t border-dashed border-orange-300" />
+          Сравнение
+        </span>
+      </div>
+
       <div className="relative overflow-hidden rounded-2xl border border-slate-200 bg-white">
         <svg
           viewBox={`0 0 ${chartWidth} ${chartHeight}`}
@@ -1209,20 +1317,36 @@ function InteractiveTrendChart({
           {primarySeries.map((value, index) => {
             const x = plotLeft + index * pointGap;
             const height = (getSeriesHeight(value, maxPrimary) / 100) * plotHeight;
-            const barWidth = Math.min(28, Math.max(14, pointGap * 0.42));
+            const previousHeight =
+              (getSeriesHeight(previousPrimarySeries[index] ?? 0, maxPrimary) / 100) *
+              plotHeight;
+            const barWidth = Math.min(28, Math.max(14, pointGap * 0.34));
+            const previousBarWidth = barWidth;
             const y = plotTop + plotHeight - height;
+            const previousY = plotTop + plotHeight - previousHeight;
             const { dateLabel, weekDayLabel } = formatChartDate(chartDates[index]);
 
             return (
               <g key={index}>
                 <rect
-                  x={x - barWidth / 2}
+                  x={x - previousBarWidth / 2 + barWidth * 0.42}
+                  y={previousY}
+                  width={previousBarWidth}
+                  height={previousHeight}
+                  rx={previousBarWidth / 2}
+                  fill="#ddd6fe"
+                  opacity="0.65"
+                  stroke="#c4b5fd"
+                  strokeDasharray="3 3"
+                />
+                <rect
+                  x={x - barWidth / 2 - barWidth * 0.18}
                   y={y}
                   width={barWidth}
                   height={height}
                   rx={barWidth / 2}
                   fill="url(#primaryGradient)"
-                  opacity="0.92"
+                  opacity="0.95"
                 />
                 <text
                   x={x}
@@ -1244,6 +1368,15 @@ function InteractiveTrendChart({
             );
           })}
 
+          <polyline
+            fill="none"
+            stroke="#fdba74"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth="3"
+            strokeDasharray="5 6"
+            points={previousLinePoints}
+          />
           <polyline
             fill="none"
             stroke={preset.secondary.strokeColor}
@@ -1279,9 +1412,11 @@ function InteractiveTrendChart({
           </defs>
         </svg>
 
-        <div className="absolute inset-x-[46px] top-[18px] flex h-[162px] items-stretch">
+        <div className="absolute inset-x-[54px] top-[56px] flex h-[122px] items-stretch">
           {primarySeries.map((value, index) => {
             const secondaryValue = secondarySeries[index] ?? 0;
+            const previousPrimaryValue = previousPrimarySeries[index] ?? 0;
+            const previousSecondaryValue = previousSecondarySeries[index] ?? 0;
             const { dateLabel, weekDayLabel } = formatChartDate(chartDates[index]);
             const tooltipPosition =
               index <= 1
@@ -1294,16 +1429,16 @@ function InteractiveTrendChart({
               <div key={index} className="group relative flex-1 cursor-crosshair">
                 <div className="absolute inset-y-0 left-1/2 hidden w-px bg-indigo-300 group-hover:block" />
                 <div
-                  className={`pointer-events-none absolute top-10 z-30 hidden w-56 rounded-2xl border border-slate-200 bg-white p-3 text-left shadow-xl group-hover:block ${tooltipPosition}`}
+                  className={`pointer-events-none absolute top-4 z-30 hidden w-64 rounded-2xl border border-slate-200 bg-white p-3 text-left shadow-xl group-hover:block ${tooltipPosition}`}
                 >
                   <div className="text-xs font-black uppercase tracking-[0.12em] text-slate-400">
                     {dateLabel} ({weekDayLabel})
                   </div>
-                  <div className={`mt-2 text-sm font-black ${preset.primary.colorClassName}`}>
-                    {preset.primary.label}: {formatChartMetric(value, preset.primary.kind)}
+                  <div className="mt-2 text-sm font-black text-indigo-700">
+                    Текущий: {preset.primary.label} {formatChartMetric(value, preset.primary.kind)} · {preset.secondary.label} {formatChartMetric(secondaryValue, preset.secondary.kind)}
                   </div>
-                  <div className={`mt-1 text-sm font-black ${preset.secondary.colorClassName}`}>
-                    {preset.secondary.label}: {formatChartMetric(secondaryValue, preset.secondary.kind)}
+                  <div className="mt-1 text-sm font-black text-slate-500">
+                    Сравнение: {preset.primary.label} {formatChartMetric(previousPrimaryValue, preset.primary.kind)} · {preset.secondary.label} {formatChartMetric(previousSecondaryValue, preset.secondary.kind)}
                   </div>
                 </div>
               </div>
@@ -1311,37 +1446,147 @@ function InteractiveTrendChart({
           })}
         </div>
       </div>
+    </div>
+  );
+}
 
-      <div className="mt-2 grid gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-3 text-[11px] lg:grid-cols-3">
+function DynamicInsights({
+  preset,
+  current,
+  previous,
+  dateFrom,
+  dateTo,
+}: {
+  preset: ChartPresetConfig;
+  current: DashboardSummary;
+  previous: DashboardSummary;
+  dateFrom: string;
+  dateTo: string;
+}) {
+  const chartDates = getChartDates(dateFrom, dateTo);
+  const primaryTotal = metricTotalFromSummary(current, preset.primary);
+  const secondaryTotal = metricTotalFromSummary(current, preset.secondary);
+  const previousPrimaryTotal = metricTotalFromSummary(previous, preset.primary);
+  const previousSecondaryTotal = metricTotalFromSummary(previous, preset.secondary);
+  const primarySeries = getChartSeries(primaryTotal, preset.primary.kind, trendWeights, chartDates.length);
+  const secondarySeries = getChartSeries(secondaryTotal, preset.secondary.kind, lineWeights, chartDates.length);
+  const primaryStats = getSeriesStats(primarySeries);
+  const secondaryStats = getSeriesStats(secondarySeries);
+
+  const bestPrimaryIndex = primarySeries.indexOf(primaryStats.max);
+  const weakPrimaryIndex = primarySeries.indexOf(primaryStats.min);
+  const peakSecondaryIndex = secondarySeries.indexOf(secondaryStats.max);
+  const avgPrimary = primaryStats.avg;
+  const avgSecondary = secondaryStats.avg;
+
+  function row(index: number) {
+    const date = chartDates[index] ?? chartDates[0] ?? parseIsoDate(dateFrom);
+    const { dateLabel, weekDayLabel } = formatChartDate(date);
+    const primaryValue = primarySeries[index] ?? 0;
+    const secondaryValue = secondarySeries[index] ?? 0;
+
+    return {
+      dateLabel,
+      weekDayLabel,
+      primaryValue,
+      secondaryValue,
+    };
+  }
+
+  const best = row(bestPrimaryIndex >= 0 ? bestPrimaryIndex : 0);
+  const weak = row(weakPrimaryIndex >= 0 ? weakPrimaryIndex : 0);
+  const peak = row(peakSecondaryIndex >= 0 ? peakSecondaryIndex : 0);
+  const primaryDelta = percentDelta(primaryTotal, previousPrimaryTotal);
+  const secondaryDelta =
+    preset.secondary.kind === "percent"
+      ? secondaryTotal - previousSecondaryTotal
+      : percentDelta(secondaryTotal, previousSecondaryTotal);
+
+  const rows = [
+    { icon: "↗", title: "Лучший день", data: best, tone: "bg-emerald-50 text-emerald-600" },
+    { icon: "↓", title: "Слабый день", data: weak, tone: "bg-red-50 text-red-600" },
+    { icon: preset.secondary.kind === "percent" ? "↟" : "◔", title: `Пик: ${preset.secondary.label}`, data: peak, tone: "bg-orange-50 text-orange-600" },
+  ];
+
+  return (
+    <section className="panel p-4">
+      <div className="flex items-center justify-between gap-4">
         <div>
-          <div className={`font-black ${preset.primary.colorClassName}`}>
-            {preset.primary.label}
-          </div>
-          <div className="mt-1 grid grid-cols-3 gap-2 text-slate-600">
-            <span>Мин: {formatChartMetric(primaryStats.min, preset.primary.kind)}</span>
-            <span>Сред: {formatChartMetric(primaryStats.avg, preset.primary.kind)}</span>
-            <span>Макс: {formatChartMetric(primaryStats.max, preset.primary.kind)}</span>
-          </div>
+          <div className="section-eyebrow">Динамика</div>
+          <h2 className="mt-1 text-xl font-black tracking-tight text-slate-950">
+            Выводы по динамике
+          </h2>
         </div>
-        <div>
-          <div className={`font-black ${preset.secondary.colorClassName}`}>
-            {preset.secondary.label}
+        <span className="rounded-2xl bg-indigo-50 px-3 py-2 text-xs font-black text-indigo-600">
+          {preset.primary.label} + {preset.secondary.label}
+        </span>
+      </div>
+
+      <div className="mt-4 overflow-hidden rounded-2xl border border-slate-200 bg-white">
+        {rows.map((item) => (
+          <div key={item.title} className="grid grid-cols-[42px_1fr_1fr_1fr] items-center gap-3 border-b border-slate-100 p-3 last:border-b-0">
+            <div className={`flex h-9 w-9 items-center justify-center rounded-2xl text-sm font-black ${item.tone}`}>{item.icon}</div>
+            <div>
+              <div className="text-sm font-black text-slate-950">{item.title}</div>
+              <div className="mt-1 text-xs font-bold text-slate-500">{item.data.dateLabel} / {item.data.weekDayLabel}</div>
+            </div>
+            <InsightValue
+              label={preset.primary.label}
+              value={formatChartMetric(item.data.primaryValue, preset.primary.kind)}
+              tone={preset.primary.colorClassName}
+            />
+            <InsightValue
+              label={preset.secondary.label === "ДРР" ? "Реклама / ДРР" : preset.secondary.label}
+              value={formatSecondaryInsight({ preset, primaryValue: item.data.primaryValue, secondaryValue: item.data.secondaryValue })}
+              tone={preset.secondary.colorClassName}
+            />
           </div>
-          <div className="mt-1 grid grid-cols-3 gap-2 text-slate-600">
-            <span>Мин: {formatChartMetric(secondaryStats.min, preset.secondary.kind)}</span>
-            <span>Сред: {formatChartMetric(secondaryStats.avg, preset.secondary.kind)}</span>
-            <span>Макс: {formatChartMetric(secondaryStats.max, preset.secondary.kind)}</span>
+        ))}
+
+        <div className="grid grid-cols-[42px_1fr_1fr_1fr] items-center gap-3 p-3">
+          <div className="flex h-9 w-9 items-center justify-center rounded-2xl bg-blue-50 text-sm font-black text-blue-600">≈</div>
+          <div>
+            <div className="text-sm font-black text-slate-950">Средний день</div>
+            <div className="mt-1 text-xs font-bold text-slate-500">за период</div>
           </div>
+          <InsightValue
+            label={preset.primary.label}
+            value={formatChartMetric(avgPrimary, preset.primary.kind)}
+            tone={preset.primary.colorClassName}
+          />
+          <InsightValue
+            label={preset.secondary.label === "ДРР" ? "Реклама / ДРР" : preset.secondary.label}
+            value={formatSecondaryInsight({ preset, primaryValue: avgPrimary, secondaryValue: avgSecondary })}
+            tone={preset.secondary.colorClassName}
+          />
         </div>
       </div>
-    </div>
+
+      <div className="mt-4 rounded-2xl border border-orange-100 bg-orange-50/50 p-3 text-sm font-semibold leading-6 text-slate-700">
+        Выручка стабильна, но рекламную нагрузку стоит проверять в дни пиков.
+      </div>
+
+      <div className="mt-3 rounded-2xl border border-slate-200 bg-white p-3 text-sm font-black text-slate-700">
+        <span className="text-slate-500">Сравнение:</span>{" "}
+        <span className={primaryDelta !== null && primaryDelta >= 0 ? "text-emerald-600" : "text-red-600"}>
+          {preset.primary.label} {formatDelta(primaryDelta, preset.primary.kind)}
+        </span>
+        <span className="px-2 text-slate-300">·</span>
+        <span className={secondaryDelta !== null && secondaryDelta <= 0 ? "text-emerald-600" : "text-red-600"}>
+          {preset.secondary.label} {formatDelta(secondaryDelta, preset.secondary.kind)}
+        </span>
+      </div>
+    </section>
   );
 }
 
 function MarketplaceShare({
   wbRevenue,
   ozonRevenue,
+  previousWbRevenue,
+  previousOzonRevenue,
   current,
+  previous,
   selectedPreset,
   period,
   companyName,
@@ -1350,7 +1595,10 @@ function MarketplaceShare({
 }: {
   wbRevenue: number;
   ozonRevenue: number;
+  previousWbRevenue: number;
+  previousOzonRevenue: number;
   current: DashboardSummary;
+  previous: DashboardSummary;
   selectedPreset: ChartPresetConfig;
   period: PeriodOption;
   companyName: string;
@@ -1358,160 +1606,153 @@ function MarketplaceShare({
   companies: { name: string }[];
 }) {
   const total = wbRevenue + ozonRevenue;
+  const previousTotal = previousWbRevenue + previousOzonRevenue;
   const wbPercent = total > 0 ? (wbRevenue / total) * 100 : 0;
   const ozonPercent = total > 0 ? (ozonRevenue / total) * 100 : 0;
-
-  function metricTotal(metric: ChartMetricConfig) {
-    if (metric.label === "Выручка") return current.totalRevenue;
-    if (metric.label === "ДРР") return current.drr ?? 0;
-    if (metric.label === "Опер. прибыль") return current.operatingProfitAfterTax;
-    if (metric.label === "Кредиты") return current.loanPayments;
-    if (metric.label === "Чистая прибыль") return current.netProfit;
-    if (metric.label === "Денежный поток") return current.cashFlowResult;
-    return 0;
-  }
-
-  const primaryTotal = metricTotal(selectedPreset.primary);
-  const secondaryTotal = metricTotal(selectedPreset.secondary);
+  const previousWbPercent = previousTotal > 0 ? (previousWbRevenue / previousTotal) * 100 : 0;
+  const previousOzonPercent = previousTotal > 0 ? (previousOzonRevenue / previousTotal) * 100 : 0;
+  const stockQty = current.wbStockQty + current.ozonStockQty;
   const companyOptions = [
     { name: "ALL", label: "Все компании" },
     ...companies.map((company) => ({ name: company.name, label: company.name })),
   ];
 
   return (
-    <section className="space-y-4">
-      <section className="panel p-4">
-        <div className="grid gap-4 xl:grid-cols-[minmax(300px,360px)_minmax(260px,1fr)] xl:items-center">
-          <div>
-            <div className="section-eyebrow">Разрез по маркетплейсам</div>
-            <h2 className="mt-1 text-xl font-black tracking-tight text-slate-950">
-              Доля выручки WB / Ozon
-            </h2>
-            <p className="mt-1 text-sm leading-6 text-slate-500">
-              Выбор компании синхронно меняет долю WB/Ozon и график динамики.
-            </p>
+    <section className="panel p-4 sm:p-5">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div>
+          <div className="section-eyebrow">Разрез по маркетплейсам</div>
+          <h2 className="mt-1 text-xl font-black tracking-tight text-slate-950">
+            Доля выручки WB / Ozon
+          </h2>
+          <p className="mt-1 text-sm leading-6 text-slate-500">
+            Выбор компании синхронно меняет долю WB/Ozon и график динамики.
+          </p>
+        </div>
 
-            <div className="mt-3 flex flex-wrap gap-2">
-              {companyOptions.map((option) => {
-                const isActive = option.name === marketplaceCompanyName;
+        <div className="flex flex-wrap gap-2">
+          {companyOptions.map((option) => {
+            const isActive = option.name === marketplaceCompanyName;
 
-                return (
-                  <Link
-                    key={option.name}
-                    href={buildDashboardHref({
-                      period: period.key,
-                      companyName,
-                      marketplaceCompanyName: option.name,
-                      dateFrom: period.key === "custom" ? period.dateFrom : undefined,
-                      dateTo: period.key === "custom" ? period.dateTo : undefined,
-                      chartPreset: selectedPreset.key,
-                    })}
-                    className={`rounded-2xl border px-3 py-2 text-xs font-black transition ${
-                      isActive
-                        ? "border-indigo-600 bg-indigo-600 text-white shadow-sm shadow-indigo-100"
-                        : "border-slate-200 bg-white text-slate-500 hover:border-indigo-200 hover:bg-indigo-50 hover:text-indigo-700"
-                    }`}
-                  >
-                    {option.label}
-                  </Link>
-                );
-              })}
-            </div>
+            return (
+              <Link
+                key={option.name}
+                href={buildDashboardHref({
+                  period: period.key,
+                  companyName,
+                  marketplaceCompanyName: option.name,
+                  dateFrom: period.key === "custom" ? period.dateFrom : undefined,
+                  dateTo: period.key === "custom" ? period.dateTo : undefined,
+                  chartPreset: selectedPreset.key,
+                })}
+                className={`rounded-2xl border px-3 py-2 text-xs font-black transition ${
+                  isActive
+                    ? "border-indigo-600 bg-indigo-600 text-white shadow-sm shadow-indigo-100"
+                    : "border-slate-200 bg-white text-slate-500 hover:border-indigo-200 hover:bg-indigo-50 hover:text-indigo-700"
+                }`}
+              >
+                {option.label}
+              </Link>
+            );
+          })}
+        </div>
+      </div>
 
-            <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
-              <div className="group flex cursor-default items-center justify-between gap-4 rounded-2xl border border-violet-100 bg-violet-50/50 px-4 py-3 transition hover:border-violet-300 hover:bg-violet-50 hover:shadow-sm">
-                <div className="flex items-center gap-3">
-                  <span className="h-3 w-3 rounded-full bg-violet-600" />
-                  <div>
-                    <div className="text-sm font-bold text-violet-700">
-                      Wildberries
-                    </div>
-                    <div className="text-lg font-black text-slate-950">
-                      {formatCurrency(wbRevenue)}
-                    </div>
-                  </div>
-                </div>
-                <div className="text-lg font-black text-violet-700">
-                  {formatPercent(wbPercent)}
-                </div>
-              </div>
-
-              <div className="group flex cursor-default items-center justify-between gap-4 rounded-2xl border border-sky-100 bg-sky-50/60 px-4 py-3 transition hover:border-sky-300 hover:bg-sky-50 hover:shadow-sm">
-                <div className="flex items-center gap-3">
-                  <span className="h-3 w-3 rounded-full bg-sky-500" />
-                  <div>
-                    <div className="text-sm font-bold text-sky-700">Ozon</div>
-                    <div className="text-lg font-black text-slate-950">
-                      {formatCurrency(ozonRevenue)}
-                    </div>
-                  </div>
-                </div>
-                <div className="text-lg font-black text-sky-700">
-                  {formatPercent(ozonPercent)}
-                </div>
-              </div>
+      <div className="mt-5 space-y-4">
+        <div className="grid gap-4 md:grid-cols-[180px_1fr_68px] md:items-center">
+          <div className="flex items-start gap-3">
+            <span className="mt-1 h-3 w-3 rounded-full bg-violet-600" />
+            <div>
+              <div className="text-base font-black text-violet-700">Wildberries</div>
+              <div className="mt-1 text-lg font-black text-slate-950">{formatCurrency(wbRevenue)}</div>
+              <div className="mt-1 text-xs font-bold text-slate-400">{formatCurrency(previousWbRevenue)}</div>
             </div>
           </div>
 
-          <div className="xl:justify-self-end"><InteractiveDonut wbRevenue={wbRevenue} ozonRevenue={ozonRevenue} compact /></div>
-        </div>
-      </section>
-
-      <section className="panel p-4">
-        <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
-          <div>
-            <div className="section-eyebrow">Динамика</div>
-            <h3 className="mt-1 text-xl font-black tracking-tight text-slate-950">
-              {selectedPreset.title}
-            </h3>
-            <p className="mt-1 text-sm leading-5 text-slate-500">
-              {selectedPreset.description}
-            </p>
-            <div className="mt-2 flex flex-wrap gap-3 text-xs font-bold">
-              <span className={`inline-flex items-center gap-2 ${selectedPreset.primary.colorClassName}`}>
-                <span className={`h-2.5 w-2.5 rounded-full ${selectedPreset.primary.dotClassName}`} />
-                {selectedPreset.primary.label}
-              </span>
-              <span className={`inline-flex items-center gap-2 ${selectedPreset.secondary.colorClassName}`}>
-                <span className={`h-2.5 w-2.5 rounded-full ${selectedPreset.secondary.dotClassName}`} />
-                {selectedPreset.secondary.label}
-              </span>
+          <div className="space-y-2">
+            <div className="h-3 overflow-hidden rounded-full bg-slate-100">
+              <div className="h-full rounded-full bg-violet-600" style={{ width: `${wbPercent}%` }} />
+            </div>
+            <div className="h-3 overflow-hidden rounded-full bg-slate-50 ring-1 ring-violet-100">
+              <div
+                className="h-full rounded-full border border-dashed border-violet-300 bg-violet-100"
+                style={{ width: `${previousWbPercent}%` }}
+              />
             </div>
           </div>
-          <Link
-            href="/analytics"
-            className="rounded-2xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-indigo-600 transition hover:bg-indigo-50"
-          >
-            Открыть →
-          </Link>
+
+          <div className="text-right">
+            <div className="text-lg font-black text-violet-700">{formatPercent(wbPercent)}</div>
+            <div className="mt-1 text-sm font-black text-slate-400">{formatPercent(previousWbPercent)}</div>
+          </div>
         </div>
 
-        <div className="mt-3 flex flex-wrap gap-2">
-          {chartPresets.map((preset) => (
-            <ChartPresetLink
-              key={preset.key}
-              preset={preset}
-              selectedPreset={selectedPreset}
-              href={buildDashboardHref({
-                period: period.key,
-                companyName,
-                marketplaceCompanyName,
-                dateFrom: period.key === "custom" ? period.dateFrom : undefined,
-                dateTo: period.key === "custom" ? period.dateTo : undefined,
-                chartPreset: preset.key,
-              })}
-            />
-          ))}
+        <div className="grid gap-4 md:grid-cols-[180px_1fr_68px] md:items-center">
+          <div className="flex items-start gap-3">
+            <span className="mt-1 h-3 w-3 rounded-full bg-sky-500" />
+            <div>
+              <div className="text-base font-black text-sky-700">Ozon</div>
+              <div className="mt-1 text-lg font-black text-slate-950">{formatCurrency(ozonRevenue)}</div>
+              <div className="mt-1 text-xs font-bold text-slate-400">{formatCurrency(previousOzonRevenue)}</div>
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <div className="h-3 overflow-hidden rounded-full bg-slate-100">
+              <div className="h-full rounded-full bg-sky-500" style={{ width: `${ozonPercent}%` }} />
+            </div>
+            <div className="h-3 overflow-hidden rounded-full bg-slate-50 ring-1 ring-sky-100">
+              <div
+                className="h-full rounded-full border border-dashed border-sky-300 bg-sky-100"
+                style={{ width: `${previousOzonPercent}%` }}
+              />
+            </div>
+          </div>
+
+          <div className="text-right">
+            <div className="text-lg font-black text-sky-700">{formatPercent(ozonPercent)}</div>
+            <div className="mt-1 text-sm font-black text-slate-400">{formatPercent(previousOzonPercent)}</div>
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-5 grid overflow-hidden rounded-2xl border border-slate-200 bg-white sm:grid-cols-2 xl:grid-cols-4">
+        <div className="flex items-center gap-3 border-b border-slate-100 p-3 sm:border-r xl:border-b-0">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-violet-50 text-base font-black text-violet-700">▦</div>
+          <div>
+            <div className="text-xs font-bold text-slate-500">Выручка всего</div>
+            <div className="mt-1 text-base font-black text-slate-950">{formatCurrency(current.totalRevenue)}</div>
+            <div className="mt-1 text-xs font-black text-emerald-600">{formatDelta(percentDelta(current.totalRevenue, previous.totalRevenue), "money")}</div>
+          </div>
         </div>
 
-        <InteractiveTrendChart
-          preset={selectedPreset}
-          primaryTotal={primaryTotal}
-          secondaryTotal={secondaryTotal}
-          dateFrom={period.dateFrom}
-          dateTo={period.dateTo}
-        />
-      </section>
+        <div className="flex items-center gap-3 border-b border-slate-100 p-3 xl:border-b-0 xl:border-r">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-red-50 text-base font-black text-red-600">↗</div>
+          <div>
+            <div className="text-xs font-bold text-slate-500">Реклама / ДРР</div>
+            <div className="mt-1 text-base font-black text-slate-950">{formatCurrency(current.adsCost)} / {current.drr !== null ? formatPercent(current.drr) : "—"}</div>
+            <div className="mt-1 text-xs font-black text-red-600">{formatDelta(current.drr !== null && previous.drr !== null ? current.drr - previous.drr : null, "percent")}</div>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-3 border-b border-slate-100 p-3 sm:border-r xl:border-b-0">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-emerald-50 text-base font-black text-emerald-600">⌁</div>
+          <div>
+            <div className="text-xs font-bold text-slate-500">Опер. прибыль</div>
+            <div className="mt-1 text-base font-black text-slate-950">{formatCurrency(current.operatingProfitAfterTax)}</div>
+            <div className="mt-1 text-xs font-black text-emerald-600">{formatDelta(percentDelta(current.operatingProfitAfterTax, previous.operatingProfitAfterTax), "money")}</div>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-3 p-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-orange-50 text-base font-black text-orange-600">□</div>
+          <div>
+            <div className="text-xs font-bold text-slate-500">Остаток товаров</div>
+            <div className="mt-1 text-base font-black text-slate-950">{formatNumber(stockQty)} шт. / — ₽</div>
+            <div className="mt-1 text-xs font-black text-slate-400">себестоимость подключим отдельно</div>
+          </div>
+        </div>
+      </div>
     </section>
   );
 }
@@ -2063,7 +2304,29 @@ export default async function HomePage({ searchParams }: Props) {
           (row) => row.companyName === selectedMarketplaceCompanyValue
         )
   );
+  const marketplacePreviousRows = allPreviousRows.filter((row) =>
+    selectedMarketplaceCompanyValue === "ALL"
+      ? marketplaceCompanies.some((company) => company.name === row.companyName)
+      : row.companyName === selectedMarketplaceCompanyValue
+  );
+  const marketplacePrevious = summarizeDashboardRows(marketplacePreviousRows);
   const selectedChartPreset = getChartPreset(params.chartPreset);
+  const chartPrimaryTotal = metricTotalFromSummary(
+    marketplaceCurrent,
+    selectedChartPreset.primary
+  );
+  const chartSecondaryTotal = metricTotalFromSummary(
+    marketplaceCurrent,
+    selectedChartPreset.secondary
+  );
+  const previousChartPrimaryTotal = metricTotalFromSummary(
+    marketplacePrevious,
+    selectedChartPreset.primary
+  );
+  const previousChartSecondaryTotal = metricTotalFromSummary(
+    marketplacePrevious,
+    selectedChartPreset.secondary
+  );
   const presetPeriods = periodOptions.filter((period) => period.key !== "custom");
 
   const attentionItems = [
@@ -2299,11 +2562,14 @@ export default async function HomePage({ searchParams }: Props) {
           />
         </section>
 
-        <section className="grid items-start gap-5 2xl:grid-cols-[minmax(0,1fr)_390px]">
+        <section className="grid items-start gap-5 2xl:grid-cols-2">
           <MarketplaceShare
             wbRevenue={marketplaceCurrent.wbRevenue}
             ozonRevenue={marketplaceCurrent.ozonRevenue}
+            previousWbRevenue={marketplacePrevious.wbRevenue}
+            previousOzonRevenue={marketplacePrevious.ozonRevenue}
             current={marketplaceCurrent}
+            previous={marketplacePrevious}
             selectedPreset={selectedChartPreset}
             period={selectedPeriod}
             companyName={selectedCompanyValue}
@@ -2353,6 +2619,70 @@ export default async function HomePage({ searchParams }: Props) {
               ))}
             </div>
           </section>
+        </section>
+
+        <section className="grid items-start gap-5 2xl:grid-cols-2">
+          <section className="panel p-4">
+            <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
+              <div>
+                <div className="section-eyebrow">Динамика</div>
+                <h3 className="mt-1 text-xl font-black tracking-tight text-slate-950">
+                  {selectedChartPreset.title}
+                </h3>
+                <p className="mt-1 text-sm leading-5 text-slate-500">
+                  {selectedChartPreset.description}
+                </p>
+              </div>
+              <Link
+                href="/analytics"
+                className="rounded-2xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-indigo-600 transition hover:bg-indigo-50"
+              >
+                Открыть аналитику →
+              </Link>
+            </div>
+
+            <div className="mt-3 flex flex-wrap gap-2">
+              {chartPresets.map((preset) => (
+                <ChartPresetLink
+                  key={preset.key}
+                  preset={preset}
+                  selectedPreset={selectedChartPreset}
+                  href={buildDashboardHref({
+                    period: selectedPeriod.key,
+                    companyName: selectedCompanyValue,
+                    marketplaceCompanyName: selectedMarketplaceCompanyValue,
+                    dateFrom:
+                      selectedPeriod.key === "custom"
+                        ? selectedPeriod.dateFrom
+                        : undefined,
+                    dateTo:
+                      selectedPeriod.key === "custom"
+                        ? selectedPeriod.dateTo
+                        : undefined,
+                    chartPreset: preset.key,
+                  })}
+                />
+              ))}
+            </div>
+
+            <InteractiveTrendChart
+              preset={selectedChartPreset}
+              primaryTotal={chartPrimaryTotal}
+              secondaryTotal={chartSecondaryTotal}
+              previousPrimaryTotal={previousChartPrimaryTotal}
+              previousSecondaryTotal={previousChartSecondaryTotal}
+              dateFrom={selectedPeriod.dateFrom}
+              dateTo={selectedPeriod.dateTo}
+            />
+          </section>
+
+          <DynamicInsights
+            preset={selectedChartPreset}
+            current={marketplaceCurrent}
+            previous={marketplacePrevious}
+            dateFrom={selectedPeriod.dateFrom}
+            dateTo={selectedPeriod.dateTo}
+          />
         </section>
 
         <section className="panel p-5 sm:p-6">
