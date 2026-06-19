@@ -14,10 +14,10 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="ru">
+    <html lang="ru" data-sidebar="expanded">
       <body className="bg-background font-sans text-slate-950 antialiased">
         <AppNav />
-        <div className="min-h-screen lg:pl-72">{children}</div>
+        <div className="app-content min-h-screen">{children}</div>
       </body>
     </html>
   );

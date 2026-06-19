@@ -145,7 +145,7 @@
 
 @layer components {
   .page-shell {
-    @apply min-h-screen bg-background px-4 py-5 sm:px-6 xl:px-8;
+    @apply min-h-screen bg-background px-4 py-4 sm:px-6 xl:px-8;
   }
 
   .page-container {
@@ -191,4 +191,19 @@
   .secondary-button {
     @apply inline-flex items-center justify-center rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-bold text-slate-700 transition hover:bg-slate-50 active:scale-95;
   }
+
+  .app-content {
+    @apply min-h-screen transition-[padding-left] duration-300 ease-out;
+  }
 }
+
+@media (min-width: 1024px) {
+  html[data-sidebar="expanded"] .app-content {
+    padding-left: 18rem;
+  }
+
+  html[data-sidebar="collapsed"] .app-content {
+    padding-left: 5rem;
+  }
+}
+

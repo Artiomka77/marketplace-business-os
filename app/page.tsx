@@ -772,15 +772,15 @@ function MarketplaceShare({
             Доля выручки WB / Ozon
           </h2>
           <p className="mt-2 text-sm leading-6 text-slate-500">
-            Где сейчас формируется оборот за выбранный период.
+            Цвета разделены: Wildberries — фиолетовый, Ozon — голубой.
           </p>
 
           <div className="mt-6 space-y-4">
-            <div className="flex items-center justify-between gap-4">
+            <div className="flex items-center justify-between gap-4 rounded-2xl border border-violet-100 bg-violet-50/50 px-4 py-3">
               <div className="flex items-center gap-3">
-                <span className="h-3 w-3 rounded-full bg-indigo-500" />
+                <span className="h-3 w-3 rounded-full bg-violet-600" />
                 <div>
-                  <div className="text-sm font-bold text-slate-600">
+                  <div className="text-sm font-bold text-violet-700">
                     Wildberries
                   </div>
                   <div className="text-lg font-black text-slate-950">
@@ -788,22 +788,22 @@ function MarketplaceShare({
                   </div>
                 </div>
               </div>
-              <div className="text-lg font-black text-slate-500">
+              <div className="text-lg font-black text-violet-700">
                 {formatPercent(wbPercent)}
               </div>
             </div>
 
-            <div className="flex items-center justify-between gap-4">
+            <div className="flex items-center justify-between gap-4 rounded-2xl border border-sky-100 bg-sky-50/60 px-4 py-3">
               <div className="flex items-center gap-3">
-                <span className="h-3 w-3 rounded-full bg-blue-500" />
+                <span className="h-3 w-3 rounded-full bg-sky-500" />
                 <div>
-                  <div className="text-sm font-bold text-slate-600">Ozon</div>
+                  <div className="text-sm font-bold text-sky-700">Ozon</div>
                   <div className="text-lg font-black text-slate-950">
                     {formatCurrency(ozonRevenue)}
                   </div>
                 </div>
               </div>
-              <div className="text-lg font-black text-slate-500">
+              <div className="text-lg font-black text-sky-700">
                 {formatPercent(ozonPercent)}
               </div>
             </div>
@@ -815,7 +815,7 @@ function MarketplaceShare({
             <div
               className="flex h-52 w-52 items-center justify-center rounded-full"
               style={{
-                background: `conic-gradient(#6366f1 0 ${wbPercent}%, #3b82f6 ${wbPercent}% 100%)`,
+                background: `conic-gradient(#7c3aed 0 ${wbPercent}%, #0ea5e9 ${wbPercent}% 100%)`,
               }}
             >
               <div className="flex h-32 w-32 flex-col items-center justify-center rounded-full bg-white shadow-sm">
@@ -836,31 +836,70 @@ function MarketplaceShare({
                 <h3 className="mt-2 text-xl font-black text-slate-950">
                   Выручка и ДРР
                 </h3>
+                <div className="mt-2 flex flex-wrap gap-3 text-xs font-bold">
+                  <span className="inline-flex items-center gap-2 text-violet-700">
+                    <span className="h-2.5 w-2.5 rounded-full bg-violet-600" />
+                    Выручка
+                  </span>
+                  <span className="inline-flex items-center gap-2 text-orange-700">
+                    <span className="h-2.5 w-2.5 rounded-full bg-orange-500" />
+                    ДРР
+                  </span>
+                </div>
               </div>
               <Link
                 href="/analytics"
                 className="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-indigo-600 transition hover:bg-indigo-50"
               >
-                Открыть аналитику →
+                Открыть →
               </Link>
             </div>
 
-            <div className="mt-7 flex h-44 items-end gap-3">
-              {[42, 58, 74, 46, 82, 54, 68, 90, 62, 78, 52, 86].map(
-                (height, index) => (
-                  <div key={index} className="flex flex-1 flex-col items-center gap-2">
-                    <div className="relative flex h-36 w-full items-end overflow-hidden rounded-full bg-white">
-                      <div
-                        className="w-full rounded-full bg-gradient-to-t from-indigo-500 to-blue-400"
-                        style={{ height: `${height}%` }}
-                      />
+            <div className="relative mt-7 h-44 overflow-hidden rounded-3xl bg-white p-4 ring-1 ring-slate-100">
+              <div className="absolute inset-x-4 top-8 border-t border-dashed border-slate-200" />
+              <div className="absolute inset-x-4 top-20 border-t border-dashed border-slate-200" />
+              <div className="absolute inset-x-4 top-32 border-t border-dashed border-slate-200" />
+
+              <svg
+                viewBox="0 0 320 120"
+                className="absolute inset-x-4 top-5 h-28 w-[calc(100%-2rem)] overflow-visible"
+                aria-hidden="true"
+              >
+                <polyline
+                  fill="none"
+                  stroke="#f97316"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="5"
+                  points="0,70 30,56 60,64 90,38 120,58 150,46 180,28 210,54 240,42 270,62 300,34 320,48"
+                />
+                {[0, 30, 60, 90, 120, 150, 180, 210, 240, 270, 300, 320].map(
+                  (x, index) => {
+                    const y = [70, 56, 64, 38, 58, 46, 28, 54, 42, 62, 34, 48][index];
+                    return (
+                      <circle key={index} cx={x} cy={y} r="4.5" fill="#f97316" stroke="white" strokeWidth="2" />
+                    );
+                  }
+                )}
+              </svg>
+
+              <div className="relative z-10 flex h-full items-end gap-3 pt-10">
+                {[42, 58, 74, 46, 82, 54, 68, 90, 62, 78, 52, 86].map(
+                  (height, index) => (
+                    <div key={index} className="flex flex-1 flex-col items-center gap-2">
+                      <div className="relative flex h-28 w-full items-end overflow-hidden rounded-full bg-violet-50">
+                        <div
+                          className="w-full rounded-full bg-gradient-to-t from-violet-600 to-violet-300"
+                          style={{ height: `${height}%` }}
+                        />
+                      </div>
+                      <span className="text-[10px] font-bold text-slate-400">
+                        {index + 1}
+                      </span>
                     </div>
-                    <span className="text-[10px] font-bold text-slate-400">
-                      {index + 1}
-                    </span>
-                  </div>
-                )
-              )}
+                  )
+                )}
+              </div>
             </div>
           </div>
         </div>
@@ -869,13 +908,11 @@ function MarketplaceShare({
   );
 }
 
-function CompanyGroupRow({
-  icon,
+function CompanyDetailColumn({
   title,
   href,
   children,
 }: {
-  icon: ReactNode;
   title: string;
   href: string;
   children: ReactNode;
@@ -883,19 +920,19 @@ function CompanyGroupRow({
   return (
     <Link
       href={href}
-      className="group flex items-center gap-4 rounded-2xl border border-slate-200 bg-white p-4 transition hover:border-indigo-200 hover:bg-indigo-50/30"
+      className="group rounded-2xl border border-slate-200 bg-white p-4 transition hover:border-indigo-200 hover:bg-indigo-50/30"
     >
-      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-slate-50 text-base text-indigo-600 ring-1 ring-slate-200">
-        {icon}
-      </div>
-
-      <div className="min-w-0 flex-1">
+      <div className="flex items-center justify-between gap-3">
         <div className="text-sm font-black text-slate-950">{title}</div>
-        <div className="mt-2 grid gap-3 sm:grid-cols-3">{children}</div>
+        <div className="text-sm font-black text-slate-300 transition group-hover:translate-x-1 group-hover:text-indigo-500">
+          →
+        </div>
       </div>
 
-      <div className="text-lg font-black text-slate-300 transition group-hover:translate-x-1 group-hover:text-indigo-500">
-        →
+      <div className="mt-3 space-y-2">{children}</div>
+
+      <div className="mt-3 text-xs font-black text-indigo-600">
+        Открыть →
       </div>
     </Link>
   );
@@ -930,12 +967,14 @@ function CompanyCard({
       <div className="border-b border-slate-100 bg-gradient-to-br from-white to-slate-50 p-5">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div>
-            <h3 className="text-xl font-black tracking-tight text-slate-950">
-              {row.companyName}
-            </h3>
-            <p className="mt-1 text-sm font-semibold text-slate-500">
-              WB / Ozon
-            </p>
+            <div className="flex flex-wrap items-center gap-2">
+              <h3 className="text-xl font-black tracking-tight text-slate-950">
+                {row.companyName}
+              </h3>
+              <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-black text-slate-500 ring-1 ring-slate-200">
+                WB / Ozon
+              </span>
+            </div>
           </div>
 
           <div
@@ -947,7 +986,7 @@ function CompanyCard({
           </div>
         </div>
 
-        <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="mt-5 grid gap-3 sm:grid-cols-2 2xl:grid-cols-4">
           <MiniMetric
             title="Выручка"
             value={formatCurrency(row.totalRevenue)}
@@ -974,65 +1013,55 @@ function CompanyCard({
         </div>
       </div>
 
-      <div className="space-y-3 p-5">
-        <CompanyGroupRow
-          icon="◌"
-          title="Каналы и реклама"
-          href="/analytics"
-        >
-          <CompactStat
-            label="WB"
-            value={`${formatCurrency(row.wbRevenue)} · ${formatRevenuePercent(
-              row.wbRevenue,
-              row.totalRevenue
-            )}`}
-          />
-          <CompactStat
-            label="Ozon"
-            value={`${formatCurrency(row.ozonRevenue)} · ${formatRevenuePercent(
-              row.ozonRevenue,
-              row.totalRevenue
-            )}`}
-          />
-          <CompactStat
-            label="Реклама"
-            value={`${formatCurrency(row.adsCost)} · ДРР ${drrText}`}
-            tone={row.drr !== null && row.drr > 12 ? "text-red-600" : "text-slate-950"}
-          />
-        </CompanyGroupRow>
+      <div className="p-5">
+        <div className="grid gap-3 md:grid-cols-2 2xl:grid-cols-4">
+          <CompanyDetailColumn title="Каналы" href="/analytics">
+            <CompactStat
+              label="WB"
+              value={`${formatCurrency(row.wbRevenue)} (${formatPercent(getRevenuePercent(row.wbRevenue, row.totalRevenue) ?? 0)})`}
+            />
+            <CompactStat
+              label="Ozon"
+              value={`${formatCurrency(row.ozonRevenue)} (${formatPercent(getRevenuePercent(row.ozonRevenue, row.totalRevenue) ?? 0)})`}
+            />
+          </CompanyDetailColumn>
 
-        <CompanyGroupRow
-          icon="₽"
-          title="Кредиты и вывод денег"
-          href={buildOperationsHref({
-            companyName: row.companyName,
-            dateFrom,
-            dateTo,
-            operationType: "ALL",
-            search: "кредит",
-          })}
-        >
-          <CompactStat label="Кредиты всего" value={formatCurrency(row.loanPayments)} tone={row.loanPayments > 0 ? "text-red-600" : "text-slate-950"} />
-          <CompactStat label="Тело" value={formatCurrency(row.creditPrincipal)} tone={row.creditPrincipal > 0 ? "text-red-600" : "text-slate-950"} />
-          <CompactStat label="Проценты" value={formatCurrency(row.creditInterest)} tone={row.creditInterest > 0 ? "text-red-600" : "text-slate-950"} />
-        </CompanyGroupRow>
+          <CompanyDetailColumn title="Реклама" href="/ads-mapping">
+            <CompactStat
+              label="Расходы"
+              value={formatCurrency(row.adsCost)}
+              tone={row.adsCost > 0 ? "text-red-600" : "text-slate-950"}
+            />
+            <CompactStat
+              label="ДРР"
+              value={drrText}
+              tone={row.drr !== null && row.drr > 12 ? "text-red-600" : "text-slate-950"}
+            />
+          </CompanyDetailColumn>
 
-        <CompanyGroupRow icon="◔" title="Остатки и ассортимент" href="/stocks">
-          <CompactStat
-            label="Остатки WB"
-            value={row.wbStockQty > 0 ? `${formatNumber(row.wbStockQty)} шт` : "Нет данных"}
-          />
-          <CompactStat
-            label="Остатки Ozon"
-            value={row.ozonStockQty > 0 ? `${formatNumber(row.ozonStockQty)} шт` : "Нет данных"}
-          />
-          <CompactStat
-            label="ABC"
-            value={`${formatNumber(totalAbc)} SKU`}
-          />
-        </CompanyGroupRow>
+          <CompanyDetailColumn
+            title="Кредиты и деньги"
+            href={buildOperationsHref({
+              companyName: row.companyName,
+              dateFrom,
+              dateTo,
+              operationType: "ALL",
+              search: "кредит",
+            })}
+          >
+            <CompactStat label="Кредиты" value={formatCurrency(row.loanPayments)} tone={row.loanPayments > 0 ? "text-red-600" : "text-slate-950"} />
+            <CompactStat label="Тело" value={formatCurrency(row.creditPrincipal)} tone={row.creditPrincipal > 0 ? "text-red-600" : "text-slate-950"} />
+            <CompactStat label="Проценты" value={formatCurrency(row.creditInterest)} tone={row.creditInterest > 0 ? "text-red-600" : "text-slate-950"} />
+          </CompanyDetailColumn>
 
-        <div className="grid gap-4 border-t border-slate-100 pt-4 sm:grid-cols-2">
+          <CompanyDetailColumn title="Ассортимент (ABC)" href="/abc">
+            <CompactStat label="ABC всего" value={`${formatNumber(totalAbc)} SKU`} />
+            <CompactStat label="WB" value={`${formatNumber(abcTotal(rowWbAbc))} SKU`} />
+            <CompactStat label="Ozon" value={`${formatNumber(abcTotal(rowOzonAbc))} SKU`} />
+          </CompanyDetailColumn>
+        </div>
+
+        <div className="mt-5 grid gap-4 border-t border-slate-100 pt-4 sm:grid-cols-2">
           <div>
             <div className="mb-3 text-sm font-black text-slate-700">ABC WB</div>
             <AbcPills abc={rowWbAbc} />
@@ -1452,119 +1481,120 @@ export default async function HomePage({ searchParams }: Props) {
   return (
     <main className="page-shell">
       <div className="page-container">
-        <section className="sticky top-0 z-40 -mx-4 border-b border-slate-200 bg-background/90 px-4 py-4 backdrop-blur-xl sm:-mx-6 sm:px-6 xl:-mx-8 xl:px-8">
-          <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-            <div>
-              <div className="text-sm font-black text-indigo-600">
-                Дашборд собственника
-              </div>
-              <h1 className="mt-1 text-2xl font-black tracking-tight text-slate-950">
-                Главная панель бизнеса
-              </h1>
-            </div>
+        <section className="sticky top-0 z-40 -mx-4 border-b border-slate-200 bg-background/90 px-4 py-2.5 backdrop-blur-xl sm:-mx-6 sm:px-6 xl:-mx-8 xl:px-8">
+          <details open className="group">
+            <summary className="flex cursor-pointer list-none items-center justify-between gap-3 rounded-2xl px-1 py-1 transition hover:bg-slate-50/70">
+              <div className="flex min-w-0 flex-wrap items-center gap-2">
+                <span className="rounded-2xl bg-indigo-600 px-3 py-2 text-xs font-black text-white shadow-sm shadow-indigo-200">
+                  Дашборд собственника
+                </span>
 
-            <div className="flex flex-col gap-3 xl:flex-row xl:items-center">
-              <div className="grid gap-3 sm:grid-cols-3 xl:min-w-[760px]">
-                <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
-                  <div className="text-xs font-bold text-slate-400">Период</div>
-                  <div className="mt-1 text-sm font-black text-slate-950">
-                    {selectedPeriod.description}
-                  </div>
-                </div>
-                <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
-                  <div className="text-xs font-bold text-slate-400">Сравнение</div>
-                  <div className="mt-1 text-sm font-black text-slate-950">
-                    {previousPeriod.description}
-                  </div>
-                </div>
-                <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
-                  <div className="text-xs font-bold text-slate-400">Компании</div>
-                  <div className="mt-1 text-sm font-black text-slate-950">
-                    {selectedCompanyName ?? "Все компании"}
-                  </div>
-                </div>
+                <span className="rounded-2xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 shadow-sm">
+                  Период: {selectedPeriod.description}
+                </span>
+
+                <span className="hidden rounded-2xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 shadow-sm md:inline-flex">
+                  Сравнение: {previousPeriod.description}
+                </span>
+
+                <span className="rounded-2xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 shadow-sm">
+                  {selectedCompanyName ?? "Все компании"}
+                </span>
               </div>
 
-              <details className="group relative">
-                <summary className="secondary-button cursor-pointer list-none gap-2">
-                  Фильтры и период
-                  <span className="text-slate-400 transition group-open:rotate-180">↓</span>
-                </summary>
+              <span className="shrink-0 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-xs font-black text-slate-600 shadow-sm transition hover:bg-slate-50">
+                <span className="hidden group-open:inline">Скрыть панель ↑</span>
+                <span className="group-open:hidden">Показать панель ↓</span>
+              </span>
+            </summary>
 
-                <div className="mt-3 max-h-[75vh] w-full overflow-y-auto rounded-[28px] border border-slate-200 bg-white p-4 shadow-2xl xl:absolute xl:right-0 xl:top-full xl:z-50 xl:w-[760px]">
-                  <div className="grid gap-2 sm:grid-cols-3">
-                    {presetPeriods.map((period) => {
-                      const isActive = selectedPeriodOption.key === period.key;
+            <div className="mt-2 flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+              <div className="hidden min-w-0 text-sm leading-6 text-slate-500 lg:block">
+                Главные показатели бизнеса за выбранный период. Фильтры можно скрыть, чтобы освободить экран.
+              </div>
 
-                      return (
-                        <Link
-                          key={period.key}
-                          href={buildDashboardHref({
-                            period: period.key,
-                            companyName: selectedCompanyValue,
-                          })}
-                          className={`rounded-2xl border p-3 transition active:scale-[0.99] ${
-                            isActive
-                              ? "border-indigo-600 bg-indigo-600 text-white"
-                              : "border-slate-200 bg-slate-50 text-slate-800 hover:bg-white"
-                          }`}
-                        >
-                          <div className="text-sm font-black">{period.shortLabel}</div>
-                          <div
-                            className={`mt-1 text-xs leading-5 ${
-                              isActive ? "text-indigo-100" : "text-slate-500"
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center xl:shrink-0">
+                <details className="group/filter relative">
+                  <summary className="secondary-button cursor-pointer list-none gap-2 py-2.5">
+                    Фильтры и период
+                    <span className="text-slate-400 transition group-open/filter:rotate-180">↓</span>
+                  </summary>
+
+                  <div className="mt-3 max-h-[75vh] w-full overflow-y-auto rounded-[28px] border border-slate-200 bg-white p-4 shadow-2xl xl:absolute xl:right-0 xl:top-full xl:z-50 xl:w-[760px]">
+                    <div className="grid gap-2 sm:grid-cols-3">
+                      {presetPeriods.map((period) => {
+                        const isActive = selectedPeriodOption.key === period.key;
+
+                        return (
+                          <Link
+                            key={period.key}
+                            href={buildDashboardHref({
+                              period: period.key,
+                              companyName: selectedCompanyValue,
+                            })}
+                            className={`rounded-2xl border p-3 transition active:scale-[0.99] ${
+                              isActive
+                                ? "border-indigo-600 bg-indigo-600 text-white"
+                                : "border-slate-200 bg-slate-50 text-slate-800 hover:bg-white"
                             }`}
                           >
-                            {period.description}
-                          </div>
+                            <div className="text-sm font-black">{period.shortLabel}</div>
+                            <div
+                              className={`mt-1 text-xs leading-5 ${
+                                isActive ? "text-indigo-100" : "text-slate-500"
+                              }`}
+                            >
+                              {period.description}
+                            </div>
+                          </Link>
+                        );
+                      })}
+                    </div>
+
+                    <form action="/" className="mt-4 rounded-3xl bg-slate-50 p-4 ring-1 ring-slate-200">
+                      <div className="grid gap-3 lg:grid-cols-[1fr_1fr_1fr]">
+                        <label className="text-sm font-medium text-slate-500">
+                          Компания
+                          <select name="companyName" defaultValue={selectedCompanyValue} className="filter-control mt-1">
+                            <option value="ALL">Все компании</option>
+                            {companies.map((company) => (
+                              <option key={company.id} value={company.name}>
+                                {company.name}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+
+                        <label className="text-sm font-medium text-slate-500">
+                          Дата от
+                          <input type="date" name="dateFrom" defaultValue={selectedPeriod.dateFrom} className="filter-control mt-1" />
+                        </label>
+
+                        <label className="text-sm font-medium text-slate-500">
+                          Дата до
+                          <input type="date" name="dateTo" defaultValue={selectedPeriod.dateTo} className="filter-control mt-1" />
+                        </label>
+                      </div>
+
+                      <div className="mt-4 flex flex-wrap gap-3">
+                        <button type="submit" name="period" value="custom" className="primary-button">
+                          Показать выбранные даты
+                        </button>
+
+                        <Link href="/" className="secondary-button">
+                          Сбросить
                         </Link>
-                      );
-                    })}
+                      </div>
+                    </form>
                   </div>
+                </details>
 
-                  <form action="/" className="mt-4 rounded-3xl bg-slate-50 p-4 ring-1 ring-slate-200">
-                    <div className="grid gap-3 lg:grid-cols-[1fr_1fr_1fr]">
-                      <label className="text-sm font-medium text-slate-500">
-                        Компания
-                        <select name="companyName" defaultValue={selectedCompanyValue} className="filter-control mt-1">
-                          <option value="ALL">Все компании</option>
-                          {companies.map((company) => (
-                            <option key={company.id} value={company.name}>
-                              {company.name}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-
-                      <label className="text-sm font-medium text-slate-500">
-                        Дата от
-                        <input type="date" name="dateFrom" defaultValue={selectedPeriod.dateFrom} className="filter-control mt-1" />
-                      </label>
-
-                      <label className="text-sm font-medium text-slate-500">
-                        Дата до
-                        <input type="date" name="dateTo" defaultValue={selectedPeriod.dateTo} className="filter-control mt-1" />
-                      </label>
-                    </div>
-
-                    <div className="mt-4 flex flex-wrap gap-3">
-                      <button type="submit" name="period" value="custom" className="primary-button">
-                        Показать выбранные даты
-                      </button>
-
-                      <Link href="/" className="secondary-button">
-                        Сбросить
-                      </Link>
-                    </div>
-                  </form>
-                </div>
-              </details>
-
-              <Link href="/import" className="primary-button gap-2">
-                ⇧ Импорт данных
-              </Link>
+                <Link href="/import" className="primary-button gap-2 py-2.5">
+                  ⇧ Импорт данных
+                </Link>
+              </div>
             </div>
-          </div>
+          </details>
         </section>
 
         <section className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
