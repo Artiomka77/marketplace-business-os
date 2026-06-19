@@ -28,6 +28,7 @@ type SearchParams = {
   dir?: string;
   q?: string;
   abc?: string;
+  pageSize?: string;
 };
 
 type ProductMeta = {
@@ -70,6 +71,8 @@ type EnrichedProfitRow = ProfitRow & {
 
 const DEFAULT_DATE_FROM = "2026-05-18";
 const DEFAULT_DATE_TO = "2026-05-24";
+const DEFAULT_PAGE_SIZE = 15;
+const PAGE_SIZE_OPTIONS = [10, 15, 20, 30, 50];
 
 const ABC_FILTERS: { key: AbcFilter; label: string }[] = [
   { key: "ALL", label: "Все" },
@@ -296,6 +299,7 @@ function buildQueryHref(
     dir: params.dir ?? "desc",
     q: params.q ?? "",
     abc: params.abc ?? "ALL",
+    pageSize: params.pageSize ?? String(DEFAULT_PAGE_SIZE),
     ...patch,
   };
 
@@ -305,6 +309,7 @@ function buildQueryHref(
   query.set("sort", next.sort);
   query.set("dir", next.dir);
   query.set("abc", next.abc);
+  query.set("pageSize", next.pageSize);
 
   if (next.q) query.set("q", next.q);
 
@@ -761,15 +766,85 @@ function MarginBar({ value }: { value: number }) {
   );
 }
 
+
+function InfoTooltip({ text }: { text: string }) {
+  return (
+    <span className="group relative inline-flex">
+      <span
+        tabIndex={0}
+        title={text}
+        className="inline-flex h-5 w-5 cursor-help items-center justify-center rounded-full bg-slate-100 text-[11px] font-black text-slate-400 ring-1 ring-slate-200 transition hover:bg-indigo-50 hover:text-indigo-700 hover:ring-indigo-100"
+      >
+        ?
+      </span>
+      <span className="pointer-events-none absolute left-1/2 top-7 z-50 hidden w-80 -translate-x-1/2 rounded-2xl border border-slate-200 bg-white p-3 text-left text-xs font-semibold leading-5 text-slate-600 shadow-xl shadow-slate-200/70 group-hover:block group-focus-within:block">
+        {text}
+      </span>
+    </span>
+  );
+}
+
+function ExpenseDonut({
+  rows,
+  revenue,
+}: {
+  rows: { value: number; colorHex: string }[];
+  revenue: number;
+}) {
+  const positiveRows = rows.filter((row) => row.value > 0);
+  const positiveTotal = positiveRows.reduce((sum, row) => sum + row.value, 0);
+
+  let cursor = 0;
+  const segments = positiveRows.map((row) => {
+    const start = cursor;
+    const size = positiveTotal > 0 ? (row.value / positiveTotal) * 360 : 0;
+    cursor += size;
+    return `${row.colorHex} ${start.toFixed(2)}deg ${cursor.toFixed(2)}deg`;
+  });
+
+  const background =
+    segments.length > 0 ? `conic-gradient(${segments.join(", ")})` : "#e2e8f0";
+
+  return (
+    <div className="relative flex h-48 w-48 items-center justify-center rounded-full shadow-inner" style={{ background }}>
+      <div className="flex h-28 w-28 items-center justify-center rounded-full bg-white shadow-sm">
+        <div className="text-center">
+          <div className="text-2xl font-black text-slate-950">
+            {formatCompactMoney(revenue)}
+          </div>
+          <div className="mt-1 text-xs font-black uppercase tracking-[0.12em] text-slate-400">
+            Выручка
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function TableHeader() {
   return (
     <div className="grid min-w-[1180px] grid-cols-[minmax(330px,1.7fr)_minmax(140px,0.8fr)_minmax(150px,0.85fr)_minmax(150px,0.85fr)_minmax(130px,0.7fr)_minmax(150px,0.8fr)] items-center border-b border-slate-200 bg-white px-5 py-4 text-sm font-black text-slate-500">
       <div>Товар</div>
-      <div className="flex items-center gap-1">Выкупы <span className="text-slate-300">ⓘ</span></div>
-      <div className="flex items-center gap-1">Расходы <span className="text-slate-300">ⓘ</span></div>
-      <div className="flex items-center gap-1">Прибыль <span className="text-slate-300">ⓘ</span></div>
-      <div className="flex items-center gap-1">Процент выкупа <span className="text-slate-300">ⓘ</span></div>
-      <div className="flex items-center gap-1">Маржинальность <span className="text-slate-300">ⓘ</span></div>
+      <div className="flex items-center gap-1">
+        Выкупы
+        <InfoTooltip text="Выкупы — сумма и количество фактически реализованных продаж по WB Sales за выбранный период. Доля показывает вклад артикула в общую выручку WB. Бейдж A/B/C — ABC по выручке/выкупам." />
+      </div>
+      <div className="flex items-center gap-1">
+        Расходы
+        <InfoTooltip text="Расходы — все затраты по артикулу за выбранный период: себестоимость, комиссия WB, логистика, хранение и приёмка, штрафы и удержания, платные услуги, реклама и налоги." />
+      </div>
+      <div className="flex items-center gap-1">
+        Прибыль
+        <InfoTooltip text="Прибыль — прибыль после налогов: выручка минус все расходы. Процент под суммой показывает долю прибыли в выручке артикула. Бейдж A/B/C — ABC по прибыли." />
+      </div>
+      <div className="flex items-center gap-1">
+        Процент выкупа
+        <InfoTooltip text="Процент выкупа считается за выбранный период как выкупленные продажи / (выкупленные продажи + возвраты) по данным WB Sales. Если данных для расчёта нет, показывается прочерк." />
+      </div>
+      <div className="flex items-center gap-1">
+        Маржинальность
+        <InfoTooltip text="Маржинальность — прибыль после налогов / выручка артикула × 100% за выбранный период. Шкала помогает быстро увидеть качество маржи." />
+      </div>
     </div>
   );
 }
@@ -1001,6 +1076,10 @@ export default async function ProfitPage({
   const dir = (params.dir === "asc" ? "asc" : "desc") as SortDir;
   const q = params.q ?? "";
   const abc = (params.abc ?? "ALL") as AbcFilter;
+  const requestedPageSize = Number(params.pageSize ?? DEFAULT_PAGE_SIZE);
+  const pageSize = PAGE_SIZE_OPTIONS.includes(requestedPageSize)
+    ? requestedPageSize
+    : DEFAULT_PAGE_SIZE;
 
   const { rows, totals, comparison } = await getProfitAnalytics({
     dateFrom,
@@ -1066,7 +1145,8 @@ export default async function ProfitPage({
     return bValue - aValue;
   });
 
-  const commissionAndLogistics = totals.wbCommission + totals.logisticsCost;
+  const displayedRows = sortedRows.slice(0, pageSize);
+
   const storageAndAcceptance = totals.storageCost + totals.acceptanceCost;
   const penaltiesAndDeductions = totals.penaltiesAmount + totals.deductions;
   const profitableSkuCount = rows.filter((row) => row.netProfitAfterTax > 0).length;
@@ -1089,41 +1169,49 @@ export default async function ProfitPage({
       label: "Себестоимость товаров",
       value: totals.totalCost,
       colorClassName: "bg-indigo-500",
+      colorHex: "#6366f1",
     },
     {
       label: "Комиссия WB",
       value: totals.wbCommission,
       colorClassName: "bg-violet-500",
+      colorHex: "#8b5cf6",
     },
     {
       label: "Логистика",
       value: totals.logisticsCost,
       colorClassName: "bg-sky-500",
+      colorHex: "#0ea5e9",
     },
     {
       label: "Реклама WB",
       value: totals.adsCost,
       colorClassName: "bg-pink-500",
+      colorHex: "#ec4899",
     },
     {
       label: "Хранение и приёмка",
       value: storageAndAcceptance,
       colorClassName: "bg-orange-400",
+      colorHex: "#fb923c",
     },
     {
       label: "Штрафы и удержания",
       value: penaltiesAndDeductions,
       colorClassName: "bg-red-400",
+      colorHex: "#f87171",
     },
     {
       label: "Платные услуги",
       value: totals.paymentServiceCost,
       colorClassName: "bg-slate-500",
+      colorHex: "#64748b",
     },
     {
       label: "Налоги",
       value: totals.taxesAmount,
       colorClassName: "bg-amber-500",
+      colorHex: "#f59e0b",
     },
   ];
 
@@ -1154,6 +1242,7 @@ export default async function ProfitPage({
               <input type="hidden" name="dir" value={dir} />
               <input type="hidden" name="abc" value={abc} />
               <input type="hidden" name="q" value={q} />
+              <input type="hidden" name="pageSize" value={pageSize} />
 
               <label className="block">
                 <span className="text-xs font-black uppercase tracking-[0.12em] text-slate-400">
@@ -1284,16 +1373,7 @@ export default async function ProfitPage({
 
             <div className="mt-5 grid gap-5 lg:grid-cols-[260px_minmax(0,1fr)]">
               <div className="flex items-center justify-center rounded-[28px] border border-slate-200 bg-slate-50 p-6">
-                <div className="flex h-48 w-48 items-center justify-center rounded-full bg-white shadow-inner ring-[28px] ring-indigo-100">
-                  <div className="text-center">
-                    <div className="text-2xl font-black text-slate-950">
-                      {formatCompactMoney(totals.revenue)}
-                    </div>
-                    <div className="mt-1 text-xs font-black uppercase tracking-[0.12em] text-slate-400">
-                      Выручка
-                    </div>
-                  </div>
-                </div>
+                <ExpenseDonut rows={structureRows} revenue={totals.revenue} />
               </div>
 
               <div className="space-y-4">
@@ -1479,6 +1559,23 @@ export default async function ProfitPage({
                   </select>
                 </label>
 
+
+
+                <label className="flex items-center gap-2 text-sm font-black text-slate-700">
+                  <span>строк</span>
+                  <select
+                    name="pageSize"
+                    defaultValue={String(pageSize)}
+                    className="rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm font-black text-indigo-700 outline-none"
+                  >
+                    {PAGE_SIZE_OPTIONS.map((option) => (
+                      <option key={option} value={option}>
+                        {option}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
                 <button className="rounded-2xl bg-indigo-600 px-4 py-2.5 text-sm font-black text-white shadow-lg shadow-indigo-200 transition hover:bg-indigo-700">
                   Применить
                 </button>
@@ -1487,7 +1584,7 @@ export default async function ProfitPage({
 
             <div className="mt-3 text-xs font-semibold text-slate-400">
               Сейчас: сортировка по {getSortLabel(sort)}, {currentSortDirLabel}.
-              Компания: {getCompanyLabel(companyName)}.
+              Компания: {getCompanyLabel(companyName)}. Строк на странице: {pageSize}.
             </div>
           </div>
 
@@ -1495,7 +1592,7 @@ export default async function ProfitPage({
             <TableHeader />
 
             <div className="min-w-[1180px] bg-white">
-              {sortedRows.map((row, index) => (
+              {displayedRows.map((row, index) => (
                 <ProductRow
                   key={`${row.nmId}-${row.vendorCode}-${index}`}
                   row={row}
@@ -1525,7 +1622,7 @@ export default async function ProfitPage({
 
           <div className="flex flex-col gap-3 border-t border-slate-200 bg-slate-50 px-5 py-4 text-sm font-semibold text-slate-500 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              Показано {formatNumber(sortedRows.length)} из {formatNumber(rows.length)} SKU
+              Показано {formatNumber(displayedRows.length)} из {formatNumber(sortedRows.length)} SKU после фильтров. Всего в периоде: {formatNumber(rows.length)} SKU
             </div>
 
             <div className="flex items-center gap-2">
