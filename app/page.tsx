@@ -4,6 +4,10 @@ import type { ReactNode } from "react";
 import { prisma } from "@/lib/prisma";
 import { getProfitAnalytics } from "@/lib/analytics/profitAnalytics";
 import { getProfitAnalyticsOzon } from "@/lib/analytics/profitAnalyticsOzon";
+import {
+  getDashboardDailyAnalytics,
+  type DashboardDailyPoint,
+} from "@/lib/analytics/dashboardDailyAnalytics";
 import { calculateFinanceMetricsForRows } from "@/lib/finance/financeMetrics";
 
 type Props = {
@@ -216,8 +220,6 @@ const chartPresets: ChartPresetConfig[] = [
   },
 ];
 
-const trendWeights = [0.52, 0.68, 0.8, 0.6, 0.92, 0.66, 0.76, 1, 0.74, 0.88, 0.64, 0.96, 0.7, 0.9];
-const lineWeights = [0.74, 0.62, 0.7, 0.52, 0.82, 0.64, 0.9, 0.58, 0.72, 0.56, 0.86, 0.66, 0.78, 0.6];
 const weekDayLabels = ["Вс", "Пн", "Вт", "Ср", "Чт", "Пт", "Сб"];
 
 const quickActions = [
@@ -347,32 +349,6 @@ function formatChartDate(date: Date) {
   };
 }
 
-function getChartSeries(
-  total: number,
-  kind: ChartMetricKind,
-  weights: number[],
-  pointCount: number
-) {
-  const usedWeights = Array.from(
-    { length: pointCount },
-    (_, index) => weights[index % weights.length]
-  );
-
-  if (kind === "percent") {
-    const base = Math.max(0, total);
-    return usedWeights.map((weight) =>
-      Math.max(0, base * (0.72 + weight * 0.48))
-    );
-  }
-
-  const sign = total < 0 ? -1 : 1;
-  const safeTotal = Math.abs(total);
-  if (safeTotal === 0) return usedWeights.map(() => 0);
-
-  const weightSum = usedWeights.reduce((sum, weight) => sum + weight, 0);
-  return usedWeights.map((weight) => sign * (safeTotal * weight) / weightSum);
-}
-
 function getSeriesHeight(value: number, max: number) {
   if (max <= 0) return 8;
   return Math.max(8, Math.round((Math.abs(value) / max) * 100));
@@ -388,6 +364,97 @@ function getSeriesStats(values: number[]) {
     avg: values.reduce((sum, value) => sum + value, 0) / values.length,
     max: Math.max(...values),
   };
+}
+
+function compactDailyPairs(
+  currentPoints: DashboardDailyPoint[],
+  previousPoints: DashboardDailyPoint[],
+  maxPoints = 14
+): Array<{ current: DashboardDailyPoint; previous: DashboardDailyPoint | null }> {
+  const result: Array<{ current: DashboardDailyPoint; previous: DashboardDailyPoint | null }> = [];
+
+  if (currentPoints.length === 0) return result;
+
+  if (currentPoints.length <= maxPoints) {
+    currentPoints.forEach((current, index) => {
+      result.push({
+        current,
+        previous: previousPoints[index] ?? previousPoints[previousPoints.length - 1] ?? null,
+      });
+    });
+
+    return result;
+  }
+
+  const lastIndex = currentPoints.length - 1;
+
+  Array.from({ length: maxPoints }, (_, index) => {
+    const ratio = maxPoints === 1 ? 0 : index / (maxPoints - 1);
+    const sourceIndex = Math.round(lastIndex * ratio);
+    const current = currentPoints[sourceIndex];
+
+    if (!current) return;
+
+    result.push({
+      current,
+      previous: previousPoints[sourceIndex] ?? previousPoints[previousPoints.length - 1] ?? null,
+    });
+  });
+
+  return result;
+}
+
+function metricValueFromDailyPoint(
+  point: DashboardDailyPoint | null | undefined,
+  metric: ChartMetricConfig
+) {
+  if (!point) return 0;
+
+  if (metric.label === "Выручка") return point.revenue;
+  if (metric.label === "ДРР") return point.drr ?? 0;
+  if (metric.label === "Опер. прибыль") return point.operatingProfitAfterTax;
+  if (metric.label === "Кредиты") return point.loanPayments;
+  if (metric.label === "Чистая прибыль") return point.netProfit;
+  if (metric.label === "Денежный поток") return point.cashFlowResult;
+
+  return 0;
+}
+
+function sumDailyValue(
+  points: DashboardDailyPoint[],
+  selector: (point: DashboardDailyPoint) => number
+) {
+  return points.reduce((sum, point) => sum + selector(point), 0);
+}
+
+function metricTotalFromDailyPoints(
+  points: DashboardDailyPoint[],
+  metric: ChartMetricConfig
+) {
+  if (metric.label === "Выручка") return sumDailyValue(points, (point) => point.revenue);
+  if (metric.label === "ДРР") {
+    const revenue = sumDailyValue(points, (point) => point.revenue);
+    const adsCost = sumDailyValue(points, (point) => point.adsCost);
+    return revenue > 0 ? (adsCost / revenue) * 100 : 0;
+  }
+  if (metric.label === "Опер. прибыль") {
+    return sumDailyValue(points, (point) => point.operatingProfitAfterTax);
+  }
+  if (metric.label === "Кредиты") return sumDailyValue(points, (point) => point.loanPayments);
+  if (metric.label === "Чистая прибыль") return sumDailyValue(points, (point) => point.netProfit);
+  if (metric.label === "Денежный поток") return sumDailyValue(points, (point) => point.cashFlowResult);
+
+  return 0;
+}
+
+function averageMetricFromDailyPoints(
+  points: DashboardDailyPoint[],
+  metric: ChartMetricConfig
+) {
+  if (points.length === 0) return 0;
+  if (metric.label === "ДРР") return metricTotalFromDailyPoints(points, metric);
+
+  return metricTotalFromDailyPoints(points, metric) / points.length;
 }
 
 function getChartPreset(value: unknown) {
@@ -1116,16 +1183,6 @@ function InsightValue({
   );
 }
 
-function metricTotalFromSummary(summary: DashboardSummary, metric: ChartMetricConfig) {
-  if (metric.label === "Выручка") return summary.totalRevenue;
-  if (metric.label === "ДРР") return summary.drr ?? 0;
-  if (metric.label === "Опер. прибыль") return summary.operatingProfitAfterTax;
-  if (metric.label === "Кредиты") return summary.loanPayments;
-  if (metric.label === "Чистая прибыль") return summary.netProfit;
-  if (metric.label === "Денежный поток") return summary.cashFlowResult;
-  return 0;
-}
-
 function percentDelta(currentValue: number, previousValue: number) {
   if (previousValue === 0) return null;
   return ((currentValue - previousValue) / Math.abs(previousValue)) * 100;
@@ -1159,50 +1216,25 @@ function formatSecondaryInsight(params: {
 
 function InteractiveTrendChart({
   preset,
-  primaryTotal,
-  secondaryTotal,
-  previousPrimaryTotal,
-  previousSecondaryTotal,
-  dateFrom,
-  dateTo,
-  previousDateFrom,
-  previousDateTo,
+  currentPoints,
+  previousPoints,
 }: {
   preset: ChartPresetConfig;
-  primaryTotal: number;
-  secondaryTotal: number;
-  previousPrimaryTotal: number;
-  previousSecondaryTotal: number;
-  dateFrom: string;
-  dateTo: string;
-  previousDateFrom: string;
-  previousDateTo: string;
+  currentPoints: DashboardDailyPoint[];
+  previousPoints: DashboardDailyPoint[];
 }) {
-  const chartDates = getChartDates(dateFrom, dateTo);
-  const previousChartDates = getChartDates(previousDateFrom, previousDateTo);
-  const primarySeries = getChartSeries(
-    primaryTotal,
-    preset.primary.kind,
-    trendWeights,
-    chartDates.length
+  const dailyPairs = compactDailyPairs(currentPoints, previousPoints);
+  const primarySeries = dailyPairs.map((pair) =>
+    metricValueFromDailyPoint(pair.current, preset.primary)
   );
-  const secondarySeries = getChartSeries(
-    secondaryTotal,
-    preset.secondary.kind,
-    lineWeights,
-    chartDates.length
+  const secondarySeries = dailyPairs.map((pair) =>
+    metricValueFromDailyPoint(pair.current, preset.secondary)
   );
-  const previousPrimarySeries = getChartSeries(
-    previousPrimaryTotal,
-    preset.primary.kind,
-    trendWeights.slice().reverse(),
-    chartDates.length
+  const previousPrimarySeries = dailyPairs.map((pair) =>
+    metricValueFromDailyPoint(pair.previous, preset.primary)
   );
-  const previousSecondarySeries = getChartSeries(
-    previousSecondaryTotal,
-    preset.secondary.kind,
-    lineWeights.slice().reverse(),
-    chartDates.length
+  const previousSecondarySeries = dailyPairs.map((pair) =>
+    metricValueFromDailyPoint(pair.previous, preset.secondary)
   );
   const maxPrimary = Math.max(
     ...primarySeries.map(Math.abs),
@@ -1222,7 +1254,7 @@ function InteractiveTrendChart({
   const plotBottom = 36;
   const plotWidth = chartWidth - plotLeft - plotRight;
   const plotHeight = chartHeight - plotTop - plotBottom;
-  const pointGap = chartDates.length > 1 ? plotWidth / (chartDates.length - 1) : 0;
+  const pointGap = dailyPairs.length > 1 ? plotWidth / (dailyPairs.length - 1) : 0;
 
   const linePoints = secondarySeries
     .map((value, index) => {
@@ -1329,29 +1361,28 @@ function InteractiveTrendChart({
             const previousBarWidth = barWidth;
             const y = plotTop + plotHeight - height;
             const previousY = plotTop + plotHeight - previousHeight;
-            const { dateLabel, weekDayLabel } = formatChartDate(chartDates[index]);
+            const { dateLabel, weekDayLabel } = formatChartDate(parseIsoDate(dailyPairs[index].current.date));
 
             return (
-              <g key={index}>
+              <g key={dailyPairs[index].current.date}>
                 <rect
-                  x={x - previousBarWidth / 2 + barWidth * 0.42}
+                  x={x - previousBarWidth / 2 + barWidth * 0.45}
                   y={previousY}
                   width={previousBarWidth}
                   height={previousHeight}
-                  rx={previousBarWidth / 2}
+                  rx="10"
                   fill="#ddd6fe"
-                  opacity="0.65"
+                  opacity="0.72"
                   stroke="#c4b5fd"
-                  strokeDasharray="3 3"
+                  strokeDasharray="4 3"
                 />
                 <rect
-                  x={x - barWidth / 2 - barWidth * 0.18}
+                  x={x - barWidth / 2 - barWidth * 0.3}
                   y={y}
                   width={barWidth}
                   height={height}
-                  rx={barWidth / 2}
+                  rx="10"
                   fill="url(#primaryGradient)"
-                  opacity="0.95"
                 />
                 <text
                   x={x}
@@ -1398,7 +1429,7 @@ function InteractiveTrendChart({
 
             return (
               <circle
-                key={index}
+                key={dailyPairs[index].current.date}
                 cx={x}
                 cy={y}
                 r="4.5"
@@ -1418,28 +1449,29 @@ function InteractiveTrendChart({
         </svg>
 
         <div className="absolute inset-x-[64px] top-[56px] flex h-[122px] items-stretch">
-          {primarySeries.map((value, index) => {
+          {dailyPairs.map((pair, index) => {
+            const value = primarySeries[index] ?? 0;
             const secondaryValue = secondarySeries[index] ?? 0;
             const previousPrimaryValue = previousPrimarySeries[index] ?? 0;
             const previousSecondaryValue = previousSecondarySeries[index] ?? 0;
-            const { dateLabel, weekDayLabel } = formatChartDate(chartDates[index]);
-            const comparisonDate = previousChartDates[index] ?? previousChartDates[previousChartDates.length - 1] ?? chartDates[index];
+            const { dateLabel, weekDayLabel } = formatChartDate(parseIsoDate(pair.current.date));
+            const comparisonDate = pair.previous?.date ?? pair.current.date;
             const {
               dateLabel: comparisonDateLabel,
               weekDayLabel: comparisonWeekDayLabel,
-            } = formatChartDate(comparisonDate);
+            } = formatChartDate(parseIsoDate(comparisonDate));
             const tooltipPosition =
               index <= 1
                 ? "left-0 translate-x-0"
-                : index >= primarySeries.length - 2
+                : index >= dailyPairs.length - 2
                   ? "right-0 translate-x-0"
                   : "left-1/2 -translate-x-1/2";
 
             return (
-              <div key={index} className="group relative flex-1 cursor-crosshair">
+              <div key={pair.current.date} className="group relative flex-1 cursor-crosshair">
                 <div className="absolute inset-y-0 left-1/2 hidden w-px bg-indigo-300 group-hover:block" />
                 <div
-                  className={`pointer-events-none absolute top-4 z-30 hidden w-36 rounded-xl border border-slate-200 bg-white px-2.5 py-2 text-left shadow-lg group-hover:block ${tooltipPosition}`}
+                  className={`pointer-events-none absolute top-4 z-30 hidden w-40 rounded-xl border border-slate-200 bg-white px-2.5 py-2 text-left shadow-lg group-hover:block ${tooltipPosition}`}
                 >
                   <div className="text-[9px] font-black uppercase tracking-[0.06em] text-slate-400">
                     {dateLabel} · {weekDayLabel}
@@ -1489,39 +1521,46 @@ function InteractiveTrendChart({
 
 function DynamicInsights({
   preset,
-  current,
-  previous,
-  dateFrom,
-  dateTo,
+  currentPoints,
+  previousPoints,
 }: {
   preset: ChartPresetConfig;
-  current: DashboardSummary;
-  previous: DashboardSummary;
-  dateFrom: string;
-  dateTo: string;
+  currentPoints: DashboardDailyPoint[];
+  previousPoints: DashboardDailyPoint[];
 }) {
-  const chartDates = getChartDates(dateFrom, dateTo);
-  const primaryTotal = metricTotalFromSummary(current, preset.primary);
-  const secondaryTotal = metricTotalFromSummary(current, preset.secondary);
-  const previousPrimaryTotal = metricTotalFromSummary(previous, preset.primary);
-  const previousSecondaryTotal = metricTotalFromSummary(previous, preset.secondary);
-  const primarySeries = getChartSeries(primaryTotal, preset.primary.kind, trendWeights, chartDates.length);
-  const secondarySeries = getChartSeries(secondaryTotal, preset.secondary.kind, lineWeights, chartDates.length);
+  const dailyPairs = compactDailyPairs(currentPoints, previousPoints);
+  const primarySeries = dailyPairs.map((pair) =>
+    metricValueFromDailyPoint(pair.current, preset.primary)
+  );
+  const secondarySeries = dailyPairs.map((pair) =>
+    metricValueFromDailyPoint(pair.current, preset.secondary)
+  );
   const primaryStats = getSeriesStats(primarySeries);
   const secondaryStats = getSeriesStats(secondarySeries);
   const isDrrPreset = preset.secondary.label === "ДРР";
 
+  const primaryTotal = metricTotalFromDailyPoints(currentPoints, preset.primary);
+  const secondaryTotal = metricTotalFromDailyPoints(currentPoints, preset.secondary);
+  const previousPrimaryTotal = metricTotalFromDailyPoints(previousPoints, preset.primary);
+  const previousSecondaryTotal = metricTotalFromDailyPoints(previousPoints, preset.secondary);
+
   const bestPrimaryIndex = primarySeries.indexOf(primaryStats.max);
   const weakPrimaryIndex = primarySeries.indexOf(primaryStats.min);
   const peakSecondaryIndex = secondarySeries.indexOf(secondaryStats.max);
-  const avgPrimary = primaryStats.avg;
-  const avgSecondary = secondaryStats.avg;
+  const avgPrimary = averageMetricFromDailyPoints(currentPoints, preset.primary);
+  const avgSecondary = averageMetricFromDailyPoints(currentPoints, preset.secondary);
 
   function row(index: number) {
-    const date = chartDates[index] ?? chartDates[0] ?? parseIsoDate(dateFrom);
-    const { dateLabel, weekDayLabel } = formatChartDate(date);
-    const primaryValue = primarySeries[index] ?? 0;
-    const secondaryValue = secondarySeries[index] ?? 0;
+    const pair = dailyPairs[index] ?? dailyPairs[0];
+    const currentPoint = pair?.current;
+    const date = currentPoint?.date ?? toIsoDate(new Date());
+    const { dateLabel, weekDayLabel } = formatChartDate(parseIsoDate(date));
+    const primaryValue = currentPoint
+      ? metricValueFromDailyPoint(currentPoint, preset.primary)
+      : 0;
+    const secondaryValue = currentPoint
+      ? metricValueFromDailyPoint(currentPoint, preset.secondary)
+      : 0;
 
     return {
       dateLabel,
@@ -2406,22 +2445,20 @@ export default async function HomePage({ searchParams }: Props) {
   );
   const marketplacePrevious = summarizeDashboardRows(marketplacePreviousRows);
   const selectedChartPreset = getChartPreset(params.chartPreset);
-  const chartPrimaryTotal = metricTotalFromSummary(
-    marketplaceCurrent,
-    selectedChartPreset.primary
-  );
-  const chartSecondaryTotal = metricTotalFromSummary(
-    marketplaceCurrent,
-    selectedChartPreset.secondary
-  );
-  const previousChartPrimaryTotal = metricTotalFromSummary(
-    marketplacePrevious,
-    selectedChartPreset.primary
-  );
-  const previousChartSecondaryTotal = metricTotalFromSummary(
-    marketplacePrevious,
-    selectedChartPreset.secondary
-  );
+  const dailyCompanyName =
+    selectedMarketplaceCompanyValue === "ALL" ? null : selectedMarketplaceCompanyValue;
+  const [currentDailyPoints, previousDailyPoints] = await Promise.all([
+    getDashboardDailyAnalytics({
+      dateFrom: selectedPeriod.dateFrom,
+      dateTo: selectedPeriod.dateTo,
+      companyName: dailyCompanyName,
+    }),
+    getDashboardDailyAnalytics({
+      dateFrom: previousPeriod.dateFrom,
+      dateTo: previousPeriod.dateTo,
+      companyName: dailyCompanyName,
+    }),
+  ]);
   const presetPeriods = periodOptions.filter((period) => period.key !== "custom");
 
   const attentionItems = [
@@ -2759,24 +2796,16 @@ export default async function HomePage({ searchParams }: Props) {
 
             <InteractiveTrendChart
               preset={selectedChartPreset}
-              primaryTotal={chartPrimaryTotal}
-              secondaryTotal={chartSecondaryTotal}
-              previousPrimaryTotal={previousChartPrimaryTotal}
-              previousSecondaryTotal={previousChartSecondaryTotal}
-              dateFrom={selectedPeriod.dateFrom}
-              dateTo={selectedPeriod.dateTo}
-              previousDateFrom={previousPeriod.dateFrom}
-              previousDateTo={previousPeriod.dateTo}
+              currentPoints={currentDailyPoints}
+              previousPoints={previousDailyPoints}
             />
           </section>
 
           <div className="min-w-0 2xl:col-span-2">
             <DynamicInsights
               preset={selectedChartPreset}
-              current={marketplaceCurrent}
-              previous={marketplacePrevious}
-              dateFrom={selectedPeriod.dateFrom}
-              dateTo={selectedPeriod.dateTo}
+              currentPoints={currentDailyPoints}
+              previousPoints={previousDailyPoints}
             />
           </div>
         </section>
