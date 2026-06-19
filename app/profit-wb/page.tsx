@@ -1,27 +1,148 @@
 import Link from "next/link";
+import type { ReactNode } from "react";
+
+import { prisma } from "@/lib/prisma";
 import { getProfitAnalytics } from "@/lib/analytics/profitAnalytics";
-import MarketplaceNav from "@/components/marketplaces/MarketplaceNav";
 
 type SortKey =
-  | "abcByProfit"
-  | "netSalesQty"
   | "revenue"
-  | "revenueSharePercent"
-  | "sellerPayout"
-  | "wbCommission"
-  | "logisticsCost"
-  | "penaltiesAndDeductions"
-  | "paymentServiceCost"
-  | "adsCost"
-  | "drrPercent"
-  | "totalCost"
-  | "taxesAmount"
-  | "marginProfit"
-  | "profitSharePercent"
+  | "netSalesQty"
+  | "expenses"
   | "netProfitAfterTax"
-  | "marginAfterTaxPercent";
+  | "buyoutPercent"
+  | "marginAfterTaxPercent"
+  | "adsCost"
+  | "drrPercent";
 
 type SortDir = "asc" | "desc";
+type AbcFilter = "ALL" | "A" | "B" | "C" | "LOSS";
+
+type ProfitAnalyticsResult = Awaited<ReturnType<typeof getProfitAnalytics>>;
+type ProfitRow = ProfitAnalyticsResult["rows"][number];
+
+type SearchParams = {
+  dateFrom?: string;
+  dateTo?: string;
+  companyName?: string;
+  sort?: string;
+  dir?: string;
+  q?: string;
+  abc?: string;
+};
+
+type ProductMeta = {
+  productName: string;
+  subject: string;
+  nmId: string;
+  vendorCode: string;
+  imageUrl?: string | null;
+};
+
+type SizeBreakdownRow = {
+  size: string;
+  barcode: string;
+  revenue: number;
+  netSalesQty: number;
+  salesQty: number;
+  returnsQty: number;
+  expenses: number;
+  netProfitAfterTax: number;
+  buyoutPercent: number | null;
+  marginAfterTaxPercent: number;
+  abcByRevenue: "A" | "B" | "C";
+  abcByProfit: "A" | "B" | "C";
+};
+
+type RawSizeMetric = {
+  size: string;
+  barcode: string;
+  revenue: number;
+  salesQty: number;
+  returnsQty: number;
+  netSalesQty: number;
+};
+
+type EnrichedProfitRow = ProfitRow & {
+  abcByRevenue: "A" | "B" | "C";
+  productMeta: ProductMeta;
+  sizeRows: SizeBreakdownRow[];
+};
+
+const DEFAULT_DATE_FROM = "2026-05-18";
+const DEFAULT_DATE_TO = "2026-05-24";
+
+const ABC_FILTERS: { key: AbcFilter; label: string }[] = [
+  { key: "ALL", label: "Все" },
+  { key: "A", label: "A" },
+  { key: "B", label: "B" },
+  { key: "C", label: "C" },
+  { key: "LOSS", label: "Убыточные" },
+];
+
+function toNumber(value: unknown): number {
+  if (value === null || value === undefined) return 0;
+  if (typeof value === "number") return Number.isFinite(value) ? value : 0;
+
+  if (typeof value === "object" && "toNumber" in value) {
+    return (value as { toNumber: () => number }).toNumber();
+  }
+
+  const normalized = String(value)
+    .replace(/\s/g, "")
+    .replace(",", ".")
+    .replace(/[^\d.-]/g, "");
+
+  const number = Number(normalized);
+  return Number.isFinite(number) ? number : 0;
+}
+
+function normalizeText(value: unknown) {
+  return String(value ?? "")
+    .toLowerCase()
+    .replaceAll("ё", "е")
+    .replace(/[–—−]/g, "-")
+    .replace(/\s*-\s*/g, "-")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function startOfDay(value: string) {
+  const date = new Date(value);
+  date.setHours(0, 0, 0, 0);
+  return date;
+}
+
+function nextDayStart(value: string) {
+  const date = startOfDay(value);
+  date.setDate(date.getDate() + 1);
+  return date;
+}
+
+function createDateFilterFromStrings(dateFrom?: string | null, dateTo?: string | null) {
+  return dateFrom || dateTo
+    ? {
+        OR: [
+          {
+            dateFrom: {
+              ...(dateFrom ? { gte: startOfDay(dateFrom) } : {}),
+              ...(dateTo ? { lt: nextDayStart(dateTo) } : {}),
+            },
+          },
+          {
+            dateTo: {
+              ...(dateFrom ? { gte: startOfDay(dateFrom) } : {}),
+              ...(dateTo ? { lt: nextDayStart(dateTo) } : {}),
+            },
+          },
+        ],
+      }
+    : {};
+}
+
+function isSaleOperation(reason: string) {
+  const value = normalizeText(reason);
+  return value === "продажа" || value === "сторно возвратов";
+}
 
 function formatMoney(value: number) {
   return new Intl.NumberFormat("ru-RU", {
@@ -31,550 +152,1388 @@ function formatMoney(value: number) {
   }).format(Number.isFinite(value) ? value : 0);
 }
 
+function formatCompactMoney(value: number) {
+  const safe = Number.isFinite(value) ? value : 0;
+
+  if (Math.abs(safe) >= 1_000_000) {
+    return `${(safe / 1_000_000).toFixed(1).replace(".", ",")} млн ₽`;
+  }
+
+  if (Math.abs(safe) >= 1_000) {
+    return `${Math.round(safe / 1_000).toLocaleString("ru-RU")} тыс. ₽`;
+  }
+
+  return formatMoney(safe);
+}
+
 function formatNumber(value: number) {
   return new Intl.NumberFormat("ru-RU", {
     maximumFractionDigits: 0,
   }).format(Number.isFinite(value) ? value : 0);
 }
 
-function formatPercent(value: number) {
-  return `${(Number.isFinite(value) ? value : 0).toFixed(1)}%`;
+function formatPercent(value: number | null | undefined) {
+  if (value === null || value === undefined || !Number.isFinite(value)) return "—";
+  return `${value.toFixed(1)}%`;
 }
 
-function formatShare(value: number, revenue: number) {
-  if (!revenue || revenue <= 0) return "0% от выручки";
-  return `${((value / revenue) * 100).toFixed(1)}% от выручки`;
+function formatDateRu(value: string) {
+  const date = new Date(`${value}T00:00:00`);
+  return new Intl.DateTimeFormat("ru-RU", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  }).format(date);
 }
 
-function profitColor(value: number) {
+function formatDeltaPercent(value: number, inverse = false) {
+  if (!Number.isFinite(value) || value === 0) {
+    return {
+      text: "0.0%",
+      className: "text-slate-500",
+    };
+  }
+
+  const isGood = inverse ? value < 0 : value > 0;
+  const sign = value > 0 ? "+" : "";
+
+  return {
+    text: `${sign}${value.toFixed(1)}%`,
+    className: isGood ? "text-emerald-600" : "text-red-600",
+  };
+}
+
+function formatShare(value: number, total: number, label = "от выручки") {
+  if (!total || total <= 0) return `0.0% ${label}`;
+  return `${((value / total) * 100).toFixed(1)}% ${label}`;
+}
+
+function clamp(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, value));
+}
+
+function profitTextColor(value: number) {
   if (value < 0) return "text-red-600";
   return "text-emerald-600";
 }
 
-function deltaColor(value: number, inverse = false) {
-  if (value === 0) return "text-slate-500";
-  const isGood = inverse ? value < 0 : value > 0;
-  return isGood ? "text-emerald-600" : "text-red-600";
+function metricBarColor(value: number) {
+  if (value < 0) return "bg-red-500";
+  if (value < 10) return "bg-orange-400";
+  return "bg-emerald-500";
 }
 
-function formatDelta(diff: number, diffPercent: number) {
-  const sign = diff > 0 ? "+" : "";
-  return `${sign}${formatMoney(diff)} / ${sign}${formatPercent(diffPercent)}`;
+function rowExpenses(row: ProfitRow) {
+  return row.revenue - row.netProfitAfterTax;
 }
 
-function cardClassName() {
-  return "min-w-0 rounded-2xl bg-white p-5 shadow-sm";
+function rowBuyoutPercent(row: ProfitRow) {
+  const denominator = row.salesQty + row.returnsQty;
+  if (denominator <= 0) return null;
+  return (Math.max(0, row.netSalesQty) / denominator) * 100;
 }
 
-function valueClassName() {
-  return "mt-2 break-words text-lg font-bold sm:text-xl";
-}
+function calculateAbcByPositiveValue<T>(
+  rows: T[],
+  getValue: (row: T) => number
+): Map<T, "A" | "B" | "C"> {
+  const result = new Map<T, "A" | "B" | "C">();
 
-function subTextClassName() {
-  return "mt-2 text-xs text-slate-500";
-}
+  const sorted = [...rows].sort(
+    (a, b) => Math.max(0, getValue(b)) - Math.max(0, getValue(a))
+  );
 
-function deltaTextClassName(value: number, inverse = false) {
-  return `mt-1 text-xs font-medium ${deltaColor(value, inverse)}`;
-}
+  const total = sorted.reduce((sum, row) => sum + Math.max(0, getValue(row)), 0);
 
-function getSortValue(row: any, sortKey: SortKey, totalMarginProfit: number) {
-  if (sortKey === "penaltiesAndDeductions") {
-    return row.penaltiesAmount + row.deductions;
+  if (total <= 0) {
+    for (const row of rows) result.set(row, "C");
+    return result;
   }
 
-  if (sortKey === "profitSharePercent") {
-    return totalMarginProfit !== 0
-      ? (row.marginProfit / totalMarginProfit) * 100
-      : 0;
+  let cumulative = 0;
+
+  for (const row of sorted) {
+    const positive = Math.max(0, getValue(row));
+
+    if (positive <= 0) {
+      result.set(row, "C");
+      continue;
+    }
+
+    const shareBefore = cumulative / total;
+    cumulative += positive;
+
+    if (shareBefore < 0.8) {
+      result.set(row, "A");
+    } else if (shareBefore < 0.95) {
+      result.set(row, "B");
+    } else {
+      result.set(row, "C");
+    }
   }
 
-  if (sortKey === "abcByProfit") {
-    const order = { A: 1, B: 2, C: 3 };
-    return order[row.abcByProfit as "A" | "B" | "C"] ?? 99;
-  }
+  return result;
+}
+
+function getSortValue(row: EnrichedProfitRow, sortKey: SortKey) {
+  if (sortKey === "expenses") return rowExpenses(row);
+  if (sortKey === "buyoutPercent") return rowBuyoutPercent(row) ?? -1;
 
   return Number(row[sortKey] ?? 0);
+}
+
+function buildQueryHref(
+  params: SearchParams,
+  patch: Partial<SearchParams & { abc: AbcFilter; sort: SortKey; dir: SortDir }>
+) {
+  const query = new URLSearchParams();
+
+  const next = {
+    dateFrom: params.dateFrom ?? DEFAULT_DATE_FROM,
+    dateTo: params.dateTo ?? DEFAULT_DATE_TO,
+    companyName: params.companyName ?? "ALL",
+    sort: params.sort ?? "netProfitAfterTax",
+    dir: params.dir ?? "desc",
+    q: params.q ?? "",
+    abc: params.abc ?? "ALL",
+    ...patch,
+  };
+
+  query.set("dateFrom", next.dateFrom);
+  query.set("dateTo", next.dateTo);
+  query.set("companyName", next.companyName);
+  query.set("sort", next.sort);
+  query.set("dir", next.dir);
+  query.set("abc", next.abc);
+
+  if (next.q) query.set("q", next.q);
+
+  return `/profit-wb?${query.toString()}`;
+}
+
+function getSortLabel(sort: SortKey) {
+  const labels: Record<SortKey, string> = {
+    revenue: "выручке",
+    netSalesQty: "количеству",
+    expenses: "расходам",
+    netProfitAfterTax: "прибыли",
+    buyoutPercent: "проценту выкупа",
+    marginAfterTaxPercent: "маржинальности",
+    adsCost: "рекламе",
+    drrPercent: "ДРР",
+  };
+
+  return labels[sort] ?? "прибыли";
+}
+
+function getCompanyLabel(companyName: string) {
+  if (companyName === "ALL") return "Все компании";
+  return companyName;
+}
+
+async function findWbSaleRowsForBreakdown(params: {
+  dateFrom?: string | null;
+  dateTo?: string | null;
+  companyName?: string | null;
+}) {
+  const dateFilter = createDateFilterFromStrings(params.dateFrom, params.dateTo);
+
+  const financeRows = await prisma.wbFinance.findMany({
+    where: {
+      ...dateFilter,
+      ...(params.companyName ? { companyName: params.companyName } : {}),
+    },
+    select: {
+      reportNumber: true,
+    },
+  });
+
+  const reportNumbers = Array.from(
+    new Set(
+      financeRows
+        .map((row) => String(row.reportNumber ?? "").trim())
+        .filter(Boolean)
+    )
+  );
+
+  if (reportNumbers.length > 0) {
+    const importSessions = await prisma.importSession.findMany({
+      where: {
+        ...(params.companyName ? { companyName: params.companyName } : {}),
+        reportType: "WB_SALES",
+        OR: reportNumbers.map((reportNumber) => ({
+          fileName: {
+            contains: reportNumber,
+          },
+        })),
+      },
+      orderBy: {
+        createdAt: "desc",
+      },
+    });
+
+    const latestSessionByFileName = new Map<string, string>();
+
+    for (const session of importSessions) {
+      if (!latestSessionByFileName.has(session.fileName)) {
+        latestSessionByFileName.set(session.fileName, session.id);
+      }
+    }
+
+    const latestImportSessionIds = Array.from(latestSessionByFileName.values());
+
+    if (latestImportSessionIds.length > 0) {
+      return prisma.wbSale.findMany({
+        where: {
+          ...(params.companyName ? { companyName: params.companyName } : {}),
+          importSessionId: {
+            in: latestImportSessionIds,
+          },
+        },
+        select: {
+          productName: true,
+          subject: true,
+          size: true,
+          nmId: true,
+          vendorCode: true,
+          barcode: true,
+          paymentReason: true,
+          quantity: true,
+          wbRealizedAmount: true,
+          saleDate: true,
+        },
+        orderBy: {
+          saleDate: "desc",
+        },
+      });
+    }
+  }
+
+  return prisma.wbSale.findMany({
+    where: {
+      ...(params.companyName ? { companyName: params.companyName } : {}),
+      ...(params.dateFrom || params.dateTo
+        ? {
+            saleDate: {
+              ...(params.dateFrom ? { gte: startOfDay(params.dateFrom) } : {}),
+              ...(params.dateTo ? { lt: nextDayStart(params.dateTo) } : {}),
+            },
+          }
+        : {}),
+    },
+    select: {
+      productName: true,
+      subject: true,
+      size: true,
+      nmId: true,
+      vendorCode: true,
+      barcode: true,
+      paymentReason: true,
+      quantity: true,
+      wbRealizedAmount: true,
+      saleDate: true,
+    },
+    orderBy: {
+      saleDate: "desc",
+    },
+  });
+}
+
+async function buildProductMetaAndSizeRows(params: {
+  rows: ProfitRow[];
+  dateFrom: string;
+  dateTo: string;
+  companyName: string;
+}) {
+  const companyName = params.companyName === "ALL" ? null : params.companyName;
+
+  const [salesRows, productCosts] = await Promise.all([
+    findWbSaleRowsForBreakdown({
+      dateFrom: params.dateFrom,
+      dateTo: params.dateTo,
+      companyName,
+    }),
+    prisma.productCost.findMany({
+      select: {
+        vendorCode: true,
+        nmId: true,
+        name: true,
+      },
+      orderBy: {
+        costDate: "desc",
+      },
+    }),
+  ]);
+
+  const metaByVendorCode = new Map<string, ProductMeta>();
+  const rawSizesByVendorCode = new Map<string, Map<string, RawSizeMetric>>();
+
+  for (const cost of productCosts) {
+    const key = normalizeText(cost.vendorCode);
+    if (!key) continue;
+
+    const current = metaByVendorCode.get(key);
+
+    if (!current) {
+      metaByVendorCode.set(key, {
+        productName: cost.name ?? cost.vendorCode,
+        subject: "",
+        nmId: cost.nmId ?? "",
+        vendorCode: cost.vendorCode,
+      });
+    }
+  }
+
+  for (const sale of salesRows) {
+    const vendorCode = sale.vendorCode ?? "";
+    const vendorKey = normalizeText(vendorCode);
+    if (!vendorKey) continue;
+
+    const currentMeta = metaByVendorCode.get(vendorKey);
+
+    metaByVendorCode.set(vendorKey, {
+      productName:
+        currentMeta?.productName && currentMeta.productName !== currentMeta.vendorCode
+          ? currentMeta.productName
+          : sale.productName || sale.subject || vendorCode,
+      subject: sale.subject ?? currentMeta?.subject ?? "",
+      nmId: sale.nmId ?? currentMeta?.nmId ?? "",
+      vendorCode: sale.vendorCode ?? currentMeta?.vendorCode ?? vendorCode,
+      imageUrl: null,
+    });
+
+    const size = String(sale.size ?? "Без размера").trim() || "Без размера";
+    const barcode = String(sale.barcode ?? "").trim();
+    const sizeKey = `${size}__${barcode}`;
+
+    const sizeMap = rawSizesByVendorCode.get(vendorKey) ?? new Map<string, RawSizeMetric>();
+
+    const current =
+      sizeMap.get(sizeKey) ??
+      {
+        size,
+        barcode,
+        revenue: 0,
+        salesQty: 0,
+        returnsQty: 0,
+        netSalesQty: 0,
+      };
+
+    const paymentReason = normalizeText(sale.paymentReason);
+    const quantity = Math.abs(Number(sale.quantity ?? 0));
+    const revenue = toNumber(sale.wbRealizedAmount);
+
+    if (isSaleOperation(paymentReason)) {
+      current.salesQty += quantity;
+      current.netSalesQty += quantity;
+      current.revenue += revenue;
+    }
+
+    if (paymentReason === "возврат") {
+      current.returnsQty += quantity;
+      current.netSalesQty -= quantity;
+      current.revenue -= revenue;
+    }
+
+    sizeMap.set(sizeKey, current);
+    rawSizesByVendorCode.set(vendorKey, sizeMap);
+  }
+
+  const sizeRowsByVendorCode = new Map<string, SizeBreakdownRow[]>();
+
+  for (const row of params.rows) {
+    const vendorKey = normalizeText(row.vendorCode);
+    const sizeMap = rawSizesByVendorCode.get(vendorKey);
+
+    if (!sizeMap || sizeMap.size === 0) {
+      continue;
+    }
+
+    const rawSizes = Array.from(sizeMap.values())
+      .filter((size) => size.salesQty > 0 || size.revenue > 0 || size.netSalesQty > 0)
+      .sort((a, b) => b.revenue - a.revenue);
+
+    const rawRevenueTotal = rawSizes.reduce(
+      (sum, size) => sum + Math.max(0, size.revenue),
+      0
+    );
+
+    const rawQtyTotal = rawSizes.reduce(
+      (sum, size) => sum + Math.max(0, size.netSalesQty),
+      0
+    );
+
+    const expenses = rowExpenses(row);
+    const abcByRevenue = calculateAbcByPositiveValue(rawSizes, (size) => size.revenue);
+    const provisionalProfitRows = rawSizes.map((size) => {
+      const share =
+        rawRevenueTotal > 0
+          ? Math.max(0, size.revenue) / rawRevenueTotal
+          : rawQtyTotal > 0
+            ? Math.max(0, size.netSalesQty) / rawQtyTotal
+            : 1 / Math.max(1, rawSizes.length);
+
+      return {
+        size,
+        value: row.netProfitAfterTax * share,
+      };
+    });
+
+    const abcByProfit = calculateAbcByPositiveValue(
+      provisionalProfitRows,
+      (item) => item.value
+    );
+
+    const enrichedSizeRows = provisionalProfitRows.map((item) => {
+      const size = item.size;
+      const share =
+        rawRevenueTotal > 0
+          ? Math.max(0, size.revenue) / rawRevenueTotal
+          : rawQtyTotal > 0
+            ? Math.max(0, size.netSalesQty) / rawQtyTotal
+            : 1 / Math.max(1, rawSizes.length);
+
+      const allocatedRevenue = row.revenue * share;
+      const allocatedExpenses = expenses * share;
+      const allocatedProfit = row.netProfitAfterTax * share;
+      const denominator = size.salesQty + size.returnsQty;
+      const buyoutPercent =
+        denominator > 0 ? (Math.max(0, size.netSalesQty) / denominator) * 100 : null;
+
+      return {
+        size: size.size,
+        barcode: size.barcode,
+        revenue: allocatedRevenue,
+        netSalesQty: size.netSalesQty,
+        salesQty: size.salesQty,
+        returnsQty: size.returnsQty,
+        expenses: allocatedExpenses,
+        netProfitAfterTax: allocatedProfit,
+        buyoutPercent,
+        marginAfterTaxPercent:
+          allocatedRevenue > 0 ? (allocatedProfit / allocatedRevenue) * 100 : 0,
+        abcByRevenue: abcByRevenue.get(size) ?? "C",
+        abcByProfit: abcByProfit.get(item) ?? "C",
+      };
+    });
+
+    sizeRowsByVendorCode.set(vendorKey, enrichedSizeRows);
+  }
+
+  return {
+    metaByVendorCode,
+    sizeRowsByVendorCode,
+  };
+}
+
+function KpiCard({
+  title,
+  value,
+  helper,
+  delta,
+  inverseDelta = false,
+  spark = true,
+}: {
+  title: string;
+  value: ReactNode;
+  helper: ReactNode;
+  delta?: number;
+  inverseDelta?: boolean;
+  spark?: boolean;
+}) {
+  const formattedDelta =
+    typeof delta === "number" ? formatDeltaPercent(delta, inverseDelta) : null;
+
+  return (
+    <div className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/40">
+      <div className="flex items-center gap-1 text-sm font-black text-slate-700">
+        {title}
+        <span className="text-slate-300">ⓘ</span>
+      </div>
+
+      <div className="mt-3 text-2xl font-black tracking-tight text-slate-950">
+        {value}
+      </div>
+
+      <div className="mt-2 flex items-center justify-between gap-3">
+        <div>
+          {formattedDelta ? (
+            <div className={`text-sm font-black ${formattedDelta.className}`}>
+              {formattedDelta.text}
+            </div>
+          ) : null}
+
+          <div className="mt-1 text-xs font-semibold text-slate-500">{helper}</div>
+        </div>
+
+        {spark ? (
+          <div className="flex h-10 w-16 items-end gap-1">
+            {[18, 28, 20, 34, 30, 42].map((height, index) => (
+              <span
+                key={index}
+                className="w-1.5 rounded-full bg-indigo-500/80"
+                style={{ height }}
+              />
+            ))}
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function AbcBadge({ value }: { value: "A" | "B" | "C" }) {
+  const className =
+    value === "A"
+      ? "bg-emerald-100 text-emerald-700 ring-emerald-200"
+      : value === "B"
+        ? "bg-amber-100 text-amber-700 ring-amber-200"
+        : "bg-red-100 text-red-700 ring-red-200";
+
+  return (
+    <span
+      className={`inline-flex h-7 min-w-7 items-center justify-center rounded-full px-2 text-xs font-black ring-1 ${className}`}
+    >
+      {value}
+    </span>
+  );
+}
+
+function ProductImagePlaceholder({ meta }: { meta: ProductMeta }) {
+  const initials =
+    meta.productName
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((part) => part[0]?.toUpperCase())
+      .join("") || "WB";
+
+  return (
+    <div className="flex h-16 w-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-slate-200 bg-gradient-to-br from-slate-50 to-slate-100 text-xs font-black text-slate-400">
+      {meta.imageUrl ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={meta.imageUrl}
+          alt={meta.productName}
+          className="h-full w-full object-cover"
+        />
+      ) : (
+        initials
+      )}
+    </div>
+  );
+}
+
+function MoneyWithShare({
+  value,
+  share,
+  valueClassName = "text-slate-950",
+}: {
+  value: number;
+  share: string;
+  valueClassName?: string;
+}) {
+  return (
+    <div>
+      <div className={`text-base font-black ${valueClassName}`}>
+        {formatMoney(value)}
+      </div>
+      <div className="mt-1 text-xs font-semibold text-slate-500">{share}</div>
+    </div>
+  );
+}
+
+function MarginBar({ value }: { value: number }) {
+  const width = clamp((Math.max(0, value) / 30) * 100, 4, 100);
+
+  return (
+    <div>
+      <div className={`text-base font-black ${profitTextColor(value)}`}>
+        {formatPercent(value)}
+      </div>
+      <div className="mt-2 h-2 w-32 max-w-full overflow-hidden rounded-full bg-slate-100">
+        <div
+          className={`h-full rounded-full ${metricBarColor(value)}`}
+          style={{ width: `${width}%` }}
+        />
+      </div>
+    </div>
+  );
+}
+
+function TableHeader() {
+  return (
+    <div className="grid min-w-[1180px] grid-cols-[minmax(330px,1.7fr)_minmax(140px,0.8fr)_minmax(150px,0.85fr)_minmax(150px,0.85fr)_minmax(130px,0.7fr)_minmax(150px,0.8fr)] items-center border-b border-slate-200 bg-white px-5 py-4 text-sm font-black text-slate-500">
+      <div>Товар</div>
+      <div className="flex items-center gap-1">Выкупы <span className="text-slate-300">ⓘ</span></div>
+      <div className="flex items-center gap-1">Расходы <span className="text-slate-300">ⓘ</span></div>
+      <div className="flex items-center gap-1">Прибыль <span className="text-slate-300">ⓘ</span></div>
+      <div className="flex items-center gap-1">Процент выкупа <span className="text-slate-300">ⓘ</span></div>
+      <div className="flex items-center gap-1">Маржинальность <span className="text-slate-300">ⓘ</span></div>
+    </div>
+  );
+}
+
+function SizeRow({
+  row,
+  parentRevenue,
+}: {
+  row: SizeBreakdownRow;
+  parentRevenue: number;
+}) {
+  return (
+    <div className="grid min-w-[1180px] grid-cols-[minmax(330px,1.7fr)_minmax(140px,0.8fr)_minmax(150px,0.85fr)_minmax(150px,0.85fr)_minmax(130px,0.7fr)_minmax(150px,0.8fr)] items-center border-t border-slate-100 bg-slate-50/50 px-5 py-4 text-sm">
+      <div className="flex items-center gap-3 pl-9">
+        <div className="h-8 border-l border-dashed border-slate-300" />
+        <div>
+          <div className="font-black text-slate-800">{row.size}</div>
+          <div className="mt-1 text-xs font-semibold text-slate-400">
+            {row.barcode || "Штрихкод не указан"}
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <div className="flex items-start gap-2">
+          <MoneyWithShare
+            value={row.revenue}
+            share={`${formatNumber(row.netSalesQty)} шт. · ${formatShare(row.revenue, parentRevenue, "от товара")}`}
+          />
+          <AbcBadge value={row.abcByRevenue} />
+        </div>
+      </div>
+
+      <MoneyWithShare
+        value={row.expenses}
+        share={formatShare(row.expenses, row.revenue)}
+      />
+
+      <div className="flex items-start gap-2">
+        <MoneyWithShare
+          value={row.netProfitAfterTax}
+          share={formatShare(row.netProfitAfterTax, row.revenue)}
+          valueClassName={profitTextColor(row.netProfitAfterTax)}
+        />
+        <AbcBadge value={row.abcByProfit} />
+      </div>
+
+      <div className="text-base font-black text-slate-800">
+        {formatPercent(row.buyoutPercent)}
+      </div>
+
+      <MarginBar value={row.marginAfterTaxPercent} />
+    </div>
+  );
+}
+
+function ProductRow({
+  row,
+  index,
+  totalRevenue,
+}: {
+  row: EnrichedProfitRow;
+  index: number;
+  totalRevenue: number;
+}) {
+  const expenses = rowExpenses(row);
+  const buyoutPercent = rowBuyoutPercent(row);
+  const defaultOpen = index === 0 && row.sizeRows.length > 0;
+
+  return (
+    <details
+      className="group border-t border-slate-100 first:border-t-0"
+      open={defaultOpen}
+    >
+      <summary className="grid min-w-[1180px] cursor-pointer list-none grid-cols-[minmax(330px,1.7fr)_minmax(140px,0.8fr)_minmax(150px,0.85fr)_minmax(150px,0.85fr)_minmax(130px,0.7fr)_minmax(150px,0.8fr)] items-center px-5 py-4 transition hover:bg-slate-50">
+        <div className="flex min-w-0 items-center gap-4">
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-2xl text-slate-500 transition group-open:rotate-180">
+            ⌄
+          </span>
+
+          <ProductImagePlaceholder meta={row.productMeta} />
+
+          <div className="min-w-0">
+            <div className="max-w-[360px] truncate text-sm font-black text-slate-950">
+              {row.productMeta.productName || row.vendorCode || "Товар WB"}
+            </div>
+
+            <div className="mt-1 flex flex-wrap gap-x-2 gap-y-1 text-xs font-semibold text-slate-500">
+              <span>Артикул: {row.vendorCode || "—"}</span>
+              <span>·</span>
+              <span>Код WB: {row.nmId || row.productMeta.nmId || "—"}</span>
+            </div>
+
+            <div className="mt-1 text-xs font-semibold text-slate-400">
+              {row.productMeta.subject || row.subject || "Категория не указана"}
+            </div>
+          </div>
+        </div>
+
+        <div>
+          <div className="flex items-start gap-2">
+            <MoneyWithShare
+              value={row.revenue}
+              share={`${formatNumber(row.netSalesQty)} шт. · ${formatShare(row.revenue, totalRevenue, "от итога")}`}
+            />
+            <AbcBadge value={row.abcByRevenue} />
+          </div>
+        </div>
+
+        <MoneyWithShare
+          value={expenses}
+          share={formatShare(expenses, row.revenue)}
+        />
+
+        <div className="flex items-start gap-2">
+          <MoneyWithShare
+            value={row.netProfitAfterTax}
+            share={formatShare(row.netProfitAfterTax, row.revenue)}
+            valueClassName={profitTextColor(row.netProfitAfterTax)}
+          />
+          <AbcBadge value={row.abcByProfit} />
+        </div>
+
+        <div className="text-base font-black text-slate-800">
+          {formatPercent(buyoutPercent)}
+        </div>
+
+        <div className="flex items-center justify-between gap-3">
+          <MarginBar value={row.marginAfterTaxPercent} />
+          <span className="text-xl font-black text-slate-300">⋮</span>
+        </div>
+      </summary>
+
+      {row.sizeRows.length > 0 ? (
+        <div>
+          {row.sizeRows.map((sizeRow) => (
+            <SizeRow
+              key={`${row.vendorCode}-${sizeRow.size}-${sizeRow.barcode}`}
+              row={sizeRow}
+              parentRevenue={row.revenue}
+            />
+          ))}
+        </div>
+      ) : (
+        <div className="min-w-[1180px] border-t border-slate-100 bg-slate-50 px-5 py-4 pl-24 text-sm font-semibold text-slate-400">
+          Детализация по размерам пока недоступна для этого артикула.
+        </div>
+      )}
+    </details>
+  );
+}
+
+function AttentionItem({
+  title,
+  text,
+  value,
+  tone,
+}: {
+  title: string;
+  text: string;
+  value: string;
+  tone: "red" | "orange" | "blue" | "violet";
+}) {
+  const toneClass =
+    tone === "red"
+      ? "border-red-100 bg-red-50 text-red-700"
+      : tone === "orange"
+        ? "border-orange-100 bg-orange-50 text-orange-700"
+        : tone === "blue"
+          ? "border-sky-100 bg-sky-50 text-sky-700"
+          : "border-violet-100 bg-violet-50 text-violet-700";
+
+  return (
+    <div className={`rounded-3xl border p-4 ${toneClass}`}>
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <div className="text-sm font-black">{title}</div>
+          <div className="mt-1 text-xs font-semibold text-slate-500">{text}</div>
+        </div>
+        <div className="shrink-0 text-sm font-black">{value}</div>
+      </div>
+    </div>
+  );
+}
+
+function StructureRow({
+  label,
+  value,
+  share,
+  colorClassName,
+}: {
+  label: string;
+  value: number;
+  share: number;
+  colorClassName: string;
+}) {
+  return (
+    <div className="grid grid-cols-[minmax(150px,1fr)_110px_70px] items-center gap-3">
+      <div className="min-w-0">
+        <div className="truncate text-sm font-bold text-slate-700">{label}</div>
+        <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-100">
+          <div
+            className={`h-full rounded-full ${colorClassName}`}
+            style={{ width: `${clamp(share, 0, 100)}%` }}
+          />
+        </div>
+      </div>
+      <div className="text-right text-sm font-black text-slate-950">
+        {formatCompactMoney(value)}
+      </div>
+      <div className="text-right text-xs font-bold text-slate-500">
+        {formatPercent(share)}
+      </div>
+    </div>
+  );
 }
 
 export default async function ProfitPage({
   searchParams,
 }: {
-searchParams?: Promise<{
-  dateFrom?: string;
-  dateTo?: string;
-  companyName?: string;
-  sort?: string;
-  dir?: string;
-}>;
+  searchParams?: Promise<SearchParams>;
 }) {
-  const params = await searchParams;
+  const params = (await searchParams) ?? {};
 
-const companyName = params?.companyName ?? "ALL";
-
-  const sort = (params?.sort ?? "marginProfit") as SortKey;
-  const dir = (params?.dir === "asc" ? "asc" : "desc") as SortDir;
+  const dateFrom = params.dateFrom ?? DEFAULT_DATE_FROM;
+  const dateTo = params.dateTo ?? DEFAULT_DATE_TO;
+  const companyName = params.companyName ?? "ALL";
+  const sort = (params.sort ?? "netProfitAfterTax") as SortKey;
+  const dir = (params.dir === "asc" ? "asc" : "desc") as SortDir;
+  const q = params.q ?? "";
+  const abc = (params.abc ?? "ALL") as AbcFilter;
 
   const { rows, totals, comparison } = await getProfitAnalytics({
-  dateFrom: params?.dateFrom,
-  dateTo: params?.dateTo,
-  companyName,
-});
+    dateFrom,
+    dateTo,
+    companyName,
+  });
 
-  const storageAndAcceptance = totals.storageCost + totals.acceptanceCost;
-  const penaltiesAndDeductions = totals.penaltiesAmount + totals.deductions;
+  const abcByRevenue = calculateAbcByPositiveValue(rows, (row) => row.revenue);
 
-  const sortedRows = [...rows].sort((a, b) => {
-    const aValue = getSortValue(a, sort, totals.marginProfit);
-    const bValue = getSortValue(b, sort, totals.marginProfit);
+  const { metaByVendorCode, sizeRowsByVendorCode } =
+    await buildProductMetaAndSizeRows({
+      rows,
+      dateFrom,
+      dateTo,
+      companyName,
+    });
+
+  const enrichedRows: EnrichedProfitRow[] = rows.map((row) => {
+    const vendorKey = normalizeText(row.vendorCode);
+    const fallbackMeta = {
+      productName: row.vendorCode || row.subject || "Товар WB",
+      subject: row.subject ?? "",
+      nmId: row.nmId ?? "",
+      vendorCode: row.vendorCode ?? "",
+      imageUrl: null,
+    };
+
+    return {
+      ...row,
+      abcByRevenue: abcByRevenue.get(row) ?? "C",
+      productMeta: metaByVendorCode.get(vendorKey) ?? fallbackMeta,
+      sizeRows: sizeRowsByVendorCode.get(vendorKey) ?? [],
+    };
+  });
+
+  const filteredRows = enrichedRows.filter((row) => {
+    const query = normalizeText(q);
+    const haystack = normalizeText(
+      [
+        row.vendorCode,
+        row.nmId,
+        row.subject,
+        row.productMeta.productName,
+        row.productMeta.subject,
+      ].join(" ")
+    );
+
+    if (query && !haystack.includes(query)) return false;
+
+    if (abc === "LOSS") return row.netProfitAfterTax < 0;
+    if (abc === "A" || abc === "B" || abc === "C") {
+      return row.abcByProfit === abc || row.abcByRevenue === abc;
+    }
+
+    return true;
+  });
+
+  const sortedRows = [...filteredRows].sort((a, b) => {
+    const aValue = getSortValue(a, sort);
+    const bValue = getSortValue(b, sort);
 
     if (dir === "asc") return aValue - bValue;
     return bValue - aValue;
   });
 
-  function sortHref(sortKey: SortKey) {
-    const nextDir: SortDir = sort === sortKey && dir === "desc" ? "asc" : "desc";
+  const commissionAndLogistics = totals.wbCommission + totals.logisticsCost;
+  const storageAndAcceptance = totals.storageCost + totals.acceptanceCost;
+  const penaltiesAndDeductions = totals.penaltiesAmount + totals.deductions;
+  const profitableSkuCount = rows.filter((row) => row.netProfitAfterTax > 0).length;
+  const riskSkuCount = rows.filter(
+    (row) =>
+      row.netProfitAfterTax <= 0 ||
+      row.drrPercent > 20 ||
+      row.marginAfterTaxPercent < 10
+  ).length;
 
-    const query = new URLSearchParams();
+  const lossRows = rows.filter((row) => row.netProfitAfterTax < 0);
+  const highDrrRows = rows.filter((row) => row.drrPercent > 20);
+  const lowMarginRows = rows.filter(
+    (row) => row.revenue > 0 && row.marginAfterTaxPercent < 10
+  );
+  const cRows = rows.filter((row) => row.abcByProfit === "C");
 
-    query.set("dateFrom", params?.dateFrom ?? "2026-05-18");
-    query.set("dateTo", params?.dateTo ?? "2026-05-24");
-    query.set("companyName", companyName);
-    query.set("sort", sortKey);
-    query.set("dir", nextDir);
+  const structureRows = [
+    {
+      label: "Себестоимость товаров",
+      value: totals.totalCost,
+      colorClassName: "bg-indigo-500",
+    },
+    {
+      label: "Комиссия WB",
+      value: totals.wbCommission,
+      colorClassName: "bg-violet-500",
+    },
+    {
+      label: "Логистика",
+      value: totals.logisticsCost,
+      colorClassName: "bg-sky-500",
+    },
+    {
+      label: "Реклама WB",
+      value: totals.adsCost,
+      colorClassName: "bg-pink-500",
+    },
+    {
+      label: "Хранение и приёмка",
+      value: storageAndAcceptance,
+      colorClassName: "bg-orange-400",
+    },
+    {
+      label: "Штрафы и удержания",
+      value: penaltiesAndDeductions,
+      colorClassName: "bg-red-400",
+    },
+    {
+      label: "Платные услуги",
+      value: totals.paymentServiceCost,
+      colorClassName: "bg-slate-500",
+    },
+    {
+      label: "Налоги",
+      value: totals.taxesAmount,
+      colorClassName: "bg-amber-500",
+    },
+  ];
 
-    return `/profit-wb?${query.toString()}`;
-  }
-
-  function SortHeader({
-  label,
-  sortKey,
-}: {
-  label: string;
-  sortKey: SortKey;
-}) {
-  
-    const active = sort === sortKey;
-
-    return (
-      <Link
-        href={sortHref(sortKey)}
-        className={`inline-flex items-center gap-1 font-semibold hover:text-slate-950 ${
-          active ? "text-slate-950" : "text-slate-600"
-        }`}
-      >
-        {label}
-        {active ? (dir === "desc" ? "↓" : "↑") : ""}
-      </Link>
-    );
-  }
+  const currentSortDirLabel = dir === "desc" ? "сначала высокая" : "сначала низкая";
 
   return (
-    <main className="min-h-screen bg-slate-100">
-  <MarketplaceNav />
+    <main className="page-shell">
+      <div className="page-container">
+        <section className="panel p-5 sm:p-6">
+          <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
+            <div>
+              <div className="inline-flex rounded-full bg-violet-50 px-3 py-1 text-xs font-black uppercase tracking-[0.12em] text-violet-700 ring-1 ring-violet-100">
+                WB аналитика
+              </div>
 
-  <div className="p-8">
-      <div className="mx-auto max-w-[1800px] space-y-6">
-        <div>
-          <h1 className="text-3xl font-bold text-slate-900">Прибыль по SKU WB</h1>
+              <h1 className="mt-3 text-3xl font-black tracking-tight text-slate-950 sm:text-4xl">
+                Прибыль по SKU WB
+              </h1>
 
-          <p className="mt-2 text-slate-600">
-            Unit economics по WB Sales с учетом себестоимости, логистики,
-            штрафов, рекламы и налогов.
-          </p>
-        </div>
-
-        <form className="grid gap-4 rounded-2xl bg-white p-6 shadow-sm md:grid-cols-4">
-  <input type="hidden" name="sort" value={sort} />
-  <input type="hidden" name="dir" value={dir} />
-
-  <div>
-    <label className="mb-2 block text-sm font-medium text-slate-700">
-      Дата от
-    </label>
-
-    <input
-      type="date"
-      name="dateFrom"
-      defaultValue={params?.dateFrom ?? "2026-05-18"}
-      className="w-full rounded-xl border border-slate-300 px-4 py-2"
-    />
-  </div>
-
-  <div>
-    <label className="mb-2 block text-sm font-medium text-slate-700">
-      Дата до
-    </label>
-
-    <input
-      type="date"
-      name="dateTo"
-      defaultValue={params?.dateTo ?? "2026-05-24"}
-      className="w-full rounded-xl border border-slate-300 px-4 py-2"
-    />
-  </div>
-
-  <div>
-    <label className="mb-2 block text-sm font-medium text-slate-700">
-      Компания
-    </label>
-
-    <select
-      name="companyName"
-      defaultValue={companyName}
-      className="w-full rounded-xl border border-slate-300 px-4 py-2"
-    >
-      <option value="ALL">Все компании</option>
-      <option value="ИП Петров">ИП Петров</option>
-      <option value="ИП Лебедева">ИП Лебедева</option>
-    </select>
-  </div>
-
-  <div className="flex items-end">
-    <button className="w-full rounded-xl bg-slate-900 px-4 py-2 font-medium text-white">
-      Применить
-    </button>
-  </div>
-</form>
-
-        <section className="grid gap-4 md:grid-cols-5 xl:grid-cols-10">
-          <div className={cardClassName()}>
-            <div className="text-sm text-slate-500">Выручка</div>
-            <div className={valueClassName()}>{formatMoney(totals.revenue)}</div>
-            <div className={deltaTextClassName(comparison.revenue.diff)}>
-              {formatDelta(comparison.revenue.diff, comparison.revenue.diffPercent)}
+              <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-500">
+                Unit economics по WB Sales с учётом себестоимости, логистики,
+                штрафов, рекламы и налогов.
+              </p>
             </div>
+
+            <form className="grid gap-3 rounded-[28px] border border-slate-200 bg-white p-3 shadow-sm md:grid-cols-[160px_160px_190px_140px]">
+              <input type="hidden" name="sort" value={sort} />
+              <input type="hidden" name="dir" value={dir} />
+              <input type="hidden" name="abc" value={abc} />
+              <input type="hidden" name="q" value={q} />
+
+              <label className="block">
+                <span className="text-xs font-black uppercase tracking-[0.12em] text-slate-400">
+                  Дата от
+                </span>
+                <input
+                  type="date"
+                  name="dateFrom"
+                  defaultValue={dateFrom}
+                  className="mt-1 w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-bold text-slate-700 outline-none transition focus:border-indigo-200 focus:bg-white"
+                />
+              </label>
+
+              <label className="block">
+                <span className="text-xs font-black uppercase tracking-[0.12em] text-slate-400">
+                  Дата до
+                </span>
+                <input
+                  type="date"
+                  name="dateTo"
+                  defaultValue={dateTo}
+                  className="mt-1 w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-bold text-slate-700 outline-none transition focus:border-indigo-200 focus:bg-white"
+                />
+              </label>
+
+              <label className="block">
+                <span className="text-xs font-black uppercase tracking-[0.12em] text-slate-400">
+                  Компания
+                </span>
+                <select
+                  name="companyName"
+                  defaultValue={companyName}
+                  className="mt-1 w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-bold text-slate-700 outline-none transition focus:border-indigo-200 focus:bg-white"
+                >
+                  <option value="ALL">Все компании</option>
+                  <option value="ИП Петров">ИП Петров</option>
+                  <option value="ИП Лебедева">ИП Лебедева</option>
+                </select>
+              </label>
+
+              <div className="flex items-end">
+                <button className="w-full rounded-2xl bg-indigo-600 px-4 py-2.5 text-sm font-black text-white shadow-lg shadow-indigo-200 transition hover:bg-indigo-700">
+                  Применить
+                </button>
+              </div>
+            </form>
           </div>
 
-          <div className={cardClassName()}>
-            <div className="text-sm text-slate-500">К перечислению</div>
-            <div className={valueClassName()}>
-              {formatMoney(totals.sellerPayout)}
-            </div>
-            <div className={subTextClassName()}>
-              {formatShare(totals.sellerPayout, totals.revenue)}
-            </div>
-            <div className={deltaTextClassName(comparison.sellerPayout.diff)}>
-              {formatDelta(
-                comparison.sellerPayout.diff,
-                comparison.sellerPayout.diffPercent
-              )}
-            </div>
-          </div>
-
-          <div className={cardClassName()}>
-            <div className="text-sm text-slate-500">Себестоимость</div>
-            <div className={valueClassName()}>{formatMoney(totals.totalCost)}</div>
-            <div className={subTextClassName()}>
-              {formatShare(totals.totalCost, totals.revenue)}
-            </div>
-            <div className={deltaTextClassName(comparison.totalCost.diff, true)}>
-              {formatDelta(
-                comparison.totalCost.diff,
-                comparison.totalCost.diffPercent
-              )}
-            </div>
-          </div>
-
-          <div className={cardClassName()}>
-            <div className="text-sm text-slate-500">Комиссия WB</div>
-            <div className={valueClassName()}>
-              {formatMoney(totals.wbCommission)}
-            </div>
-            <div className={subTextClassName()}>
-              {formatShare(totals.wbCommission, totals.revenue)}
-            </div>
-            <div className={deltaTextClassName(comparison.wbCommission.diff, true)}>
-              {formatDelta(
-                comparison.wbCommission.diff,
-                comparison.wbCommission.diffPercent
-              )}
-            </div>
-          </div>
-
-          <div className={cardClassName()}>
-            <div className="text-sm text-slate-500">Логистика</div>
-            <div className={valueClassName()}>
-              {formatMoney(totals.logisticsCost)}
-            </div>
-            <div className={subTextClassName()}>
-              {formatShare(totals.logisticsCost, totals.revenue)}
-            </div>
-            <div className={deltaTextClassName(comparison.logisticsCost.diff, true)}>
-              {formatDelta(
-                comparison.logisticsCost.diff,
-                comparison.logisticsCost.diffPercent
-              )}
-            </div>
-          </div>
-
-          <div className={cardClassName()}>
-            <div className="text-sm text-slate-500">Хранение + приемка</div>
-            <div className={valueClassName()}>
-              {formatMoney(storageAndAcceptance)}
-            </div>
-            <div className={subTextClassName()}>
-              {formatShare(storageAndAcceptance, totals.revenue)}
-            </div>
-          </div>
-
-          <div className={cardClassName()}>
-            <div className="text-sm text-slate-500">Штрафы + удержания</div>
-            <div className={valueClassName()}>
-              {formatMoney(penaltiesAndDeductions)}
-            </div>
-            <div className={subTextClassName()}>
-              {formatShare(penaltiesAndDeductions, totals.revenue)}
-            </div>
-          </div>
-
-          <div className={cardClassName()}>
-            <div className="text-sm text-slate-500">Реклама WB</div>
-            <div className={valueClassName()}>{formatMoney(totals.adsCost)}</div>
-            <div className={subTextClassName()}>
-              {formatShare(totals.adsCost, totals.revenue)}
-            </div>
-            <div className={deltaTextClassName(comparison.adsCost.diff, true)}>
-              {formatDelta(comparison.adsCost.diff, comparison.adsCost.diffPercent)}
-            </div>
-            </div>
-
-          <div className={cardClassName()}>
-            <div className="text-sm text-slate-500">Маржинальная прибыль</div>
-            <div className={`${valueClassName()} ${profitColor(totals.marginProfit)}`}>
-              {formatMoney(totals.marginProfit)}
-            </div>
-            <div className={subTextClassName()}>
-              {formatPercent(totals.marginProfitPercent)}
-            </div>
-            <div className={deltaTextClassName(comparison.marginProfit.diff)}>
-              {formatDelta(
-                comparison.marginProfit.diff,
-                comparison.marginProfit.diffPercent
-              )}
-            </div>
-          </div>
-
-          <div className={cardClassName()}>
-            <div className="text-sm text-slate-500">Налоги</div>
-            <div className={valueClassName()}>{formatMoney(totals.taxesAmount)}</div>
-            <div className={subTextClassName()}>
-              {formatShare(totals.taxesAmount, totals.revenue)}
-            </div>
-            <div className={deltaTextClassName(comparison.taxesAmount.diff, true)}>
-              {formatDelta(
-                comparison.taxesAmount.diff,
-                comparison.taxesAmount.diffPercent
-              )}
-            </div>
-            </div>
-        </section>
-
-        <section className="grid gap-4 md:grid-cols-2">
-          <div className={cardClassName()}>
-            <div className="text-sm text-slate-500">Прибыль после налогов</div>
-            <div
-              className={`${valueClassName()} ${profitColor(
-                totals.netProfitAfterTax
-              )}`}
+          <div className="mt-4 flex flex-wrap items-center justify-end gap-2 text-sm">
+            <span className="text-slate-500">Сравнение с предыдущим периодом</span>
+            <span className="rounded-2xl bg-emerald-50 px-3 py-1 font-black text-emerald-700 ring-1 ring-emerald-100">
+              {formatDateRu(dateFrom)} — {formatDateRu(dateTo)}
+            </span>
+            <Link
+              href="/import"
+              className="rounded-2xl border border-slate-200 bg-white px-4 py-2 font-black text-slate-700 shadow-sm transition hover:bg-slate-50"
             >
-              {formatMoney(totals.netProfitAfterTax)}
-            </div>
-            <div className={subTextClassName()}>
-              {formatPercent(totals.marginAfterTaxPercent)}
-            </div>
-            <div className={deltaTextClassName(comparison.netProfitAfterTax.diff)}>
-              {formatDelta(
-                comparison.netProfitAfterTax.diff,
-                comparison.netProfitAfterTax.diffPercent
-              )}
-            </div>
-          </div>
-
-          <div className={cardClassName()}>
-            <div className="text-sm text-slate-500">Маржа после налогов</div>
-            <div
-              className={`${valueClassName()} ${profitColor(
-                totals.marginAfterTaxPercent
-              )}`}
-            >
-              {formatPercent(totals.marginAfterTaxPercent)}
-            </div>
+              Импорт данных
+            </Link>
           </div>
         </section>
 
-        <section className="overflow-hidden rounded-2xl bg-white shadow-sm">
-          <div className="border-b border-slate-200 p-6">
-            <h2 className="text-xl font-bold text-slate-900">
-              Сводная таблица по артикулам
-            </h2>
+        <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-6">
+          <KpiCard
+            title="Выручка WB"
+            value={formatMoney(totals.revenue)}
+            helper="к пред. периоду"
+            delta={comparison.revenue.diffPercent}
+          />
 
-            <p className="mt-1 text-sm text-slate-500">
-              Клик по заголовку сортирует таблицу по выбранному показателю.
-            </p>
+          <KpiCard
+            title="Марж. прибыль"
+            value={formatMoney(totals.marginProfit)}
+            helper={`${formatPercent(totals.marginProfitPercent)} от выручки`}
+            delta={comparison.marginProfit.diffPercent}
+          />
+
+          <KpiCard
+            title="После налогов"
+            value={formatMoney(totals.netProfitAfterTax)}
+            helper={`${formatPercent(totals.marginAfterTaxPercent)} от выручки`}
+            delta={comparison.netProfitAfterTax.diffPercent}
+          />
+
+          <KpiCard
+            title="Реклама / ДРР"
+            value={formatMoney(totals.adsCost)}
+            helper={`${formatPercent(totals.drrPercent)} от выручки`}
+            delta={comparison.adsCost.diffPercent}
+            inverseDelta
+          />
+
+          <KpiCard
+            title="Себестоимость"
+            value={formatMoney(totals.totalCost)}
+            helper={`${formatShare(totals.totalCost, totals.revenue)}`}
+            delta={comparison.totalCost.diffPercent}
+            inverseDelta
+          />
+
+          <KpiCard
+            title="SKU с прибылью / в риске"
+            value={
+              <span>
+                {formatNumber(profitableSkuCount)} /{" "}
+                <span className="text-red-600">{formatNumber(riskSkuCount)}</span>
+              </span>
+            }
+            helper={`${formatNumber(rows.length)} SKU всего`}
+            spark={false}
+          />
+        </section>
+
+        <section className="grid gap-5 xl:grid-cols-[minmax(0,4fr)_minmax(340px,2fr)]">
+          <section className="panel min-w-0 p-5 sm:p-6">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <div className="section-eyebrow">Структура прибыли WB</div>
+                <h2 className="mt-1 text-2xl font-black tracking-tight text-slate-950">
+                  Из чего складывается результат
+                </h2>
+              </div>
+
+              <div className="rounded-2xl bg-emerald-50 px-4 py-2 text-sm font-black text-emerald-700 ring-1 ring-emerald-100">
+                После налогов: {formatMoney(totals.netProfitAfterTax)}
+              </div>
+            </div>
+
+            <div className="mt-5 grid gap-5 lg:grid-cols-[260px_minmax(0,1fr)]">
+              <div className="flex items-center justify-center rounded-[28px] border border-slate-200 bg-slate-50 p-6">
+                <div className="flex h-48 w-48 items-center justify-center rounded-full bg-white shadow-inner ring-[28px] ring-indigo-100">
+                  <div className="text-center">
+                    <div className="text-2xl font-black text-slate-950">
+                      {formatCompactMoney(totals.revenue)}
+                    </div>
+                    <div className="mt-1 text-xs font-black uppercase tracking-[0.12em] text-slate-400">
+                      Выручка
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                {structureRows.map((row) => (
+                  <StructureRow
+                    key={row.label}
+                    label={row.label}
+                    value={row.value}
+                    share={totals.revenue > 0 ? (row.value / totals.revenue) * 100 : 0}
+                    colorClassName={row.colorClassName}
+                  />
+                ))}
+
+                <div className="grid grid-cols-[minmax(150px,1fr)_110px_70px] items-center gap-3 border-t border-slate-100 pt-4">
+                  <div className="text-sm font-black text-emerald-700">
+                    Прибыль после налогов
+                  </div>
+                  <div className="text-right text-sm font-black text-emerald-700">
+                    {formatCompactMoney(totals.netProfitAfterTax)}
+                  </div>
+                  <div className="text-right text-xs font-black text-emerald-700">
+                    {formatPercent(totals.marginAfterTaxPercent)}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <aside className="panel min-w-0 p-5 sm:p-6">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <div className="section-eyebrow">Контроль</div>
+                <h2 className="mt-1 text-2xl font-black tracking-tight text-slate-950">
+                  Что требует внимания
+                </h2>
+              </div>
+
+              <span className="flex h-9 w-9 items-center justify-center rounded-full bg-indigo-50 text-sm font-black text-indigo-700 ring-1 ring-indigo-100">
+                4
+              </span>
+            </div>
+
+            <div className="mt-5 space-y-3">
+              <AttentionItem
+                title="Убыточные товары"
+                text={`${formatNumber(lossRows.length)} SKU с отрицательной прибылью`}
+                value={formatMoney(lossRows.reduce((sum, row) => sum + row.netProfitAfterTax, 0))}
+                tone="red"
+              />
+
+              <AttentionItem
+                title="Высокий ДРР (>20%)"
+                text={`${formatNumber(highDrrRows.length)} SKU с ДРР выше 20%`}
+                value={formatMoney(highDrrRows.reduce((sum, row) => sum + row.adsCost, 0))}
+                tone="orange"
+              />
+
+              <AttentionItem
+                title="Низкая маржинальность (<10%)"
+                text={`${formatNumber(lowMarginRows.length)} SKU с маржой ниже 10%`}
+                value={formatMoney(lowMarginRows.reduce((sum, row) => sum + row.revenue, 0))}
+                tone="blue"
+              />
+
+              <AttentionItem
+                title="Товары C-класса"
+                text={`${formatNumber(cRows.length)} SKU с низким вкладом в прибыль`}
+                value={formatMoney(cRows.reduce((sum, row) => sum + row.revenue, 0))}
+                tone="violet"
+              />
+            </div>
+          </aside>
+        </section>
+
+        <section className="panel overflow-hidden">
+          <div className="border-b border-slate-200 p-5 sm:p-6">
+            <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+              <div>
+                <div className="section-eyebrow">SKU</div>
+                <h2 className="mt-1 text-2xl font-black tracking-tight text-slate-950">
+                  Сводная таблица по артикулам
+                </h2>
+                <p className="mt-2 text-sm leading-6 text-slate-500">
+                  Рабочий список товаров: выкупы, расходы, прибыль, процент выкупа и
+                  маржинальность. Стрелка раскрывает размеры.
+                </p>
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                <Link
+                  href="/import"
+                  className="rounded-2xl border border-indigo-200 bg-indigo-50 px-4 py-2 text-sm font-black text-indigo-700 transition hover:bg-indigo-100"
+                >
+                  Управление себестоимостью
+                </Link>
+
+                <button
+                  type="button"
+                  disabled
+                  className="cursor-not-allowed rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2 text-sm font-black text-slate-400"
+                  title="Экспорт добавим отдельным шагом"
+                >
+                  Выгрузить список
+                </button>
+              </div>
+            </div>
+
+            <form className="mt-5 flex flex-col gap-3 xl:flex-row xl:items-center">
+              <input type="hidden" name="dateFrom" value={dateFrom} />
+              <input type="hidden" name="dateTo" value={dateTo} />
+              <input type="hidden" name="companyName" value={companyName} />
+              <input type="hidden" name="abc" value={abc} />
+
+              <div className="relative w-full xl:max-w-[330px]">
+                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">
+                  🔎
+                </span>
+                <input
+                  type="text"
+                  name="q"
+                  defaultValue={q}
+                  placeholder="Артикул или название"
+                  className="w-full rounded-2xl border border-slate-200 bg-white py-3 pl-11 pr-10 text-sm font-bold text-slate-700 outline-none transition placeholder:text-slate-400 focus:border-indigo-200 focus:ring-4 focus:ring-indigo-50"
+                />
+                {q ? (
+                  <Link
+                    href={buildQueryHref(params, { q: "" })}
+                    className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400"
+                  >
+                    ×
+                  </Link>
+                ) : null}
+              </div>
+
+              <div className="flex flex-wrap rounded-2xl bg-slate-100 p-1">
+                {ABC_FILTERS.map((filter) => {
+                  const active = abc === filter.key;
+
+                  return (
+                    <Link
+                      key={filter.key}
+                      href={buildQueryHref(params, { abc: filter.key })}
+                      className={`rounded-xl px-4 py-2 text-sm font-black transition ${
+                        active
+                          ? "bg-white text-slate-950 shadow-sm"
+                          : "text-slate-500 hover:text-slate-950"
+                      }`}
+                    >
+                      {filter.label}
+                    </Link>
+                  );
+                })}
+              </div>
+
+              <div className="flex flex-1 flex-col gap-3 sm:flex-row sm:items-center xl:justify-end">
+                <label className="flex items-center gap-2 text-sm font-black text-slate-700">
+                  <span>Сортировать по</span>
+                  <select
+                    name="sort"
+                    defaultValue={sort}
+                    className="rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm font-black text-indigo-700 outline-none"
+                  >
+                    <option value="revenue">выручке</option>
+                    <option value="netSalesQty">количеству</option>
+                    <option value="expenses">расходам</option>
+                    <option value="netProfitAfterTax">прибыли</option>
+                    <option value="buyoutPercent">проценту выкупа</option>
+                    <option value="marginAfterTaxPercent">маржинальности</option>
+                    <option value="adsCost">рекламе</option>
+                    <option value="drrPercent">ДРР</option>
+                  </select>
+                </label>
+
+                <label className="flex items-center gap-2 text-sm font-black text-slate-700">
+                  <span>порядок</span>
+                  <select
+                    name="dir"
+                    defaultValue={dir}
+                    className="rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm font-black text-indigo-700 outline-none"
+                  >
+                    <option value="desc">сначала высокая</option>
+                    <option value="asc">сначала низкая</option>
+                  </select>
+                </label>
+
+                <button className="rounded-2xl bg-indigo-600 px-4 py-2.5 text-sm font-black text-white shadow-lg shadow-indigo-200 transition hover:bg-indigo-700">
+                  Применить
+                </button>
+              </div>
+            </form>
+
+            <div className="mt-3 text-xs font-semibold text-slate-400">
+              Сейчас: сортировка по {getSortLabel(sort)}, {currentSortDirLabel}.
+              Компания: {getCompanyLabel(companyName)}.
+            </div>
           </div>
 
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[1750px] border-collapse text-sm">
-              <thead className="sticky top-0 bg-slate-100 text-left text-slate-700">
-                <tr>
-                  <th className="p-3">
-                    <SortHeader label="ABC" sortKey="abcByProfit" />
-                  </th>
-                  <th className="p-3">Код WB</th>
-                  <th className="p-3">Артикул</th>
-                  <th className="p-3 text-right">
-                    <SortHeader label="Продажи" sortKey="netSalesQty" />
-                  </th>
-                  <th className="p-3 text-right">
-                    <SortHeader label="Выручка" sortKey="revenue" />
-                  </th>
-                  <th className="p-3 text-right">
-                    <SortHeader label="Доля выр." sortKey="revenueSharePercent" />
-                  </th>
-                  <th className="p-3 text-right">
-                    <SortHeader label="К перечислению" sortKey="sellerPayout" />
-                  </th>
-                  <th className="p-3 text-right">
-                    <SortHeader label="Комиссия" sortKey="wbCommission" />
-                  </th>
-                  <th className="p-3 text-right">
-                    <SortHeader label="Логистика" sortKey="logisticsCost" />
-                  </th>
-                  <th className="p-3 text-right">
-                    <SortHeader
-                      label="Штрафы + удерж."
-                      sortKey="penaltiesAndDeductions"
-                    />
-                  </th>
-                  <th className="p-3 text-right">
-                    <SortHeader label="Плат. услуги" sortKey="paymentServiceCost" />
-                  </th>
-                  <th className="p-3 text-right">
-                    <SortHeader label="Реклама" sortKey="adsCost" />
-                  </th>
-                  <th className="p-3 text-right">
-                    <SortHeader label="ДРР" sortKey="drrPercent" />
-                  </th>
-                  <th className="p-3 text-right">
-                    <SortHeader label="Себес." sortKey="totalCost" />
-                  </th>
-                  <th className="p-3 text-right">
-                    <SortHeader label="Налоги" sortKey="taxesAmount" />
-                  </th>
-                  <th className="p-3 text-right">
-                    <SortHeader label="Марж. прибыль" sortKey="marginProfit" />
-                  </th>
-                  <th className="p-3 text-right">
-                    <SortHeader label="Доля прибыли" sortKey="profitSharePercent" />
-                  </th>
-                  <th className="p-3 text-right">
-                    <SortHeader label="После налогов" sortKey="netProfitAfterTax" />
-                  </th>
-                  <th className="p-3 text-right">
-                    <SortHeader label="Маржа" sortKey="marginAfterTaxPercent" />
-                  </th>
-                </tr>
-              </thead>
+            <TableHeader />
 
-              <tbody>
-                {sortedRows.map((row) => {
-                  const profitSharePercent =
-                    totals.marginProfit !== 0
-                      ? (row.marginProfit / totals.marginProfit) * 100
-                      : 0;
+            <div className="min-w-[1180px] bg-white">
+              {sortedRows.map((row, index) => (
+                <ProductRow
+                  key={`${row.nmId}-${row.vendorCode}-${index}`}
+                  row={row}
+                  index={index}
+                  totalRevenue={totals.revenue}
+                />
+              ))}
 
-                  return (
-                    <tr
-                      key={`${row.nmId}-${row.vendorCode}`}
-                      className="border-t border-slate-100 hover:bg-slate-50"
-                    >
-                      <td className="p-3 font-bold">{row.abcByProfit}</td>
-                      <td className="p-3 text-slate-600">{row.nmId || "—"}</td>
-                      <td className="p-3 font-medium">{row.vendorCode || "—"}</td>
-                      <td className="p-3 text-right">
-                        {formatNumber(row.netSalesQty)}
-                      </td>
-                      <td className="p-3 text-right">
-                        {formatMoney(row.revenue)}
-                      </td>
-                      <td className="p-3 text-right">
-                        {formatPercent(row.revenueSharePercent)}
-                      </td>
-                      <td className="p-3 text-right">
-                        {formatMoney(row.sellerPayout)}
-                      </td>
-                      <td className="p-3 text-right">
-                        {formatMoney(row.wbCommission)}
-                      </td>
-                      <td className="p-3 text-right">
-                        {formatMoney(row.logisticsCost)}
-                      </td>
-                      <td className="p-3 text-right">
-                        {formatMoney(row.penaltiesAmount + row.deductions)}
-                      </td>
-                      <td className="p-3 text-right">
-                        {formatMoney(row.paymentServiceCost)}
-                      </td>
-                      <td className="p-3 text-right font-medium">
-                        {formatMoney(row.adsCost)}
-                      </td>
-                      <td className="p-3 text-right font-medium">
-                        {formatPercent(row.drrPercent)}
-                      </td>
-                      <td className="p-3 text-right">
-                        {formatMoney(row.totalCost)}
-                      </td>
-                      <td className="p-3 text-right font-medium">
-                        {formatMoney(row.taxesAmount)}
-                      </td>
-                      <td
-                        className={`p-3 text-right font-bold ${profitColor(
-                          row.marginProfit
-                        )}`}
-                      >
-                        {formatMoney(row.marginProfit)}
-                      </td>
-                      <td
-                        className={`p-3 text-right font-bold ${profitColor(
-                          profitSharePercent
-                        )}`}
-                      >
-                        {formatPercent(profitSharePercent)}
-                      </td>
-                      <td
-                        className={`p-3 text-right font-bold ${profitColor(
-                          row.netProfitAfterTax
-                        )}`}
-                      >
-                        {formatMoney(row.netProfitAfterTax)}
-                      </td>
-                      <td
-                        className={`p-3 text-right font-bold ${profitColor(
-                          row.marginAfterTaxPercent
-                        )}`}
-                      >
-                        {formatPercent(row.marginAfterTaxPercent)}
-                      </td>
-                    </tr>
-                  );
-                })}
+              {sortedRows.length === 0 ? (
+                <div className="px-6 py-12 text-center">
+                  <div className="text-lg font-black text-slate-950">
+                    Нет данных для расчёта прибыли
+                  </div>
+                  <p className="mt-2 text-sm text-slate-500">
+                    Загрузите WB Sales, рекламу и ProductCost или измените фильтры.
+                  </p>
+                  <Link
+                    href="/import"
+                    className="mt-5 inline-flex rounded-2xl bg-indigo-600 px-5 py-3 text-sm font-black text-white shadow-lg shadow-indigo-200"
+                  >
+                    Перейти к импорту
+                  </Link>
+                </div>
+              ) : null}
+            </div>
+          </div>
 
-                {sortedRows.length === 0 && (
-                  <tr>
-                    <td colSpan={19} className="p-8 text-center text-slate-500">
-                      Нет данных для расчета прибыли. Загрузите WB Sales,
-                      рекламу и ProductCost.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
+          <div className="flex flex-col gap-3 border-t border-slate-200 bg-slate-50 px-5 py-4 text-sm font-semibold text-slate-500 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              Показано {formatNumber(sortedRows.length)} из {formatNumber(rows.length)} SKU
+            </div>
+
+            <div className="flex items-center gap-2">
+              <span>Фото товаров будет подтягиваться после подключения WB API карточек.</span>
+            </div>
           </div>
         </section>
       </div>
-
-    </div>
     </main>
   );
 }
