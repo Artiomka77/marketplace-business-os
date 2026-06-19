@@ -1371,141 +1371,145 @@ function MarketplaceShare({
 
   const primaryTotal = metricTotal(selectedPreset.primary);
   const secondaryTotal = metricTotal(selectedPreset.secondary);
+  const companyOptions = [
+    { name: "ALL", label: "Все компании" },
+    ...companies.map((company) => ({ name: company.name, label: company.name })),
+  ];
 
   return (
-    <section className="panel p-5 sm:p-6">
-      <div className="grid gap-6 xl:grid-cols-[340px_1fr]">
-        <div>
-          <div className="section-eyebrow">Разрез по маркетплейсам</div>
-          <h2 className="mt-2 text-2xl font-black tracking-tight text-slate-950">
-            Доля выручки WB / Ozon
-          </h2>
-          <p className="mt-2 text-sm leading-6 text-slate-500">
-            Выбор компании синхронно меняет долю WB/Ozon и график динамики.
-          </p>
-
-          <div className="mt-4 flex flex-wrap gap-2">
-            {[{ name: "ALL", label: "Все компании" }, ...companies.map((company) => ({ name: company.name, label: company.name }))].map((option) => {
-              const isActive = option.name === marketplaceCompanyName;
-
-              return (
-                <Link
-                  key={option.name}
-                  href={buildDashboardHref({
-                    period: period.key,
-                    companyName,
-                    marketplaceCompanyName: option.name,
-                    dateFrom: period.key === "custom" ? period.dateFrom : undefined,
-                    dateTo: period.key === "custom" ? period.dateTo : undefined,
-                    chartPreset: selectedPreset.key,
-                  })}
-                  className={`rounded-2xl border px-3 py-2 text-xs font-black transition ${
-                    isActive
-                      ? "border-indigo-600 bg-indigo-600 text-white shadow-sm shadow-indigo-100"
-                      : "border-slate-200 bg-white text-slate-500 hover:border-indigo-200 hover:bg-indigo-50 hover:text-indigo-700"
-                  }`}
-                >
-                  {option.label}
-                </Link>
-              );
-            })}
-          </div>
-
-          <div className="mt-5 space-y-4">
-            <div className="group flex cursor-default items-center justify-between gap-4 rounded-2xl border border-violet-100 bg-violet-50/50 px-4 py-3 transition hover:border-violet-300 hover:bg-violet-50 hover:shadow-sm">
-              <div className="flex items-center gap-3">
-                <span className="h-3 w-3 rounded-full bg-violet-600" />
-                <div>
-                  <div className="text-sm font-bold text-violet-700">
-                    Wildberries
-                  </div>
-                  <div className="text-lg font-black text-slate-950">
-                    {formatCurrency(wbRevenue)}
-                  </div>
-                </div>
-              </div>
-              <div className="text-lg font-black text-violet-700">
-                {formatPercent(wbPercent)}
-              </div>
-            </div>
-
-            <div className="group flex cursor-default items-center justify-between gap-4 rounded-2xl border border-sky-100 bg-sky-50/60 px-4 py-3 transition hover:border-sky-300 hover:bg-sky-50 hover:shadow-sm">
-              <div className="flex items-center gap-3">
-                <span className="h-3 w-3 rounded-full bg-sky-500" />
-                <div>
-                  <div className="text-sm font-bold text-sky-700">Ozon</div>
-                  <div className="text-lg font-black text-slate-950">
-                    {formatCurrency(ozonRevenue)}
-                  </div>
-                </div>
-              </div>
-              <div className="text-lg font-black text-sky-700">
-                {formatPercent(ozonPercent)}
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="grid gap-5 lg:grid-cols-[320px_1fr]">
-          <InteractiveDonut wbRevenue={wbRevenue} ozonRevenue={ozonRevenue} />
-
-          <div className="rounded-[28px] bg-slate-50 p-5 ring-1 ring-slate-200">
-            <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
-              <div>
-                <div className="section-eyebrow">Динамика</div>
-                <h3 className="mt-2 text-xl font-black text-slate-950">
-                  {selectedPreset.title}
-                </h3>
-                <p className="mt-1 text-sm leading-5 text-slate-500">
-                  {selectedPreset.description}
-                </p>
-                <div className="mt-3 flex flex-wrap gap-3 text-xs font-bold">
-                  <span className={`inline-flex items-center gap-2 ${selectedPreset.primary.colorClassName}`}>
-                    <span className={`h-2.5 w-2.5 rounded-full ${selectedPreset.primary.dotClassName}`} />
-                    {selectedPreset.primary.label}
-                  </span>
-                  <span className={`inline-flex items-center gap-2 ${selectedPreset.secondary.colorClassName}`}>
-                    <span className={`h-2.5 w-2.5 rounded-full ${selectedPreset.secondary.dotClassName}`} />
-                    {selectedPreset.secondary.label}
-                  </span>
-                </div>
-              </div>
-              <Link
-                href="/analytics"
-                className="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-indigo-600 transition hover:bg-indigo-50"
-              >
-                Открыть →
-              </Link>
-            </div>
+    <section className="space-y-5">
+      <section className="panel p-5 sm:p-6">
+        <div className="grid gap-6 xl:grid-cols-[minmax(300px,420px)_1fr] xl:items-center">
+          <div>
+            <div className="section-eyebrow">Разрез по маркетплейсам</div>
+            <h2 className="mt-2 text-2xl font-black tracking-tight text-slate-950">
+              Доля выручки WB / Ozon
+            </h2>
+            <p className="mt-2 text-sm leading-6 text-slate-500">
+              Выбор компании синхронно меняет долю WB/Ozon и график динамики.
+            </p>
 
             <div className="mt-4 flex flex-wrap gap-2">
-              {chartPresets.map((preset) => (
-                <ChartPresetLink
-                  key={preset.key}
-                  preset={preset}
-                  selectedPreset={selectedPreset}
-                  href={buildDashboardHref({
-                    period: period.key,
-                    companyName,
-                    marketplaceCompanyName,
-                    dateFrom: period.key === "custom" ? period.dateFrom : undefined,
-                    dateTo: period.key === "custom" ? period.dateTo : undefined,
-                    chartPreset: preset.key,
-                  })}
-                />
-              ))}
+              {companyOptions.map((option) => {
+                const isActive = option.name === marketplaceCompanyName;
+
+                return (
+                  <Link
+                    key={option.name}
+                    href={buildDashboardHref({
+                      period: period.key,
+                      companyName,
+                      marketplaceCompanyName: option.name,
+                      dateFrom: period.key === "custom" ? period.dateFrom : undefined,
+                      dateTo: period.key === "custom" ? period.dateTo : undefined,
+                      chartPreset: selectedPreset.key,
+                    })}
+                    className={`rounded-2xl border px-3 py-2 text-xs font-black transition ${
+                      isActive
+                        ? "border-indigo-600 bg-indigo-600 text-white shadow-sm shadow-indigo-100"
+                        : "border-slate-200 bg-white text-slate-500 hover:border-indigo-200 hover:bg-indigo-50 hover:text-indigo-700"
+                    }`}
+                  >
+                    {option.label}
+                  </Link>
+                );
+              })}
             </div>
 
-            <InteractiveTrendChart
-              preset={selectedPreset}
-              primaryTotal={primaryTotal}
-              secondaryTotal={secondaryTotal}
-              dateFrom={period.dateFrom}
-              dateTo={period.dateTo}
-            />
+            <div className="mt-5 space-y-4">
+              <div className="group flex cursor-default items-center justify-between gap-4 rounded-2xl border border-violet-100 bg-violet-50/50 px-4 py-3 transition hover:border-violet-300 hover:bg-violet-50 hover:shadow-sm">
+                <div className="flex items-center gap-3">
+                  <span className="h-3 w-3 rounded-full bg-violet-600" />
+                  <div>
+                    <div className="text-sm font-bold text-violet-700">
+                      Wildberries
+                    </div>
+                    <div className="text-lg font-black text-slate-950">
+                      {formatCurrency(wbRevenue)}
+                    </div>
+                  </div>
+                </div>
+                <div className="text-lg font-black text-violet-700">
+                  {formatPercent(wbPercent)}
+                </div>
+              </div>
+
+              <div className="group flex cursor-default items-center justify-between gap-4 rounded-2xl border border-sky-100 bg-sky-50/60 px-4 py-3 transition hover:border-sky-300 hover:bg-sky-50 hover:shadow-sm">
+                <div className="flex items-center gap-3">
+                  <span className="h-3 w-3 rounded-full bg-sky-500" />
+                  <div>
+                    <div className="text-sm font-bold text-sky-700">Ozon</div>
+                    <div className="text-lg font-black text-slate-950">
+                      {formatCurrency(ozonRevenue)}
+                    </div>
+                  </div>
+                </div>
+                <div className="text-lg font-black text-sky-700">
+                  {formatPercent(ozonPercent)}
+                </div>
+              </div>
+            </div>
           </div>
+
+          <InteractiveDonut wbRevenue={wbRevenue} ozonRevenue={ozonRevenue} />
         </div>
-      </div>
+      </section>
+
+      <section className="panel p-5 sm:p-6">
+        <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+          <div>
+            <div className="section-eyebrow">Динамика</div>
+            <h3 className="mt-2 text-2xl font-black tracking-tight text-slate-950">
+              {selectedPreset.title}
+            </h3>
+            <p className="mt-1 text-sm leading-5 text-slate-500">
+              {selectedPreset.description}
+            </p>
+            <div className="mt-3 flex flex-wrap gap-3 text-xs font-bold">
+              <span className={`inline-flex items-center gap-2 ${selectedPreset.primary.colorClassName}`}>
+                <span className={`h-2.5 w-2.5 rounded-full ${selectedPreset.primary.dotClassName}`} />
+                {selectedPreset.primary.label}
+              </span>
+              <span className={`inline-flex items-center gap-2 ${selectedPreset.secondary.colorClassName}`}>
+                <span className={`h-2.5 w-2.5 rounded-full ${selectedPreset.secondary.dotClassName}`} />
+                {selectedPreset.secondary.label}
+              </span>
+            </div>
+          </div>
+          <Link
+            href="/analytics"
+            className="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-indigo-600 transition hover:bg-indigo-50"
+          >
+            Открыть →
+          </Link>
+        </div>
+
+        <div className="mt-4 flex flex-wrap gap-2">
+          {chartPresets.map((preset) => (
+            <ChartPresetLink
+              key={preset.key}
+              preset={preset}
+              selectedPreset={selectedPreset}
+              href={buildDashboardHref({
+                period: period.key,
+                companyName,
+                marketplaceCompanyName,
+                dateFrom: period.key === "custom" ? period.dateFrom : undefined,
+                dateTo: period.key === "custom" ? period.dateTo : undefined,
+                chartPreset: preset.key,
+              })}
+            />
+          ))}
+        </div>
+
+        <InteractiveTrendChart
+          preset={selectedPreset}
+          primaryTotal={primaryTotal}
+          secondaryTotal={secondaryTotal}
+          dateFrom={period.dateFrom}
+          dateTo={period.dateTo}
+        />
+      </section>
     </section>
   );
 }
@@ -2039,17 +2043,21 @@ export default async function HomePage({ searchParams }: Props) {
   const previous = summarizeDashboardRows(previousRows);
 
   const selectedCompanyValue = params.companyName ?? "ALL";
+  const companyRowsWithMetrics = allCurrentRows.filter(hasAnyCompanyMetric);
+  const marketplaceCompanies = companyRowsWithMetrics.map((row) => ({
+    name: row.companyName,
+  }));
   const rawMarketplaceCompanyValue =
     params.marketplaceCompanyName ?? selectedCompanyValue ?? "ALL";
-  const selectedMarketplaceCompanyValue = companies.some(
+  const selectedMarketplaceCompanyValue = marketplaceCompanies.some(
     (company) => company.name === rawMarketplaceCompanyValue
   )
     ? rawMarketplaceCompanyValue
     : "ALL";
   const marketplaceCurrent = summarizeDashboardRows(
     selectedMarketplaceCompanyValue === "ALL"
-      ? allCurrentRows
-      : allCurrentRows.filter(
+      ? companyRowsWithMetrics
+      : companyRowsWithMetrics.filter(
           (row) => row.companyName === selectedMarketplaceCompanyValue
         )
   );
@@ -2298,7 +2306,7 @@ export default async function HomePage({ searchParams }: Props) {
             period={selectedPeriod}
             companyName={selectedCompanyValue}
             marketplaceCompanyName={selectedMarketplaceCompanyValue}
-            companies={companies}
+            companies={marketplaceCompanies}
           />
 
           <section className="panel p-5 sm:p-6">
