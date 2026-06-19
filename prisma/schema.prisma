@@ -424,6 +424,10 @@ model OzonProduct {
 
   productName String?
 
+  imageUrl       String?
+  imageSmallUrl  String?
+  imageUpdatedAt DateTime?
+
   createdAt DateTime @default(now())
 
   @@index([importSessionId])

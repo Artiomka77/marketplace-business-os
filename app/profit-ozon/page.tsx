@@ -75,6 +75,8 @@ type OzonProductRecord = {
   vendorCode: string;
   sku: string;
   productName: string | null;
+  imageUrl: string | null;
+  imageSmallUrl: string | null;
 };
 
 type OzonFinanceBreakdownRecord = {
@@ -471,6 +473,8 @@ async function buildProductMetaAndSkuRows(params: {
         vendorCode: true,
         sku: true,
         productName: true,
+        imageUrl: true,
+        imageSmallUrl: true,
       },
       orderBy: {
         createdAt: "desc",
@@ -519,7 +523,7 @@ async function buildProductMetaAndSkuRows(params: {
       subject: "Ozon",
       sku: product.sku || current?.sku || "",
       vendorCode: product.vendorCode || current?.vendorCode || vendorKey,
-      imageUrl: null,
+      imageUrl: product.imageSmallUrl ?? product.imageUrl ?? current?.imageUrl ?? null,
     });
   }
 
@@ -551,7 +555,7 @@ async function buildProductMetaAndSkuRows(params: {
       subject: currentMeta?.subject || "Ozon",
       sku: currentMeta?.sku || cleanText(financeRow.sku),
       vendorCode: currentMeta?.vendorCode || displayVendorCode,
-      imageUrl: null,
+      imageUrl: currentMeta?.imageUrl ?? null,
     });
 
     const sku = cleanText(financeRow.sku) || displayVendorCode;
@@ -1838,7 +1842,7 @@ export default async function ProfitOzonPage({
               периоде: {formatNumber(rows.length)} SKU.
             </div>
 
-            <div>Фото Ozon можно подключить отдельным шагом через API товаров.</div>
+            <div>Фото Ozon подтягиваются из Ozon Products API после синхронизации товаров.</div>
           </div>
         </section>
       </div>

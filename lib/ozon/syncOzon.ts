@@ -471,12 +471,30 @@ type OzonProductInfoItem = {
   sku?: number;
   fbo_sku?: number;
   fbs_sku?: number;
+  primary_image?: string;
+  images?: string[];
 };
 
 type OzonProductInfoResponse = {
   items?: OzonProductInfoItem[];
   result?: {
     items?: OzonProductInfoItem[];
+  };
+};
+
+type OzonProductPicturesItem = {
+  product_id?: number | string;
+  primary_photo?: string[];
+  photo?: string[];
+  color_photo?: string[];
+  photo_360?: string[];
+  errors?: { message?: string }[];
+};
+
+type OzonProductPicturesResponse = {
+  items?: OzonProductPicturesItem[];
+  result?: {
+    items?: OzonProductPicturesItem[];
   };
 };
 
@@ -546,6 +564,61 @@ async function fetchProductInfoBatch(
   return json.items ?? json.result?.items ?? [];
 }
 
+async function fetchProductPicturesInfoBatch(
+  clientId: string,
+  apiKey: string,
+  productIds: number[]
+) {
+  if (productIds.length === 0) return [];
+
+  const response = await fetch(
+    "https://api-seller.ozon.ru/v2/product/pictures/info",
+    {
+      method: "POST",
+      headers: {
+        "Client-Id": clientId,
+        "Api-Key": apiKey,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        product_id: productIds.map((productId) => String(productId)),
+      }),
+      cache: "no-store",
+    }
+  );
+
+  if (!response.ok) {
+    const text = await response.text().catch(() => "");
+    throw new Error(
+      `Ozon Product Pictures API: ${response.status} ${text}`.trim()
+    );
+  }
+
+  const json = (await response.json()) as OzonProductPicturesResponse;
+  return json.items ?? json.result?.items ?? [];
+}
+
+function firstNonEmpty(values: Array<string | null | undefined>) {
+  return values.find((value) => typeof value === "string" && value.trim()) ?? null;
+}
+
+function getFirstArrayValue(values?: string[]) {
+  return values?.find((value) => typeof value === "string" && value.trim()) ?? null;
+}
+
+function getOzonProductImageUrl(
+  info: OzonProductInfoItem | null | undefined,
+  pictures: OzonProductPicturesItem | null | undefined
+) {
+  return firstNonEmpty([
+    getFirstArrayValue(pictures?.primary_photo),
+    getFirstArrayValue(pictures?.photo),
+    getFirstArrayValue(pictures?.color_photo),
+    info?.primary_image,
+    getFirstArrayValue(info?.images),
+  ]);
+}
+
 function chunkArray<T>(items: T[], chunkSize: number) {
   const chunks: T[][] = [];
 
@@ -577,6 +650,7 @@ export async function syncOzonProducts(companyId: string) {
     .filter((productId): productId is number => Boolean(productId));
 
   const infoItems: OzonProductInfoItem[] = [];
+  const pictureItems: OzonProductPicturesItem[] = [];
 
   for (const batch of chunkArray(productIds, 100)) {
     const batchItems = await fetchProductInfoBatch(
@@ -586,9 +660,18 @@ export async function syncOzonProducts(companyId: string) {
     );
 
     infoItems.push(...batchItems);
+
+    const batchPictures = await fetchProductPicturesInfoBatch(
+      connection.ozonClientId,
+      connection.ozonApiKey,
+      batch
+    );
+
+    pictureItems.push(...batchPictures);
   }
 
   const infoByProductId = new Map<number, OzonProductInfoItem>();
+  const picturesByProductId = new Map<number, OzonProductPicturesItem>();
 
   for (const item of infoItems) {
     const productId = item.id ?? item.product_id;
@@ -598,14 +681,24 @@ export async function syncOzonProducts(companyId: string) {
     }
   }
 
+  for (const item of pictureItems) {
+    const productId = toInt(item.product_id);
+
+    if (productId) {
+      picturesByProductId.set(productId, item);
+    }
+  }
+
   const data = productList
     .map((product) => {
       const productId = product.product_id;
       const info = productId ? infoByProductId.get(productId) : null;
+      const pictures = productId ? picturesByProductId.get(productId) : null;
 
       const vendorCode = info?.offer_id ?? product.offer_id ?? "";
       const sku = info ? getSku(info) : null;
       const productName = info?.name ?? null;
+      const imageUrl = getOzonProductImageUrl(info, pictures);
 
       return {
         importSessionId: null,
@@ -613,6 +706,9 @@ export async function syncOzonProducts(companyId: string) {
         vendorCode,
         sku: sku ? String(sku) : productId ? String(productId) : "",
         productName,
+        imageUrl,
+        imageSmallUrl: imageUrl,
+        imageUpdatedAt: imageUrl ? new Date() : null,
       };
     })
     .filter((row) => row.vendorCode && row.sku);
@@ -625,7 +721,11 @@ export async function syncOzonProducts(companyId: string) {
     await prisma.ozonProduct.createMany({ data });
   }
 
-  return { name: "Ozon Products", rows: data.length };
+  return {
+    name: "Ozon Products",
+    rows: data.length,
+    photos: data.filter((row) => Boolean(row.imageUrl)).length,
+  };
 }
 
 /* -------------------- STOCKS -------------------- */
