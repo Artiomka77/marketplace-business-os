@@ -631,11 +631,11 @@ function getOzonProductImageUrl(
   pictures: OzonProductPicturesItem | null | undefined
 ) {
   return firstNonEmpty([
+    info?.primary_image,
+    info?.images,
     pictures?.primary_photo,
     pictures?.photo,
     pictures?.color_photo,
-    info?.primary_image,
-    info?.images,
   ]);
 }
 
@@ -681,13 +681,20 @@ export async function syncOzonProducts(companyId: string) {
 
     infoItems.push(...batchItems);
 
-    const batchPictures = await fetchProductPicturesInfoBatch(
-      connection.ozonClientId,
-      connection.ozonApiKey,
-      batch
-    );
+    try {
+      const batchPictures = await fetchProductPicturesInfoBatch(
+        connection.ozonClientId,
+        connection.ozonApiKey,
+        batch
+      );
 
-    pictureItems.push(...batchPictures);
+      pictureItems.push(...batchPictures);
+    } catch (error) {
+      // Фото уже приходят в /v3/product/info/list в полях primary_image/images.
+      // Если отдельный Pictures API недоступен или меняет формат ответа,
+      // не ломаем всю синхронизацию товаров и берём изображения из info/list.
+      console.warn("Ozon Product Pictures API skipped:", getErrorMessage(error));
+    }
   }
 
   const infoByProductId = new Map<number, OzonProductInfoItem>();
