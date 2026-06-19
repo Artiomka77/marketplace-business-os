@@ -1206,7 +1206,7 @@ export default async function HomePage({ searchParams }: Props) {
   return (
     <main className="min-h-screen bg-slate-100 px-4 py-6 sm:px-6 xl:px-10">
       <div className="mx-auto max-w-[1800px] space-y-6">
-        <section className="sticky top-3 z-40 rounded-[32px] border border-slate-200 bg-white/90 p-4 shadow-lg shadow-slate-200/60 backdrop-blur-xl supports-[backdrop-filter]:bg-white/80 sm:p-5">
+        <section className="fixed left-4 right-4 top-4 z-50 mx-auto max-w-[1800px] rounded-[32px] border border-slate-200 bg-white/90 p-4 shadow-xl shadow-slate-300/40 backdrop-blur-xl supports-[backdrop-filter]:bg-white/80 sm:left-6 sm:right-6 sm:p-5 xl:left-10 xl:right-10">
           <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
             <div className="flex min-w-0 flex-wrap items-center gap-3">
               <span className="rounded-full bg-slate-950 px-4 py-2 text-xs font-black uppercase tracking-[0.22em] text-white shadow-sm">
@@ -1346,41 +1346,7 @@ export default async function HomePage({ searchParams }: Props) {
           </div>
         </section>
 
-        <section className="rounded-[36px] border border-slate-200 bg-white p-6 shadow-sm">
-          <div className="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
-            <div>
-              <h1 className="text-3xl font-black tracking-tight text-slate-950 sm:text-4xl">
-                Главная панель бизнеса
-              </h1>
-
-              <p className="mt-3 max-w-3xl text-base leading-7 text-slate-500">
-                Деньги, прибыль, реклама, остатки, ABC и кредитная нагрузка по
-                Wildberries и Ozon за выбранный период.
-              </p>
-            </div>
-
-            <div className="grid gap-3 sm:grid-cols-3 xl:min-w-[620px]">
-              <MiniMetric
-                title="Период"
-                value={selectedPeriod.description}
-                subtitle="основные показатели"
-                strong
-              />
-              <MiniMetric
-                title="Сравнение"
-                value={previousPeriod.description}
-                subtitle="предыдущий период"
-                strong
-              />
-              <MiniMetric
-                title="Компании"
-                value={selectedCompanyName ?? "Все компании"}
-                subtitle="текущий фильтр"
-                strong
-              />
-            </div>
-          </div>
-        </section>
+        <div className="h-[132px] sm:h-[108px] xl:h-[92px]" aria-hidden="true" />
 
         <section className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
           <MetricCard
@@ -1546,13 +1512,13 @@ export default async function HomePage({ searchParams }: Props) {
           />
 
           <MetricCard
-            title="Только денежный поток"
+            title="Денежные расходы вне прибыли"
             value={
               current.cashOnlyExpenses > 0
                 ? formatCurrency(current.cashOnlyExpenses)
                 : "Нет данных"
             }
-            subtitle={`Фулфилмент, закупки и прочие статьи, уже сидящие в себестоимости · ${formatRevenuePercent(
+            subtitle={`Двигают деньги, но не должны повторно уменьшать чистую прибыль · ${formatRevenuePercent(
               current.cashOnlyExpenses,
               current.totalRevenue
             )}`}
@@ -1674,11 +1640,11 @@ export default async function HomePage({ searchParams }: Props) {
                 Компании
               </div>
               <h2 className="mt-2 text-2xl font-black text-slate-950">
-                Разрез по ИП
+                Разрез по компаниям
               </h2>
               <p className="mt-2 text-sm text-slate-500">
-                Главное по каждой компании: выручка, операционная прибыль,
-                чистая прибыль, денежный поток, реклама, кредиты, остатки и ABC.
+                Главное по каждой компании: выручка, прибыль, денежный поток,
+                реклама, кредиты, остатки и ABC.
               </p>
             </div>
 
@@ -1705,9 +1671,6 @@ export default async function HomePage({ searchParams }: Props) {
                   C: row.ozonAbcC,
                 };
 
-                const rowDrrText =
-                  row.drr !== null ? formatPercent(row.drr) : "—";
-
                 return (
                   <article
                     key={row.companyName}
@@ -1730,8 +1693,7 @@ export default async function HomePage({ searchParams }: Props) {
                             row.profitAfterOwnerWithdrawal
                           )}`}
                         >
-                          После вывода:{" "}
-                          {formatCurrency(row.profitAfterOwnerWithdrawal)}
+                          После вывода: {formatCurrency(row.profitAfterOwnerWithdrawal)}
                         </div>
                       </div>
 
@@ -1755,10 +1717,7 @@ export default async function HomePage({ searchParams }: Props) {
                         <MiniMetric
                           title="Чистая прибыль"
                           value={formatCurrency(row.netProfit)}
-                          subtitle={formatRevenuePercent(
-                            row.netProfit,
-                            row.totalRevenue
-                          )}
+                          subtitle={formatRevenuePercent(row.netProfit, row.totalRevenue)}
                           tone={valueColor(row.netProfit)}
                           strong
                         />
@@ -1775,124 +1734,117 @@ export default async function HomePage({ searchParams }: Props) {
                       </div>
                     </div>
 
-                    <div className="p-5">
-                      <div className="grid gap-3 sm:grid-cols-3">
-                        <MiniMetric
-                          title="Выручка WB"
-                          value={formatCurrency(row.wbRevenue)}
-                          subtitle={formatRevenuePercent(
-                            row.wbRevenue,
-                            row.totalRevenue
-                          )}
-                        />
-                        <MiniMetric
-                          title="Выручка Ozon"
-                          value={formatCurrency(row.ozonRevenue)}
-                          subtitle={formatRevenuePercent(
-                            row.ozonRevenue,
-                            row.totalRevenue
-                          )}
-                        />
-                        <MiniMetric
-                          title="Реклама"
-                          value={formatCurrency(row.adsCost)}
-                          subtitle={`ДРР: ${rowDrrText} · ${formatRevenuePercent(
-                            row.adsCost,
-                            row.totalRevenue
-                          )}`}
-                          tone={
-                            row.drr !== null && row.drr > 12
-                              ? "text-red-700"
-                              : "text-slate-950"
-                          }
-                        />
-                        <MiniMetric
-                          title="Тело кредита"
-                          value={formatCurrency(row.creditPrincipal)}
-                          subtitle={formatRevenuePercent(
-                            row.creditPrincipal,
-                            row.totalRevenue
-                          )}
-                          tone={
-                            row.creditPrincipal > 0
-                              ? "text-red-700"
-                              : "text-slate-950"
-                          }
-                        />
-                        <MiniMetric
-                          title="Проценты"
-                          value={formatCurrency(row.creditInterest)}
-                          subtitle={formatRevenuePercent(
-                            row.creditInterest,
-                            row.totalRevenue
-                          )}
-                          tone={
-                            row.creditInterest > 0
-                              ? "text-red-700"
-                              : "text-slate-950"
-                          }
-                        />
-                        <MiniMetric
-                          title="Личные расходы"
-                          value={formatCurrency(row.personalExpenses)}
-                          subtitle={formatRevenuePercent(
-                            row.personalExpenses,
-                            row.totalRevenue
-                          )}
-                        />
-                        <MiniMetric
-                          title="После вывода"
-                          value={formatCurrency(row.profitAfterOwnerWithdrawal)}
-                          subtitle={formatRevenuePercent(
-                            row.profitAfterOwnerWithdrawal,
-                            row.totalRevenue
-                          )}
-                          tone={valueColor(row.profitAfterOwnerWithdrawal)}
-                        />
-                        <MiniMetric
-                          title="Только денежный поток"
-                          value={formatCurrency(row.cashOnlyExpenses)}
-                          subtitle={formatRevenuePercent(
-                            row.cashOnlyExpenses,
-                            row.totalRevenue
-                          )}
-                        />
-                        <MiniMetric
-                          title="Расходы, влияющие на прибыль"
-                          value={formatCurrency(row.financialExpenses)}
-                          subtitle={formatRevenuePercent(
-                            row.financialExpenses,
-                            row.totalRevenue
-                          )}
-                        />
-                        <MiniMetric
-                          title="Остатки WB"
-                          value={
-                            row.wbStockQty > 0
-                              ? `${formatNumber(row.wbStockQty)} шт`
-                              : "Нет данных"
-                          }
-                        />
-                        <MiniMetric
-                          title="Остатки Ozon"
-                          value={
-                            row.ozonStockQty > 0
-                              ? `${formatNumber(row.ozonStockQty)} шт`
-                              : "Нет данных"
-                          }
-                        />
-                        <MiniMetric
-                          title="ABC"
-                          value={`${formatNumber(
-                            abcTotal(rowWbAbc) + abcTotal(rowOzonAbc)
-                          )} SKU`}
-                          subtitle={`WB: ${abcTotal(rowWbAbc)} · Ozon: ${abcTotal(
-                            rowOzonAbc
-                          )}`}
-                        />
+                    <div className="space-y-5 p-5">
+                      <div>
+                        <div className="mb-3 text-xs font-bold uppercase tracking-[0.16em] text-slate-400">
+                          Каналы и реклама
+                        </div>
+                        <div className="grid gap-3 sm:grid-cols-3">
+                          <MiniMetric
+                            title="Выручка WB"
+                            value={formatCurrency(row.wbRevenue)}
+                            subtitle={formatRevenuePercent(
+                              row.wbRevenue,
+                              row.totalRevenue
+                            )}
+                          />
+                          <MiniMetric
+                            title="Выручка Ozon"
+                            value={formatCurrency(row.ozonRevenue)}
+                            subtitle={formatRevenuePercent(
+                              row.ozonRevenue,
+                              row.totalRevenue
+                            )}
+                          />
+                          <MiniMetric
+                            title="Реклама"
+                            value={formatCurrency(row.adsCost)}
+                            subtitle={formatRevenuePercent(row.adsCost, row.totalRevenue)}
+                            tone={
+                              row.drr !== null && row.drr > 12
+                                ? "text-red-700"
+                                : "text-slate-950"
+                            }
+                          />
+                        </div>
                       </div>
 
-                      <div className="mt-5 grid gap-4 border-t border-slate-200 pt-5 sm:grid-cols-2">
+                      <div>
+                        <div className="mb-3 text-xs font-bold uppercase tracking-[0.16em] text-slate-400">
+                          Кредиты и вывод денег
+                        </div>
+                        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                          <MiniMetric
+                            title="Кредиты всего"
+                            value={formatCurrency(row.loanPayments)}
+                            subtitle="тело + проценты"
+                            tone={row.loanPayments > 0 ? "text-red-700" : "text-slate-950"}
+                          />
+                          <MiniMetric
+                            title="Тело кредита"
+                            value={formatCurrency(row.creditPrincipal)}
+                            subtitle="уменьшает деньги, не прибыль"
+                            tone={
+                              row.creditPrincipal > 0
+                                ? "text-red-700"
+                                : "text-slate-950"
+                            }
+                          />
+                          <MiniMetric
+                            title="Проценты"
+                            value={formatCurrency(row.creditInterest)}
+                            subtitle="уменьшают деньги и прибыль"
+                            tone={
+                              row.creditInterest > 0
+                                ? "text-red-700"
+                                : "text-slate-950"
+                            }
+                          />
+                          <MiniMetric
+                            title="Личные расходы"
+                            value={formatCurrency(row.personalExpenses)}
+                            subtitle={formatRevenuePercent(
+                              row.personalExpenses,
+                              row.totalRevenue
+                            )}
+                          />
+                        </div>
+                      </div>
+
+                      <div>
+                        <div className="mb-3 text-xs font-bold uppercase tracking-[0.16em] text-slate-400">
+                          Остатки и ассортимент
+                        </div>
+                        <div className="grid gap-3 sm:grid-cols-3">
+                          <MiniMetric
+                            title="Остатки WB"
+                            value={
+                              row.wbStockQty > 0
+                                ? `${formatNumber(row.wbStockQty)} шт`
+                                : "Нет данных"
+                            }
+                          />
+                          <MiniMetric
+                            title="Остатки Ozon"
+                            value={
+                              row.ozonStockQty > 0
+                                ? `${formatNumber(row.ozonStockQty)} шт`
+                                : "Нет данных"
+                            }
+                          />
+                          <MiniMetric
+                            title="ABC"
+                            value={`${formatNumber(
+                              abcTotal(rowWbAbc) + abcTotal(rowOzonAbc)
+                            )} SKU`}
+                            subtitle={`WB: ${abcTotal(rowWbAbc)} · Ozon: ${abcTotal(
+                              rowOzonAbc
+                            )}`}
+                          />
+                        </div>
+                      </div>
+
+                      <div className="grid gap-4 border-t border-slate-200 pt-5 sm:grid-cols-2">
                         <div>
                           <div className="mb-3 text-sm font-black text-slate-700">
                             ABC WB
