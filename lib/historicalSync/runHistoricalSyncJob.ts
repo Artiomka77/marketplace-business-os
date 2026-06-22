@@ -346,7 +346,17 @@ async function findNextHistoricalJob(options: RunHistoricalSyncJobOptions) {
         getRunnableStatusWhere(),
       ],
     },
-    orderBy: [{ createdAt: "asc" }],
+    orderBy: [
+      {
+        dateTo: "desc",
+      },
+      {
+        dateFrom: "desc",
+      },
+      {
+        createdAt: "asc",
+      },
+    ],
     select: {
       id: true,
       companyId: true,
