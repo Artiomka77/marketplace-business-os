@@ -32,6 +32,23 @@ type WbOrderRow = {
   cancelDate?: string;
 };
 
+type WbSalesFunnelProduct = {
+  statistic?: {
+    selected?: {
+      orderCount?: number;
+      ordersCount?: number;
+      orderSum?: number;
+      ordersSumRub?: number;
+    };
+  };
+};
+
+type WbSalesFunnelResponse = {
+  data?: {
+    products?: WbSalesFunnelProduct[];
+  };
+};
+
 type OzonAnalyticsDataRow = {
   dimensions?: { id?: string; name?: string }[];
   metrics?: unknown[];
@@ -192,6 +209,81 @@ async function fetchWbOrdersForDate(wbToken: string, date: Date) {
   return (await response.json()) as WbOrderRow[];
 }
 
+async function fetchWbSalesFunnelForDate(wbToken: string, date: Date) {
+  const dateText = formatDateOnly(date);
+  const limit = 1000;
+  let offset = 0;
+
+  let ordersQty = 0;
+  let ordersAmount = 0;
+  let productsCount = 0;
+  const samples: WbSalesFunnelProduct[] = [];
+
+  while (true) {
+    const response = await fetch(
+      "https://seller-analytics-api.wildberries.ru/api/analytics/v3/sales-funnel/products",
+      {
+        method: "POST",
+        headers: {
+          Authorization: wbToken,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          selectedPeriod: {
+            start: dateText,
+            end: dateText,
+          },
+          pastPeriod: {
+            start: dateText,
+            end: dateText,
+          },
+          nmIds: [],
+          brandNames: [],
+          subjectIds: [],
+          tagIds: [],
+          skipDeletedNm: false,
+          limit,
+          offset,
+        }),
+        cache: "no-store",
+      }
+    );
+
+    if (!response.ok) {
+      const text = await response.text().catch(() => "");
+      throw new Error(`WB Sales Funnel API: ${response.status} ${text}`.trim());
+    }
+
+    const json = (await response.json()) as WbSalesFunnelResponse;
+    const products = json.data?.products ?? [];
+
+    productsCount += products.length;
+
+    for (const product of products) {
+      const selected = product.statistic?.selected;
+      ordersQty += Math.trunc(
+        toNumber(selected?.orderCount ?? selected?.ordersCount)
+      );
+      ordersAmount += toNumber(selected?.orderSum ?? selected?.ordersSumRub);
+
+      if (samples.length < 5) {
+        samples.push(product);
+      }
+    }
+
+    if (products.length < limit) break;
+
+    offset += limit;
+  }
+
+  return {
+    ordersQty,
+    ordersAmount,
+    productsCount,
+    sample: samples,
+  };
+}
+
 async function fetchOzonOrdersForDate(
   clientId: string,
   apiKey: string,
@@ -321,14 +413,32 @@ export async function syncWbDailyOrdersForCompany(params: {
   const rows = await fetchWbOrdersForDate(connection.wbToken, params.date);
   const amountCandidates = getWbAmountCandidates(rows);
 
-  // В кабинете WB показатель “Заказано на сумму” показывает заказы,
-  // оформленные за день. Поэтому для сверки с кабинетом считаем все строки
-  // orders API за дату, а не только неотменённые.
-  const ordersQty = rows.length;
-  const ordersAmount = rows.reduce(
+  const supplierOrdersQty = rows.length;
+  const supplierOrdersAmount = rows.reduce(
     (sum, row) => sum + getWbOrderAmount(row),
     0
   );
+
+  let source = "WB Sales Funnel API";
+  let ordersQty = supplierOrdersQty;
+  let ordersAmount = supplierOrdersAmount;
+  let funnelResult:
+    | Awaited<ReturnType<typeof fetchWbSalesFunnelForDate>>
+    | null = null;
+  let funnelError: string | null = null;
+
+  try {
+    funnelResult = await fetchWbSalesFunnelForDate(
+      connection.wbToken,
+      params.date
+    );
+
+    ordersQty = funnelResult.ordersQty;
+    ordersAmount = funnelResult.ordersAmount;
+  } catch (error) {
+    source = "WB supplier/orders fallback";
+    funnelError = error instanceof Error ? error.message : "Unknown error";
+  }
 
   await upsertDailyOrderStat({
     companyName: params.company.name,
@@ -337,10 +447,22 @@ export async function syncWbDailyOrdersForCompany(params: {
     ordersQty,
     ordersAmount,
     rawJson: {
-      ...amountCandidates,
-      sourceRule:
-        "WB ordered amount uses all supplier/orders rows for the day, including rows later marked as cancelled, to match Seller dashboard ordered amount.",
-      sample: rows.slice(0, 5),
+      source,
+      funnelError,
+      funnelResult: funnelResult
+        ? {
+            ordersQty: funnelResult.ordersQty,
+            ordersAmount: funnelResult.ordersAmount,
+            productsCount: funnelResult.productsCount,
+            sample: funnelResult.sample,
+          }
+        : null,
+      supplierOrders: {
+        ordersQty: supplierOrdersQty,
+        ordersAmount: supplierOrdersAmount,
+        ...amountCandidates,
+        sample: rows.slice(0, 5),
+      },
     },
   });
 
@@ -350,7 +472,20 @@ export async function syncWbDailyOrdersForCompany(params: {
     date: formatDateOnly(params.date),
     ordersQty,
     ordersAmount,
-    amountCandidates,
+    source,
+    funnelError,
+    funnelResult: funnelResult
+      ? {
+          ordersQty: funnelResult.ordersQty,
+          ordersAmount: funnelResult.ordersAmount,
+          productsCount: funnelResult.productsCount,
+        }
+      : null,
+    supplierOrders: {
+      ordersQty: supplierOrdersQty,
+      ordersAmount: supplierOrdersAmount,
+      amountCandidates,
+    },
     skipped: false,
   };
 }
