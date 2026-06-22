@@ -321,8 +321,8 @@ export async function createWbSalesHistoricalJobs(
       (sum, row) => sum + row.skippedBeforeAvailablePeriod,
       0
     ),
-    wbSalesHistoricalStartDate:
-      getWbSalesHistoricalStartDateText(company.name),
+    defaultWbSalesHistoricalStartDate: DEFAULT_WB_SALES_HISTORICAL_START_DATE,
+    companyWbSalesHistoricalStartDates: COMPANY_WB_SALES_HISTORICAL_START_DATES,
     summaries,
   };
 }
