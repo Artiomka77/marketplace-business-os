@@ -9,6 +9,7 @@ import {
 import {
   buildDailyReport,
   formatDailyReportForTelegram,
+  type DailyReportPeriodPreset,
 } from "@/lib/telegram/dailyReport";
 
 type TelegramChat = {
@@ -205,6 +206,7 @@ function mainReplyKeyboard() {
       [{ text: "🏠 Главное меню" }],
       [{ text: "➕ Добавить расход" }, { text: "💰 Добавить поступление" }],
       [{ text: "👤 Вывод собственника" }, { text: "🏦 Кредит / займ" }],
+      [{ text: "📊 Отчёт собственника" }],
       [{ text: "📋 Последние операции" }, { text: "📅 Сегодня" }],
       [{ text: "↩️ Отменить последнюю" }],
     ],
@@ -239,6 +241,12 @@ function visualMenuInlineKeyboard() {
       ],
       [
         {
+          text: "📊 Отчёт",
+          callback_data: "report_menu",
+        },
+      ],
+      [
+        {
           text: "📋 Последние",
           callback_data: "quick_last",
         },
@@ -249,18 +257,70 @@ function visualMenuInlineKeyboard() {
       ],
       [
         {
-          text: "📊 Сводка за вчера",
-          callback_data: "quick_daily",
-        },
-      ],
-      [
-        {
           text: "↩️ Отменить последнюю",
           callback_data: "quick_undo",
         },
       ],
     ],
   };
+}
+
+function reportPeriodInlineKeyboard() {
+  return {
+    inline_keyboard: [
+      [
+        {
+          text: "Вчера",
+          callback_data: "report:yesterday",
+        },
+        {
+          text: "3 дня",
+          callback_data: "report:3d",
+        },
+      ],
+      [
+        {
+          text: "7 дней",
+          callback_data: "report:7d",
+        },
+        {
+          text: "30 дней",
+          callback_data: "report:30d",
+        },
+      ],
+      [
+        {
+          text: "3 месяца",
+          callback_data: "report:90d",
+        },
+        {
+          text: "Год",
+          callback_data: "report:365d",
+        },
+      ],
+      [
+        {
+          text: "← Главное меню",
+          callback_data: "quick_menu",
+        },
+      ],
+    ],
+  };
+}
+
+function getReportMenuMessage() {
+  return [
+    "📊 Отчёт собственника",
+    "",
+    "Выберите период:",
+    "",
+    "• Вчера — оперативная сверка за предыдущий день",
+    "• 3 дня — короткая динамика",
+    "• 7 дней — недельная картина",
+    "• 30 дней — месяц",
+    "• 3 месяца — квартальный взгляд",
+    "• Год — длинная картина",
+  ].join("\n");
 }
 
 function getVisualMenuMessage(chatId: string) {
@@ -360,6 +420,7 @@ function getHelpMessage(chatId: string) {
     "💰 Добавить поступление — пример поступления",
     "👤 Вывод собственника — личный вывод",
     "🏦 Кредит / займ — тело и проценты кредита",
+    "📊 Отчёт собственника — сводка за нужный период",
     "📋 Последние операции — последние операции из Telegram",
     "📅 Сегодня — операции за сегодня",
     "↩️ Отменить последнюю — удалить последнюю Telegram-операцию",
@@ -372,6 +433,7 @@ function getHelpMessage(chatId: string) {
     "/last — последние операции",
     "/today — операции за сегодня",
     "/daily — сводка собственника за вчера",
+    "/report — выбрать период отчёта",
     "/undo — отменить последнюю",
     "/id — показать chat id",
     "",
@@ -742,11 +804,18 @@ async function sendTodayOperations(chatId: string) {
   );
 }
 
-async function sendDailyOwnerReport(chatId: string) {
-  const report = await buildDailyReport();
+async function sendDailyOwnerReport(
+  chatId: string,
+  preset: DailyReportPeriodPreset = "yesterday"
+) {
+  const report = await buildDailyReport({ preset });
   const message = formatDailyReportForTelegram(report);
 
   await sendMessage(chatId, message);
+}
+
+async function sendReportMenu(chatId: string) {
+  await sendMessage(chatId, getReportMenuMessage(), reportPeriodInlineKeyboard());
 }
 
 async function sendUndoLastOperationPrompt(chatId: string) {
@@ -947,11 +1016,47 @@ async function createDraftFromMessage(message: TelegramMessage) {
   }
 
   if (
+    normalizedCommandText === "/report" ||
+    normalizedCommandText === "📊 отчёт собственника" ||
+    normalizedCommandText.includes("отчет собственника") ||
+    normalizedCommandText.includes("отчёт собственника")
+  ) {
+    await sendReportMenu(chatId);
+    return;
+  }
+
+  if (
     normalizedCommandText === "/daily" ||
+    normalizedCommandText === "/report_yesterday" ||
     normalizedCommandText.includes("сводка за вчера") ||
     normalizedCommandText.includes("ежедневная сводка")
   ) {
-    await sendDailyOwnerReport(chatId);
+    await sendDailyOwnerReport(chatId, "yesterday");
+    return;
+  }
+
+  if (normalizedCommandText === "/report_3d") {
+    await sendDailyOwnerReport(chatId, "3d");
+    return;
+  }
+
+  if (normalizedCommandText === "/report_7d") {
+    await sendDailyOwnerReport(chatId, "7d");
+    return;
+  }
+
+  if (normalizedCommandText === "/report_30d") {
+    await sendDailyOwnerReport(chatId, "30d");
+    return;
+  }
+
+  if (normalizedCommandText === "/report_90d") {
+    await sendDailyOwnerReport(chatId, "90d");
+    return;
+  }
+
+  if (normalizedCommandText === "/report_365d") {
+    await sendDailyOwnerReport(chatId, "365d");
     return;
   }
 
@@ -1808,6 +1913,58 @@ async function setAccount(
 
 async function handleCallbackQuery(callbackQuery: TelegramCallbackQuery) {
   const data = callbackQuery.data ?? "";
+
+  if (data === "quick_menu") {
+    const message = callbackQuery.message;
+    const chatId = message?.chat.id ? String(message.chat.id) : null;
+
+    await answerCallbackQuery(callbackQuery.id);
+
+    if (chatId) {
+      await sendMessage(
+        chatId,
+        getVisualMenuMessage(chatId),
+        visualMenuInlineKeyboard()
+      );
+    }
+
+    return;
+  }
+
+  if (data === "report_menu") {
+    const message = callbackQuery.message;
+    const chatId = message?.chat.id ? String(message.chat.id) : null;
+
+    await answerCallbackQuery(callbackQuery.id);
+
+    if (chatId) {
+      await sendReportMenu(chatId);
+    }
+
+    return;
+  }
+
+  if (data.startsWith("report:")) {
+    const message = callbackQuery.message;
+    const chatId = message?.chat.id ? String(message.chat.id) : null;
+    const preset = data.replace("report:", "");
+
+    await answerCallbackQuery(callbackQuery.id, "Готовлю отчёт");
+
+    if (
+      chatId &&
+      (preset === "yesterday" ||
+        preset === "3d" ||
+        preset === "7d" ||
+        preset === "30d" ||
+        preset === "90d" ||
+        preset === "365d")
+    ) {
+      await sendDailyOwnerReport(chatId, preset);
+    }
+
+    return;
+  }
 
   if (data.startsWith("quick_help:")) {
     const message = callbackQuery.message;

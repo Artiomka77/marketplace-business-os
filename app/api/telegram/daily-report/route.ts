@@ -34,9 +34,25 @@ export async function GET(req: Request) {
 
   const url = new URL(req.url);
   const date = url.searchParams.get("date") ?? undefined;
+  const from = url.searchParams.get("from") ?? undefined;
+  const to = url.searchParams.get("to") ?? undefined;
+  const preset = url.searchParams.get("period") ?? url.searchParams.get("preset") ?? undefined;
   const shouldSend = url.searchParams.get("send") !== "false";
 
-  const report = await buildDailyReport({ date });
+  const report = await buildDailyReport({
+    date,
+    from,
+    to,
+    preset:
+      preset === "3d" ||
+      preset === "7d" ||
+      preset === "30d" ||
+      preset === "90d" ||
+      preset === "365d" ||
+      preset === "yesterday"
+        ? preset
+        : undefined,
+  });
   const message = formatDailyReportForTelegram(report);
 
   if (!shouldSend) {

@@ -1,8 +1,17 @@
 import { prisma } from "@/lib/prisma";
 import { calculateFinanceMetricsForRows } from "@/lib/finance/financeMetrics";
 
+export type DailyReportPeriodPreset =
+  | "yesterday"
+  | "3d"
+  | "7d"
+  | "30d"
+  | "90d"
+  | "365d";
+
 type DateRange = {
   dateLabel: string;
+  periodLabel: string;
   dateFrom: Date;
   dateToExclusive: Date;
 };
@@ -33,6 +42,7 @@ type CompanyDailyReport = {
 
 type DailyReport = {
   dateLabel: string;
+  periodLabel: string;
   companies: CompanyDailyReport[];
   totals: {
     ordersQty: number;
@@ -141,35 +151,122 @@ function formatDateInput(date: Date) {
   return date.toISOString().slice(0, 10);
 }
 
-export function getYesterdayMoscowRange(now = new Date()): DateRange {
+function makeMoscowRange(params: {
+  days: number;
+  label: string;
+  now?: Date;
+}): DateRange {
+  const now = params.now ?? new Date();
   const moscowNow = new Date(now.getTime() + 3 * 60 * 60 * 1000);
 
   const year = moscowNow.getUTCFullYear();
   const month = moscowNow.getUTCMonth();
   const day = moscowNow.getUTCDate();
 
-  const yesterdayStartUtc = new Date(Date.UTC(year, month, day - 1, -3, 0, 0));
-  const todayStartUtc = new Date(Date.UTC(year, month, day, -3, 0, 0));
+  const dateToExclusive = new Date(Date.UTC(year, month, day, -3, 0, 0));
+  const dateFrom = new Date(
+    Date.UTC(year, month, day - params.days, -3, 0, 0)
+  );
+
+  const dateFromLabel = formatDateInput(
+    new Date(Date.UTC(year, month, day - params.days, 12))
+  );
+  const dateToLabel = formatDateInput(
+    new Date(Date.UTC(year, month, day - 1, 12))
+  );
 
   return {
-    dateLabel: formatDateInput(new Date(Date.UTC(year, month, day - 1, 12))),
-    dateFrom: yesterdayStartUtc,
-    dateToExclusive: todayStartUtc,
+    dateLabel:
+      params.days === 1 ? dateToLabel : `${dateFromLabel} — ${dateToLabel}`,
+    periodLabel: params.label,
+    dateFrom,
+    dateToExclusive,
   };
 }
 
-export function getMoscowRangeForDate(dateText: string): DateRange {
-  const [year, month, day] = dateText.split("-").map(Number);
+export function getDailyReportRange(params?: {
+  preset?: DailyReportPeriodPreset;
+  date?: string;
+  from?: string;
+  to?: string;
+  now?: Date;
+}): DateRange {
+  if (params?.from && params?.to) {
+    const [fromYear, fromMonth, fromDay] = params.from.split("-").map(Number);
+    const [toYear, toMonth, toDay] = params.to.split("-").map(Number);
 
-  if (!year || !month || !day) {
-    return getYesterdayMoscowRange();
+    if (fromYear && fromMonth && fromDay && toYear && toMonth && toDay) {
+      return {
+        dateLabel: `${params.from} — ${params.to}`,
+        periodLabel: "Выбранный период",
+        dateFrom: new Date(Date.UTC(fromYear, fromMonth - 1, fromDay, -3, 0, 0)),
+        dateToExclusive: new Date(
+          Date.UTC(toYear, toMonth - 1, toDay + 1, -3, 0, 0)
+        ),
+      };
+    }
   }
 
-  return {
-    dateLabel: dateText,
-    dateFrom: new Date(Date.UTC(year, month - 1, day, -3, 0, 0)),
-    dateToExclusive: new Date(Date.UTC(year, month - 1, day + 1, -3, 0, 0)),
-  };
+  if (params?.date) {
+    const [year, month, day] = params.date.split("-").map(Number);
+
+    if (year && month && day) {
+      return {
+        dateLabel: params.date,
+        periodLabel: "Выбранный день",
+        dateFrom: new Date(Date.UTC(year, month - 1, day, -3, 0, 0)),
+        dateToExclusive: new Date(Date.UTC(year, month - 1, day + 1, -3, 0, 0)),
+      };
+    }
+  }
+
+  const preset = params?.preset ?? "yesterday";
+
+  if (preset === "3d") {
+    return makeMoscowRange({
+      days: 3,
+      label: "Последние 3 дня",
+      now: params?.now,
+    });
+  }
+
+  if (preset === "7d") {
+    return makeMoscowRange({
+      days: 7,
+      label: "Последние 7 дней",
+      now: params?.now,
+    });
+  }
+
+  if (preset === "30d") {
+    return makeMoscowRange({
+      days: 30,
+      label: "Последние 30 дней",
+      now: params?.now,
+    });
+  }
+
+  if (preset === "90d") {
+    return makeMoscowRange({
+      days: 90,
+      label: "Последние 3 месяца",
+      now: params?.now,
+    });
+  }
+
+  if (preset === "365d") {
+    return makeMoscowRange({
+      days: 365,
+      label: "Последний год",
+      now: params?.now,
+    });
+  }
+
+  return makeMoscowRange({
+    days: 1,
+    label: "Предыдущий день",
+    now: params?.now,
+  });
 }
 
 async function getTableColumns(tableName: string) {
@@ -504,11 +601,12 @@ function buildWarnings(report: DailyReport) {
 }
 
 export async function buildDailyReport(params?: {
+  preset?: DailyReportPeriodPreset;
   date?: string;
+  from?: string;
+  to?: string;
 }): Promise<DailyReport> {
-  const range = params?.date
-    ? getMoscowRangeForDate(params.date)
-    : getYesterdayMoscowRange();
+  const range = getDailyReportRange(params);
 
   const companies = await prisma.company.findMany({
     where: {
@@ -524,6 +622,7 @@ export async function buildDailyReport(params?: {
 
   const report: DailyReport = {
     dateLabel: range.dateLabel,
+    periodLabel: range.periodLabel,
     companies: [],
     totals: {
       ordersQty: 0,
@@ -615,8 +714,9 @@ function marketplaceLine(label: string, metrics: MarketplaceDailyMetrics) {
 
 export function formatDailyReportForTelegram(report: DailyReport) {
   const lines: string[] = [
-    `📊 AvoroFin — ежедневная сводка`,
-    `Период: ${report.dateLabel}`,
+    `📊 AvoroFin — сводка собственника`,
+    `Период: ${report.periodLabel}`,
+    `Даты: ${report.dateLabel}`,
     "",
     "ИТОГО ПО БИЗНЕСУ",
     `Заказы: ${formatNumber(report.totals.ordersQty)} шт / ${formatMoney(
