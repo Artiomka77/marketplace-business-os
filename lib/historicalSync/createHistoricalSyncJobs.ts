@@ -31,6 +31,7 @@ type ConnectionRow = {
 };
 
 const DEFAULT_HISTORICAL_START_DATE = "2025-01-01";
+const WB_ADS_HISTORICAL_START_DATE = "2025-03-01";
 
 function parseDateOnly(value: string, label: string) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
@@ -72,6 +73,10 @@ function addDays(date: Date, days: number) {
   const nextDate = new Date(date);
   nextDate.setUTCDate(nextDate.getUTCDate() + days);
   return nextDate;
+}
+
+function maxDate(left: Date, right: Date) {
+  return left.getTime() >= right.getTime() ? new Date(left) : new Date(right);
 }
 
 function splitDateRange(dateFrom: Date, dateTo: Date, chunkDays: number) {
@@ -130,6 +135,21 @@ function splitDateRangeByCalendarMonth(dateFrom: Date, dateTo: Date) {
   return periods;
 }
 
+function getWbAdsHistoricalPeriods(dateFrom: Date, dateTo: Date) {
+  const minAvailableDate = parseDateOnly(
+    WB_ADS_HISTORICAL_START_DATE,
+    "WB_ADS_HISTORICAL_START_DATE"
+  );
+
+  const effectiveDateFrom = maxDate(dateFrom, minAvailableDate);
+
+  if (effectiveDateFrom.getTime() > dateTo.getTime()) {
+    return [];
+  }
+
+  return splitDateRange(effectiveDateFrom, dateTo, 7);
+}
+
 function getPlanForConnection(
   connection: ConnectionRow,
   dateFrom: Date,
@@ -172,7 +192,7 @@ function getPlanForConnection(
       },
       {
         dataType: "ADS" as HistoricalDataType,
-        periods: splitDateRange(dateFrom, dateTo, 7),
+        periods: getWbAdsHistoricalPeriods(dateFrom, dateTo),
       },
     ];
   }
@@ -406,5 +426,8 @@ export async function createHistoricalSyncJobs(
     createdJobs,
     skippedExistingJobs,
     summaries,
+    rules: {
+      wbAdsHistoricalStartDate: WB_ADS_HISTORICAL_START_DATE,
+    },
   };
 }

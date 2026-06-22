@@ -49,6 +49,7 @@ type WbAdsFullStatsItem = {
 const WB_ADS_BATCH_SIZE = 10;
 const WB_ADS_REQUEST_TIMEOUT_MS = 45_000;
 const WB_ADS_BATCH_DELAY_MS = 1_000;
+const WB_ADS_MIN_AVAILABLE_DATE_TEXT = "2025-03-01";
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -73,6 +74,64 @@ function getDefaultPeriod() {
   return {
     dateFrom: startOfUtcDay(dateFrom),
     dateTo: startOfUtcDay(dateTo),
+  };
+}
+
+function getWbAdsMinAvailableDate() {
+  return startOfUtcDay(new Date(`${WB_ADS_MIN_AVAILABLE_DATE_TEXT}T00:00:00Z`));
+}
+
+function getAvailableWbAdsPeriod(dateFrom: Date, dateTo: Date) {
+  const minAvailableDate = getWbAdsMinAvailableDate();
+
+  if (dateTo.getTime() < minAvailableDate.getTime()) {
+    return {
+      skipped: true as const,
+      dateFrom,
+      dateTo,
+      effectiveDateFrom: dateFrom,
+      effectiveDateTo: dateTo,
+      message: `WB Ads за период ${formatDateOnly(dateFrom)} — ${formatDateOnly(
+        dateTo
+      )} пропущены: рекламная статистика WB доступна с ${WB_ADS_MIN_AVAILABLE_DATE_TEXT}.`,
+    };
+  }
+
+  const effectiveDateFrom =
+    dateFrom.getTime() < minAvailableDate.getTime()
+      ? minAvailableDate
+      : dateFrom;
+
+  return {
+    skipped: false as const,
+    dateFrom,
+    dateTo,
+    effectiveDateFrom,
+    effectiveDateTo: dateTo,
+    message:
+      effectiveDateFrom.getTime() !== dateFrom.getTime()
+        ? `dateFrom обрезан до ${WB_ADS_MIN_AVAILABLE_DATE_TEXT}, так как более ранняя рекламная статистика WB недоступна.`
+        : null,
+  };
+}
+
+function createSkippedWbAdsResult(params: {
+  dateFrom: Date;
+  dateTo: Date;
+  message: string;
+}) {
+  return {
+    name: "WB Ads",
+    rows: 0,
+    totalCampaigns: 0,
+    processedCampaigns: 0,
+    skippedCampaigns: 0,
+    dateFrom: formatDateOnly(params.dateFrom),
+    dateTo: formatDateOnly(params.dateTo),
+    done: true,
+    nextCursorOffset: null,
+    skipped: true,
+    message: params.message,
   };
 }
 
@@ -335,7 +394,22 @@ async function createImportSession(params: {
 
 async function syncWbAdsFull(companyId: string, options: WbAdsSyncOptions = {}) {
   const { company, connection } = await getWbConnection(companyId);
-  const { dateFrom, dateTo } = getSyncPeriod(options);
+  const requestedPeriod = getSyncPeriod(options);
+  const availablePeriod = getAvailableWbAdsPeriod(
+    requestedPeriod.dateFrom,
+    requestedPeriod.dateTo
+  );
+
+  if (availablePeriod.skipped) {
+    return createSkippedWbAdsResult({
+      dateFrom: requestedPeriod.dateFrom,
+      dateTo: requestedPeriod.dateTo,
+      message: availablePeriod.message,
+    });
+  }
+
+  const { effectiveDateFrom: dateFrom, effectiveDateTo: dateTo } =
+    availablePeriod;
 
   const dateFromText = formatDateOnly(dateFrom);
   const dateToText = formatDateOnly(dateTo);
@@ -347,6 +421,15 @@ async function syncWbAdsFull(companyId: string, options: WbAdsSyncOptions = {}) 
   }
 
   const advertIds = await fetchAdvertIds(wbToken);
+
+  if (advertIds.length === 0) {
+    return createSkippedWbAdsResult({
+      dateFrom,
+      dateTo,
+      message: `WB Ads за период ${dateFromText} — ${dateToText} пропущены: рекламные кампании WB не найдены.`,
+    });
+  }
+
   const stats = await fetchAllStatsInBatches(
     wbToken,
     advertIds,
@@ -389,12 +472,28 @@ async function syncWbAdsFull(companyId: string, options: WbAdsSyncOptions = {}) 
     dateTo: dateToText,
     done: true,
     nextCursorOffset: null,
+    periodAdjusted: availablePeriod.message,
   };
 }
 
 async function syncWbAdsChunk(companyId: string, options: WbAdsSyncOptions = {}) {
   const { company, connection } = await getWbConnection(companyId);
-  const { dateFrom, dateTo } = getSyncPeriod(options);
+  const requestedPeriod = getSyncPeriod(options);
+  const availablePeriod = getAvailableWbAdsPeriod(
+    requestedPeriod.dateFrom,
+    requestedPeriod.dateTo
+  );
+
+  if (availablePeriod.skipped) {
+    return createSkippedWbAdsResult({
+      dateFrom: requestedPeriod.dateFrom,
+      dateTo: requestedPeriod.dateTo,
+      message: availablePeriod.message,
+    });
+  }
+
+  const { effectiveDateFrom: dateFrom, effectiveDateTo: dateTo } =
+    availablePeriod;
 
   const dateFromText = formatDateOnly(dateFrom);
   const dateToText = formatDateOnly(dateTo);
@@ -406,8 +505,34 @@ async function syncWbAdsChunk(companyId: string, options: WbAdsSyncOptions = {})
   }
 
   const advertIds = await fetchAdvertIds(wbToken);
+
+  if (advertIds.length === 0) {
+    return createSkippedWbAdsResult({
+      dateFrom,
+      dateTo,
+      message: `WB Ads за период ${dateFromText} — ${dateToText} пропущены: рекламные кампании WB не найдены.`,
+    });
+  }
+
   const cursorOffset = Math.max(options.cursorOffset ?? 0, 0);
   const batch = getBatch(advertIds, cursorOffset);
+
+  if (batch.length === 0) {
+    return {
+      name: "WB Ads",
+      rows: 0,
+      totalCampaigns: advertIds.length,
+      processedCampaigns: 0,
+      skippedCampaigns: 0,
+      cursorOffset,
+      nextCursorOffset: null,
+      dateFrom: dateFromText,
+      dateTo: dateToText,
+      done: true,
+      periodAdjusted: availablePeriod.message,
+    };
+  }
+
   const stats = await fetchFullStats(wbToken, batch, dateFromText, dateToText);
   const rows = mapWbAdsRows(stats);
 
@@ -450,6 +575,7 @@ async function syncWbAdsChunk(companyId: string, options: WbAdsSyncOptions = {})
     dateFrom: dateFromText,
     dateTo: dateToText,
     done,
+    periodAdjusted: availablePeriod.message,
   };
 }
 
