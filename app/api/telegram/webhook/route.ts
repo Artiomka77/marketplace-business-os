@@ -198,38 +198,56 @@ function endOfToday() {
 function mainReplyKeyboard() {
   return {
     keyboard: [
-      [{ text: "🏠 Меню" }],
-      [{ text: "➕ Расход" }, { text: "💰 Поступление" }],
-      [{ text: "👤 Вывод" }, { text: "🏦 Кредит" }],
-      [{ text: "📋 Последние" }, { text: "↩️ Отменить последнюю" }],
+      [{ text: "🏠 Главное меню" }],
+      [{ text: "➕ Добавить расход" }, { text: "💰 Добавить поступление" }],
+      [{ text: "👤 Вывод собственника" }, { text: "🏦 Кредит / займ" }],
+      [{ text: "📋 Последние операции" }, { text: "📅 Сегодня" }],
+      [{ text: "↩️ Отменить последнюю" }],
     ],
     resize_keyboard: true,
     one_time_keyboard: false,
+    input_field_placeholder: "Напишите операцию: закуп 15000 петров сбер",
   };
 }
 
 function getHelpMessage(chatId: string) {
   return [
-    "🏠 Главное меню AvoroFin",
+    "🏠 AvoroFin — главное меню",
     "",
-    "Я помогу быстро добавлять финансовые операции.",
+    "Быстро добавляйте финансовые операции обычным сообщением.",
     "",
-    "Пишите обычным текстом:",
+    "━━━━━━━━━━━━━━",
+    "✍️ Быстрый ввод",
     "",
+    "Напишите так:",
     "• закуп 15000 петров сбер упаковка",
     "• поступило 4881996 лебедева ozon выручка",
     "• вывод 50000 продукты сбер",
     "• тело кредит 17792 альфа",
     "• интернет 1700",
     "",
-    "Я разберу сообщение и покажу подтверждение перед сохранением.",
+    "Я разберу сообщение, покажу карточку проверки и сохраню только после вашего подтверждения.",
     "",
-    "Команды меню:",
-    "• /menu — открыть главное меню",
-    "• /last — последние операции из Telegram",
-    "• /today — операции за сегодня",
-    "• /undo — удалить последнюю сохранённую Telegram-операцию",
-    "• /id — показать chat id",
+    "━━━━━━━━━━━━━━",
+    "⚡ Быстрые кнопки",
+    "",
+    "➕ Добавить расход — пример расхода",
+    "💰 Добавить поступление — пример поступления",
+    "👤 Вывод собственника — личный вывод",
+    "🏦 Кредит / займ — тело и проценты кредита",
+    "📋 Последние операции — последние операции из Telegram",
+    "📅 Сегодня — операции за сегодня",
+    "↩️ Отменить последнюю — удалить последнюю Telegram-операцию",
+    "",
+    "━━━━━━━━━━━━━━",
+    "⌨️ Команды",
+    "",
+    "/menu — главное меню",
+    "/add — как добавить операцию",
+    "/last — последние операции",
+    "/today — операции за сегодня",
+    "/undo — отменить последнюю",
+    "/id — показать chat id",
     "",
     `Ваш chat id: ${chatId}`,
   ].join("\n");
@@ -733,7 +751,9 @@ async function createDraftFromMessage(message: TelegramMessage) {
     text.startsWith("/help") ||
     text.startsWith("/menu") ||
     text.trim().toLowerCase() === "🏠 меню" ||
-    text.trim().toLowerCase() === "меню"
+    text.trim().toLowerCase() === "🏠 главное меню" ||
+    text.trim().toLowerCase() === "меню" ||
+    text.trim().toLowerCase() === "главное меню"
   ) {
     await sendMessage(chatId, getHelpMessage(chatId), mainReplyKeyboard());
     return;
@@ -791,7 +811,10 @@ async function createDraftFromMessage(message: TelegramMessage) {
     return;
   }
 
-  if (normalizedCommandText === "➕ расход") {
+  if (
+    normalizedCommandText === "➕ расход" ||
+    normalizedCommandText === "➕ добавить расход"
+  ) {
     await sendMessage(
       chatId,
       [
@@ -806,7 +829,10 @@ async function createDraftFromMessage(message: TelegramMessage) {
     return;
   }
 
-  if (normalizedCommandText === "💰 поступление") {
+  if (
+    normalizedCommandText === "💰 поступление" ||
+    normalizedCommandText === "💰 добавить поступление"
+  ) {
     await sendMessage(
       chatId,
       [
@@ -819,7 +845,10 @@ async function createDraftFromMessage(message: TelegramMessage) {
     return;
   }
 
-  if (normalizedCommandText === "👤 вывод") {
+  if (
+    normalizedCommandText === "👤 вывод" ||
+    normalizedCommandText === "👤 вывод собственника"
+  ) {
     await sendMessage(
       chatId,
       [
@@ -832,7 +861,10 @@ async function createDraftFromMessage(message: TelegramMessage) {
     return;
   }
 
-  if (normalizedCommandText === "🏦 кредит") {
+  if (
+    normalizedCommandText === "🏦 кредит" ||
+    normalizedCommandText === "🏦 кредит / займ"
+  ) {
     await sendMessage(
       chatId,
       [
