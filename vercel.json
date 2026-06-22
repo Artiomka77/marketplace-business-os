@@ -35,6 +35,10 @@
     {
       "path": "/api/cron/sync-wb-ads",
       "schedule": "0 6 * * *"
+    },
+    {
+      "path": "/api/telegram/daily-report",
+      "schedule": "0 4 * * *"
     }
   ]
 }

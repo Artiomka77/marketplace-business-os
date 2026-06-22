@@ -6,6 +6,10 @@ import {
   parseTelegramFinanceMessage,
   type ParsedFinanceOperation,
 } from "@/lib/telegram/financeBotParser";
+import {
+  buildDailyReport,
+  formatDailyReportForTelegram,
+} from "@/lib/telegram/dailyReport";
 
 type TelegramChat = {
   id: number | string;
@@ -245,6 +249,12 @@ function visualMenuInlineKeyboard() {
       ],
       [
         {
+          text: "📊 Сводка за вчера",
+          callback_data: "quick_daily",
+        },
+      ],
+      [
+        {
           text: "↩️ Отменить последнюю",
           callback_data: "quick_undo",
         },
@@ -361,6 +371,7 @@ function getHelpMessage(chatId: string) {
     "/add — как добавить операцию",
     "/last — последние операции",
     "/today — операции за сегодня",
+    "/daily — сводка собственника за вчера",
     "/undo — отменить последнюю",
     "/id — показать chat id",
     "",
@@ -731,6 +742,13 @@ async function sendTodayOperations(chatId: string) {
   );
 }
 
+async function sendDailyOwnerReport(chatId: string) {
+  const report = await buildDailyReport();
+  const message = formatDailyReportForTelegram(report);
+
+  await sendMessage(chatId, message);
+}
+
 async function sendUndoLastOperationPrompt(chatId: string) {
   const sessions = await findTelegramImportSessionsForChat({
     chatId,
@@ -925,6 +943,15 @@ async function createDraftFromMessage(message: TelegramMessage) {
     normalizedCommandText.includes("сегодня")
   ) {
     await sendTodayOperations(chatId);
+    return;
+  }
+
+  if (
+    normalizedCommandText === "/daily" ||
+    normalizedCommandText.includes("сводка за вчера") ||
+    normalizedCommandText.includes("ежедневная сводка")
+  ) {
+    await sendDailyOwnerReport(chatId);
     return;
   }
 
@@ -1817,6 +1844,19 @@ async function handleCallbackQuery(callbackQuery: TelegramCallbackQuery) {
 
     if (chatId) {
       await sendTodayOperations(chatId);
+    }
+
+    return;
+  }
+
+  if (data === "quick_daily") {
+    const message = callbackQuery.message;
+    const chatId = message?.chat.id ? String(message.chat.id) : null;
+
+    await answerCallbackQuery(callbackQuery.id);
+
+    if (chatId) {
+      await sendDailyOwnerReport(chatId);
     }
 
     return;
