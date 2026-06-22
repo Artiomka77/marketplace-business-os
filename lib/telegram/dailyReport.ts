@@ -23,7 +23,9 @@ type MarketplaceDailyMetrics = {
   salesQty: number;
   salesAmount: number;
   adSpend: number;
-  drr: number;
+  adSpendSource: string;
+  drrByOrders: number;
+  drrBySales: number;
   stockQty: number;
 };
 
@@ -50,7 +52,8 @@ type DailyReport = {
     salesQty: number;
     salesAmount: number;
     adSpend: number;
-    drr: number;
+    drrByOrders: number;
+    drrBySales: number;
     stockQty: number;
     cashIncome: number;
     cashOutflow: number;
@@ -358,6 +361,29 @@ async function getLatestOzonStockQty(companyName: string) {
   );
 }
 
+function isOzonFinanceAdOperation(operationType: string | null | undefined) {
+  const value = normalizeText(operationType);
+
+  return (
+    value.includes("оплата за клик") ||
+    value.includes("продвижение с оплатой за заказ") ||
+    value.includes("продвижение") ||
+    value.includes("реклама") ||
+    value.includes("реклам") ||
+    value.includes("трафарет") ||
+    value.includes("cpc") ||
+    value.includes("cpo")
+  );
+}
+
+function calculateOzonFinanceAdSpend(
+  rows: Array<{ operationType: string | null; totalAmount: unknown }>
+) {
+  return rows
+    .filter((row) => isOzonFinanceAdOperation(row.operationType))
+    .reduce((sum, row) => sum + Math.abs(toNumber(row.totalAmount)), 0);
+}
+
 async function getFinanceMetricsForCompany(params: {
   companyName: string;
   range: DateRange;
@@ -538,7 +564,9 @@ async function getWbMetrics(companyName: string, range: DateRange) {
     salesQty,
     salesAmount,
     adSpend,
-    drr: calculateDrr(adSpend, salesAmount),
+    adSpendSource: "WB Ads",
+    drrByOrders: calculateDrr(adSpend, orderStats.ordersAmount),
+    drrBySales: calculateDrr(adSpend, salesAmount),
     stockQty,
   };
 }
@@ -562,6 +590,7 @@ async function getOzonMetrics(companyName: string, range: DateRange) {
         operationType: true,
         quantity: true,
         salesAmount: true,
+        totalAmount: true,
       },
     }),
     prisma.ozonAds.findMany({
@@ -600,7 +629,19 @@ async function getOzonMetrics(companyName: string, range: DateRange) {
   }
 
   const adsRows = keepLatestOzonAdsRowsPerDate(adsRowsRaw);
-  const adSpend = adsRows.reduce((sum, row) => sum + toNumber(row.spend), 0);
+  const performanceAdSpend = adsRows.reduce(
+    (sum, row) => sum + toNumber(row.spend),
+    0
+  );
+  const financeAdSpend = calculateOzonFinanceAdSpend(financeRows);
+
+  // Для управленческого отчёта берём фактические рекламные списания из Ozon Finance,
+  // если они есть. Performance API оставляем как fallback, чтобы не задвоить CPC/CPO.
+  const adSpend =
+    financeAdSpend > 0 ? financeAdSpend : performanceAdSpend;
+  const adSpendSource =
+    financeAdSpend > 0 ? "Ozon Finance Ads" : "Ozon Performance Ads";
+
   return {
     marketplace: "OZON" as const,
     ordersQty: orderStats.ordersQty,
@@ -608,7 +649,9 @@ async function getOzonMetrics(companyName: string, range: DateRange) {
     salesQty,
     salesAmount,
     adSpend,
-    drr: calculateDrr(adSpend, salesAmount),
+    adSpendSource,
+    drrByOrders: calculateDrr(adSpend, orderStats.ordersAmount),
+    drrBySales: calculateDrr(adSpend, salesAmount),
     stockQty,
   };
 }
@@ -636,8 +679,10 @@ function buildWarnings(report: DailyReport) {
     warnings.push("нет продаж/выкупов за период");
   }
 
-  if (report.totals.drr > 20) {
-    warnings.push(`ДРР выше 20%: ${formatPercent(report.totals.drr)}`);
+  if (report.totals.drrByOrders > 20) {
+    warnings.push(
+      `ДРР от заказов выше 20%: ${formatPercent(report.totals.drrByOrders)}`
+    );
   }
 
   if (report.totals.netCashFlow < 0) {
@@ -689,7 +734,8 @@ export async function buildDailyReport(params?: {
       salesQty: 0,
       salesAmount: 0,
       adSpend: 0,
-      drr: 0,
+      drrByOrders: 0,
+      drrBySales: 0,
       stockQty: 0,
       cashIncome: 0,
       cashOutflow: 0,
@@ -727,7 +773,11 @@ export async function buildDailyReport(params?: {
     report.totals.ownerWithdrawals += finance.ownerWithdrawals;
   }
 
-  report.totals.drr = calculateDrr(
+  report.totals.drrByOrders = calculateDrr(
+    report.totals.adSpend,
+    report.totals.ordersAmount
+  );
+  report.totals.drrBySales = calculateDrr(
     report.totals.adSpend,
     report.totals.salesAmount
   );
@@ -766,7 +816,10 @@ function marketplaceLine(label: string, metrics: MarketplaceDailyMetrics) {
     `Продажи: ${formatNumber(metrics.salesQty)} шт / ${formatMoney(
       metrics.salesAmount
     )}`,
-    `Реклама: ${formatMoney(metrics.adSpend)} · ДРР ${formatPercent(metrics.drr)}`,
+    `Реклама: ${formatMoney(metrics.adSpend)}`,
+    `ДРР: от заказов ${formatPercent(metrics.drrByOrders)} (от продаж ${formatPercent(
+      metrics.drrBySales
+    )})`,
     `Остатки: ${formatNumber(metrics.stockQty)} шт`,
   ].join("\n");
 }
@@ -784,9 +837,10 @@ export function formatDailyReportForTelegram(report: DailyReport) {
     `Продажи: ${formatNumber(report.totals.salesQty)} шт / ${formatMoney(
       report.totals.salesAmount
     )}`,
-    `Реклама: ${formatMoney(report.totals.adSpend)} · ДРР ${formatPercent(
-      report.totals.drr
-    )}`,
+    `Реклама: ${formatMoney(report.totals.adSpend)}`,
+    `ДРР: от заказов ${formatPercent(
+      report.totals.drrByOrders
+    )} (от продаж ${formatPercent(report.totals.drrBySales)})`,
     `ДДС: ${formatMoney(report.totals.netCashFlow)}`,
     `Чистая прибыль: ${formatMoney(report.totals.netProfitImpact)}`,
     `Вывод собственника: ${formatMoney(report.totals.ownerWithdrawals)}`,
