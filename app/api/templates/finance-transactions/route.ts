@@ -7,9 +7,21 @@ export const dynamic = "force-dynamic";
 
 const MAX_TEMPLATE_ROWS = 500;
 
-function toSafeSheetName(value: string) {
-  return value.replace(/[\[\]\*\/\\\?\:]/g, "").slice(0, 31) || "Лист";
-}
+const OPERATION_TYPES = [
+  "Поступление",
+  "Расход",
+  "Перевод",
+  "Финансирование",
+  "Вывод собственника",
+];
+
+const CATEGORY_TYPE_TO_OPERATION_TYPE: Record<string, string> = {
+  INCOME: "Поступление",
+  EXPENSE: "Расход",
+  TRANSFER: "Перевод",
+  FINANCING: "Финансирование",
+  PERSONAL: "Вывод собственника",
+};
 
 function uniqueValues(values: Array<string | null | undefined>) {
   return Array.from(
@@ -19,6 +31,12 @@ function uniqueValues(values: Array<string | null | undefined>) {
         .filter(Boolean)
     )
   );
+}
+
+function normalizeCategoryType(value: unknown) {
+  return String(value ?? "")
+    .toUpperCase()
+    .trim();
 }
 
 function applyHeaderStyle(row: ExcelJS.Row, fillColor = "4F46E5") {
@@ -60,26 +78,14 @@ function applyBodyCellStyle(cell: ExcelJS.Cell) {
   };
 }
 
-function setListValidation(params: {
+function setSimpleListValidation(params: {
   sheet: ExcelJS.Worksheet;
   columnLetter: string;
-  listSheetName: string;
-  listColumnLetter: string;
-  startRow: number;
-  endRow: number;
+  sourceRangeFormula: string;
   errorTitle: string;
   error: string;
 }) {
-  const {
-    sheet,
-    columnLetter,
-    listSheetName,
-    listColumnLetter,
-    startRow,
-    endRow,
-    errorTitle,
-    error,
-  } = params;
+  const { sheet, columnLetter, sourceRangeFormula, errorTitle, error } = params;
 
   for (let row = 2; row <= MAX_TEMPLATE_ROWS; row++) {
     const cell = sheet.getCell(`${columnLetter}${row}`);
@@ -87,13 +93,35 @@ function setListValidation(params: {
     cell.dataValidation = {
       type: "list",
       allowBlank: true,
-      formulae: [
-        `'${listSheetName}'!$${listColumnLetter}$${startRow}:$${listColumnLetter}$${endRow}`,
-      ],
+      formulae: [sourceRangeFormula],
       showErrorMessage: true,
       errorStyle: "warning",
       errorTitle,
       error,
+    };
+  }
+}
+
+function setDependentCategoryValidation(params: {
+  sheet: ExcelJS.Worksheet;
+  listsSheetName: string;
+}) {
+  const { sheet, listsSheetName } = params;
+
+  for (let row = 2; row <= MAX_TEMPLATE_ROWS; row++) {
+    const cell = sheet.getCell(`E${row}`);
+
+    cell.dataValidation = {
+      type: "list",
+      allowBlank: true,
+      formulae: [
+        `OFFSET('${listsSheetName}'!$L$1,MATCH($D${row},'${listsSheetName}'!$K:$K,0)-1,0,COUNTIF('${listsSheetName}'!$K:$K,$D${row}),1)`,
+      ],
+      showErrorMessage: true,
+      errorStyle: "warning",
+      errorTitle: "Статья не подходит к типу операции",
+      error:
+        "Сначала выберите тип операции, затем выберите статью из соответствующего списка.",
     };
   }
 }
@@ -122,9 +150,7 @@ export async function GET() {
       ],
       select: {
         name: true,
-        parentName: true,
         categoryType: true,
-        profitTreatment: true,
       },
     }),
     prisma.financeAccount.findMany({
@@ -147,39 +173,58 @@ export async function GET() {
   ]);
 
   const companyNames = uniqueValues(companies.map((company) => company.name));
-  const categoryNames = uniqueValues(categories.map((category) => category.name));
   const accountNames = uniqueValues(accounts.map((account) => account.name));
 
   const safeCompanyNames =
     companyNames.length > 0 ? companyNames : ["ИП Петров", "ИП Лебедева"];
-
-  const safeCategoryNames =
-    categoryNames.length > 0
-      ? categoryNames
-      : [
-          "Оплата тела кредита",
-          "Проценты по кредиту",
-          "Фулфилмент",
-          "Закуп",
-          "Вывод собственника",
-          "Перевод между счетами",
-          "Без статьи",
-        ];
 
   const safeAccountNames =
     accountNames.length > 0
       ? accountNames
       : ["Сбербанк карта", "Расчетный счет", "Наличные", "Касса"];
 
-  const operationTypes = [
-    "Поступление",
-    "Расход",
-    "Перевод",
-    "Финансирование",
-    "Вывод собственника",
-  ];
+  const categoriesByOperationType = new Map<string, string[]>();
 
-  const yesNoValues = ["Да", "Нет"];
+  for (const operationType of OPERATION_TYPES) {
+    categoriesByOperationType.set(operationType, []);
+  }
+
+  for (const category of categories) {
+    const categoryType = normalizeCategoryType(category.categoryType);
+    const operationType = CATEGORY_TYPE_TO_OPERATION_TYPE[categoryType];
+
+    if (!operationType) continue;
+
+    categoriesByOperationType.get(operationType)?.push(category.name);
+  }
+
+  const fallbackCategories: Record<string, string[]> = {
+    "Поступление": [
+      "Поступления от продаж",
+      "Внесение собственника",
+      "Получение кредита",
+    ],
+    "Расход": [
+      "Закуп",
+      "Реклама",
+      "Оплата фулфилменту",
+      "Упаковка и расходные материалы",
+    ],
+    "Перевод": ["Перевод между счетами"],
+    "Финансирование": ["Тело кредита", "Проценты по кредиту", "Получение кредита"],
+    "Вывод собственника": ["Вывод собственника"],
+  };
+
+  for (const operationType of OPERATION_TYPES) {
+    const current = categoriesByOperationType.get(operationType) ?? [];
+
+    if (current.length === 0) {
+      categoriesByOperationType.set(
+        operationType,
+        fallbackCategories[operationType] ?? ["Без статьи"]
+      );
+    }
+  }
 
   const workbook = new ExcelJS.Workbook();
   workbook.creator = "Marketplace Business OS";
@@ -191,8 +236,7 @@ export async function GET() {
   const guideSheet = workbook.addWorksheet("Справочник", {
     views: [{ state: "frozen", ySplit: 1 }],
   });
-  const listsSheetName = toSafeSheetName("Списки");
-  const listsSheet = workbook.addWorksheet(listsSheetName);
+  const listsSheet = workbook.addWorksheet("Списки");
 
   operationsSheet.columns = [
     { header: "Дата", key: "operationDate", width: 14 },
@@ -212,58 +256,57 @@ export async function GET() {
   applyHeaderStyle(operationsSheet.getRow(1));
   operationsSheet.getRow(1).height = 34;
 
-  const exampleRows = [
+  const firstExpenseCategory =
+    categoriesByOperationType.get("Расход")?.[0] ?? "Закуп";
+  const firstIncomeCategory =
+    categoriesByOperationType.get("Поступление")?.[0] ?? "Поступления от продаж";
+  const firstFinanceCategory =
+    categoriesByOperationType.get("Финансирование")?.[0] ?? "Тело кредита";
+
+  operationsSheet.addRows([
     [
       "22.06.2026",
       "22.06.2026",
       safeCompanyNames[0],
       "Расход",
-      safeCategoryNames.includes("Оплата тела кредита")
-        ? "Оплата тела кредита"
-        : safeCategoryNames[0],
+      firstExpenseCategory,
+      "",
+      safeAccountNames[0],
+      15000,
+      "Поставщик",
+      "Ozon",
+      "Пример расходной операции",
+      "Нет",
+    ],
+    [
+      "15.06.2026",
+      "15.06.2026",
+      safeCompanyNames[0],
+      "Поступление",
+      firstIncomeCategory,
+      "",
+      safeAccountNames[0],
+      50000,
+      "Покупатели",
+      "WB",
+      "Пример поступления",
+      "Нет",
+    ],
+    [
+      "20.06.2026",
+      "20.06.2026",
+      safeCompanyNames[0],
+      "Финансирование",
+      firstFinanceCategory,
       "",
       safeAccountNames[0],
       17792,
       "Банк",
       "Кредиты",
-      "Платёж по кредиту",
+      "Пример кредитной операции",
       "Нет",
     ],
-    [
-      "22.06.2026",
-      "22.06.2026",
-      safeCompanyNames[0],
-      "Расход",
-      safeCategoryNames.includes("Фулфилмент")
-        ? "Фулфилмент"
-        : safeCategoryNames[0],
-      "",
-      safeAccountNames[0],
-      12500,
-      "Поставщик",
-      "WB/Ozon",
-      "Упаковка и обработка",
-      "Нет",
-    ],
-    [
-      "22.06.2026",
-      "22.06.2026",
-      safeCompanyNames[1] ?? safeCompanyNames[0],
-      "Поступление",
-      safeCategoryNames.includes("Внесение собственника")
-        ? "Внесение собственника"
-        : safeCategoryNames[0],
-      "",
-      safeAccountNames[0],
-      50000,
-      "Собственник",
-      "Оборотка",
-      "Пополнение оборотных средств",
-      "Нет",
-    ],
-  ];
-
-  operationsSheet.addRows(exampleRows);
+  ]);
 
   for (let rowNumber = 2; rowNumber <= MAX_TEMPLATE_ROWS; rowNumber++) {
     const row = operationsSheet.getRow(rowNumber);
@@ -285,103 +328,96 @@ export async function GET() {
   listsSheet.columns = [
     { header: "Компании", key: "companies", width: 28 },
     { header: "Типы операций", key: "operationTypes", width: 28 },
-    { header: "Статьи", key: "categories", width: 42 },
     { header: "Счета", key: "accounts", width: 28 },
     { header: "Внутренний перевод", key: "yesNo", width: 22 },
+    { header: "", key: "blank", width: 6 },
+    { header: "", key: "blank2", width: 6 },
+    { header: "", key: "blank3", width: 6 },
+    { header: "", key: "blank4", width: 6 },
+    { header: "", key: "blank5", width: 6 },
+    { header: "", key: "blank6", width: 6 },
+    { header: "Тип операции для статьи", key: "categoryType", width: 30 },
+    { header: "Статья", key: "categoryName", width: 46 },
   ];
 
   applyHeaderStyle(listsSheet.getRow(1), "111827");
 
-  const listsRowsCount = Math.max(
+  const yesNoValues = ["Да", "Нет"];
+  const mainRowsCount = Math.max(
     safeCompanyNames.length,
-    operationTypes.length,
-    safeCategoryNames.length,
+    OPERATION_TYPES.length,
     safeAccountNames.length,
     yesNoValues.length
   );
 
-  for (let index = 0; index < listsRowsCount; index++) {
+  for (let index = 0; index < mainRowsCount; index++) {
     listsSheet.addRow([
       safeCompanyNames[index] ?? "",
-      operationTypes[index] ?? "",
-      safeCategoryNames[index] ?? "",
+      OPERATION_TYPES[index] ?? "",
       safeAccountNames[index] ?? "",
       yesNoValues[index] ?? "",
     ]);
   }
 
-  listsSheet.getColumn(3).eachCell((cell) => {
-    cell.alignment = {
-      vertical: "middle",
-      wrapText: true,
-    };
-  });
+  let categoryListRow = 2;
 
-  const companyEndRow = safeCompanyNames.length + 1;
-  const operationTypeEndRow = operationTypes.length + 1;
-  const categoryEndRow = safeCategoryNames.length + 1;
-  const accountEndRow = safeAccountNames.length + 1;
-  const yesNoEndRow = yesNoValues.length + 1;
+  for (const operationType of OPERATION_TYPES) {
+    const categoryNames = categoriesByOperationType.get(operationType) ?? [];
 
-  setListValidation({
+    for (const categoryName of categoryNames) {
+      listsSheet.getCell(`K${categoryListRow}`).value = operationType;
+      listsSheet.getCell(`L${categoryListRow}`).value = categoryName;
+      categoryListRow++;
+    }
+  }
+
+  listsSheet.autoFilter = {
+    from: "A1",
+    to: "L1",
+  };
+
+  const listsSheetName = listsSheet.name;
+
+  setSimpleListValidation({
     sheet: operationsSheet,
     columnLetter: "C",
-    listSheetName: listsSheetName,
-    listColumnLetter: "A",
-    startRow: 2,
-    endRow: companyEndRow,
+    sourceRangeFormula: `'${listsSheetName}'!$A$2:$A$${safeCompanyNames.length + 1}`,
     errorTitle: "Компания не найдена",
     error: "Выберите компанию из выпадающего списка.",
   });
 
-  setListValidation({
+  setSimpleListValidation({
     sheet: operationsSheet,
     columnLetter: "D",
-    listSheetName: listsSheetName,
-    listColumnLetter: "B",
-    startRow: 2,
-    endRow: operationTypeEndRow,
+    sourceRangeFormula: `'${listsSheetName}'!$B$2:$B$${OPERATION_TYPES.length + 1}`,
     errorTitle: "Тип операции не найден",
     error: "Выберите тип операции из выпадающего списка.",
   });
 
-  setListValidation({
+  setDependentCategoryValidation({
     sheet: operationsSheet,
-    columnLetter: "E",
-    listSheetName: listsSheetName,
-    listColumnLetter: "C",
-    startRow: 2,
-    endRow: categoryEndRow,
-    errorTitle: "Статья не найдена",
-    error:
-      "Выберите статью из выпадающего списка. Список берётся из справочника статей проекта.",
+    listsSheetName,
   });
 
-  setListValidation({
+  setSimpleListValidation({
     sheet: operationsSheet,
     columnLetter: "G",
-    listSheetName: listsSheetName,
-    listColumnLetter: "D",
-    startRow: 2,
-    endRow: accountEndRow,
+    sourceRangeFormula: `'${listsSheetName}'!$C$2:$C$${safeAccountNames.length + 1}`,
     errorTitle: "Счёт не найден",
     error: "Выберите счёт из списка или введите новый вручную.",
   });
 
-  setListValidation({
+  setSimpleListValidation({
     sheet: operationsSheet,
     columnLetter: "L",
-    listSheetName: listsSheetName,
-    listColumnLetter: "E",
-    startRow: 2,
-    endRow: yesNoEndRow,
+    sourceRangeFormula: `'${listsSheetName}'!$D$2:$D$3`,
     errorTitle: "Некорректное значение",
     error: "Укажите Да или Нет.",
   });
 
   guideSheet.columns = [
     { header: "Поле", key: "field", width: 24 },
-    { header: "Как заполнять", key: "description", width: 86 },
+    { header: "Как заполнять", key: "description", width: 92 },
     { header: "Обязательно", key: "required", width: 16 },
   ];
 
@@ -393,7 +429,11 @@ export async function GET() {
       "Дата фактической оплаты или поступления. Формат: ДД.ММ.ГГГГ.",
       "Да",
     ],
-    ["Дата обязательства", "Дата, к которой относится обязательство. Можно оставить пустой.", "Нет"],
+    [
+      "Дата обязательства",
+      "Дата, к которой относится обязательство. Можно оставить пустой.",
+      "Нет",
+    ],
     [
       "Компания",
       "Выберите из выпадающего списка. Если пусто, используется компания, выбранная на странице импорта.",
@@ -401,12 +441,12 @@ export async function GET() {
     ],
     [
       "Тип операции",
-      "Выберите из списка: Поступление, Расход, Перевод, Финансирование, Вывод собственника.",
+      "Сначала выберите тип операции. После этого в колонке “Статья” будут доступны только статьи этого типа.",
       "Да",
     ],
     [
       "Статья",
-      "Выберите статью из выпадающего списка. Список автоматически берётся из справочника статей проекта.",
+      "Выберите статью из выпадающего списка. Список фильтруется по выбранному типу операции.",
       "Да",
     ],
     ["Подстатья", "Дополнительная детализация статьи.", "Нет"],
@@ -415,7 +455,11 @@ export async function GET() {
     ["Контрагент", "Кому платим или от кого поступили деньги.", "Нет"],
     ["Проект", "Проект, маркетплейс или направление.", "Нет"],
     ["Комментарий", "Любое пояснение к операции.", "Нет"],
-    ["Внутренний перевод", "Да или Нет. Для переводов между своими счетами укажите Да.", "Нет"],
+    [
+      "Внутренний перевод",
+      "Да или Нет. Для переводов между своими счетами укажите Да.",
+      "Нет",
+    ],
   ]);
 
   guideSheet.eachRow((row) => {
@@ -423,9 +467,6 @@ export async function GET() {
       applyBodyCellStyle(cell);
     });
   });
-
-  // Лист оставляем видимым, чтобы собственник мог посмотреть полный список статей.
-  // Если нужно скрыть технический лист, можно заменить на: listsSheet.state = "veryHidden";
 
   const buffer = await workbook.xlsx.writeBuffer();
 
