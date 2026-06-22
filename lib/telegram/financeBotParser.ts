@@ -443,8 +443,74 @@ function detectProject(text: string) {
   return null;
 }
 
-function removeAmountFromComment(text: string, amountRaw: string) {
-  return text.replace(amountRaw, "").replace(/\s+/g, " ").trim();
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function removeWords(text: string, words: string[]) {
+  let result = ` ${text} `;
+
+  for (const word of words) {
+    const normalizedWord = normalize(word);
+
+    if (!normalizedWord) continue;
+
+    const tokens = normalizedWord
+      .split(" ")
+      .map((token) => token.trim())
+      .filter((token) => token.length >= 3);
+
+    for (const token of tokens) {
+      result = result.replace(new RegExp(`\\b${escapeRegExp(token)}\\b`, "giu"), " ");
+    }
+  }
+
+  return result.replace(/\s+/g, " ").trim();
+}
+
+function buildComment(params: {
+  originalText: string;
+  amountRaw: string;
+  companyName: string;
+  categoryName: string;
+  bankAccount: string | null;
+}) {
+  const operationWords = [
+    "закуп",
+    "расход",
+    "поступило",
+    "поступление",
+    "пришло",
+    "выручка",
+    "вывод",
+    "перевод",
+    "тело",
+    "кредит",
+    "проценты",
+    "оплата",
+    "петров",
+    "лебедева",
+    "ип",
+    "сбер",
+    "сбербанк",
+    "карта",
+    "озон",
+    "ozon",
+    "wb",
+    "альфа",
+    "нал",
+    "касса",
+  ];
+
+  const withoutAmount = params.originalText.replace(params.amountRaw, " ");
+  const cleaned = removeWords(withoutAmount, [
+    params.companyName,
+    params.categoryName,
+    params.bankAccount ?? "",
+    ...operationWords,
+  ]);
+
+  return cleaned || null;
 }
 
 export function parseTelegramFinanceMessage(
@@ -492,7 +558,13 @@ export function parseTelegramFinanceMessage(
     context.accounts
   );
   const project = detectProject(cleanedText);
-  const comment = removeAmountFromComment(cleanedText, amount.raw);
+  const comment = buildComment({
+    originalText: cleanedText,
+    amountRaw: amount.raw,
+    companyName,
+    categoryName: category.name,
+    bankAccount,
+  });
 
   const warnings: string[] = [];
 
