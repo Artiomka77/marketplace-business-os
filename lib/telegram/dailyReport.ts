@@ -3,8 +3,15 @@ import { calculateFinanceMetricsForRows } from "@/lib/finance/financeMetrics";
 
 export type DailyReportPeriodPreset =
   | "yesterday"
+  | "day_before_yesterday"
   | "3d"
+  | "current_week"
   | "7d"
+  | "15d"
+  | "month"
+  | "3m"
+  | "6m"
+  | "year"
   | "30d"
   | "90d"
   | "365d";
@@ -20,6 +27,8 @@ type MarketplaceDailyMetrics = {
   marketplace: "WB" | "OZON";
   ordersQty: number;
   ordersAmount: number;
+  ordersDataMissing: boolean;
+  ordersDataMissingReason: string | null;
   salesQty: number;
   salesAmount: number;
   salesLabel: string;
@@ -136,6 +145,70 @@ function makeMoscowRange(params: {
   };
 }
 
+
+function makeMoscowDayRange(params: {
+  offsetDays: number;
+  label: string;
+  now?: Date;
+}): DateRange {
+  const now = params.now ?? new Date();
+  const moscowNow = new Date(now.getTime() + 3 * 60 * 60 * 1000);
+
+  const year = moscowNow.getUTCFullYear();
+  const month = moscowNow.getUTCMonth();
+  const day = moscowNow.getUTCDate() - params.offsetDays;
+
+  const dateFrom = new Date(Date.UTC(year, month, day, -3, 0, 0));
+  const dateToExclusive = new Date(Date.UTC(year, month, day + 1, -3, 0, 0));
+  const dateLabel = formatDateInput(new Date(Date.UTC(year, month, day, 12)));
+
+  return {
+    dateLabel,
+    periodLabel: params.label,
+    dateFrom,
+    dateToExclusive,
+  };
+}
+
+function makeCurrentMoscowWeekRange(now?: Date): DateRange {
+  const currentNow = now ?? new Date();
+  const moscowNow = new Date(currentNow.getTime() + 3 * 60 * 60 * 1000);
+
+  const year = moscowNow.getUTCFullYear();
+  const month = moscowNow.getUTCMonth();
+  const day = moscowNow.getUTCDate();
+  const dayOfWeek = moscowNow.getUTCDay();
+  const daysFromMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+
+  const mondayNoon = new Date(Date.UTC(year, month, day - daysFromMonday, 12));
+  const yesterdayNoon = new Date(Date.UTC(year, month, day - 1, 12));
+
+  const dateFrom = new Date(
+    Date.UTC(year, month, day - daysFromMonday, -3, 0, 0)
+  );
+  const dateToExclusive = new Date(Date.UTC(year, month, day, -3, 0, 0));
+
+  return {
+    dateLabel:
+      dateFrom.getTime() >= dateToExclusive.getTime()
+        ? formatDateInput(mondayNoon)
+        : `${formatDateInput(mondayNoon)} — ${formatDateInput(yesterdayNoon)}`,
+    periodLabel: "Текущая неделя",
+    dateFrom,
+    dateToExclusive,
+  };
+}
+
+function normalizeReportPreset(
+  preset: DailyReportPeriodPreset | undefined
+): DailyReportPeriodPreset {
+  if (preset === "30d") return "month";
+  if (preset === "90d") return "3m";
+  if (preset === "365d") return "year";
+
+  return preset ?? "yesterday";
+}
+
 export function getDailyReportRange(params?: {
   preset?: DailyReportPeriodPreset;
   date?: string;
@@ -172,7 +245,15 @@ export function getDailyReportRange(params?: {
     }
   }
 
-  const preset = params?.preset ?? "yesterday";
+  const preset = normalizeReportPreset(params?.preset);
+
+  if (preset === "day_before_yesterday") {
+    return makeMoscowDayRange({
+      offsetDays: 2,
+      label: "Позавчера",
+      now: params?.now,
+    });
+  }
 
   if (preset === "3d") {
     return makeMoscowRange({
@@ -180,6 +261,10 @@ export function getDailyReportRange(params?: {
       label: "Последние 3 дня",
       now: params?.now,
     });
+  }
+
+  if (preset === "current_week") {
+    return makeCurrentMoscowWeekRange(params?.now);
   }
 
   if (preset === "7d") {
@@ -190,15 +275,23 @@ export function getDailyReportRange(params?: {
     });
   }
 
-  if (preset === "30d") {
+  if (preset === "15d") {
     return makeMoscowRange({
-      days: 30,
-      label: "Последние 30 дней",
+      days: 15,
+      label: "Последние 15 дней",
       now: params?.now,
     });
   }
 
-  if (preset === "90d") {
+  if (preset === "month") {
+    return makeMoscowRange({
+      days: 30,
+      label: "Последний месяц",
+      now: params?.now,
+    });
+  }
+
+  if (preset === "3m") {
     return makeMoscowRange({
       days: 90,
       label: "Последние 3 месяца",
@@ -206,7 +299,15 @@ export function getDailyReportRange(params?: {
     });
   }
 
-  if (preset === "365d") {
+  if (preset === "6m") {
+    return makeMoscowRange({
+      days: 183,
+      label: "Последние 6 месяцев",
+      now: params?.now,
+    });
+  }
+
+  if (preset === "year") {
     return makeMoscowRange({
       days: 365,
       label: "Последний год",
@@ -214,9 +315,9 @@ export function getDailyReportRange(params?: {
     });
   }
 
-  return makeMoscowRange({
-    days: 1,
-    label: "Предыдущий день",
+  return makeMoscowDayRange({
+    offsetDays: 1,
+    label: "Вчера",
     now: params?.now,
   });
 }
@@ -463,6 +564,7 @@ async function getOrderStats(params: {
     {
       ordersQty: 0,
       ordersAmount: 0,
+      rowsCount: rows.length,
     }
   );
 }
@@ -558,6 +660,11 @@ async function getWbMetrics(companyName: string, range: DateRange) {
     }
   }
 
+  const ordersDataMissing = orderStats.rowsCount === 0;
+  const ordersDataMissingReason = ordersDataMissing
+    ? "WB заказы за этот период ещё не загружены в MarketplaceDailyOrderStat"
+    : null;
+
   const salesDataMissing = salesRows.length === 0 && orderStats.ordersQty > 0;
   const salesDataMissingReason = salesDataMissing
     ? "WB Sales/выкупы за этот период ещё не загружены в WbSale"
@@ -570,6 +677,8 @@ async function getWbMetrics(companyName: string, range: DateRange) {
     marketplace: "WB" as const,
     ordersQty: orderStats.ordersQty,
     ordersAmount: orderStats.ordersAmount,
+    ordersDataMissing,
+    ordersDataMissingReason,
     salesQty,
     salesAmount,
     salesLabel: "Продажи/выкупы",
@@ -578,7 +687,7 @@ async function getWbMetrics(companyName: string, range: DateRange) {
     salesDataMissingReason,
     adSpend,
     adSpendSource: "WB Ads",
-    drrByOrders: calculateDrr(adSpend, orderStats.ordersAmount),
+    drrByOrders: ordersDataMissing ? 0 : calculateDrr(adSpend, orderStats.ordersAmount),
     drrBySales: salesDataMissing ? 0 : calculateDrr(adSpend, salesAmount),
     stockQty,
   };
@@ -655,10 +764,17 @@ async function getOzonMetrics(companyName: string, range: DateRange) {
   const adSpendSource =
     financeAdSpend > 0 ? "Ozon Finance Ads" : "Ozon Performance Ads";
 
+  const ordersDataMissing = orderStats.rowsCount === 0;
+  const ordersDataMissingReason = ordersDataMissing
+    ? "Ozon заказы за этот период ещё не загружены в MarketplaceDailyOrderStat"
+    : null;
+
   return {
     marketplace: "OZON" as const,
     ordersQty: orderStats.ordersQty,
     ordersAmount: orderStats.ordersAmount,
+    ordersDataMissing,
+    ordersDataMissingReason,
     salesQty: 0,
     salesAmount,
     salesLabel: "Начисления",
@@ -667,7 +783,7 @@ async function getOzonMetrics(companyName: string, range: DateRange) {
     salesDataMissingReason: null,
     adSpend,
     adSpendSource,
-    drrByOrders: calculateDrr(adSpend, orderStats.ordersAmount),
+    drrByOrders: ordersDataMissing ? 0 : calculateDrr(adSpend, orderStats.ordersAmount),
     drrBySales: calculateDrr(adSpend, salesAmount),
     stockQty,
   };
@@ -715,6 +831,14 @@ function buildWarnings(report: DailyReport) {
   }
 
   for (const company of report.companies) {
+    if (company.wb.ordersDataMissing) {
+      warnings.push(`${company.companyName} WB: заказы ещё не загружены`);
+    }
+
+    if (company.ozon.ordersDataMissing) {
+      warnings.push(`${company.companyName} Ozon: заказы ещё не загружены`);
+    }
+
     if (company.wb.salesDataMissing) {
       warnings.push(
         `${company.companyName} WB: продажи/выкупы ещё не загружены`
@@ -852,14 +976,22 @@ function marketplaceSalesLine(metrics: MarketplaceDailyMetrics) {
   return `${metrics.salesLabel}: ${formatMoney(metrics.salesAmount)}`;
 }
 
+function marketplaceOrdersLine(metrics: MarketplaceDailyMetrics) {
+  if (metrics.ordersDataMissing) {
+    return "Заказы: данные ещё не загружены";
+  }
+
+  return `Заказы: ${formatNumber(metrics.ordersQty)} шт / ${formatMoney(
+    metrics.ordersAmount
+  )}`;
+}
+
 function marketplaceLine(label: string, metrics: MarketplaceDailyMetrics) {
-  const lines = [
-    `${label}`,
-    `Заказы: ${formatNumber(metrics.ordersQty)} шт / ${formatMoney(
-      metrics.ordersAmount
-    )}`,
-    marketplaceSalesLine(metrics),
-  ];
+  const lines = [`${label}`, marketplaceOrdersLine(metrics), marketplaceSalesLine(metrics)];
+
+  if (metrics.ordersDataMissingReason) {
+    lines.push(`Источник заказов: ${metrics.ordersDataMissingReason}`);
+  }
 
   if (metrics.salesDataMissingReason) {
     lines.push(`Источник продаж: ${metrics.salesDataMissingReason}`);

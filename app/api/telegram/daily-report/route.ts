@@ -39,19 +39,30 @@ export async function GET(req: Request) {
   const preset = url.searchParams.get("period") ?? url.searchParams.get("preset") ?? undefined;
   const shouldSend = url.searchParams.get("send") !== "false";
 
+  const allowedPresets = [
+    "yesterday",
+    "day_before_yesterday",
+    "3d",
+    "current_week",
+    "7d",
+    "15d",
+    "month",
+    "3m",
+    "6m",
+    "year",
+    // Старые значения оставляем для обратной совместимости ссылок и команд.
+    "30d",
+    "90d",
+    "365d",
+  ] as const;
+
   const report = await buildDailyReport({
     date,
     from,
     to,
-    preset:
-      preset === "3d" ||
-      preset === "7d" ||
-      preset === "30d" ||
-      preset === "90d" ||
-      preset === "365d" ||
-      preset === "yesterday"
-        ? preset
-        : undefined,
+    preset: allowedPresets.includes(preset as any)
+      ? (preset as (typeof allowedPresets)[number])
+      : undefined,
   });
   const message = formatDailyReportForTelegram(report);
 

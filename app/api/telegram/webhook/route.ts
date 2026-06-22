@@ -274,8 +274,18 @@ function reportPeriodInlineKeyboard() {
           callback_data: "report:yesterday",
         },
         {
+          text: "Позавчера",
+          callback_data: "report:day_before_yesterday",
+        },
+      ],
+      [
+        {
           text: "3 дня",
           callback_data: "report:3d",
+        },
+        {
+          text: "Текущая неделя",
+          callback_data: "report:current_week",
         },
       ],
       [
@@ -284,18 +294,28 @@ function reportPeriodInlineKeyboard() {
           callback_data: "report:7d",
         },
         {
-          text: "30 дней",
-          callback_data: "report:30d",
+          text: "15 дней",
+          callback_data: "report:15d",
         },
       ],
       [
         {
+          text: "Месяц",
+          callback_data: "report:month",
+        },
+        {
           text: "3 месяца",
-          callback_data: "report:90d",
+          callback_data: "report:3m",
+        },
+      ],
+      [
+        {
+          text: "6 месяцев",
+          callback_data: "report:6m",
         },
         {
           text: "Год",
-          callback_data: "report:365d",
+          callback_data: "report:year",
         },
       ],
       [
@@ -315,12 +335,16 @@ function getReportMenuMessage() {
     "Выберите период:",
     "",
     "• Вчера — оперативная сверка за предыдущий день",
+    "• Позавчера — сверка дня до вчерашнего",
     "• 3 дня — короткая динамика",
+    "• Текущая неделя — с понедельника по вчера",
     "• 7 дней — недельная картина",
-    "• 30 дней — месяц",
+    "• 15 дней — половина месяца",
+    "• Месяц — последние 30 дней",
     "• 3 месяца — квартальный взгляд",
-    "• Год — длинная картина",
-  ].join("\n");
+    "• 6 месяцев — длинный период",
+    "• Год — годовая картина",
+  ].join("\\n");
 }
 
 function getVisualMenuMessage(chatId: string) {
@@ -434,6 +458,14 @@ function getHelpMessage(chatId: string) {
     "/today — операции за сегодня",
     "/daily — сводка собственника за вчера",
     "/report — выбрать период отчёта",
+    "/report_yesterday — отчёт за вчера",
+    "/report_day_before_yesterday — отчёт за позавчера",
+    "/report_current_week — текущая неделя",
+    "/report_15d — последние 15 дней",
+    "/report_month — последний месяц",
+    "/report_3m — 3 месяца",
+    "/report_6m — 6 месяцев",
+    "/report_year — год",
     "/undo — отменить последнюю",
     "/id — показать chat id",
     "",
@@ -1035,8 +1067,25 @@ async function createDraftFromMessage(message: TelegramMessage) {
     return;
   }
 
+  if (
+    normalizedCommandText === "/report_day_before_yesterday" ||
+    normalizedCommandText === "/report_before_yesterday" ||
+    normalizedCommandText.includes("позавчера")
+  ) {
+    await sendDailyOwnerReport(chatId, "day_before_yesterday");
+    return;
+  }
+
   if (normalizedCommandText === "/report_3d") {
     await sendDailyOwnerReport(chatId, "3d");
+    return;
+  }
+
+  if (
+    normalizedCommandText === "/report_current_week" ||
+    normalizedCommandText === "/report_week"
+  ) {
+    await sendDailyOwnerReport(chatId, "current_week");
     return;
   }
 
@@ -1045,18 +1094,37 @@ async function createDraftFromMessage(message: TelegramMessage) {
     return;
   }
 
-  if (normalizedCommandText === "/report_30d") {
-    await sendDailyOwnerReport(chatId, "30d");
+  if (normalizedCommandText === "/report_15d") {
+    await sendDailyOwnerReport(chatId, "15d");
     return;
   }
 
-  if (normalizedCommandText === "/report_90d") {
-    await sendDailyOwnerReport(chatId, "90d");
+  if (
+    normalizedCommandText === "/report_month" ||
+    normalizedCommandText === "/report_30d"
+  ) {
+    await sendDailyOwnerReport(chatId, "month");
     return;
   }
 
-  if (normalizedCommandText === "/report_365d") {
-    await sendDailyOwnerReport(chatId, "365d");
+  if (
+    normalizedCommandText === "/report_3m" ||
+    normalizedCommandText === "/report_90d"
+  ) {
+    await sendDailyOwnerReport(chatId, "3m");
+    return;
+  }
+
+  if (normalizedCommandText === "/report_6m") {
+    await sendDailyOwnerReport(chatId, "6m");
+    return;
+  }
+
+  if (
+    normalizedCommandText === "/report_year" ||
+    normalizedCommandText === "/report_365d"
+  ) {
+    await sendDailyOwnerReport(chatId, "year");
     return;
   }
 
@@ -1951,16 +2019,28 @@ async function handleCallbackQuery(callbackQuery: TelegramCallbackQuery) {
 
     await answerCallbackQuery(callbackQuery.id, "Готовлю отчёт");
 
-    if (
-      chatId &&
-      (preset === "yesterday" ||
-        preset === "3d" ||
-        preset === "7d" ||
-        preset === "30d" ||
-        preset === "90d" ||
-        preset === "365d")
-    ) {
-      await sendDailyOwnerReport(chatId, preset);
+    const allowedReportPresets = [
+      "yesterday",
+      "day_before_yesterday",
+      "3d",
+      "current_week",
+      "7d",
+      "15d",
+      "month",
+      "3m",
+      "6m",
+      "year",
+      // Старые значения оставляем для обратной совместимости.
+      "30d",
+      "90d",
+      "365d",
+    ] as const;
+
+    if (chatId && allowedReportPresets.includes(preset as any)) {
+      await sendDailyOwnerReport(
+        chatId,
+        preset as (typeof allowedReportPresets)[number]
+      );
     }
 
     return;
