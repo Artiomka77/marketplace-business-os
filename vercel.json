@@ -5,6 +5,10 @@
       "schedule": "0 3 * * *"
     },
     {
+      "path": "/api/cron/historical-sync-wb-ads",
+      "schedule": "5,15,25,35,45,55 3 * * *"
+    },
+    {
       "path": "/api/cron/daily-priority-sync",
       "schedule": "30 3 * * *"
     },

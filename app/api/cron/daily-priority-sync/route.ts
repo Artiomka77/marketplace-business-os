@@ -3,7 +3,6 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { syncMarketplaceDailyOrders } from "@/lib/marketplaceOrders/syncMarketplaceDailyOrders";
 import { syncOzonFinance } from "@/lib/ozon/syncOzon";
-import { syncWbAds } from "@/lib/wb/syncWbAds";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -136,33 +135,83 @@ async function runOzonDailyFinance(
   }
 }
 
-async function runWbDailyAds(
+async function ensureWbAdsJobForReportDate(
   connection: MarketplaceApiConnectionForDaily,
   date: Date
 ) {
-  try {
-    const result = await syncWbAds(connection.companyId, {
-      dateFrom: date,
-      dateTo: date,
-      mode: "FULL",
-    });
+  const dateFrom = addUtcDays(date, -1);
+  const dateTo = addUtcDays(date, 1);
 
+  const existingJob = await prisma.historicalSyncJob.findFirst({
+    where: {
+      companyId: connection.companyId,
+      companyName: connection.company.name,
+      marketplace: "WB",
+      dataType: "ADS",
+      dateFrom,
+      dateTo,
+    },
+    select: {
+      id: true,
+      status: true,
+      cursorOffset: true,
+      lastError: true,
+    },
+  });
+
+  if (existingJob) {
     return {
       marketplace: "WB",
       companyName: connection.company.name,
       dataType: "ADS",
       ok: true,
-      result,
-    };
-  } catch (error) {
-    return {
-      marketplace: "WB",
-      companyName: connection.company.name,
-      dataType: "ADS",
-      ok: false,
-      error: getErrorMessage(error),
+      created: false,
+      jobId: existingJob.id,
+      status: existingJob.status,
+      cursorOffset: existingJob.cursorOffset,
+      lastError: existingJob.lastError,
+      dateFrom: formatDateOnly(dateFrom),
+      dateTo: formatDateOnly(dateTo),
+      message:
+        "WB Ads задача уже есть. Она будет обрабатываться безопасно чанками через /api/cron/historical-sync-wb-ads.",
     };
   }
+
+  const job = await prisma.historicalSyncJob.create({
+    data: {
+      companyId: connection.companyId,
+      companyName: connection.company.name,
+      marketplace: "WB",
+      dataType: "ADS",
+      dateFrom,
+      dateTo,
+      cursorDate: dateFrom,
+      cursorOffset: 0,
+      status: "PENDING",
+      totalSteps: 1,
+      completedSteps: 0,
+    },
+    select: {
+      id: true,
+      status: true,
+      cursorOffset: true,
+    },
+  });
+
+  return {
+    marketplace: "WB",
+    companyName: connection.company.name,
+    dataType: "ADS",
+    ok: true,
+    created: true,
+    jobId: job.id,
+    status: job.status,
+    cursorOffset: job.cursorOffset,
+    dateFrom: formatDateOnly(dateFrom),
+    dateTo: formatDateOnly(dateTo),
+    message:
+      "WB Ads задача создана. Она будет обрабатываться безопасно чанками через /api/cron/historical-sync-wb-ads.",
+  };
 }
 
 export async function GET(req: Request) {
@@ -184,7 +233,11 @@ export async function GET(req: Request) {
       }
 
       if (connection.marketplace === "WB") {
-        results.push(await runWbDailyAds(connection, date));
+        // Важно: не запускаем WB Ads напрямую в FULL-режиме.
+        // WB часто отвечает 429 по global limiter.
+        // Здесь только гарантируем свежую задачу, а загрузку делает отдельный
+        // route historical-sync-wb-ads маленькими чанками.
+        results.push(await ensureWbAdsJobForReportDate(connection, date));
       }
     }
 
@@ -192,7 +245,7 @@ export async function GET(req: Request) {
       ok: true,
       date: dateText,
       purpose:
-        "Daily priority sync for Telegram owner report. Runs before historical backlog and before report delivery.",
+        "Daily priority sync for Telegram owner report. Orders and Ozon Finance run directly. WB Ads is queued and processed safely in chunks before report delivery.",
       orderStats,
       results,
       executedAt: new Date().toISOString(),
