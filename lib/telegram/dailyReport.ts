@@ -22,6 +22,8 @@ type MarketplaceDailyMetrics = {
   ordersAmount: number;
   salesQty: number;
   salesAmount: number;
+  salesLabel: string;
+  salesQtyIsReliable: boolean;
   adSpend: number;
   adSpendSource: string;
   drrByOrders: number;
@@ -563,6 +565,8 @@ async function getWbMetrics(companyName: string, range: DateRange) {
     ordersAmount: orderStats.ordersAmount,
     salesQty,
     salesAmount,
+    salesLabel: "Продажи/выкупы",
+    salesQtyIsReliable: true,
     adSpend,
     adSpendSource: "WB Ads",
     drrByOrders: calculateDrr(adSpend, orderStats.ordersAmount),
@@ -646,8 +650,10 @@ async function getOzonMetrics(companyName: string, range: DateRange) {
     marketplace: "OZON" as const,
     ordersQty: orderStats.ordersQty,
     ordersAmount: orderStats.ordersAmount,
-    salesQty,
+    salesQty: 0,
     salesAmount,
+    salesLabel: "Начисления",
+    salesQtyIsReliable: false,
     adSpend,
     adSpendSource,
     drrByOrders: calculateDrr(adSpend, orderStats.ordersAmount),
@@ -676,7 +682,7 @@ function buildWarnings(report: DailyReport) {
   }
 
   if (report.totals.salesQty <= 0 && report.totals.salesAmount <= 0) {
-    warnings.push("нет продаж/выкупов за период");
+    warnings.push("нет продаж/начислений за период");
   }
 
   if (report.totals.drrByOrders > 20) {
@@ -807,17 +813,25 @@ export function formatPercent(value: number) {
   }).format(value)}%`;
 }
 
+function marketplaceSalesLine(metrics: MarketplaceDailyMetrics) {
+  if (metrics.salesQtyIsReliable) {
+    return `${metrics.salesLabel}: ${formatNumber(metrics.salesQty)} шт / ${formatMoney(
+      metrics.salesAmount
+    )}`;
+  }
+
+  return `${metrics.salesLabel}: ${formatMoney(metrics.salesAmount)}`;
+}
+
 function marketplaceLine(label: string, metrics: MarketplaceDailyMetrics) {
   return [
     `${label}`,
     `Заказы: ${formatNumber(metrics.ordersQty)} шт / ${formatMoney(
       metrics.ordersAmount
     )}`,
-    `Продажи: ${formatNumber(metrics.salesQty)} шт / ${formatMoney(
-      metrics.salesAmount
-    )}`,
+    marketplaceSalesLine(metrics),
     `Реклама: ${formatMoney(metrics.adSpend)}`,
-    `ДРР: от заказов ${formatPercent(metrics.drrByOrders)} (от продаж ${formatPercent(
+    `ДРР: от заказов ${formatPercent(metrics.drrByOrders)} (от продаж/начислений ${formatPercent(
       metrics.drrBySales
     )})`,
     `Остатки: ${formatNumber(metrics.stockQty)} шт`,
@@ -834,13 +848,11 @@ export function formatDailyReportForTelegram(report: DailyReport) {
     `Заказы: ${formatNumber(report.totals.ordersQty)} шт / ${formatMoney(
       report.totals.ordersAmount
     )}`,
-    `Продажи: ${formatNumber(report.totals.salesQty)} шт / ${formatMoney(
-      report.totals.salesAmount
-    )}`,
+    `Продажи/начисления: ${formatMoney(report.totals.salesAmount)}`,
     `Реклама: ${formatMoney(report.totals.adSpend)}`,
     `ДРР: от заказов ${formatPercent(
       report.totals.drrByOrders
-    )} (от продаж ${formatPercent(report.totals.drrBySales)})`,
+    )} (от продаж/начислений ${formatPercent(report.totals.drrBySales)})`,
     `ДДС: ${formatMoney(report.totals.netCashFlow)}`,
     `Чистая прибыль: ${formatMoney(report.totals.netProfitImpact)}`,
     `Вывод собственника: ${formatMoney(report.totals.ownerWithdrawals)}`,

@@ -5,6 +5,18 @@
       "schedule": "0 3 * * *"
     },
     {
+      "path": "/api/cron/daily-priority-sync",
+      "schedule": "30 3 * * *"
+    },
+    {
+      "path": "/api/cron/sync-marketplace-orders",
+      "schedule": "45 3 * * *"
+    },
+    {
+      "path": "/api/telegram/daily-report",
+      "schedule": "0 4 * * *"
+    },
+    {
       "path": "/api/cron/historical-sync",
       "schedule": "*/30 * * * *"
     },
@@ -19,14 +31,6 @@
     {
       "path": "/api/cron/historical-sync-wb-sales",
       "schedule": "45 * * * *"
-    },
-    {
-      "path": "/api/cron/sync-marketplace-orders",
-      "schedule": "45 3 * * *"
-    },
-    {
-      "path": "/api/telegram/daily-report",
-      "schedule": "0 4 * * *"
     },
     {
       "path": "/api/cron/sync-wb-stock",
