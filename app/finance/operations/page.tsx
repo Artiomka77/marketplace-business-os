@@ -133,32 +133,105 @@ function valueClassName(value: number) {
   return "text-slate-900";
 }
 
-function getSignedAmount(row: { operationType: string; amount: unknown }) {
-  const amount = Number(row.amount ?? 0);
+function normalizeForMoneyDirection(value: unknown) {
+  return String(value ?? "")
+    .toLowerCase()
+    .replaceAll("ё", "е")
+    .trim();
+}
+
+function getMoneyDirection(
+  row: {
+    operationType: string;
+    category: string;
+    amount: unknown;
+    isInternalTransfer?: boolean | null;
+  },
+  treatmentLabel?: string
+) {
+  const category = normalizeForMoneyDirection(row.category);
+  const treatment = normalizeForMoneyDirection(treatmentLabel);
+
+  if (row.isInternalTransfer || row.operationType === "TRANSFER") {
+    return "neutral";
+  }
+
+  if (
+    treatment.includes("получение кредита") ||
+    treatment.includes("получение займа") ||
+    category.includes("получение кредита") ||
+    category.includes("получение займа")
+  ) {
+    return "positive";
+  }
+
+  if (
+    treatment.includes("тело кредита") ||
+    treatment.includes("проценты кредита") ||
+    treatment.includes("вывод собственника") ||
+    category.includes("тело кредита") ||
+    category.includes("проценты по кредит") ||
+    category.includes("проценты кредита") ||
+    category.includes("вывод собственника")
+  ) {
+    return "negative";
+  }
 
   if (row.operationType === "EXPENSE" || row.operationType === "PERSONAL") {
+    return "negative";
+  }
+
+  if (row.operationType === "INCOME" || row.operationType === "FINANCING") {
+    return "positive";
+  }
+
+  return "neutral";
+}
+
+function getSignedAmount(
+  row: {
+    operationType: string;
+    category: string;
+    amount: unknown;
+    isInternalTransfer?: boolean | null;
+  },
+  treatmentLabel?: string
+) {
+  const amount = Number(row.amount ?? 0);
+  const direction = getMoneyDirection(row, treatmentLabel);
+
+  if (direction === "negative") {
     return -amount;
   }
 
-  if (row.operationType === "TRANSFER") {
-    return 0;
+  if (direction === "positive") {
+    return amount;
   }
 
-  return amount;
+  return 0;
 }
 
-function getAmountDisplay(row: { operationType: string; amount: unknown }) {
+function getAmountDisplay(
+  row: {
+    operationType: string;
+    category: string;
+    amount: unknown;
+    isInternalTransfer?: boolean | null;
+  },
+  treatmentLabel?: string
+) {
   const amount = Number(row.amount ?? 0);
+  const direction = getMoneyDirection(row, treatmentLabel);
 
-  if (row.operationType === "EXPENSE" || row.operationType === "PERSONAL") {
+  if (direction === "negative") {
     return formatSignedMoney(-amount);
   }
 
-  if (row.operationType === "TRANSFER") {
-    return formatMoney(amount);
+  if (direction === "positive") {
+    return formatSignedMoney(amount);
   }
 
-  return formatSignedMoney(amount);
+  return formatMoney(amount);
 }
 
 function shortText(value: string | null | undefined, fallback = "—") {
@@ -995,7 +1068,7 @@ export default async function FinanceOperationsPage({
                 row,
                 categoryTreatmentIndex
               );
-              const signedAmount = getSignedAmount(row);
+              const signedAmount = getSignedAmount(row, treatment.label);
 
               return (
                 <div key={row.id} className="p-4">
@@ -1014,7 +1087,7 @@ export default async function FinanceOperationsPage({
                         signedAmount
                       )}`}
                     >
-                      {getAmountDisplay(row)}
+                      {getAmountDisplay(row, treatment.label)}
                     </div>
                   </div>
 
@@ -1096,7 +1169,7 @@ export default async function FinanceOperationsPage({
                     row,
                     categoryTreatmentIndex
                   );
-                  const signedAmount = getSignedAmount(row);
+                  const signedAmount = getSignedAmount(row, treatment.label);
 
                   return (
                     <tr key={row.id} className="transition hover:bg-slate-50">
@@ -1152,7 +1225,7 @@ export default async function FinanceOperationsPage({
                           signedAmount
                         )}`}
                       >
-                        {getAmountDisplay(row)}
+                        {getAmountDisplay(row, treatment.label)}
                       </td>
 
                       <td className="px-5 py-4 align-top">
