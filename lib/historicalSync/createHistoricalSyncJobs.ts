@@ -31,7 +31,10 @@ type ConnectionRow = {
 };
 
 const DEFAULT_HISTORICAL_START_DATE = "2025-01-01";
-const WB_ADS_HISTORICAL_START_DATE = "2025-03-01";
+const DEFAULT_WB_ADS_HISTORICAL_START_DATE = "2025-01-01";
+const COMPANY_WB_ADS_HISTORICAL_START_DATES: Record<string, string> = {
+  "ИП Лебедева": "2025-03-01",
+};
 
 function parseDateOnly(value: string, label: string) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
@@ -135,9 +138,21 @@ function splitDateRangeByCalendarMonth(dateFrom: Date, dateTo: Date) {
   return periods;
 }
 
-function getWbAdsHistoricalPeriods(dateFrom: Date, dateTo: Date) {
+function getWbAdsHistoricalStartDateText(companyName: string) {
+  return (
+    COMPANY_WB_ADS_HISTORICAL_START_DATES[companyName] ??
+    DEFAULT_WB_ADS_HISTORICAL_START_DATE
+  );
+}
+
+function getWbAdsHistoricalPeriods(
+  companyName: string,
+  dateFrom: Date,
+  dateTo: Date
+) {
+  const minAvailableDateText = getWbAdsHistoricalStartDateText(companyName);
   const minAvailableDate = parseDateOnly(
-    WB_ADS_HISTORICAL_START_DATE,
+    minAvailableDateText,
     "WB_ADS_HISTORICAL_START_DATE"
   );
 
@@ -192,7 +207,11 @@ function getPlanForConnection(
       },
       {
         dataType: "ADS" as HistoricalDataType,
-        periods: getWbAdsHistoricalPeriods(dateFrom, dateTo),
+        periods: getWbAdsHistoricalPeriods(
+          connection.company.name,
+          dateFrom,
+          dateTo
+        ),
       },
     ];
   }
@@ -427,7 +446,8 @@ export async function createHistoricalSyncJobs(
     skippedExistingJobs,
     summaries,
     rules: {
-      wbAdsHistoricalStartDate: WB_ADS_HISTORICAL_START_DATE,
+      defaultWbAdsHistoricalStartDate: DEFAULT_WB_ADS_HISTORICAL_START_DATE,
+      companyWbAdsHistoricalStartDates: COMPANY_WB_ADS_HISTORICAL_START_DATES,
     },
   };
 }

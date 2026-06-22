@@ -49,7 +49,10 @@ type WbAdsFullStatsItem = {
 const WB_ADS_BATCH_SIZE = 10;
 const WB_ADS_REQUEST_TIMEOUT_MS = 45_000;
 const WB_ADS_BATCH_DELAY_MS = 1_000;
-const WB_ADS_MIN_AVAILABLE_DATE_TEXT = "2025-03-01";
+const DEFAULT_WB_ADS_MIN_AVAILABLE_DATE_TEXT = "2025-01-01";
+const COMPANY_WB_ADS_MIN_AVAILABLE_DATES: Record<string, string> = {
+  "ИП Лебедева": "2025-03-01",
+};
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -77,12 +80,26 @@ function getDefaultPeriod() {
   };
 }
 
-function getWbAdsMinAvailableDate() {
-  return startOfUtcDay(new Date(`${WB_ADS_MIN_AVAILABLE_DATE_TEXT}T00:00:00Z`));
+function getWbAdsMinAvailableDateText(companyName: string) {
+  return (
+    COMPANY_WB_ADS_MIN_AVAILABLE_DATES[companyName] ??
+    DEFAULT_WB_ADS_MIN_AVAILABLE_DATE_TEXT
+  );
 }
 
-function getAvailableWbAdsPeriod(dateFrom: Date, dateTo: Date) {
-  const minAvailableDate = getWbAdsMinAvailableDate();
+function getWbAdsMinAvailableDate(companyName: string) {
+  return startOfUtcDay(
+    new Date(`${getWbAdsMinAvailableDateText(companyName)}T00:00:00Z`)
+  );
+}
+
+function getAvailableWbAdsPeriod(
+  companyName: string,
+  dateFrom: Date,
+  dateTo: Date
+) {
+  const minAvailableDateText = getWbAdsMinAvailableDateText(companyName);
+  const minAvailableDate = getWbAdsMinAvailableDate(companyName);
 
   if (dateTo.getTime() < minAvailableDate.getTime()) {
     return {
@@ -93,7 +110,7 @@ function getAvailableWbAdsPeriod(dateFrom: Date, dateTo: Date) {
       effectiveDateTo: dateTo,
       message: `WB Ads за период ${formatDateOnly(dateFrom)} — ${formatDateOnly(
         dateTo
-      )} пропущены: рекламная статистика WB доступна с ${WB_ADS_MIN_AVAILABLE_DATE_TEXT}.`,
+      )} пропущены для ${companyName}: рекламная статистика WB доступна с ${minAvailableDateText}.`,
     };
   }
 
@@ -110,7 +127,7 @@ function getAvailableWbAdsPeriod(dateFrom: Date, dateTo: Date) {
     effectiveDateTo: dateTo,
     message:
       effectiveDateFrom.getTime() !== dateFrom.getTime()
-        ? `dateFrom обрезан до ${WB_ADS_MIN_AVAILABLE_DATE_TEXT}, так как более ранняя рекламная статистика WB недоступна.`
+        ? `dateFrom для ${companyName} обрезан до ${minAvailableDateText}, так как более ранняя рекламная статистика WB недоступна.`
         : null,
   };
 }
@@ -396,6 +413,7 @@ async function syncWbAdsFull(companyId: string, options: WbAdsSyncOptions = {}) 
   const { company, connection } = await getWbConnection(companyId);
   const requestedPeriod = getSyncPeriod(options);
   const availablePeriod = getAvailableWbAdsPeriod(
+    company.name,
     requestedPeriod.dateFrom,
     requestedPeriod.dateTo
   );
@@ -480,6 +498,7 @@ async function syncWbAdsChunk(companyId: string, options: WbAdsSyncOptions = {})
   const { company, connection } = await getWbConnection(companyId);
   const requestedPeriod = getSyncPeriod(options);
   const availablePeriod = getAvailableWbAdsPeriod(
+    company.name,
     requestedPeriod.dateFrom,
     requestedPeriod.dateTo
   );

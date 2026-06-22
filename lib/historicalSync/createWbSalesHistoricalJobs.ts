@@ -15,7 +15,10 @@ type WbFinanceReportRow = {
   dateTo: Date | null;
 };
 
-const WB_SALES_HISTORICAL_START_DATE = "2025-03-01";
+const DEFAULT_WB_SALES_HISTORICAL_START_DATE = "2025-01-01";
+const COMPANY_WB_SALES_HISTORICAL_START_DATES: Record<string, string> = {
+  "ИП Лебедева": "2025-03-01",
+};
 
 function normalizeReportNumber(value: unknown) {
   return String(value ?? "").trim();
@@ -50,15 +53,22 @@ function parseDateOnly(value: string, label: string) {
   return date;
 }
 
-function getWbSalesHistoricalStartDate() {
+function getWbSalesHistoricalStartDateText(companyName: string) {
+  return (
+    COMPANY_WB_SALES_HISTORICAL_START_DATES[companyName] ??
+    DEFAULT_WB_SALES_HISTORICAL_START_DATE
+  );
+}
+
+function getWbSalesHistoricalStartDate(companyName: string) {
   return parseDateOnly(
-    WB_SALES_HISTORICAL_START_DATE,
+    getWbSalesHistoricalStartDateText(companyName),
     "WB_SALES_HISTORICAL_START_DATE"
   );
 }
 
-function isBeforeWbSalesAvailablePeriod(dateTo: Date) {
-  return dateTo.getTime() < getWbSalesHistoricalStartDate().getTime();
+function isBeforeWbSalesAvailablePeriod(companyName: string, dateTo: Date) {
+  return dateTo.getTime() < getWbSalesHistoricalStartDate(companyName).getTime();
 }
 
 async function getWbCompanies(options: CreateWbSalesHistoricalJobsOptions) {
@@ -234,7 +244,7 @@ async function createJobsForCompany(company: CompanyRow) {
       continue;
     }
 
-    if (isBeforeWbSalesAvailablePeriod(report.dateTo)) {
+    if (isBeforeWbSalesAvailablePeriod(company.name, report.dateTo)) {
       skippedBeforeAvailablePeriod += 1;
       continue;
     }
@@ -277,7 +287,8 @@ async function createJobsForCompany(company: CompanyRow) {
     skippedExistingJobs,
     skippedWithoutDates,
     skippedBeforeAvailablePeriod,
-    wbSalesHistoricalStartDate: WB_SALES_HISTORICAL_START_DATE,
+    wbSalesHistoricalStartDate:
+      getWbSalesHistoricalStartDateText(company.name),
   };
 }
 
@@ -310,7 +321,8 @@ export async function createWbSalesHistoricalJobs(
       (sum, row) => sum + row.skippedBeforeAvailablePeriod,
       0
     ),
-    wbSalesHistoricalStartDate: WB_SALES_HISTORICAL_START_DATE,
+    wbSalesHistoricalStartDate:
+      getWbSalesHistoricalStartDateText(company.name),
     summaries,
   };
 }
