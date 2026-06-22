@@ -135,6 +135,41 @@ function getWbOrderAmount(row: WbOrderRow) {
   return totalPrice;
 }
 
+function getWbAmountCandidates(rows: WbOrderRow[]) {
+  return {
+    rows: rows.length,
+    activeRows: rows.filter((row) => !row.isCancel).length,
+    cancelledRows: rows.filter((row) => row.isCancel).length,
+
+    // Основной кандидат для сверки с кабинетом WB “Заказано на сумму”.
+    priceWithDiscAll: rows.reduce(
+      (sum, row) => sum + toNumber(row.priceWithDisc),
+      0
+    ),
+    priceWithDiscActive: rows
+      .filter((row) => !row.isCancel)
+      .reduce((sum, row) => sum + toNumber(row.priceWithDisc), 0),
+
+    finishedPriceAll: rows.reduce(
+      (sum, row) => sum + toNumber(row.finishedPrice),
+      0
+    ),
+    finishedPriceActive: rows
+      .filter((row) => !row.isCancel)
+      .reduce((sum, row) => sum + toNumber(row.finishedPrice), 0),
+
+    totalPriceAll: rows.reduce((sum, row) => sum + toNumber(row.totalPrice), 0),
+    totalPriceActive: rows
+      .filter((row) => !row.isCancel)
+      .reduce((sum, row) => sum + toNumber(row.totalPrice), 0),
+
+    calculatedAll: rows.reduce((sum, row) => sum + getWbOrderAmount(row), 0),
+    calculatedActive: rows
+      .filter((row) => !row.isCancel)
+      .reduce((sum, row) => sum + getWbOrderAmount(row), 0),
+  };
+}
+
 async function fetchWbOrdersForDate(wbToken: string, date: Date) {
   const dateText = formatDateOnly(date);
   const url = new URL("https://statistics-api.wildberries.ru/api/v1/supplier/orders");
@@ -284,10 +319,13 @@ export async function syncWbDailyOrdersForCompany(params: {
   }
 
   const rows = await fetchWbOrdersForDate(connection.wbToken, params.date);
-  const activeRows = rows.filter((row) => !row.isCancel);
+  const amountCandidates = getWbAmountCandidates(rows);
 
-  const ordersQty = activeRows.length;
-  const ordersAmount = activeRows.reduce(
+  // В кабинете WB показатель “Заказано на сумму” показывает заказы,
+  // оформленные за день. Поэтому для сверки с кабинетом считаем все строки
+  // orders API за дату, а не только неотменённые.
+  const ordersQty = rows.length;
+  const ordersAmount = rows.reduce(
     (sum, row) => sum + getWbOrderAmount(row),
     0
   );
@@ -299,8 +337,9 @@ export async function syncWbDailyOrdersForCompany(params: {
     ordersQty,
     ordersAmount,
     rawJson: {
-      totalRows: rows.length,
-      activeRows: activeRows.length,
+      ...amountCandidates,
+      sourceRule:
+        "WB ordered amount uses all supplier/orders rows for the day, including rows later marked as cancelled, to match Seller dashboard ordered amount.",
       sample: rows.slice(0, 5),
     },
   });
@@ -311,6 +350,7 @@ export async function syncWbDailyOrdersForCompany(params: {
     date: formatDateOnly(params.date),
     ordersQty,
     ordersAmount,
+    amountCandidates,
     skipped: false,
   };
 }
