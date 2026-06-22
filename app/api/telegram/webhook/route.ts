@@ -198,6 +198,7 @@ function endOfToday() {
 function mainReplyKeyboard() {
   return {
     keyboard: [
+      [{ text: "🏠 Меню" }],
       [{ text: "➕ Расход" }, { text: "💰 Поступление" }],
       [{ text: "👤 Вывод" }, { text: "🏦 Кредит" }],
       [{ text: "📋 Последние" }, { text: "↩️ Отменить последнюю" }],
@@ -209,6 +210,8 @@ function mainReplyKeyboard() {
 
 function getHelpMessage(chatId: string) {
   return [
+    "🏠 Главное меню AvoroFin",
+    "",
     "Я помогу быстро добавлять финансовые операции.",
     "",
     "Пишите обычным текстом:",
@@ -221,10 +224,12 @@ function getHelpMessage(chatId: string) {
     "",
     "Я разберу сообщение и покажу подтверждение перед сохранением.",
     "",
-    "Дополнительно:",
+    "Команды меню:",
+    "• /menu — открыть главное меню",
     "• /last — последние операции из Telegram",
     "• /today — операции за сегодня",
     "• /undo — удалить последнюю сохранённую Telegram-операцию",
+    "• /id — показать chat id",
     "",
     `Ваш chat id: ${chatId}`,
   ].join("\n");
@@ -723,7 +728,13 @@ async function createDraftFromMessage(message: TelegramMessage) {
     return;
   }
 
-  if (text.startsWith("/start") || text.startsWith("/help")) {
+  if (
+    text.startsWith("/start") ||
+    text.startsWith("/help") ||
+    text.startsWith("/menu") ||
+    text.trim().toLowerCase() === "🏠 меню" ||
+    text.trim().toLowerCase() === "меню"
+  ) {
     await sendMessage(chatId, getHelpMessage(chatId), mainReplyKeyboard());
     return;
   }
@@ -734,6 +745,27 @@ async function createDraftFromMessage(message: TelegramMessage) {
   }
 
   const normalizedCommandText = text.toLowerCase().trim();
+
+  if (
+    normalizedCommandText === "/add" ||
+    normalizedCommandText === "/operation" ||
+    normalizedCommandText.includes("добавить операцию")
+  ) {
+    await sendMessage(
+      chatId,
+      [
+        "Напишите операцию обычным текстом.",
+        "",
+        "Примеры:",
+        "закуп 15000 петров сбер упаковка",
+        "поступило 4881996 лебедева ozon выручка",
+        "вывод 50000 продукты сбер",
+        "тело кредит 17792 альфа",
+      ].join("\n"),
+      mainReplyKeyboard()
+    );
+    return;
+  }
 
   if (
     normalizedCommandText === "/last" ||
