@@ -845,19 +845,19 @@ export default async function FinanceOperationsPage({
 
           <form
             action={createFinanceTransaction}
-            className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-[155px_180px_170px_minmax(220px,1fr)_190px_150px_minmax(220px,1fr)_170px]"
+            className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-12"
           >
             <input
               type="date"
               name="operationDate"
               defaultValue={dateTo}
-              className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-700 outline-none focus:border-violet-200 focus:ring-4 focus:ring-violet-50"
+              className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-700 outline-none focus:border-violet-200 focus:ring-4 focus:ring-violet-50 xl:col-span-2"
             />
 
             <select
               name="companyName"
               defaultValue={company !== "ALL" ? company : companies[0]?.name}
-              className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-700 outline-none focus:border-violet-200 focus:ring-4 focus:ring-violet-50"
+              className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-700 outline-none focus:border-violet-200 focus:ring-4 focus:ring-violet-50 xl:col-span-2"
             >
               {companies.map((company) => (
                 <option key={company.id} value={company.name}>
@@ -869,7 +869,7 @@ export default async function FinanceOperationsPage({
             <select
               name="operationType"
               defaultValue={operationType !== "ALL" ? operationType : "EXPENSE"}
-              className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-700 outline-none focus:border-violet-200 focus:ring-4 focus:ring-violet-50"
+              className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-700 outline-none focus:border-violet-200 focus:ring-4 focus:ring-violet-50 xl:col-span-2"
             >
               <option value="INCOME">Поступление</option>
               <option value="EXPENSE">Расход</option>
@@ -882,7 +882,7 @@ export default async function FinanceOperationsPage({
               name="category"
               defaultValue={selectedCategory !== "ALL" ? selectedCategory : ""}
               required
-              className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-700 outline-none focus:border-violet-200 focus:ring-4 focus:ring-violet-50"
+              className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-700 outline-none focus:border-violet-200 focus:ring-4 focus:ring-violet-50 xl:col-span-3"
             >
               <option value="">Выберите статью</option>
               {categories.map((category) => (
@@ -897,7 +897,7 @@ export default async function FinanceOperationsPage({
               defaultValue={
                 selectedBankAccount !== "ALL" ? selectedBankAccount : ""
               }
-              className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-700 outline-none focus:border-violet-200 focus:ring-4 focus:ring-violet-50"
+              className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-700 outline-none focus:border-violet-200 focus:ring-4 focus:ring-violet-50 xl:col-span-3"
             >
               <option value="">Счёт / касса</option>
               {visibleAccounts.map((account) => (
@@ -915,16 +915,16 @@ export default async function FinanceOperationsPage({
               inputMode="decimal"
               placeholder="Сумма"
               required
-              className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-700 outline-none focus:border-violet-200 focus:ring-4 focus:ring-violet-50"
+              className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-700 outline-none focus:border-violet-200 focus:ring-4 focus:ring-violet-50 xl:col-span-2"
             />
 
             <input
               name="comment"
               placeholder="Комментарий"
-              className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-700 outline-none focus:border-violet-200 focus:ring-4 focus:ring-violet-50"
+              className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-700 outline-none focus:border-violet-200 focus:ring-4 focus:ring-violet-50 xl:col-span-8"
             />
 
-            <button className="rounded-2xl bg-slate-950 px-4 py-3 text-sm font-black text-white shadow-lg shadow-slate-300 transition hover:bg-slate-800">
+            <button className="rounded-2xl bg-slate-950 px-4 py-3 text-sm font-black text-white shadow-lg shadow-slate-300 transition hover:bg-slate-800 xl:col-span-2">
               Сохранить
             </button>
 
