@@ -630,9 +630,9 @@ async function showCategoryChoices(
 
   for (let index = 0; index < visible.length; index += 2) {
     rows.push(
-      visible.slice(index, index + 2).map((category) => ({
+      visible.slice(index, index + 2).map((category, innerIndex) => ({
         text: category.name.slice(0, 28),
-        callback_data: `set_category:${draftId}:${category.id}`,
+        callback_data: `set_category_idx:${draftId}:${index + innerIndex}`,
       }))
     );
   }
@@ -856,6 +856,84 @@ async function setCategory(
   });
 }
 
+async function setCategoryByIndex(
+  callbackQuery: TelegramCallbackQuery,
+  draftId: string,
+  categoryIndex: string
+) {
+  const message = callbackQuery.message;
+  const chatId = message?.chat.id ? String(message.chat.id) : null;
+
+  if (!chatId || !message?.message_id) return;
+
+  const { draft } = await getDraft(draftId);
+
+  if (!draft) {
+    await answerCallbackQuery(callbackQuery.id, "Черновик не найден");
+    return;
+  }
+
+  const categories = await prisma.financeCategory.findMany({
+    where: {
+      isActive: true,
+    },
+    orderBy: [
+      {
+        sortOrder: "asc",
+      },
+      {
+        name: "asc",
+      },
+    ],
+    select: {
+      name: true,
+      categoryType: true,
+    },
+  });
+
+  const filtered = categories.filter((category) => {
+    return (
+      CATEGORY_TYPE_TO_OPERATION_TYPE[category.categoryType] ===
+      draft.operation.operationType
+    );
+  });
+
+  const visible = (filtered.length > 0 ? filtered : categories).slice(0, 24);
+  const index = Number(categoryIndex);
+  const category = Number.isFinite(index) ? visible[index] : null;
+
+  if (!category) {
+    await answerCallbackQuery(callbackQuery.id, "Статья не найдена");
+    return;
+  }
+
+  const operationType =
+    CATEGORY_TYPE_TO_OPERATION_TYPE[category.categoryType] ??
+    draft.operation.operationType;
+
+  const updatedDraft: StoredDraftJson = {
+    ...draft,
+    operation: {
+      ...draft.operation,
+      operationType,
+      category: category.name,
+      isInternalTransfer:
+        operationType === "TRANSFER" ||
+        category.name.toLowerCase().includes("перевод"),
+    },
+  };
+
+  await updateDraft(draftId, updatedDraft);
+  await answerCallbackQuery(callbackQuery.id, "Статья изменена");
+
+  await editMessageText({
+    chatId,
+    messageId: message.message_id,
+    text: formatDraftMessage(updatedDraft.operation),
+    replyMarkup: confirmKeyboard(draftId),
+  });
+}
+
 async function setAccount(
   callbackQuery: TelegramCallbackQuery,
   draftId: string,
@@ -939,6 +1017,12 @@ async function handleCallbackQuery(callbackQuery: TelegramCallbackQuery) {
   if (data.startsWith("set_company:")) {
     const [, draftId, companyId] = data.split(":");
     await setCompany(callbackQuery, draftId, companyId);
+    return;
+  }
+
+  if (data.startsWith("set_category_idx:")) {
+    const [, draftId, categoryIndex] = data.split(":");
+    await setCategoryByIndex(callbackQuery, draftId, categoryIndex);
     return;
   }
 
