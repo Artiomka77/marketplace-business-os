@@ -63,6 +63,55 @@ function isRateLimitError(error: unknown) {
   );
 }
 
+function isDefinitelyTechnicalOrAccessError(message: string) {
+  return (
+    message.includes("401") ||
+    message.includes("403") ||
+    message.includes("429") ||
+    message.includes("500") ||
+    message.includes("502") ||
+    message.includes("503") ||
+    message.includes("504") ||
+    message.includes("unauthorized") ||
+    message.includes("forbidden") ||
+    message.includes("access denied") ||
+    message.includes("token") ||
+    message.includes("api-key") ||
+    message.includes("apikey") ||
+    message.includes("client-id") ||
+    message.includes("authorization") ||
+    message.includes("timeout") ||
+    message.includes("rate limit") ||
+    message.includes("too many requests")
+  );
+}
+
+function isNoDataOrUnavailablePeriodError(error: unknown) {
+  const message = getErrorMessage(error).toLowerCase();
+
+  if (!message || isDefinitelyTechnicalOrAccessError(message)) {
+    return false;
+  }
+
+  return (
+    message.includes("нет данных") ||
+    message.includes("данные отсутствуют") ||
+    message.includes("данных за период") ||
+    message.includes("период недоступ") ||
+    message.includes("статистика недоступ") ||
+    message.includes("отчет не найден") ||
+    message.includes("отчёт не найден") ||
+    message.includes("no data") ||
+    message.includes("nothing found") ||
+    message.includes("empty report") ||
+    message.includes("report not found") ||
+    message.includes("statistics not found") ||
+    message.includes("period unavailable") ||
+    message.includes("unavailable period") ||
+    message.includes("no rows")
+  );
+}
+
 function getRetryAllowedDate() {
   return new Date(Date.now() - RATE_LIMIT_COOLDOWN_MS);
 }
@@ -565,6 +614,35 @@ export async function runNextHistoricalSyncJob(
       result,
     };
   } catch (error) {
+    const errorText = getErrorMessage(error);
+
+    if (isNoDataOrUnavailablePeriodError(error)) {
+      await markJobSkipped(job.id);
+
+      return {
+        ok: true,
+        skipped: true,
+        partial: false,
+        jobId: job.id,
+        companyId: job.companyId,
+        companyName: job.companyName,
+        marketplace: job.marketplace,
+        dataType: job.dataType,
+        cursorReportNumber: job.cursorReportNumber,
+        cursorOffset: job.cursorOffset ?? 0,
+        nextCursorOffset: null,
+        dateFrom: job.dateFrom.toISOString().slice(0, 10),
+        dateTo: job.dateTo.toISOString().slice(0, 10),
+        rows: 0,
+        message: `Период пропущен: ${errorText}`,
+        result: {
+          skipped: true,
+          reason: "NO_DATA_OR_UNAVAILABLE_PERIOD",
+          message: errorText,
+        },
+      };
+    }
+
     const failedResult = await markJobFailed(job.id, error);
 
     return {
