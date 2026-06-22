@@ -24,6 +24,8 @@ type MarketplaceDailyMetrics = {
   salesAmount: number;
   salesLabel: string;
   salesQtyIsReliable: boolean;
+  salesDataMissing: boolean;
+  salesDataMissingReason: string | null;
   adSpend: number;
   adSpendSource: string;
   drrByOrders: number;
@@ -556,6 +558,11 @@ async function getWbMetrics(companyName: string, range: DateRange) {
     }
   }
 
+  const salesDataMissing = salesRows.length === 0 && orderStats.ordersQty > 0;
+  const salesDataMissingReason = salesDataMissing
+    ? "WB Sales/выкупы за этот период ещё не загружены в WbSale"
+    : null;
+
   const adsRows = keepLatestWbAdsRowsPerDate(adsRowsRaw);
   const adSpend = adsRows.reduce((sum, row) => sum + toNumber(row.spend), 0);
 
@@ -566,11 +573,13 @@ async function getWbMetrics(companyName: string, range: DateRange) {
     salesQty,
     salesAmount,
     salesLabel: "Продажи/выкупы",
-    salesQtyIsReliable: true,
+    salesQtyIsReliable: !salesDataMissing,
+    salesDataMissing,
+    salesDataMissingReason,
     adSpend,
     adSpendSource: "WB Ads",
     drrByOrders: calculateDrr(adSpend, orderStats.ordersAmount),
-    drrBySales: calculateDrr(adSpend, salesAmount),
+    drrBySales: salesDataMissing ? 0 : calculateDrr(adSpend, salesAmount),
     stockQty,
   };
 }
@@ -654,6 +663,8 @@ async function getOzonMetrics(companyName: string, range: DateRange) {
     salesAmount,
     salesLabel: "Начисления",
     salesQtyIsReliable: false,
+    salesDataMissing: false,
+    salesDataMissingReason: null,
     adSpend,
     adSpendSource,
     drrByOrders: calculateDrr(adSpend, orderStats.ordersAmount),
@@ -701,6 +712,20 @@ function buildWarnings(report: DailyReport) {
         report.totals.netProfitImpact
       )}`
     );
+  }
+
+  for (const company of report.companies) {
+    if (company.wb.salesDataMissing) {
+      warnings.push(
+        `${company.companyName} WB: продажи/выкупы ещё не загружены`
+      );
+    }
+
+    if (company.ozon.salesDataMissing) {
+      warnings.push(
+        `${company.companyName} Ozon: продажи/начисления ещё не загружены`
+      );
+    }
   }
 
   if (report.totals.stockQty <= 0) {
@@ -814,6 +839,10 @@ export function formatPercent(value: number) {
 }
 
 function marketplaceSalesLine(metrics: MarketplaceDailyMetrics) {
+  if (metrics.salesDataMissing) {
+    return `${metrics.salesLabel}: данные ещё не загружены`;
+  }
+
   if (metrics.salesQtyIsReliable) {
     return `${metrics.salesLabel}: ${formatNumber(metrics.salesQty)} шт / ${formatMoney(
       metrics.salesAmount
@@ -824,18 +853,27 @@ function marketplaceSalesLine(metrics: MarketplaceDailyMetrics) {
 }
 
 function marketplaceLine(label: string, metrics: MarketplaceDailyMetrics) {
-  return [
+  const lines = [
     `${label}`,
     `Заказы: ${formatNumber(metrics.ordersQty)} шт / ${formatMoney(
       metrics.ordersAmount
     )}`,
     marketplaceSalesLine(metrics),
+  ];
+
+  if (metrics.salesDataMissingReason) {
+    lines.push(`Источник продаж: ${metrics.salesDataMissingReason}`);
+  }
+
+  lines.push(
     `Реклама: ${formatMoney(metrics.adSpend)}`,
     `ДРР: от заказов ${formatPercent(metrics.drrByOrders)} (от продаж/начислений ${formatPercent(
       metrics.drrBySales
     )})`,
-    `Остатки: ${formatNumber(metrics.stockQty)} шт`,
-  ].join("\n");
+    `Остатки: ${formatNumber(metrics.stockQty)} шт`
+  );
+
+  return lines.join("\n");
 }
 
 export function formatDailyReportForTelegram(report: DailyReport) {

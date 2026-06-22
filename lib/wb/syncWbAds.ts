@@ -13,50 +13,22 @@ type WbAdsSyncOptions = {
   mode?: "FULL" | "CHUNK";
 };
 
-type AdvertListItem = {
-  advertId?: number;
-  changeTime?: string;
+type WbAdsExpenseItem = {
+  updNum?: number | null;
+  updTime?: string | null;
+  updSum?: number | null;
+  advertId?: number | null;
+  campName?: string | null;
+  advertType?: number | null;
+  paymentType?: string | null;
+  advertStatus?: number | null;
 };
 
-type AdvertGroup = {
-  type?: number;
-  status?: number;
-  count?: number;
-  advert_list?: AdvertListItem[];
-};
-
-type AdvertCountResponse = {
-  adverts?: AdvertGroup[];
-};
-
-type WbAdsFullStatsItem = {
-  advertId?: number;
-  views?: number;
-  clicks?: number;
-  ctr?: number;
-  cpc?: number;
-  sum?: number;
-  days?: {
-    date?: string;
-    views?: number;
-    clicks?: number;
-    ctr?: number;
-    cpc?: number;
-    sum?: number;
-  }[];
-};
-
-const WB_ADS_BATCH_SIZE = 10;
 const WB_ADS_REQUEST_TIMEOUT_MS = 45_000;
-const WB_ADS_BATCH_DELAY_MS = 1_000;
 const DEFAULT_WB_ADS_MIN_AVAILABLE_DATE_TEXT = "2025-01-01";
 const COMPANY_WB_ADS_MIN_AVAILABLE_DATES: Record<string, string> = {
   "ИП Лебедева": "2025-03-01",
 };
-
-function sleep(ms: number) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
 
 function startOfUtcDay(date: Date) {
   return new Date(
@@ -178,10 +150,6 @@ function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : "Неизвестная ошибка";
 }
 
-function isWbRateLimitStatus(status: number) {
-  return status === 429;
-}
-
 async function fetchWithTimeout(
   url: string,
   init: RequestInit,
@@ -243,54 +211,15 @@ async function getWbConnection(companyId: string) {
   return { company, connection };
 }
 
-async function fetchAdvertIds(token: string) {
-  const response = await fetchWithTimeout(
-    "https://advert-api.wildberries.ru/adv/v1/promotion/count",
-    {
-      method: "GET",
-      headers: {
-        Authorization: token,
-      },
-      cache: "no-store",
-    },
-    "WB Ads Count API"
-  );
-
-  if (!response.ok) {
-    const text = await response.text().catch(() => "");
-
-    throw new Error(`WB Ads Count API: ${response.status} ${text}`.trim());
-  }
-
-  const json = (await response.json()) as AdvertCountResponse;
-  const groups = json.adverts ?? [];
-
-  return Array.from(
-    new Set(
-      groups
-        .filter((group) => group.status === 9 || group.status === 11)
-        .flatMap((group) => group.advert_list ?? [])
-        .map((advert) => advert.advertId)
-        .filter((advertId): advertId is number => Boolean(advertId))
-    )
-  );
-}
-
-async function fetchFullStats(
+async function fetchExpenseHistory(
   token: string,
-  advertIds: number[],
   dateFromText: string,
   dateToText: string
 ) {
-  if (advertIds.length === 0) {
-    return [];
-  }
+  const url = new URL("https://advert-api.wildberries.ru/adv/v1/upd");
 
-  const url = new URL("https://advert-api.wildberries.ru/adv/v3/fullstats");
-
-  url.searchParams.set("ids", advertIds.join(","));
-  url.searchParams.set("beginDate", dateFromText);
-  url.searchParams.set("endDate", dateToText);
+  url.searchParams.set("from", dateFromText);
+  url.searchParams.set("to", dateToText);
 
   const response = await fetchWithTimeout(
     url.toString(),
@@ -301,7 +230,7 @@ async function fetchFullStats(
       },
       cache: "no-store",
     },
-    "WB Ads FullStats API"
+    "WB Ads Expense History API"
   );
 
   if (response.status === 204) {
@@ -310,14 +239,9 @@ async function fetchFullStats(
 
   if (!response.ok) {
     const text = await response.text().catch(() => "");
-
-    if (isWbRateLimitStatus(response.status)) {
-      throw new Error(
-        `WB Ads FullStats API: 429 ${text || "rate limit"}`.trim()
-      );
-    }
-
-    throw new Error(`WB Ads FullStats API: ${response.status} ${text}`.trim());
+    throw new Error(
+      `WB Ads Expense History API: ${response.status} ${text}`.trim()
+    );
   }
 
   const json = await response.json().catch(() => null);
@@ -326,60 +250,45 @@ async function fetchFullStats(
     return [];
   }
 
-  return json as WbAdsFullStatsItem[];
+  return json as WbAdsExpenseItem[];
 }
 
-function mapWbAdsRows(stats: WbAdsFullStatsItem[]) {
-  const rows: Record<string, unknown>[] = [];
-
-  for (const item of stats) {
-    const advertId = item.advertId ? String(item.advertId) : "";
-
-    for (const day of item.days ?? []) {
-      rows.push({
-        Дата: day.date ?? "",
-        "ID кампании": advertId,
-        Кампания: `WB Ads API ${advertId}`,
-        Показы: day.views ?? item.views ?? 0,
-        Клики: day.clicks ?? item.clicks ?? 0,
-        "CTR(%)": day.ctr ?? item.ctr ?? 0,
-        CPC: day.cpc ?? item.cpc ?? 0,
-        Расход: day.sum ?? item.sum ?? 0,
-      });
-    }
+function getExpenseDateText(item: WbAdsExpenseItem, fallbackDateText: string) {
+  if (!item.updTime) {
+    return fallbackDateText;
   }
 
-  return rows;
+  const isoDate = String(item.updTime).slice(0, 10);
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(isoDate)) {
+    return isoDate;
+  }
+
+  return fallbackDateText;
 }
 
-function getBatch(advertIds: number[], offset: number) {
-  return advertIds.slice(offset, offset + WB_ADS_BATCH_SIZE);
-}
-
-function getNextOffset(currentOffset: number, processedCampaigns: number) {
-  return currentOffset + processedCampaigns;
-}
-
-async function fetchAllStatsInBatches(
-  token: string,
-  advertIds: number[],
-  dateFromText: string,
-  dateToText: string
+function mapWbAdsExpenseRows(
+  expenses: WbAdsExpenseItem[],
+  fallbackDateText: string
 ) {
-  const allStats: WbAdsFullStatsItem[] = [];
-
-  for (let offset = 0; offset < advertIds.length; offset += WB_ADS_BATCH_SIZE) {
-    const batch = getBatch(advertIds, offset);
-    const stats = await fetchFullStats(token, batch, dateFromText, dateToText);
-
-    allStats.push(...stats);
-
-    if (offset + WB_ADS_BATCH_SIZE < advertIds.length) {
-      await sleep(WB_ADS_BATCH_DELAY_MS);
-    }
-  }
-
-  return allStats;
+  return expenses.map((item) => ({
+    Дата: getExpenseDateText(item, fallbackDateText),
+    "ID кампании":
+      item.advertId === null || item.advertId === undefined
+        ? ""
+        : String(item.advertId),
+    Кампания: item.campName ?? "",
+    "Тип рекламы":
+      item.advertType === null || item.advertType === undefined
+        ? ""
+        : String(item.advertType),
+    "Тип оплаты": item.paymentType ?? "",
+    "Статус кампании":
+      item.advertStatus === null || item.advertStatus === undefined
+        ? ""
+        : String(item.advertStatus),
+    Расход: item.updSum ?? 0,
+  }));
 }
 
 async function createImportSession(params: {
@@ -387,29 +296,26 @@ async function createImportSession(params: {
   dateFromText: string;
   dateToText: string;
   rows: Record<string, unknown>[];
-  cursorOffset?: number | null;
 }) {
-  const cursorText =
-    params.cursorOffset === null || params.cursorOffset === undefined
-      ? ""
-      : ` offset ${params.cursorOffset}`;
-
   return prisma.importSession.create({
     data: {
-      fileName: `WB API Ads ${params.companyName} ${params.dateFromText} - ${params.dateToText}${cursorText}`,
+      fileName: `WB API Ads Expense History ${params.companyName} ${params.dateFromText} - ${params.dateToText}`,
       reportType: "WB_ADS_STATS",
       marketplace: "WILDBERRIES",
       companyName: params.companyName,
       rowsCount: params.rows.length,
       previewJson: params.rows.slice(0, 10) as any,
-      sheetName: "WB Ads API",
+      sheetName: "WB Ads Expense History API",
       headerRow: 1,
       status: "SUCCESS",
     },
   });
 }
 
-async function syncWbAdsFull(companyId: string, options: WbAdsSyncOptions = {}) {
+async function syncWbAdsExpenseHistory(
+  companyId: string,
+  options: WbAdsSyncOptions = {}
+) {
   const { company, connection } = await getWbConnection(companyId);
   const requestedPeriod = getSyncPeriod(options);
   const availablePeriod = getAvailableWbAdsPeriod(
@@ -438,24 +344,8 @@ async function syncWbAdsFull(companyId: string, options: WbAdsSyncOptions = {}) 
     throw new Error("WB token не сохранён");
   }
 
-  const advertIds = await fetchAdvertIds(wbToken);
-
-  if (advertIds.length === 0) {
-    return createSkippedWbAdsResult({
-      dateFrom,
-      dateTo,
-      message: `WB Ads за период ${dateFromText} — ${dateToText} пропущены: рекламные кампании WB не найдены.`,
-    });
-  }
-
-  const stats = await fetchAllStatsInBatches(
-    wbToken,
-    advertIds,
-    dateFromText,
-    dateToText
-  );
-
-  const rows = mapWbAdsRows(stats);
+  const expenses = await fetchExpenseHistory(wbToken, dateFromText, dateToText);
+  const rows = mapWbAdsExpenseRows(expenses, dateFromText);
 
   const importSession = await createImportSession({
     companyName: company.name,
@@ -482,118 +372,16 @@ async function syncWbAdsFull(companyId: string, options: WbAdsSyncOptions = {}) 
 
   return {
     name: "WB Ads",
+    source: "WB Ads Expense History API",
     rows: normalizeResult.savedRows,
-    totalCampaigns: advertIds.length,
-    processedCampaigns: advertIds.length,
+    totalCampaigns: expenses.length,
+    processedCampaigns: expenses.length,
     skippedCampaigns: 0,
+    cursorOffset: options.cursorOffset ?? 0,
+    nextCursorOffset: null,
     dateFrom: dateFromText,
     dateTo: dateToText,
     done: true,
-    nextCursorOffset: null,
-    periodAdjusted: availablePeriod.message,
-  };
-}
-
-async function syncWbAdsChunk(companyId: string, options: WbAdsSyncOptions = {}) {
-  const { company, connection } = await getWbConnection(companyId);
-  const requestedPeriod = getSyncPeriod(options);
-  const availablePeriod = getAvailableWbAdsPeriod(
-    company.name,
-    requestedPeriod.dateFrom,
-    requestedPeriod.dateTo
-  );
-
-  if (availablePeriod.skipped) {
-    return createSkippedWbAdsResult({
-      dateFrom: requestedPeriod.dateFrom,
-      dateTo: requestedPeriod.dateTo,
-      message: availablePeriod.message,
-    });
-  }
-
-  const { effectiveDateFrom: dateFrom, effectiveDateTo: dateTo } =
-    availablePeriod;
-
-  const dateFromText = formatDateOnly(dateFrom);
-  const dateToText = formatDateOnly(dateTo);
-
-  const wbToken = connection.wbToken;
-
-  if (!wbToken) {
-    throw new Error("WB token не сохранён");
-  }
-
-  const advertIds = await fetchAdvertIds(wbToken);
-
-  if (advertIds.length === 0) {
-    return createSkippedWbAdsResult({
-      dateFrom,
-      dateTo,
-      message: `WB Ads за период ${dateFromText} — ${dateToText} пропущены: рекламные кампании WB не найдены.`,
-    });
-  }
-
-  const cursorOffset = Math.max(options.cursorOffset ?? 0, 0);
-  const batch = getBatch(advertIds, cursorOffset);
-
-  if (batch.length === 0) {
-    return {
-      name: "WB Ads",
-      rows: 0,
-      totalCampaigns: advertIds.length,
-      processedCampaigns: 0,
-      skippedCampaigns: 0,
-      cursorOffset,
-      nextCursorOffset: null,
-      dateFrom: dateFromText,
-      dateTo: dateToText,
-      done: true,
-      periodAdjusted: availablePeriod.message,
-    };
-  }
-
-  const stats = await fetchFullStats(wbToken, batch, dateFromText, dateToText);
-  const rows = mapWbAdsRows(stats);
-
-  const importSession = await createImportSession({
-    companyName: company.name,
-    dateFromText,
-    dateToText,
-    rows,
-    cursorOffset,
-  });
-
-  const normalizeResult = await normalizeWbAds(
-    rows,
-    importSession.id,
-    dateFrom,
-    dateTo,
-    company.name,
-    {
-      replaceMode: "CAMPAIGNS",
-      campaignIds: batch.map(String),
-    }
-  );
-
-  await prisma.importSession.update({
-    where: { id: importSession.id },
-    data: { rowsCount: normalizeResult.savedRows },
-  });
-
-  const nextCursorOffset = getNextOffset(cursorOffset, batch.length);
-  const done = nextCursorOffset >= advertIds.length || batch.length === 0;
-
-  return {
-    name: "WB Ads",
-    rows: normalizeResult.savedRows,
-    totalCampaigns: advertIds.length,
-    processedCampaigns: batch.length,
-    skippedCampaigns: Math.max(advertIds.length - nextCursorOffset, 0),
-    cursorOffset,
-    nextCursorOffset: done ? null : nextCursorOffset,
-    dateFrom: dateFromText,
-    dateTo: dateToText,
-    done,
     periodAdjusted: availablePeriod.message,
   };
 }
@@ -602,9 +390,5 @@ export async function syncWbAds(
   companyId: string,
   options: WbAdsSyncOptions = {}
 ) {
-  if (options.mode === "CHUNK") {
-    return syncWbAdsChunk(companyId, options);
-  }
-
-  return syncWbAdsFull(companyId, options);
+  return syncWbAdsExpenseHistory(companyId, options);
 }
