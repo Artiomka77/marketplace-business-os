@@ -155,6 +155,58 @@ function formatSavedMessage(operation: ParsedFinanceOperation) {
     .join("\n");
 }
 
+function formatOperationLine(operation: {
+  operationDate: Date;
+  operationType: string;
+  companyName: string;
+  category: string;
+  amount: unknown;
+  bankAccount?: string | null;
+  comment?: string | null;
+}) {
+  const date = operation.operationDate.toLocaleDateString("ru-RU");
+  const amount = Number(operation.amount ?? 0);
+
+  return [
+    `${date} · ${operationTypeLabel(operation.operationType)} · ${formatMoney(
+      amount
+    )}`,
+    `${operation.companyName} · ${operation.category}`,
+    operation.bankAccount ? `Счёт: ${operation.bankAccount}` : null,
+    operation.comment ? `Комментарий: ${operation.comment}` : null,
+  ]
+    .filter((line) => line !== null)
+    .join("\n");
+}
+
+function startOfToday() {
+  const now = new Date();
+
+  return new Date(
+    Date.UTC(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0)
+  );
+}
+
+function endOfToday() {
+  const now = new Date();
+
+  return new Date(
+    Date.UTC(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999)
+  );
+}
+
+function mainReplyKeyboard() {
+  return {
+    keyboard: [
+      [{ text: "➕ Расход" }, { text: "💰 Поступление" }],
+      [{ text: "👤 Вывод" }, { text: "🏦 Кредит" }],
+      [{ text: "📋 Последние" }, { text: "↩️ Отменить последнюю" }],
+    ],
+    resize_keyboard: true,
+    one_time_keyboard: false,
+  };
+}
+
 function getHelpMessage(chatId: string) {
   return [
     "Я помогу быстро добавлять финансовые операции.",
@@ -168,6 +220,11 @@ function getHelpMessage(chatId: string) {
     "• интернет 1700",
     "",
     "Я разберу сообщение и покажу подтверждение перед сохранением.",
+    "",
+    "Дополнительно:",
+    "• /last — последние операции из Telegram",
+    "• /today — операции за сегодня",
+    "• /undo — удалить последнюю сохранённую Telegram-операцию",
     "",
     `Ваш chat id: ${chatId}`,
   ].join("\n");
@@ -418,6 +475,236 @@ async function handlePendingTextEdit(
   }
 }
 
+async function findTelegramImportSessionsForChat(params: {
+  chatId: string;
+  status?: string;
+  take?: number;
+}) {
+  const sessions = await prisma.importSession.findMany({
+    where: {
+      reportType: "TELEGRAM_FINANCE_DRAFT",
+      ...(params.status ? { status: params.status } : {}),
+    },
+    orderBy: {
+      createdAt: "desc",
+    },
+    take: params.take ?? 30,
+  });
+
+  return sessions.filter((session) => {
+    const draft = session.previewJson
+      ? asStoredDraftJson(session.previewJson)
+      : null;
+
+    return draft?.chatId === params.chatId;
+  });
+}
+
+async function sendLastOperations(chatId: string) {
+  const sessions = await findTelegramImportSessionsForChat({
+    chatId,
+    status: "SUCCESS",
+    take: 30,
+  });
+
+  if (sessions.length === 0) {
+    await sendMessage(chatId, "Пока нет сохранённых операций из Telegram.");
+    return;
+  }
+
+  const operations = await prisma.financeTransaction.findMany({
+    where: {
+      sourceType: "TELEGRAM_BOT",
+      sourceId: {
+        in: sessions.map((session) => session.id),
+      },
+    },
+    orderBy: {
+      createdAt: "desc",
+    },
+    take: 5,
+  });
+
+  if (operations.length === 0) {
+    await sendMessage(chatId, "Пока нет сохранённых операций из Telegram.");
+    return;
+  }
+
+  await sendMessage(
+    chatId,
+    [
+      "Последние операции из Telegram:",
+      "",
+      ...operations.map((operation, index) => {
+        return `${index + 1}) ${formatOperationLine(operation)}`;
+      }),
+    ].join("\n\n")
+  );
+}
+
+async function sendTodayOperations(chatId: string) {
+  const sessions = await findTelegramImportSessionsForChat({
+    chatId,
+    status: "SUCCESS",
+    take: 100,
+  });
+
+  const operations = await prisma.financeTransaction.findMany({
+    where: {
+      sourceType: "TELEGRAM_BOT",
+      sourceId: {
+        in: sessions.map((session) => session.id),
+      },
+      operationDate: {
+        gte: startOfToday(),
+        lte: endOfToday(),
+      },
+    },
+    orderBy: {
+      createdAt: "desc",
+    },
+  });
+
+  if (operations.length === 0) {
+    await sendMessage(chatId, "Сегодня через Telegram операций пока нет.");
+    return;
+  }
+
+  const totalIncome = operations
+    .filter((operation) => operation.operationType === "INCOME")
+    .reduce((sum, operation) => sum + Number(operation.amount ?? 0), 0);
+
+  const totalOutflow = operations
+    .filter((operation) => operation.operationType !== "INCOME")
+    .reduce((sum, operation) => sum + Number(operation.amount ?? 0), 0);
+
+  await sendMessage(
+    chatId,
+    [
+      "Операции за сегодня из Telegram:",
+      "",
+      `Поступления: ${formatMoney(totalIncome)}`,
+      `Списания: ${formatMoney(totalOutflow)}`,
+      "",
+      ...operations.slice(0, 10).map((operation, index) => {
+        return `${index + 1}) ${formatOperationLine(operation)}`;
+      }),
+    ].join("\n\n")
+  );
+}
+
+async function sendUndoLastOperationPrompt(chatId: string) {
+  const sessions = await findTelegramImportSessionsForChat({
+    chatId,
+    status: "SUCCESS",
+    take: 20,
+  });
+
+  if (sessions.length === 0) {
+    await sendMessage(chatId, "Нет сохранённых Telegram-операций для удаления.");
+    return;
+  }
+
+  const operation = await prisma.financeTransaction.findFirst({
+    where: {
+      sourceType: "TELEGRAM_BOT",
+      sourceId: {
+        in: sessions.map((session) => session.id),
+      },
+    },
+    orderBy: {
+      createdAt: "desc",
+    },
+  });
+
+  if (!operation?.sourceId) {
+    await sendMessage(chatId, "Нет сохранённых Telegram-операций для удаления.");
+    return;
+  }
+
+  await sendMessage(
+    chatId,
+    [
+      "Удалить последнюю Telegram-операцию?",
+      "",
+      formatOperationLine(operation),
+    ].join("\n\n"),
+    {
+      inline_keyboard: [
+        [
+          {
+            text: "✅ Удалить",
+            callback_data: `undo:${operation.sourceId}`,
+          },
+          {
+            text: "❌ Оставить",
+            callback_data: "undo_cancel",
+          },
+        ],
+      ],
+    }
+  );
+}
+
+async function undoSavedOperation(
+  callbackQuery: TelegramCallbackQuery,
+  sourceId: string
+) {
+  const message = callbackQuery.message;
+  const chatId = message?.chat.id ? String(message.chat.id) : null;
+
+  if (!chatId || !isChatAllowed(chatId)) {
+    await answerCallbackQuery(callbackQuery.id, "Доступ запрещён");
+    return;
+  }
+
+  const importSession = await prisma.importSession.findUnique({
+    where: {
+      id: sourceId,
+    },
+  });
+
+  const draft = importSession?.previewJson
+    ? asStoredDraftJson(importSession.previewJson)
+    : null;
+
+  if (!importSession || draft?.chatId !== chatId) {
+    await answerCallbackQuery(callbackQuery.id, "Операция не найдена");
+    return;
+  }
+
+  const deleted = await prisma.financeTransaction.deleteMany({
+    where: {
+      sourceType: "TELEGRAM_BOT",
+      sourceId,
+    },
+  });
+
+  await prisma.importSession.update({
+    where: {
+      id: sourceId,
+    },
+    data: {
+      status: "DELETED",
+    },
+  });
+
+  await answerCallbackQuery(callbackQuery.id, "Удалено");
+
+  if (message?.message_id) {
+    await editMessageText({
+      chatId,
+      messageId: message.message_id,
+      text:
+        deleted.count > 0
+          ? "✅ Последняя Telegram-операция удалена"
+          : "Операция уже была удалена",
+    });
+  } else {
+    await sendMessage(chatId, "✅ Последняя Telegram-операция удалена");
+  }
+}
+
 async function createDraftFromMessage(message: TelegramMessage) {
   const chatId = String(message.chat.id);
   const userId = message.from?.id ? String(message.from.id) : null;
@@ -437,12 +724,93 @@ async function createDraftFromMessage(message: TelegramMessage) {
   }
 
   if (text.startsWith("/start") || text.startsWith("/help")) {
-    await sendMessage(chatId, getHelpMessage(chatId));
+    await sendMessage(chatId, getHelpMessage(chatId), mainReplyKeyboard());
     return;
   }
 
   if (text.startsWith("/id")) {
     await sendMessage(chatId, `Ваш chat id: ${chatId}`);
+    return;
+  }
+
+  const normalizedCommandText = text.toLowerCase().trim();
+
+  if (
+    normalizedCommandText === "/last" ||
+    normalizedCommandText.includes("последние")
+  ) {
+    await sendLastOperations(chatId);
+    return;
+  }
+
+  if (
+    normalizedCommandText === "/today" ||
+    normalizedCommandText.includes("сегодня")
+  ) {
+    await sendTodayOperations(chatId);
+    return;
+  }
+
+  if (
+    normalizedCommandText === "/undo" ||
+    normalizedCommandText.includes("отменить последнюю")
+  ) {
+    await sendUndoLastOperationPrompt(chatId);
+    return;
+  }
+
+  if (normalizedCommandText === "➕ расход") {
+    await sendMessage(
+      chatId,
+      [
+        "Напишите расход обычным текстом.",
+        "",
+        "Примеры:",
+        "закуп 15000 петров сбер упаковка",
+        "реклама 5000 ozon",
+        "интернет 1700",
+      ].join("\n")
+    );
+    return;
+  }
+
+  if (normalizedCommandText === "💰 поступление") {
+    await sendMessage(
+      chatId,
+      [
+        "Напишите поступление обычным текстом.",
+        "",
+        "Пример:",
+        "поступило 4881996 лебедева ozon выручка",
+      ].join("\n")
+    );
+    return;
+  }
+
+  if (normalizedCommandText === "👤 вывод") {
+    await sendMessage(
+      chatId,
+      [
+        "Напишите вывод собственника обычным текстом.",
+        "",
+        "Пример:",
+        "вывод 50000 продукты сбер",
+      ].join("\n")
+    );
+    return;
+  }
+
+  if (normalizedCommandText === "🏦 кредит") {
+    await sendMessage(
+      chatId,
+      [
+        "Напишите кредитную операцию обычным текстом.",
+        "",
+        "Примеры:",
+        "тело кредит 17792 альфа",
+        "проценты кредит 4229 альфа",
+      ].join("\n")
+    );
     return;
   }
 
@@ -1224,6 +1592,28 @@ async function setAccount(
 
 async function handleCallbackQuery(callbackQuery: TelegramCallbackQuery) {
   const data = callbackQuery.data ?? "";
+
+  if (data.startsWith("undo:")) {
+    await undoSavedOperation(callbackQuery, data.replace("undo:", ""));
+    return;
+  }
+
+  if (data === "undo_cancel") {
+    await answerCallbackQuery(callbackQuery.id, "Оставлено");
+
+    const message = callbackQuery.message;
+    const chatId = message?.chat.id ? String(message.chat.id) : null;
+
+    if (chatId && message?.message_id) {
+      await editMessageText({
+        chatId,
+        messageId: message.message_id,
+        text: "Операция оставлена без изменений",
+      });
+    }
+
+    return;
+  }
 
   if (data.startsWith("save:")) {
     await saveDraft(callbackQuery, data.replace("save:", ""));
