@@ -19,6 +19,7 @@ type SearchParams = {
   sortDir?: string;
   dateFrom?: string;
   dateTo?: string;
+  metric?: string;
 };
 
 type OperationType =
@@ -51,6 +52,82 @@ const OPERATION_TABS: { value: OperationType; label: string }[] = [
   { value: "FINANCING", label: "Кредиты" },
   { value: "PERSONAL", label: "Вывод собственника" },
 ];
+
+type MetricKey =
+  | "cashIncome"
+  | "cashOutflow"
+  | "netCashFlow"
+  | "netProfitImpact"
+  | "ownerWithdrawals"
+  | "transferTotal"
+  | "cashOnlyTotal"
+  | "creditPrincipal"
+  | "creditInterest"
+  | "ignoredTotal";
+
+const METRIC_DRILLDOWN_OPTIONS: {
+  key: MetricKey;
+  title: string;
+  description: string;
+}[] = [
+  {
+    key: "cashIncome",
+    title: "Поступления ДДС",
+    description: "Все операции, которые увеличивают деньги на счетах.",
+  },
+  {
+    key: "cashOutflow",
+    title: "Выплаты ДДС",
+    description: "Все операции, которые уменьшают деньги на счетах.",
+  },
+  {
+    key: "netCashFlow",
+    title: "Чистый ДДС",
+    description:
+      "Поступления и выплаты, из которых складывается чистое движение денег.",
+  },
+  {
+    key: "netProfitImpact",
+    title: "Влияние на чистую прибыль",
+    description: "Операции, которые влияют на P&L и чистую прибыль бизнеса.",
+  },
+  {
+    key: "ownerWithdrawals",
+    title: "Вывод собственника",
+    description: "Деньги, выведенные из бизнеса собственником.",
+  },
+  {
+    key: "transferTotal",
+    title: "Внутренние переводы",
+    description: "Перемещения денег между своими счетами и кассами.",
+  },
+  {
+    key: "cashOnlyTotal",
+    title: "Только ДДС",
+    description:
+      "Расходы, которые уменьшают деньги, но не уменьшают прибыль повторно.",
+  },
+  {
+    key: "creditPrincipal",
+    title: "Тело кредита",
+    description:
+      "Погашение основного долга: влияет на деньги, но не на чистую прибыль.",
+  },
+  {
+    key: "creditInterest",
+    title: "Проценты кредита",
+    description: "Проценты по кредитам: влияют и на ДДС, и на чистую прибыль.",
+  },
+  {
+    key: "ignoredTotal",
+    title: "Не учитывается",
+    description: "Технические операции без влияния на ключевые показатели.",
+  },
+];
+
+type FinanceTransactionRow = Awaited<
+  ReturnType<typeof prisma.financeTransaction.findMany>
+>[number];
 
 function formatMoney(value: unknown) {
   const number = Number(value ?? 0);
@@ -103,7 +180,7 @@ function toNumber(value: FormDataEntryValue | null) {
   const number = Number(
     String(value ?? "")
       .replace(/\s/g, "")
-      .replace(",", ".")
+      .replace(",", "."),
   );
 
   return Number.isFinite(number) ? number : 0;
@@ -119,11 +196,13 @@ function operationTypeLabel(type: string) {
 }
 
 function operationTypeClassName(type: string) {
-  if (type === "INCOME") return "bg-emerald-50 text-emerald-700 ring-emerald-100";
+  if (type === "INCOME")
+    return "bg-emerald-50 text-emerald-700 ring-emerald-100";
   if (type === "EXPENSE") return "bg-red-50 text-red-700 ring-red-100";
   if (type === "TRANSFER") return "bg-slate-100 text-slate-600 ring-slate-200";
   if (type === "FINANCING") return "bg-blue-50 text-blue-700 ring-blue-100";
-  if (type === "PERSONAL") return "bg-orange-50 text-orange-700 ring-orange-100";
+  if (type === "PERSONAL")
+    return "bg-orange-50 text-orange-700 ring-orange-100";
   return "bg-slate-50 text-slate-700 ring-slate-200";
 }
 
@@ -147,7 +226,7 @@ function getMoneyDirection(
     amount: unknown;
     isInternalTransfer?: boolean | null;
   },
-  treatmentLabel?: string
+  treatmentLabel?: string,
 ) {
   const category = normalizeForMoneyDirection(row.category);
   const treatment = normalizeForMoneyDirection(treatmentLabel);
@@ -195,7 +274,7 @@ function getSignedAmount(
     amount: unknown;
     isInternalTransfer?: boolean | null;
   },
-  treatmentLabel?: string
+  treatmentLabel?: string,
 ) {
   const amount = Number(row.amount ?? 0);
   const direction = getMoneyDirection(row, treatmentLabel);
@@ -218,7 +297,7 @@ function getAmountDisplay(
     amount: unknown;
     isInternalTransfer?: boolean | null;
   },
-  treatmentLabel?: string
+  treatmentLabel?: string,
 ) {
   const amount = Number(row.amount ?? 0);
   const direction = getMoneyDirection(row, treatmentLabel);
@@ -237,6 +316,129 @@ function getAmountDisplay(
 function shortText(value: string | null | undefined, fallback = "—") {
   const text = String(value ?? "").trim();
   return text || fallback;
+}
+
+function getMetricConfig(metric: string | undefined) {
+  return METRIC_DRILLDOWN_OPTIONS.find((option) => option.key === metric);
+}
+
+function normalizeForMetric(value: unknown) {
+  return String(value ?? "")
+    .toLowerCase()
+    .replaceAll("ё", "е")
+    .trim();
+}
+
+function rowBelongsToMetric(
+  row: FinanceTransactionRow,
+  metric: MetricKey,
+  treatmentLabel: string,
+) {
+  const direction = getMoneyDirection(row, treatmentLabel);
+  const treatment = normalizeForMetric(treatmentLabel);
+  const category = normalizeForMetric(row.category);
+
+  if (metric === "cashIncome") {
+    return direction === "positive";
+  }
+
+  if (metric === "cashOutflow") {
+    return direction === "negative";
+  }
+
+  if (metric === "netCashFlow") {
+    return direction === "positive" || direction === "negative";
+  }
+
+  if (metric === "netProfitImpact") {
+    return (
+      treatment.includes("чистая прибыль") ||
+      treatment.includes("ддс + прибыль") ||
+      treatment.includes("прибыль") ||
+      treatment.includes("проценты кредита") ||
+      category.includes("проценты по кредит") ||
+      category.includes("проценты кредита")
+    );
+  }
+
+  if (metric === "ownerWithdrawals") {
+    return (
+      treatment.includes("вывод собственника") ||
+      row.operationType === "PERSONAL" ||
+      category.includes("вывод собственника")
+    );
+  }
+
+  if (metric === "transferTotal") {
+    return row.operationType === "TRANSFER" || row.isInternalTransfer;
+  }
+
+  if (metric === "cashOnlyTotal") {
+    return treatment.includes("только ддс");
+  }
+
+  if (metric === "creditPrincipal") {
+    return (
+      treatment.includes("тело кредита") || category.includes("тело кредита")
+    );
+  }
+
+  if (metric === "creditInterest") {
+    return (
+      treatment.includes("проценты кредита") ||
+      category.includes("проценты по кредит") ||
+      category.includes("проценты кредита")
+    );
+  }
+
+  if (metric === "ignoredTotal") {
+    return treatment.includes("не учитывается");
+  }
+
+  return false;
+}
+
+function getMetricValue(
+  metric: MetricKey,
+  metrics: {
+    cashIncome: number;
+    cashOutflow: number;
+    netCashFlow: number;
+    netProfitImpact: number;
+    ownerWithdrawals: number;
+    transferTotal: number;
+    cashOnlyTotal: number;
+    creditPrincipal: number;
+    creditInterest: number;
+    ignoredTotal: number;
+  },
+) {
+  return metrics[metric];
+}
+
+function compareUnknownValues(a: unknown, b: unknown) {
+  const aValue = a instanceof Date ? a.getTime() : Number(a);
+  const bValue = b instanceof Date ? b.getTime() : Number(b);
+
+  if (Number.isFinite(aValue) && Number.isFinite(bValue)) {
+    return aValue - bValue;
+  }
+
+  return String(a ?? "").localeCompare(String(b ?? ""), "ru");
+}
+
+function sortFinanceRowsInMemory(
+  rows: FinanceTransactionRow[],
+  sortBy: string,
+  sortDir: string,
+) {
+  return [...rows].sort((a, b) => {
+    const aValue = a[sortBy as keyof FinanceTransactionRow];
+    const bValue = b[sortBy as keyof FinanceTransactionRow];
+    const result = compareUnknownValues(aValue, bValue);
+
+    return sortDir === "asc" ? result : -result;
+  });
 }
 
 async function createFinanceTransaction(formData: FormData) {
@@ -345,7 +547,9 @@ function KpiCard({
       <div className="flex items-start justify-between gap-3">
         <div>
           <div className="text-sm font-black text-slate-500">{title}</div>
-          <div className={`mt-3 text-2xl font-black tracking-tight ${valueColor}`}>
+          <div
+            className={`mt-3 text-2xl font-black tracking-tight ${valueColor}`}
+          >
             {value}
           </div>
         </div>
@@ -410,6 +614,7 @@ function buildHref(params: SearchParams, patch: Partial<SearchParams>) {
     rows: params.rows ?? "50",
     sortBy: params.sortBy ?? "operationDate",
     sortDir: params.sortDir ?? "desc",
+    metric: params.metric ?? "",
     ...patch,
   };
 
@@ -423,6 +628,7 @@ function buildHref(params: SearchParams, patch: Partial<SearchParams>) {
   query.set("sortBy", next.sortBy);
   query.set("sortDir", next.sortDir);
 
+  if (next.metric) query.set("metric", next.metric);
   if (next.search) query.set("search", next.search);
 
   return `/finance/operations?${query.toString()}`;
@@ -446,6 +652,7 @@ export default async function FinanceOperationsPage({
   const sortDir = params?.sortDir ?? "desc";
   const dateFrom = params?.dateFrom ?? defaultRange.dateFrom;
   const dateTo = params?.dateTo ?? defaultRange.dateTo;
+  const selectedMetric = params?.metric ?? "";
 
   const safeRowsLimit = ROWS_OPTIONS.includes(rowsLimit) ? rowsLimit : 50;
   const safeSortBy = SORTABLE_COLUMNS.includes(sortBy)
@@ -473,11 +680,7 @@ export default async function FinanceOperationsPage({
       where: {
         isActive: true,
       },
-      orderBy: [
-        { categoryType: "asc" },
-        { sortOrder: "asc" },
-        { name: "asc" },
-      ],
+      orderBy: [{ categoryType: "asc" }, { sortOrder: "asc" }, { name: "asc" }],
     }),
     prisma.$queryRaw<{ id: string; name: string }[]>`
       select "id", "name"
@@ -504,13 +707,17 @@ export default async function FinanceOperationsPage({
     ...(company !== "ALL" ? { companyName: company } : {}),
     ...(operationType !== "ALL" ? { operationType } : {}),
     ...(selectedCategory !== "ALL" ? { category: selectedCategory } : {}),
-    ...(selectedBankAccount !== "ALL" ? { bankAccount: selectedBankAccount } : {}),
+    ...(selectedBankAccount !== "ALL"
+      ? { bankAccount: selectedBankAccount }
+      : {}),
     ...(search
       ? {
           OR: [
             { category: { contains: search, mode: "insensitive" as const } },
             { subcategory: { contains: search, mode: "insensitive" as const } },
-            { counterparty: { contains: search, mode: "insensitive" as const } },
+            {
+              counterparty: { contains: search, mode: "insensitive" as const },
+            },
             { bankAccount: { contains: search, mode: "insensitive" as const } },
             { project: { contains: search, mode: "insensitive" as const } },
             { comment: { contains: search, mode: "insensitive" as const } },
@@ -535,7 +742,7 @@ export default async function FinanceOperationsPage({
       : {}),
   };
 
-  const [metricRows, rows, totalRowsCount] = await Promise.all([
+  const [metricRows, rawRows, rawTotalRowsCount] = await Promise.all([
     prisma.financeTransaction.findMany({
       where: transactionWhere,
     }),
@@ -557,6 +764,38 @@ export default async function FinanceOperationsPage({
   });
 
   const categoryTreatmentIndex = buildFinanceCategoryTreatmentIndex(categories);
+  const selectedMetricConfig = getMetricConfig(selectedMetric);
+  const selectedMetricRowsAll = selectedMetricConfig
+    ? metricRows.filter((row) => {
+        const treatment = getFinanceTransactionTreatment(
+          row,
+          categoryTreatmentIndex,
+        );
+
+        return rowBelongsToMetric(
+          row,
+          selectedMetricConfig.key,
+          treatment.label,
+        );
+      })
+    : [];
+
+  const rows = selectedMetricConfig
+    ? sortFinanceRowsInMemory(
+        selectedMetricRowsAll,
+        safeSortBy,
+        safeSortDir,
+      ).slice(0, safeRowsLimit)
+    : rawRows;
+
+  const totalRowsCount = selectedMetricConfig
+    ? selectedMetricRowsAll.length
+    : rawTotalRowsCount;
+
+  const selectedMetricValue = selectedMetricConfig
+    ? getMetricValue(selectedMetricConfig.key, metrics)
+    : 0;
+
   const bankAccounts = accounts.map((account) => ({
     name: account.name,
     companyName: account.companyName,
@@ -653,6 +892,7 @@ export default async function FinanceOperationsPage({
           <input type="hidden" name="rows" value={safeRowsLimit} />
           <input type="hidden" name="sortBy" value={safeSortBy} />
           <input type="hidden" name="sortDir" value={safeSortDir} />
+          <input type="hidden" name="metric" value={selectedMetric} />
 
           <label className="block">
             <span className="text-xs font-black uppercase tracking-[0.12em] text-slate-400">
@@ -749,84 +989,207 @@ export default async function FinanceOperationsPage({
         </form>
 
         <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-6">
-          <KpiCard
-            title="Поступления (ДДС)"
-            value={formatMoney(metrics.cashIncome)}
-            helper="Деньги, поступившие на счета"
-            tone="emerald"
-            icon="↙"
-          />
+          <Link
+            href={`${buildHref(params, { metric: "cashIncome" })}#journal`}
+            className={`block rounded-[28px] transition hover:-translate-y-0.5 ${
+              selectedMetric === "cashIncome" ? "ring-2 ring-emerald-200" : ""
+            }`}
+          >
+            <KpiCard
+              title="Поступления (ДДС)"
+              value={formatMoney(metrics.cashIncome)}
+              helper="Нажмите, чтобы увидеть операции"
+              tone="emerald"
+              icon="↙"
+            />
+          </Link>
 
-          <KpiCard
-            title="Выплаты (ДДС)"
-            value={formatMoney(metrics.cashOutflow)}
-            helper="Все денежные списания"
-            tone="red"
-            icon="↗"
-          />
+          <Link
+            href={`${buildHref(params, { metric: "cashOutflow" })}#journal`}
+            className={`block rounded-[28px] transition hover:-translate-y-0.5 ${
+              selectedMetric === "cashOutflow" ? "ring-2 ring-red-200" : ""
+            }`}
+          >
+            <KpiCard
+              title="Выплаты (ДДС)"
+              value={formatMoney(metrics.cashOutflow)}
+              helper="Нажмите, чтобы увидеть операции"
+              tone="red"
+              icon="↗"
+            />
+          </Link>
 
-          <KpiCard
-            title="Чистый ДДС"
-            value={formatMoney(metrics.netCashFlow)}
-            helper="Поступления минус выплаты"
-            tone={metrics.netCashFlow >= 0 ? "emerald" : "red"}
-            icon="⇅"
-          />
+          <Link
+            href={`${buildHref(params, { metric: "netCashFlow" })}#journal`}
+            className={`block rounded-[28px] transition hover:-translate-y-0.5 ${
+              selectedMetric === "netCashFlow" ? "ring-2 ring-emerald-200" : ""
+            }`}
+          >
+            <KpiCard
+              title="Чистый ДДС"
+              value={formatMoney(metrics.netCashFlow)}
+              helper="Поступления и выплаты"
+              tone={metrics.netCashFlow >= 0 ? "emerald" : "red"}
+              icon="⇅"
+            />
+          </Link>
 
-          <KpiCard
-            title="Влияние на чистую прибыль"
-            value={formatMoney(metrics.netProfitImpact)}
-            helper="Только операции, влияющие на P&L"
-            tone={metrics.netProfitImpact >= 0 ? "emerald" : "violet"}
-            icon="▣"
-          />
+          <Link
+            href={`${buildHref(params, { metric: "netProfitImpact" })}#journal`}
+            className={`block rounded-[28px] transition hover:-translate-y-0.5 ${
+              selectedMetric === "netProfitImpact"
+                ? "ring-2 ring-violet-200"
+                : ""
+            }`}
+          >
+            <KpiCard
+              title="Влияние на чистую прибыль"
+              value={formatMoney(metrics.netProfitImpact)}
+              helper="Операции, влияющие на P&L"
+              tone={metrics.netProfitImpact >= 0 ? "emerald" : "violet"}
+              icon="▣"
+            />
+          </Link>
 
-          <KpiCard
-            title="Вывод собственника"
-            value={formatMoney(metrics.ownerWithdrawals)}
-            helper="Деньги, выведенные из бизнеса"
-            tone="orange"
-            icon="₽"
-          />
+          <Link
+            href={`${buildHref(params, { metric: "ownerWithdrawals" })}#journal`}
+            className={`block rounded-[28px] transition hover:-translate-y-0.5 ${
+              selectedMetric === "ownerWithdrawals"
+                ? "ring-2 ring-orange-200"
+                : ""
+            }`}
+          >
+            <KpiCard
+              title="Вывод собственника"
+              value={formatMoney(metrics.ownerWithdrawals)}
+              helper="Нажмите, чтобы увидеть выводы"
+              tone="orange"
+              icon="₽"
+            />
+          </Link>
 
-          <KpiCard
-            title="Внутренние переводы"
-            value={formatMoney(metrics.transferTotal)}
-            helper="Между счетами и кассами"
-            tone="slate"
-            icon="⇄"
-          />
+          <Link
+            href={`${buildHref(params, { metric: "transferTotal" })}#journal`}
+            className={`block rounded-[28px] transition hover:-translate-y-0.5 ${
+              selectedMetric === "transferTotal" ? "ring-2 ring-slate-200" : ""
+            }`}
+          >
+            <KpiCard
+              title="Внутренние переводы"
+              value={formatMoney(metrics.transferTotal)}
+              helper="Между счетами и кассами"
+              tone="slate"
+              icon="⇄"
+            />
+          </Link>
         </section>
 
         <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <TreatmentInfoCard
-            title="Только ДДС"
-            value={formatMoney(metrics.cashOnlyTotal)}
-            description="Закуп, упаковка, фулфилмент и другие расходы, которые уже сидят в себестоимости."
-            tone="cyan"
-          />
+          <Link
+            href={`${buildHref(params, { metric: "cashOnlyTotal" })}#journal`}
+            className={`block rounded-[28px] transition hover:-translate-y-0.5 ${
+              selectedMetric === "cashOnlyTotal" ? "ring-2 ring-cyan-200" : ""
+            }`}
+          >
+            <TreatmentInfoCard
+              title="Только ДДС"
+              value={formatMoney(metrics.cashOnlyTotal)}
+              description="Нажмите, чтобы увидеть операции этого блока."
+              tone="cyan"
+            />
+          </Link>
 
-          <TreatmentInfoCard
-            title="Тело кредита"
-            value={formatMoney(metrics.creditPrincipal)}
-            description="Уменьшает деньги на счетах, но не уменьшает чистую прибыль повторно."
-            tone="blue"
-          />
+          <Link
+            href={`${buildHref(params, { metric: "creditPrincipal" })}#journal`}
+            className={`block rounded-[28px] transition hover:-translate-y-0.5 ${
+              selectedMetric === "creditPrincipal" ? "ring-2 ring-blue-200" : ""
+            }`}
+          >
+            <TreatmentInfoCard
+              title="Тело кредита"
+              value={formatMoney(metrics.creditPrincipal)}
+              description="Нажмите, чтобы увидеть платежи по телу кредита."
+              tone="blue"
+            />
+          </Link>
 
-          <TreatmentInfoCard
-            title="Проценты кредита"
-            value={formatMoney(metrics.creditInterest)}
-            description="Уменьшает и ДДС, и чистую прибыль бизнеса."
-            tone="violet"
-          />
+          <Link
+            href={`${buildHref(params, { metric: "creditInterest" })}#journal`}
+            className={`block rounded-[28px] transition hover:-translate-y-0.5 ${
+              selectedMetric === "creditInterest"
+                ? "ring-2 ring-violet-200"
+                : ""
+            }`}
+          >
+            <TreatmentInfoCard
+              title="Проценты кредита"
+              value={formatMoney(metrics.creditInterest)}
+              description="Нажмите, чтобы увидеть проценты по кредитам."
+              tone="violet"
+            />
+          </Link>
 
-          <TreatmentInfoCard
-            title="Не учитывается"
-            value={formatMoney(metrics.ignoredTotal)}
-            description="Внутренние и технические операции без влияния на ключевые показатели."
-            tone="slate"
-          />
+          <Link
+            href={`${buildHref(params, { metric: "ignoredTotal" })}#journal`}
+            className={`block rounded-[28px] transition hover:-translate-y-0.5 ${
+              selectedMetric === "ignoredTotal" ? "ring-2 ring-slate-200" : ""
+            }`}
+          >
+            <TreatmentInfoCard
+              title="Не учитывается"
+              value={formatMoney(metrics.ignoredTotal)}
+              description="Нажмите, чтобы увидеть технические операции."
+              tone="slate"
+            />
+          </Link>
         </section>
+
+        {selectedMetricConfig ? (
+          <section className="panel p-5 sm:p-6" id="journal">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+              <div>
+                <div className="inline-flex rounded-full bg-violet-50 px-3 py-1 text-xs font-black uppercase tracking-[0.12em] text-violet-700 ring-1 ring-violet-100">
+                  Расшифровка показателя
+                </div>
+                <h2 className="mt-3 text-2xl font-black tracking-tight text-slate-950">
+                  {selectedMetricConfig.title}
+                </h2>
+                <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">
+                  {selectedMetricConfig.description}
+                </p>
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-2 lg:min-w-[420px]">
+                <div className="rounded-2xl bg-slate-50 p-4 ring-1 ring-slate-200">
+                  <div className="text-xs font-black uppercase tracking-[0.12em] text-slate-400">
+                    Сумма блока
+                  </div>
+                  <div className="mt-2 text-2xl font-black text-slate-950">
+                    {formatMoney(selectedMetricValue)}
+                  </div>
+                </div>
+
+                <div className="rounded-2xl bg-slate-50 p-4 ring-1 ring-slate-200">
+                  <div className="text-xs font-black uppercase tracking-[0.12em] text-slate-400">
+                    Операций
+                  </div>
+                  <div className="mt-2 text-2xl font-black text-slate-950">
+                    {selectedMetricRowsAll.length}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-5 flex flex-wrap gap-2">
+              <Link
+                href={`${buildHref(params, { metric: "" })}#journal`}
+                className="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-black text-slate-700 transition hover:bg-slate-50"
+              >
+                Показать все операции
+              </Link>
+            </div>
+          </section>
+        ) : null}
 
         <section id="quick-add" className="panel p-5 sm:p-6">
           <div>
@@ -964,16 +1327,21 @@ export default async function FinanceOperationsPage({
           </form>
         </section>
 
-        <section className="panel overflow-hidden">
+        <section
+          className="panel overflow-hidden"
+          id={selectedMetricConfig ? undefined : "journal"}
+        >
           <div className="border-b border-slate-200 p-5 sm:p-6">
             <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
               <div>
                 <h2 className="text-2xl font-black tracking-tight text-slate-950">
-                  Журнал операций
+                  {selectedMetricConfig
+                    ? `Операции блока: ${selectedMetricConfig.title}`
+                    : "Журнал операций"}
                 </h2>
                 <p className="mt-2 text-sm leading-6 text-slate-500">
-                  Показано {rows.length} из {totalRowsCount} операций по выбранным
-                  фильтрам.
+                  Показано {rows.length} из {totalRowsCount} операций по
+                  выбранным фильтрам.
                 </p>
               </div>
 
@@ -994,6 +1362,7 @@ export default async function FinanceOperationsPage({
                 <input type="hidden" name="dateTo" value={dateTo} />
                 <input type="hidden" name="sortBy" value={safeSortBy} />
                 <input type="hidden" name="sortDir" value={safeSortDir} />
+                <input type="hidden" name="metric" value={selectedMetric} />
 
                 <div className="relative">
                   <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">
@@ -1033,7 +1402,10 @@ export default async function FinanceOperationsPage({
                 return (
                   <Link
                     key={tab.value}
-                    href={buildHref(params, { operationType: tab.value })}
+                    href={buildHref(params, {
+                      operationType: tab.value,
+                      metric: "",
+                    })}
                     className={`rounded-2xl px-4 py-2 text-sm font-black transition ${
                       isActive
                         ? "bg-violet-50 text-violet-700 ring-1 ring-violet-100"
@@ -1062,7 +1434,7 @@ export default async function FinanceOperationsPage({
             {rows.map((row) => {
               const treatment = getFinanceTransactionTreatment(
                 row,
-                categoryTreatmentIndex
+                categoryTreatmentIndex,
               );
               const signedAmount = getSignedAmount(row, treatment.label);
 
@@ -1080,7 +1452,7 @@ export default async function FinanceOperationsPage({
 
                     <div
                       className={`text-right text-lg font-black ${valueClassName(
-                        signedAmount
+                        signedAmount,
                       )}`}
                     >
                       {getAmountDisplay(row, treatment.label)}
@@ -1090,7 +1462,7 @@ export default async function FinanceOperationsPage({
                   <div className="mt-3">
                     <div
                       className={`inline-flex rounded-full px-3 py-1 text-xs font-black ring-1 ${operationTypeClassName(
-                        row.operationType
+                        row.operationType,
                       )}`}
                     >
                       {operationTypeLabel(row.operationType)}
@@ -1163,7 +1535,7 @@ export default async function FinanceOperationsPage({
                 {rows.map((row) => {
                   const treatment = getFinanceTransactionTreatment(
                     row,
-                    categoryTreatmentIndex
+                    categoryTreatmentIndex,
                   );
                   const signedAmount = getSignedAmount(row, treatment.label);
 
@@ -1187,7 +1559,7 @@ export default async function FinanceOperationsPage({
                       <td className="px-5 py-4 align-top">
                         <span
                           className={`inline-flex rounded-full px-3 py-1 text-xs font-black ring-1 ${operationTypeClassName(
-                            row.operationType
+                            row.operationType,
                           )}`}
                         >
                           {operationTypeLabel(row.operationType)}
@@ -1218,7 +1590,7 @@ export default async function FinanceOperationsPage({
 
                       <td
                         className={`px-5 py-4 text-right align-top text-base font-black ${valueClassName(
-                          signedAmount
+                          signedAmount,
                         )}`}
                       >
                         {getAmountDisplay(row, treatment.label)}
