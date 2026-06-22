@@ -43,6 +43,7 @@ type StoredDraftJson = {
   userId: string | null;
   rawText: string;
   operation: ParsedFinanceOperation;
+  pendingEdit?: "AMOUNT" | "COMMENT" | null;
 };
 
 const CATEGORY_TYPE_TO_OPERATION_TYPE: Record<string, string> = {
@@ -97,6 +98,23 @@ function operationTypeLabel(type: string) {
 
 function formatDate(value: string) {
   return new Date(value).toLocaleDateString("ru-RU");
+}
+
+function parseAmountFromText(text: string) {
+  const match = text.match(/\d[\d\s]*(?:[,.]\d{1,2})?/);
+
+  if (!match) return null;
+
+  const number = Number(
+    match[0]
+      .replace(/\s/g, "")
+      .replace(",", ".")
+      .replace(/[^\d.-]/g, "")
+  );
+
+  if (!Number.isFinite(number) || number <= 0) return null;
+
+  return number;
 }
 
 function formatDraftMessage(operation: ParsedFinanceOperation) {
@@ -180,6 +198,16 @@ function confirmKeyboard(draftId: string) {
         {
           text: "💳 Счёт",
           callback_data: `edit_account:${draftId}`,
+        },
+      ],
+      [
+        {
+          text: "💰 Сумма",
+          callback_data: `edit_amount:${draftId}`,
+        },
+        {
+          text: "📝 Комментарий",
+          callback_data: `edit_comment:${draftId}`,
         },
       ],
     ],
@@ -290,6 +318,106 @@ async function updateDraft(draftId: string, draft: StoredDraftJson) {
   });
 }
 
+async function findPendingEditDraft(chatId: string) {
+  const importSessions = await prisma.importSession.findMany({
+    where: {
+      reportType: "TELEGRAM_FINANCE_DRAFT",
+      status: "PENDING",
+    },
+    orderBy: {
+      createdAt: "desc",
+    },
+    take: 20,
+  });
+
+  for (const importSession of importSessions) {
+    const draft = importSession.previewJson
+      ? asStoredDraftJson(importSession.previewJson)
+      : null;
+
+    if (draft?.chatId === chatId && draft.pendingEdit) {
+      return {
+        importSession,
+        draft,
+      };
+    }
+  }
+
+  return null;
+}
+
+async function handlePendingTextEdit(
+  message: TelegramMessage,
+  draftId: string,
+  draft: StoredDraftJson
+) {
+  const chatId = String(message.chat.id);
+  const text = String(message.text ?? "").trim();
+
+  if (draft.pendingEdit === "AMOUNT") {
+    const amount = parseAmountFromText(text);
+
+    if (!amount) {
+      await sendMessage(
+        chatId,
+        [
+          "Не вижу новую сумму.",
+          "",
+          "Напишите одним числом, например:",
+          "15000",
+        ].join("\n")
+      );
+      return;
+    }
+
+    const updatedDraft: StoredDraftJson = {
+      ...draft,
+      pendingEdit: null,
+      operation: {
+        ...draft.operation,
+        amount,
+      },
+    };
+
+    await updateDraft(draftId, updatedDraft);
+
+    await sendMessage(
+      chatId,
+      formatDraftMessage(updatedDraft.operation),
+      confirmKeyboard(draftId)
+    );
+
+    return;
+  }
+
+  if (draft.pendingEdit === "COMMENT") {
+    const normalizedText = text.toLowerCase().trim();
+    const comment =
+      normalizedText === "-" ||
+      normalizedText === "нет" ||
+      normalizedText === "без комментария"
+        ? null
+        : text;
+
+    const updatedDraft: StoredDraftJson = {
+      ...draft,
+      pendingEdit: null,
+      operation: {
+        ...draft.operation,
+        comment,
+      },
+    };
+
+    await updateDraft(draftId, updatedDraft);
+
+    await sendMessage(
+      chatId,
+      formatDraftMessage(updatedDraft.operation),
+      confirmKeyboard(draftId)
+    );
+  }
+}
+
 async function createDraftFromMessage(message: TelegramMessage) {
   const chatId = String(message.chat.id);
   const userId = message.from?.id ? String(message.from.id) : null;
@@ -315,6 +443,17 @@ async function createDraftFromMessage(message: TelegramMessage) {
 
   if (text.startsWith("/id")) {
     await sendMessage(chatId, `Ваш chat id: ${chatId}`);
+    return;
+  }
+
+  const pendingEdit = await findPendingEditDraft(chatId);
+
+  if (pendingEdit) {
+    await handlePendingTextEdit(
+      message,
+      pendingEdit.importSession.id,
+      pendingEdit.draft
+    );
     return;
   }
 
@@ -395,6 +534,7 @@ async function createDraftFromMessage(message: TelegramMessage) {
     userId,
     rawText: text,
     operation: parsed.operation,
+    pendingEdit: null,
   };
 
   const importSession = await prisma.importSession.create({
@@ -718,6 +858,100 @@ async function showAccountChoices(
   });
 }
 
+async function showAmountEditPrompt(
+  callbackQuery: TelegramCallbackQuery,
+  draftId: string
+) {
+  const message = callbackQuery.message;
+  const chatId = message?.chat.id ? String(message.chat.id) : null;
+
+  if (!chatId || !message?.message_id) return;
+
+  const { draft } = await getDraft(draftId);
+
+  if (!draft) {
+    await answerCallbackQuery(callbackQuery.id, "Черновик не найден");
+    return;
+  }
+
+  const updatedDraft: StoredDraftJson = {
+    ...draft,
+    pendingEdit: "AMOUNT",
+  };
+
+  await updateDraft(draftId, updatedDraft);
+  await answerCallbackQuery(callbackQuery.id);
+
+  await editMessageText({
+    chatId,
+    messageId: message.message_id,
+    text: [
+      "Введите новую сумму одним числом.",
+      "",
+      `Сейчас: ${formatMoney(draft.operation.amount)}`,
+      "",
+      "Пример: 15000",
+    ].join("\n"),
+    replyMarkup: {
+      inline_keyboard: [
+        [
+          {
+            text: "← Назад",
+            callback_data: `back:${draftId}`,
+          },
+        ],
+      ],
+    },
+  });
+}
+
+async function showCommentEditPrompt(
+  callbackQuery: TelegramCallbackQuery,
+  draftId: string
+) {
+  const message = callbackQuery.message;
+  const chatId = message?.chat.id ? String(message.chat.id) : null;
+
+  if (!chatId || !message?.message_id) return;
+
+  const { draft } = await getDraft(draftId);
+
+  if (!draft) {
+    await answerCallbackQuery(callbackQuery.id, "Черновик не найден");
+    return;
+  }
+
+  const updatedDraft: StoredDraftJson = {
+    ...draft,
+    pendingEdit: "COMMENT",
+  };
+
+  await updateDraft(draftId, updatedDraft);
+  await answerCallbackQuery(callbackQuery.id);
+
+  await editMessageText({
+    chatId,
+    messageId: message.message_id,
+    text: [
+      "Напишите новый комментарий.",
+      "",
+      "Чтобы убрать комментарий, отправьте: -",
+      "",
+      `Сейчас: ${draft.operation.comment ?? "—"}`,
+    ].join("\n"),
+    replyMarkup: {
+      inline_keyboard: [
+        [
+          {
+            text: "← Назад",
+            callback_data: `back:${draftId}`,
+          },
+        ],
+      ],
+    },
+  });
+}
+
 async function showDraftAgain(
   callbackQuery: TelegramCallbackQuery,
   draftId: string
@@ -734,12 +968,19 @@ async function showDraftAgain(
     return;
   }
 
+  const updatedDraft: StoredDraftJson = {
+    ...draft,
+    pendingEdit: null,
+  };
+
+  await updateDraft(draftId, updatedDraft);
+
   await answerCallbackQuery(callbackQuery.id);
 
   await editMessageText({
     chatId,
     messageId: message.message_id,
-    text: formatDraftMessage(draft.operation),
+    text: formatDraftMessage(updatedDraft.operation),
     replyMarkup: confirmKeyboard(draftId),
   });
 }
@@ -1006,6 +1247,19 @@ async function handleCallbackQuery(callbackQuery: TelegramCallbackQuery) {
 
   if (data.startsWith("edit_account:")) {
     await showAccountChoices(callbackQuery, data.replace("edit_account:", ""));
+    return;
+  }
+
+  if (data.startsWith("edit_amount:")) {
+    await showAmountEditPrompt(callbackQuery, data.replace("edit_amount:", ""));
+    return;
+  }
+
+  if (data.startsWith("edit_comment:")) {
+    await showCommentEditPrompt(
+      callbackQuery,
+      data.replace("edit_comment:", "")
+    );
     return;
   }
 
