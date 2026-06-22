@@ -20,6 +20,7 @@ type SearchParams = {
   dateFrom?: string;
   dateTo?: string;
   metric?: string;
+  source?: string;
 };
 
 type OperationType =
@@ -52,6 +53,22 @@ const OPERATION_TABS: { value: OperationType; label: string }[] = [
   { value: "FINANCING", label: "Кредиты" },
   { value: "PERSONAL", label: "Вывод собственника" },
 ];
+
+const SOURCE_FILTER_OPTIONS = [
+  { value: "ALL", label: "Все источники" },
+  { value: "MANUAL", label: "Вручную" },
+  { value: "TELEGRAM", label: "Telegram" },
+  { value: "EXCEL", label: "Excel" },
+];
+
+type SourceFilter = "ALL" | "MANUAL" | "TELEGRAM" | "EXCEL";
+
+function normalizeSourceFilter(value?: string): SourceFilter {
+  if (value === "MANUAL") return "MANUAL";
+  if (value === "TELEGRAM") return "TELEGRAM";
+  if (value === "EXCEL") return "EXCEL";
+  return "ALL";
+}
 
 type MetricKey =
   | "cashIncome"
@@ -316,6 +333,51 @@ function getAmountDisplay(
 function shortText(value: string | null | undefined, fallback = "—") {
   const text = String(value ?? "").trim();
   return text || fallback;
+}
+
+function sourceLabel(value?: string | null) {
+  if (value === "TELEGRAM_BOT") return "Telegram";
+  if (value === "FINANCE_EXCEL_IMPORT") return "Excel";
+  if (value === "GOOGLE_SHEETS_IMPORT") return "Google Sheets";
+  if (value === "MANUAL") return "Вручную";
+  if (!value) return "Вручную";
+  return value;
+}
+
+function sourceDescription(value?: string | null) {
+  if (value === "TELEGRAM_BOT") {
+    return "Операция добавлена через Telegram-бота.";
+  }
+
+  if (value === "FINANCE_EXCEL_IMPORT") {
+    return "Операция загружена из Excel-шаблона финансовых операций.";
+  }
+
+  if (value === "GOOGLE_SHEETS_IMPORT") {
+    return "Операция загружена из старого Google Sheets / Excel-импорта.";
+  }
+
+  if (!value || value === "MANUAL") {
+    return "Операция добавлена вручную на странице финансовых операций.";
+  }
+
+  return "Источник операции в базе.";
+}
+
+function sourceClassName(value?: string | null) {
+  if (value === "TELEGRAM_BOT") {
+    return "bg-sky-50 text-sky-700 ring-sky-100";
+  }
+
+  if (value === "FINANCE_EXCEL_IMPORT" || value === "GOOGLE_SHEETS_IMPORT") {
+    return "bg-emerald-50 text-emerald-700 ring-emerald-100";
+  }
+
+  if (!value || value === "MANUAL") {
+    return "bg-slate-100 text-slate-600 ring-slate-200";
+  }
+
+  return "bg-violet-50 text-violet-700 ring-violet-100";
 }
 
 function getMetricConfig(metric: string | undefined) {
@@ -615,6 +677,7 @@ function buildHref(params: SearchParams, patch: Partial<SearchParams>) {
     sortBy: params.sortBy ?? "operationDate",
     sortDir: params.sortDir ?? "desc",
     metric: params.metric ?? "",
+    source: params.source ?? "ALL",
     ...patch,
   };
 
@@ -627,6 +690,7 @@ function buildHref(params: SearchParams, patch: Partial<SearchParams>) {
   query.set("rows", next.rows);
   query.set("sortBy", next.sortBy);
   query.set("sortDir", next.sortDir);
+  query.set("source", next.source);
 
   if (next.metric) query.set("metric", next.metric);
   if (next.search) query.set("search", next.search);
@@ -653,6 +717,7 @@ export default async function FinanceOperationsPage({
   const dateFrom = params?.dateFrom ?? defaultRange.dateFrom;
   const dateTo = params?.dateTo ?? defaultRange.dateTo;
   const selectedMetric = params?.metric ?? "";
+  const selectedSource = normalizeSourceFilter(params?.source);
 
   const safeRowsLimit = ROWS_OPTIONS.includes(rowsLimit) ? rowsLimit : 50;
   const safeSortBy = SORTABLE_COLUMNS.includes(sortBy)
@@ -709,6 +774,15 @@ export default async function FinanceOperationsPage({
     ...(selectedCategory !== "ALL" ? { category: selectedCategory } : {}),
     ...(selectedBankAccount !== "ALL"
       ? { bankAccount: selectedBankAccount }
+      : {}),
+    ...(selectedSource === "MANUAL" ? { sourceType: null } : {}),
+    ...(selectedSource === "TELEGRAM" ? { sourceType: "TELEGRAM_BOT" } : {}),
+    ...(selectedSource === "EXCEL"
+      ? {
+          sourceType: {
+            in: ["FINANCE_EXCEL_IMPORT", "GOOGLE_SHEETS_IMPORT"],
+          },
+        }
       : {}),
     ...(search
       ? {
@@ -887,7 +961,7 @@ export default async function FinanceOperationsPage({
           </div>
         </section>
 
-        <form className="panel grid gap-4 p-5 md:grid-cols-2 xl:grid-cols-[1fr_1fr_1fr_1fr_1fr_130px_130px]">
+        <form className="panel grid gap-4 p-5 md:grid-cols-2 xl:grid-cols-[1fr_1fr_1fr_1fr_1fr_1fr_130px_130px]">
           <input type="hidden" name="search" value={search} />
           <input type="hidden" name="rows" value={safeRowsLimit} />
           <input type="hidden" name="sortBy" value={safeSortBy} />
@@ -967,6 +1041,23 @@ export default async function FinanceOperationsPage({
               {categories.map((category) => (
                 <option key={category.id} value={category.name}>
                   {category.name}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className="block">
+            <span className="text-xs font-black uppercase tracking-[0.12em] text-slate-400">
+              Источник
+            </span>
+            <select
+              name="source"
+              defaultValue={selectedSource}
+              className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-bold text-slate-700 outline-none transition focus:border-violet-200 focus:bg-white focus:ring-4 focus:ring-violet-50"
+            >
+              {SOURCE_FILTER_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
                 </option>
               ))}
             </select>
@@ -1363,6 +1454,7 @@ export default async function FinanceOperationsPage({
                 <input type="hidden" name="sortBy" value={safeSortBy} />
                 <input type="hidden" name="sortDir" value={safeSortDir} />
                 <input type="hidden" name="metric" value={selectedMetric} />
+                <input type="hidden" name="source" value={selectedSource} />
 
                 <div className="relative">
                   <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">
@@ -1483,6 +1575,16 @@ export default async function FinanceOperationsPage({
                     <div>Счёт: {shortText(row.bankAccount)}</div>
                     <div>Контрагент: {shortText(row.counterparty)}</div>
                     <div>Комментарий: {shortText(row.comment)}</div>
+                    <div>
+                      Источник:{" "}
+                      <span
+                        className={`inline-flex rounded-full px-2 py-0.5 text-xs font-black ring-1 ${sourceClassName(
+                          row.sourceType,
+                        )}`}
+                      >
+                        {sourceLabel(row.sourceType)}
+                      </span>
+                    </div>
                   </div>
                 </div>
               );
@@ -1496,7 +1598,7 @@ export default async function FinanceOperationsPage({
           </div>
 
           <div className="hidden overflow-x-auto lg:block">
-            <table className="w-full min-w-[1380px] border-collapse text-sm">
+            <table className="w-full min-w-[1520px] border-collapse text-sm">
               <thead className="bg-slate-50 text-left text-slate-500">
                 <tr>
                   <th className="px-5 py-4">
@@ -1526,6 +1628,7 @@ export default async function FinanceOperationsPage({
                     </Link>
                   </th>
                   <th className="px-5 py-4">Роль в модели</th>
+                  <th className="px-5 py-4">Источник</th>
                   <th className="px-5 py-4">Комментарий</th>
                   <th className="px-5 py-4 text-center">Действия</th>
                 </tr>
@@ -1605,6 +1708,17 @@ export default async function FinanceOperationsPage({
                         </div>
                       </td>
 
+                      <td className="px-5 py-4 align-top">
+                        <div
+                          className={`inline-flex rounded-full px-3 py-1 text-xs font-black ring-1 ${sourceClassName(
+                            row.sourceType,
+                          )}`}
+                          title={sourceDescription(row.sourceType)}
+                        >
+                          {sourceLabel(row.sourceType)}
+                        </div>
+                      </td>
+
                       <td className="max-w-[260px] px-5 py-4 align-top">
                         <div className="truncate font-semibold text-slate-600">
                           {shortText(row.comment)}
@@ -1648,7 +1762,7 @@ export default async function FinanceOperationsPage({
 
                 {rows.length === 0 ? (
                   <tr>
-                    <td colSpan={9} className="p-10 text-center text-slate-500">
+                    <td colSpan={10} className="p-10 text-center text-slate-500">
                       Операции пока не загружены.
                     </td>
                   </tr>
