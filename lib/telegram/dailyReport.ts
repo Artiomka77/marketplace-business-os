@@ -61,90 +61,35 @@ type DailyReport = {
   warnings: string[];
 };
 
-const MARKETPLACE_TABLES = {
-  wbSales: "WbSale",
-  wbAds: "WbAds",
-  wbStock: "WbStock",
-  ozonFinance: "OzonFinance",
-  ozonAds: "OzonAds",
-  ozonStock: "OzonStock",
-};
+function toNumber(value: unknown): number {
+  if (value === null || value === undefined) return 0;
+  if (typeof value === "number") return Number.isFinite(value) ? value : 0;
 
-const DATE_COLUMN_CANDIDATES = [
-  "operationDate",
-  "date",
-  "reportDate",
-  "saleDate",
-  "dateSale",
-  "orderDate",
-  "createdAt",
-  "dateFrom",
-  "accrualDate",
-  "postingDate",
-  "day",
-];
+  if (typeof value === "object" && "toNumber" in value) {
+    const number = (value as { toNumber: () => number }).toNumber();
+    return Number.isFinite(number) ? number : 0;
+  }
 
-const WB_SALES_AMOUNT_CANDIDATES = [
-  "forPay",
-  "forPaySum",
-  "retailAmount",
-  "retailPriceWithDiscRub",
-  "finishedPrice",
-  "priceWithDisc",
-  "totalPrice",
-  "amount",
-  "sum",
-];
+  const normalized = String(value)
+    .replace(/\s/g, "")
+    .replace(",", ".")
+    .replace(/[^\d.-]/g, "");
 
-const OZON_SALES_AMOUNT_CANDIDATES = [
-  "total",
-  "amount",
-  "sellerAmount",
-  "accrualAmount",
-  "payout",
-  "totalAmount",
-  "price",
-  "rub",
-];
-
-const ADS_AMOUNT_CANDIDATES = [
-  "cost",
-  "spent",
-  "expense",
-  "expenses",
-  "adSpend",
-  "sum",
-  "amount",
-  "moneySpent",
-  "spentRub",
-];
-
-const WB_STOCK_CANDIDATES = [
-  "totalStock",
-  "inTransitToCustomer",
-  "inTransitReturns",
-  "quantity",
-  "qty",
-  "stock",
-];
-
-const OZON_STOCK_CANDIDATES = [
-  "availableStock",
-  "availableQty",
-  "stock",
-  "quantity",
-  "qty",
-  "available",
-  "present",
-];
-
-function safeNumber(value: unknown) {
-  const number = Number(value ?? 0);
+  const number = Number(normalized);
   return Number.isFinite(number) ? number : 0;
 }
 
-function quoteIdentifier(value: string) {
-  return `"${value.replaceAll('"', '""')}"`;
+function normalizeText(value: unknown) {
+  return String(value ?? "")
+    .toLowerCase()
+    .replaceAll("ё", "е")
+    .replace(/[–—−]/g, "-")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function cleanText(value: unknown) {
+  return String(value ?? "").trim();
 }
 
 function formatDateInput(date: Date) {
@@ -269,184 +214,148 @@ export function getDailyReportRange(params?: {
   });
 }
 
-async function getTableColumns(tableName: string) {
-  const rows = await prisma.$queryRawUnsafe<Array<{ column_name: string }>>(
-    `
-      select column_name
-      from information_schema.columns
-      where table_schema = 'public'
-        and table_name = $1
-    `,
-    tableName
-  );
-
-  return rows.map((row) => row.column_name);
+function isWbSaleOperation(reason: string | null | undefined) {
+  const value = normalizeText(reason);
+  return value === "продажа" || value === "сторно возвратов";
 }
 
-async function tableExists(tableName: string) {
-  const rows = await prisma.$queryRawUnsafe<Array<{ exists: boolean }>>(
-    `
-      select exists (
-        select 1
-        from information_schema.tables
-        where table_schema = 'public'
-          and table_name = $1
-      ) as "exists"
-    `,
-    tableName
-  );
-
-  return Boolean(rows[0]?.exists);
+function isWbReturnOperation(reason: string | null | undefined) {
+  return normalizeText(reason) === "возврат";
 }
 
-function pickColumn(columns: string[], candidates: string[]) {
-  const normalized = new Map(
-    columns.map((column) => [column.toLowerCase(), column])
-  );
+function getDateSpan(dateFrom: Date | null, dateTo: Date | null) {
+  if (!dateFrom && !dateTo) return [];
 
-  for (const candidate of candidates) {
-    const exact = columns.find((column) => column === candidate);
-    if (exact) return exact;
+  const from = new Date(dateFrom ?? dateTo ?? new Date());
+  const to = new Date(dateTo ?? dateFrom ?? new Date());
 
-    const lower = normalized.get(candidate.toLowerCase());
-    if (lower) return lower;
+  from.setHours(0, 0, 0, 0);
+  to.setHours(0, 0, 0, 0);
+
+  const dates: string[] = [];
+
+  for (const cursor = new Date(from); cursor.getTime() <= to.getTime(); cursor.setDate(cursor.getDate() + 1)) {
+    dates.push(cursor.toISOString().slice(0, 10));
   }
 
-  return null;
+  return dates;
 }
 
-function numericExpression(columnName: string) {
-  const column = quoteIdentifier(columnName);
+function keepLatestWbAdsRowsPerDate<
+  T extends {
+    dateFrom: Date | null;
+    dateTo: Date | null;
+    importSessionId: string | null;
+    createdAt: Date;
+  },
+>(rows: T[]) {
+  const latestSessionByDate = new Map<string, string | null>();
 
-  return `
-    coalesce(
-      nullif(
-        regexp_replace(
-          replace(cast(${column} as text), ',', '.'),
-          '[^0-9\\.-]',
-          '',
-          'g'
-        ),
-        ''
-      )::numeric,
-      0
-    )
-  `;
-}
+  for (const row of rows) {
+    const dates = getDateSpan(row.dateFrom, row.dateTo);
 
-async function queryDailyTableMetrics(params: {
-  tableName: string;
-  companyName: string;
-  range: DateRange;
-  amountCandidates: string[];
-}) {
-  const exists = await tableExists(params.tableName);
-
-  if (!exists) {
-    return {
-      qty: 0,
-      amount: 0,
-      usedDateColumn: null as string | null,
-      usedAmountColumn: null as string | null,
-    };
+    for (const date of dates) {
+      if (!latestSessionByDate.has(date)) {
+        latestSessionByDate.set(date, row.importSessionId ?? null);
+      }
+    }
   }
 
-  const columns = await getTableColumns(params.tableName);
-  const dateColumn = pickColumn(columns, DATE_COLUMN_CANDIDATES);
-  const amountColumn = pickColumn(columns, params.amountCandidates);
-  const companyColumn = pickColumn(columns, ["companyName"]);
+  return rows.filter((row) => {
+    const dates = getDateSpan(row.dateFrom, row.dateTo);
+    if (dates.length === 0) return false;
 
-  if (!dateColumn || !companyColumn) {
-    return {
-      qty: 0,
-      amount: 0,
-      usedDateColumn: dateColumn,
-      usedAmountColumn: amountColumn,
-    };
-  }
-
-  const amountSql = amountColumn ? `sum(${numericExpression(amountColumn)})` : "0";
-
-  const rows = await prisma.$queryRawUnsafe<Array<{ qty: unknown; amount: unknown }>>(
-    `
-      select
-        count(*)::int as qty,
-        ${amountSql} as amount
-      from ${quoteIdentifier(params.tableName)}
-      where ${quoteIdentifier(companyColumn)} = $1
-        and ${quoteIdentifier(dateColumn)} >= $2
-        and ${quoteIdentifier(dateColumn)} < $3
-    `,
-    params.companyName,
-    params.range.dateFrom,
-    params.range.dateToExclusive
-  );
-
-  return {
-    qty: safeNumber(rows[0]?.qty),
-    amount: safeNumber(rows[0]?.amount),
-    usedDateColumn: dateColumn,
-    usedAmountColumn: amountColumn,
-  };
+    return dates.some(
+      (date) => latestSessionByDate.get(date) === (row.importSessionId ?? null)
+    );
+  });
 }
 
-async function getLatestStockQty(params: {
-  tableName: string;
-  reportType: string;
-  companyName: string;
-  stockCandidates: string[];
-  wbTotalOnly?: boolean;
-}) {
-  const exists = await tableExists(params.tableName);
+function keepLatestOzonAdsRowsPerDate<
+  T extends {
+    reportDate: Date | null;
+    importSessionId: string | null;
+    createdAt: Date;
+  },
+>(rows: T[]) {
+  const latestSessionByDate = new Map<string, string | null>();
 
-  if (!exists) return 0;
+  for (const row of rows) {
+    if (!row.reportDate) continue;
 
+    const date = row.reportDate.toISOString().slice(0, 10);
+
+    if (!latestSessionByDate.has(date)) {
+      latestSessionByDate.set(date, row.importSessionId ?? null);
+    }
+  }
+
+  return rows.filter((row) => {
+    if (!row.reportDate) return false;
+
+    const date = row.reportDate.toISOString().slice(0, 10);
+
+    return latestSessionByDate.get(date) === (row.importSessionId ?? null);
+  });
+}
+
+async function getLatestWbStockQty(companyName: string) {
   const latestStockImport = await prisma.importSession.findFirst({
     where: {
-      companyName: params.companyName,
-      reportType: params.reportType,
+      companyName,
+      reportType: "WB_STOCK",
     },
     orderBy: {
       createdAt: "desc",
     },
   });
 
-  if (!latestStockImport) return 0;
+  const rows = await prisma.wbStock.findMany({
+    where: {
+      companyName,
+      ...(latestStockImport ? { importSessionId: latestStockImport.id } : {}),
+      warehouseName: "__TOTAL__",
+    },
+  });
 
-  const columns = await getTableColumns(params.tableName);
-  const importSessionColumn = pickColumn(columns, ["importSessionId"]);
-  const companyColumn = pickColumn(columns, ["companyName"]);
-  const stockColumns = params.stockCandidates.filter((candidate) =>
-    columns.some((column) => column.toLowerCase() === candidate.toLowerCase())
+  return rows.reduce(
+    (sum, row) =>
+      sum +
+      toNumber(row.inTransitToCustomer) +
+      toNumber(row.inTransitReturns) +
+      toNumber(row.totalStock),
+    0
   );
+}
 
-  if (!importSessionColumn || !companyColumn || stockColumns.length === 0) {
-    return 0;
-  }
+async function getLatestOzonStockQty(companyName: string) {
+  const latestStockImport = await prisma.importSession.findFirst({
+    where: {
+      companyName,
+      reportType: "OZON_STOCK",
+    },
+    orderBy: {
+      createdAt: "desc",
+    },
+  });
 
-  const stockExpression = stockColumns
-    .map((column) => numericExpression(column))
-    .join(" + ");
+  const rows = await prisma.ozonStock.findMany({
+    where: {
+      companyName,
+      ...(latestStockImport ? { importSessionId: latestStockImport.id } : {}),
+    },
+  });
 
-  const warehouseColumn = pickColumn(columns, ["warehouseName"]);
-  const totalFilter =
-    params.wbTotalOnly && warehouseColumn
-      ? `and ${quoteIdentifier(warehouseColumn)} = '__TOTAL__'`
-      : "";
-
-  const rows = await prisma.$queryRawUnsafe<Array<{ qty: unknown }>>(
-    `
-      select sum(${stockExpression}) as qty
-      from ${quoteIdentifier(params.tableName)}
-      where ${quoteIdentifier(companyColumn)} = $1
-        and ${quoteIdentifier(importSessionColumn)} = $2
-        ${totalFilter}
-    `,
-    params.companyName,
-    latestStockImport.id
+  return rows.reduce(
+    (sum, row) =>
+      sum +
+      toNumber(row.availableQty) +
+      toNumber(row.preparingQty) +
+      toNumber(row.supplyQty) +
+      toNumber(row.inTransitQty) +
+      toNumber(row.returnQty),
+    0
   );
-
-  return safeNumber(rows[0]?.qty);
 }
 
 async function getFinanceMetricsForCompany(params: {
@@ -461,6 +370,14 @@ async function getFinanceMetricsForCompany(params: {
           gte: params.range.dateFrom,
           lt: params.range.dateToExclusive,
         },
+      },
+      select: {
+        operationType: true,
+        category: true,
+        subcategory: true,
+        amount: true,
+        isInternalTransfer: true,
+        transferDirection: true,
       },
     }),
     prisma.financeCategory.findMany({
@@ -493,75 +410,172 @@ function calculateDrr(adSpend: number, salesAmount: number) {
 }
 
 async function getWbMetrics(companyName: string, range: DateRange) {
-  const [sales, ads, stockQty] = await Promise.all([
-    queryDailyTableMetrics({
-      tableName: MARKETPLACE_TABLES.wbSales,
-      companyName,
-      range,
-      amountCandidates: WB_SALES_AMOUNT_CANDIDATES,
+  const [salesRows, adsRowsRaw, stockQty] = await Promise.all([
+    prisma.wbSale.findMany({
+      where: {
+        companyName,
+        saleDate: {
+          gte: range.dateFrom,
+          lt: range.dateToExclusive,
+        },
+      },
+      select: {
+        paymentReason: true,
+        quantity: true,
+        wbRealizedAmount: true,
+      },
     }),
-    queryDailyTableMetrics({
-      tableName: MARKETPLACE_TABLES.wbAds,
-      companyName,
-      range,
-      amountCandidates: ADS_AMOUNT_CANDIDATES,
+    prisma.wbAds.findMany({
+      where: {
+        companyName,
+        OR: [
+          {
+            dateFrom: {
+              gte: range.dateFrom,
+              lt: range.dateToExclusive,
+            },
+          },
+          {
+            dateTo: {
+              gte: range.dateFrom,
+              lt: range.dateToExclusive,
+            },
+          },
+          {
+            AND: [
+              {
+                dateFrom: {
+                  lte: range.dateFrom,
+                },
+              },
+              {
+                dateTo: {
+                  gte: range.dateToExclusive,
+                },
+              },
+            ],
+          },
+        ],
+      },
+      select: {
+        dateFrom: true,
+        dateTo: true,
+        spend: true,
+        importSessionId: true,
+        createdAt: true,
+      },
+      orderBy: {
+        createdAt: "desc",
+      },
     }),
-    getLatestStockQty({
-      tableName: MARKETPLACE_TABLES.wbStock,
-      reportType: "WB_STOCK",
-      companyName,
-      stockCandidates: WB_STOCK_CANDIDATES,
-      wbTotalOnly: true,
-    }),
+    getLatestWbStockQty(companyName),
   ]);
+
+  let salesQty = 0;
+  let salesAmount = 0;
+
+  for (const row of salesRows) {
+    const qty = Math.abs(Number(row.quantity ?? 0)) || 1;
+    const amount = Math.abs(toNumber(row.wbRealizedAmount));
+
+    if (isWbSaleOperation(row.paymentReason)) {
+      salesQty += qty;
+      salesAmount += amount;
+      continue;
+    }
+
+    if (isWbReturnOperation(row.paymentReason)) {
+      salesQty -= qty;
+      salesAmount -= amount;
+    }
+  }
+
+  const adsRows = keepLatestWbAdsRowsPerDate(adsRowsRaw);
+  const adSpend = adsRows.reduce((sum, row) => sum + toNumber(row.spend), 0);
 
   return {
     marketplace: "WB" as const,
-    ordersQty: sales.qty,
-    ordersAmount: sales.amount,
-    salesQty: sales.qty,
-    salesAmount: sales.amount,
-    adSpend: ads.amount,
-    drr: calculateDrr(ads.amount, sales.amount),
+    ordersQty: Math.max(0, salesQty),
+    ordersAmount: Math.max(0, salesAmount),
+    salesQty,
+    salesAmount,
+    adSpend,
+    drr: calculateDrr(adSpend, salesAmount),
     stockQty,
   };
 }
 
 async function getOzonMetrics(companyName: string, range: DateRange) {
-  const [sales, ads, stockQty] = await Promise.all([
-    queryDailyTableMetrics({
-      tableName: MARKETPLACE_TABLES.ozonFinance,
-      companyName,
-      range,
-      amountCandidates: OZON_SALES_AMOUNT_CANDIDATES,
+  const [financeRows, adsRowsRaw, stockQty] = await Promise.all([
+    prisma.ozonFinance.findMany({
+      where: {
+        companyName,
+        accrualDate: {
+          gte: range.dateFrom,
+          lt: range.dateToExclusive,
+        },
+      },
+      select: {
+        operationType: true,
+        quantity: true,
+        salesAmount: true,
+      },
     }),
-    queryDailyTableMetrics({
-      tableName: MARKETPLACE_TABLES.ozonAds,
-      companyName,
-      range,
-      amountCandidates: ADS_AMOUNT_CANDIDATES,
+    prisma.ozonAds.findMany({
+      where: {
+        companyName,
+        reportDate: {
+          gte: range.dateFrom,
+          lt: range.dateToExclusive,
+        },
+      },
+      select: {
+        reportDate: true,
+        orders: true,
+        spend: true,
+        importSessionId: true,
+        createdAt: true,
+      },
+      orderBy: {
+        createdAt: "desc",
+      },
     }),
-    getLatestStockQty({
-      tableName: MARKETPLACE_TABLES.ozonStock,
-      reportType: "OZON_STOCK",
-      companyName,
-      stockCandidates: OZON_STOCK_CANDIDATES,
-    }),
+    getLatestOzonStockQty(companyName),
   ]);
+
+  let salesQty = 0;
+  let salesAmount = 0;
+
+  for (const row of financeRows) {
+    const amount = toNumber(row.salesAmount);
+    const qty = Math.abs(Number(row.quantity ?? 0));
+
+    if (amount === 0 && qty === 0) continue;
+
+    salesAmount += amount;
+    salesQty += qty;
+  }
+
+  const adsRows = keepLatestOzonAdsRowsPerDate(adsRowsRaw);
+  const adSpend = adsRows.reduce((sum, row) => sum + toNumber(row.spend), 0);
+  const adsOrders = adsRows.reduce((sum, row) => sum + Number(row.orders ?? 0), 0);
 
   return {
     marketplace: "OZON" as const,
-    ordersQty: sales.qty,
-    ordersAmount: sales.amount,
-    salesQty: sales.qty,
-    salesAmount: sales.amount,
-    adSpend: ads.amount,
-    drr: calculateDrr(ads.amount, sales.amount),
+    ordersQty: adsOrders > 0 ? adsOrders : salesQty,
+    ordersAmount: salesAmount,
+    salesQty,
+    salesAmount,
+    adSpend,
+    drr: calculateDrr(adSpend, salesAmount),
     stockQty,
   };
 }
 
-function addMarketplaceTotals(target: DailyReport["totals"], source: MarketplaceDailyMetrics) {
+function addMarketplaceTotals(
+  target: DailyReport["totals"],
+  source: MarketplaceDailyMetrics
+) {
   target.ordersQty += source.ordersQty;
   target.ordersAmount += source.ordersAmount;
   target.salesQty += source.salesQty;
@@ -573,8 +587,8 @@ function addMarketplaceTotals(target: DailyReport["totals"], source: Marketplace
 function buildWarnings(report: DailyReport) {
   const warnings: string[] = [];
 
-  if (report.totals.salesAmount <= 0) {
-    warnings.push("нет продаж/выкупов за день");
+  if (report.totals.salesQty <= 0 && report.totals.salesAmount <= 0) {
+    warnings.push("нет продаж/выкупов за период");
   }
 
   if (report.totals.drr > 20) {
