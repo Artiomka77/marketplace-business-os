@@ -605,13 +605,11 @@ export default async function FinanceOperationsPage({
                 </summary>
 
                 <div className="absolute right-0 z-20 mt-2 w-72 overflow-hidden rounded-3xl border border-slate-200 bg-white p-2 shadow-xl shadow-slate-200/70">
-                  <button
-                    type="button"
-                    disabled
-                    className="flex w-full cursor-not-allowed items-start gap-3 rounded-2xl px-4 py-3 text-left opacity-60"
-                    title="Сделаем следующим шагом: Excel-шаблон и загрузка файла"
+                  <a
+                    href="/api/templates/finance-transactions"
+                    className="flex w-full items-start gap-3 rounded-2xl px-4 py-3 text-left transition hover:bg-slate-50"
                   >
-                    <span className="mt-1 text-slate-400">⇩</span>
+                    <span className="mt-1 text-emerald-600">⇩</span>
                     <span>
                       <span className="block text-sm font-black text-slate-800">
                         Скачать шаблон
@@ -620,15 +618,13 @@ export default async function FinanceOperationsPage({
                         Excel-шаблон для загрузки операций
                       </span>
                     </span>
-                  </button>
+                  </a>
 
-                  <button
-                    type="button"
-                    disabled
-                    className="flex w-full cursor-not-allowed items-start gap-3 rounded-2xl px-4 py-3 text-left opacity-60"
-                    title="Сделаем следующим шагом: route загрузки Excel"
+                  <Link
+                    href="/import?reportType=FINANCE_TRANSACTIONS"
+                    className="flex w-full items-start gap-3 rounded-2xl px-4 py-3 text-left transition hover:bg-slate-50"
                   >
-                    <span className="mt-1 text-slate-400">⇧</span>
+                    <span className="mt-1 text-violet-600">⇧</span>
                     <span>
                       <span className="block text-sm font-black text-slate-800">
                         Загрузить файл
@@ -637,7 +633,7 @@ export default async function FinanceOperationsPage({
                         Импорт операций из Excel
                       </span>
                     </span>
-                  </button>
+                  </Link>
                 </div>
               </details>
 

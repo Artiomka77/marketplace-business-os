@@ -36,6 +36,10 @@ function rowHas(row: unknown[], expected: string) {
   return row.some((cell) => normalize(cell) === target);
 }
 
+function rowHasAny(row: unknown[], expected: string[]) {
+  return expected.some((column) => rowHas(row, column));
+}
+
 function countMatches(row: unknown[], columns: string[]) {
   return columns.filter((column) => rowHas(row, column));
 }
@@ -47,14 +51,22 @@ const reportSignatures: {
   {
     type: "FINANCE_TRANSACTIONS",
     columns: [
+      "Дата",
       "Дата платежа",
+      "Дата обязательства",
       "Дата выполнения обязательства",
+      "Компания",
+      "Тип операции",
       "Статья",
       "Сумма",
+      "Счет",
+      "Счёт",
       "Счет/наличка",
+      "Контрагент",
       "Кому платим",
-      "За что платим",
+      "Проект",
       "Комментарий",
+      "Внутренний перевод",
     ],
   },
   {
@@ -216,7 +228,7 @@ export function detectWorkbookReport(workbook: XLSX.WorkBook): DetectionResult {
 
       if (
         normalize(sheetName).includes("операции") &&
-        rowHas(row, "Дата платежа") &&
+        rowHasAny(row, ["Дата", "Дата платежа"]) &&
         rowHas(row, "Статья") &&
         rowHas(row, "Сумма")
       ) {
@@ -224,7 +236,21 @@ export function detectWorkbookReport(workbook: XLSX.WorkBook): DetectionResult {
           reportType: "FINANCE_TRANSACTIONS",
           sheetName,
           headerRowIndex: rowIndex,
-          matchedColumns: ["sheet: Операции", "Дата платежа", "Статья", "Сумма"],
+          matchedColumns: ["sheet: Операции", "Дата", "Статья", "Сумма"],
+        };
+      }
+
+      if (
+        rowHasAny(row, ["Дата", "Дата платежа"]) &&
+        rowHas(row, "Тип операции") &&
+        rowHas(row, "Статья") &&
+        rowHas(row, "Сумма")
+      ) {
+        return {
+          reportType: "FINANCE_TRANSACTIONS",
+          sheetName,
+          headerRowIndex: rowIndex,
+          matchedColumns: ["Дата", "Тип операции", "Статья", "Сумма"],
         };
       }
 
