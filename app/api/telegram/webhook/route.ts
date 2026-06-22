@@ -210,6 +210,124 @@ function mainReplyKeyboard() {
   };
 }
 
+function visualMenuInlineKeyboard() {
+  return {
+    inline_keyboard: [
+      [
+        {
+          text: "➕ Расход",
+          callback_data: "quick_help:expense",
+        },
+        {
+          text: "💰 Поступление",
+          callback_data: "quick_help:income",
+        },
+      ],
+      [
+        {
+          text: "👤 Вывод",
+          callback_data: "quick_help:personal",
+        },
+        {
+          text: "🏦 Кредит",
+          callback_data: "quick_help:credit",
+        },
+      ],
+      [
+        {
+          text: "📋 Последние",
+          callback_data: "quick_last",
+        },
+        {
+          text: "📅 Сегодня",
+          callback_data: "quick_today",
+        },
+      ],
+      [
+        {
+          text: "↩️ Отменить последнюю",
+          callback_data: "quick_undo",
+        },
+      ],
+    ],
+  };
+}
+
+function getVisualMenuMessage(chatId: string) {
+  return [
+    "🏠 AvoroFin — главное меню",
+    "",
+    "Выберите действие кнопкой ниже или просто напишите операцию обычным текстом.",
+    "",
+    "━━━━━━━━━━━━━━",
+    "✍️ Примеры быстрого ввода:",
+    "",
+    "• закуп 15000 петров сбер упаковка",
+    "• поступило 4881996 лебедева ozon выручка",
+    "• вывод 50000 продукты сбер",
+    "• тело кредит 17792 альфа",
+    "• интернет 1700",
+    "",
+    "━━━━━━━━━━━━━━",
+    "После ввода я покажу карточку проверки:",
+    "✅ сохранить · ✏️ изменить · ❌ отменить",
+    "",
+    `chat id: ${chatId}`,
+  ].join("\\n");
+}
+
+function getQuickHelpMessage(type: string) {
+  if (type === "expense") {
+    return [
+      "➕ Добавить расход",
+      "",
+      "Напишите расход обычным текстом.",
+      "",
+      "Примеры:",
+      "• закуп 15000 петров сбер упаковка",
+      "• реклама 5000 ozon",
+      "• интернет 1700",
+      "• фулфилмент 12500",
+    ].join("\\n");
+  }
+
+  if (type === "income") {
+    return [
+      "💰 Добавить поступление",
+      "",
+      "Напишите поступление обычным текстом.",
+      "",
+      "Пример:",
+      "• поступило 4881996 лебедева ozon выручка",
+    ].join("\\n");
+  }
+
+  if (type === "personal") {
+    return [
+      "👤 Вывод собственника",
+      "",
+      "Напишите вывод обычным текстом.",
+      "",
+      "Пример:",
+      "• вывод 50000 продукты сбер",
+    ].join("\\n");
+  }
+
+  if (type === "credit") {
+    return [
+      "🏦 Кредит / займ",
+      "",
+      "Напишите кредитную операцию обычным текстом.",
+      "",
+      "Примеры:",
+      "• тело кредит 17792 альфа",
+      "• проценты кредит 4229 альфа",
+    ].join("\\n");
+  }
+
+  return "Напишите операцию обычным текстом.";
+}
+
 function getHelpMessage(chatId: string) {
   return [
     "🏠 AvoroFin — главное меню",
@@ -748,13 +866,23 @@ async function createDraftFromMessage(message: TelegramMessage) {
 
   if (
     text.startsWith("/start") ||
-    text.startsWith("/help") ||
     text.startsWith("/menu") ||
     text.trim().toLowerCase() === "🏠 меню" ||
     text.trim().toLowerCase() === "🏠 главное меню" ||
     text.trim().toLowerCase() === "меню" ||
     text.trim().toLowerCase() === "главное меню"
   ) {
+    await sendMessage(
+      chatId,
+      getVisualMenuMessage(chatId),
+      visualMenuInlineKeyboard()
+    );
+
+    await sendMessage(chatId, "Быстрые кнопки включены 👇", mainReplyKeyboard());
+    return;
+  }
+
+  if (text.startsWith("/help")) {
     await sendMessage(chatId, getHelpMessage(chatId), mainReplyKeyboard());
     return;
   }
@@ -1656,6 +1784,59 @@ async function setAccount(
 
 async function handleCallbackQuery(callbackQuery: TelegramCallbackQuery) {
   const data = callbackQuery.data ?? "";
+
+  if (data.startsWith("quick_help:")) {
+    const message = callbackQuery.message;
+    const chatId = message?.chat.id ? String(message.chat.id) : null;
+    const type = data.replace("quick_help:", "");
+
+    await answerCallbackQuery(callbackQuery.id);
+
+    if (chatId) {
+      await sendMessage(chatId, getQuickHelpMessage(type), mainReplyKeyboard());
+    }
+
+    return;
+  }
+
+  if (data === "quick_last") {
+    const message = callbackQuery.message;
+    const chatId = message?.chat.id ? String(message.chat.id) : null;
+
+    await answerCallbackQuery(callbackQuery.id);
+
+    if (chatId) {
+      await sendLastOperations(chatId);
+    }
+
+    return;
+  }
+
+  if (data === "quick_today") {
+    const message = callbackQuery.message;
+    const chatId = message?.chat.id ? String(message.chat.id) : null;
+
+    await answerCallbackQuery(callbackQuery.id);
+
+    if (chatId) {
+      await sendTodayOperations(chatId);
+    }
+
+    return;
+  }
+
+  if (data === "quick_undo") {
+    const message = callbackQuery.message;
+    const chatId = message?.chat.id ? String(message.chat.id) : null;
+
+    await answerCallbackQuery(callbackQuery.id);
+
+    if (chatId) {
+      await sendUndoLastOperationPrompt(chatId);
+    }
+
+    return;
+  }
 
   if (data.startsWith("undo:")) {
     await undoSavedOperation(callbackQuery, data.replace("undo:", ""));
