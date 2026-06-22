@@ -404,13 +404,51 @@ async function getFinanceMetricsForCompany(params: {
   };
 }
 
+async function getOrderStats(params: {
+  companyName: string;
+  marketplace: "WB" | "OZON";
+  range: DateRange;
+}) {
+  const rows = await prisma.marketplaceDailyOrderStat.findMany({
+    where: {
+      companyName: params.companyName,
+      marketplace: params.marketplace,
+      orderDate: {
+        gte: params.range.dateFrom,
+        lt: params.range.dateToExclusive,
+      },
+    },
+    select: {
+      ordersQty: true,
+      ordersAmount: true,
+    },
+  });
+
+  return rows.reduce(
+    (acc, row) => {
+      acc.ordersQty += Number(row.ordersQty ?? 0);
+      acc.ordersAmount += toNumber(row.ordersAmount);
+      return acc;
+    },
+    {
+      ordersQty: 0,
+      ordersAmount: 0,
+    }
+  );
+}
+
 function calculateDrr(adSpend: number, salesAmount: number) {
   if (salesAmount <= 0) return 0;
   return (adSpend / salesAmount) * 100;
 }
 
 async function getWbMetrics(companyName: string, range: DateRange) {
-  const [salesRows, adsRowsRaw, stockQty] = await Promise.all([
+  const [orderStats, salesRows, adsRowsRaw, stockQty] = await Promise.all([
+    getOrderStats({
+      companyName,
+      marketplace: "WB",
+      range,
+    }),
     prisma.wbSale.findMany({
       where: {
         companyName,
@@ -495,8 +533,8 @@ async function getWbMetrics(companyName: string, range: DateRange) {
 
   return {
     marketplace: "WB" as const,
-    ordersQty: Math.max(0, salesQty),
-    ordersAmount: Math.max(0, salesAmount),
+    ordersQty: orderStats.ordersQty,
+    ordersAmount: orderStats.ordersAmount,
     salesQty,
     salesAmount,
     adSpend,
@@ -506,7 +544,12 @@ async function getWbMetrics(companyName: string, range: DateRange) {
 }
 
 async function getOzonMetrics(companyName: string, range: DateRange) {
-  const [financeRows, adsRowsRaw, stockQty] = await Promise.all([
+  const [orderStats, financeRows, adsRowsRaw, stockQty] = await Promise.all([
+    getOrderStats({
+      companyName,
+      marketplace: "OZON",
+      range,
+    }),
     prisma.ozonFinance.findMany({
       where: {
         companyName,
@@ -558,12 +601,10 @@ async function getOzonMetrics(companyName: string, range: DateRange) {
 
   const adsRows = keepLatestOzonAdsRowsPerDate(adsRowsRaw);
   const adSpend = adsRows.reduce((sum, row) => sum + toNumber(row.spend), 0);
-  const adsOrders = adsRows.reduce((sum, row) => sum + Number(row.orders ?? 0), 0);
-
   return {
     marketplace: "OZON" as const,
-    ordersQty: adsOrders > 0 ? adsOrders : salesQty,
-    ordersAmount: salesAmount,
+    ordersQty: orderStats.ordersQty,
+    ordersAmount: orderStats.ordersAmount,
     salesQty,
     salesAmount,
     adSpend,
@@ -586,6 +627,10 @@ function addMarketplaceTotals(
 
 function buildWarnings(report: DailyReport) {
   const warnings: string[] = [];
+
+  if (report.totals.ordersQty <= 0 && report.totals.ordersAmount <= 0) {
+    warnings.push("нет заказов за период");
+  }
 
   if (report.totals.salesQty <= 0 && report.totals.salesAmount <= 0) {
     warnings.push("нет продаж/выкупов за период");

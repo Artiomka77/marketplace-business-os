@@ -592,6 +592,32 @@ model BudgetPlan {
   @@unique([companyName, periodYear, periodMonth])
 }
 
+
+model MarketplaceDailyOrderStat {
+  id String @id @default(cuid())
+
+  companyName String
+  marketplace String
+  // WB | OZON
+
+  orderDate DateTime
+
+  ordersQty    Int     @default(0)
+  ordersAmount Decimal @default(0)
+
+  source String @default("API")
+
+  rawJson Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([companyName, marketplace, orderDate])
+  @@index([companyName])
+  @@index([marketplace])
+  @@index([orderDate])
+}
+
 model MarketplaceApiConnection {
   id String @id @default(cuid())
 
