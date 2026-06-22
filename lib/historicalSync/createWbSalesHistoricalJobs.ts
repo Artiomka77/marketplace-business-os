@@ -15,6 +15,8 @@ type WbFinanceReportRow = {
   dateTo: Date | null;
 };
 
+const WB_SALES_HISTORICAL_START_DATE = "2025-03-01";
+
 function normalizeReportNumber(value: unknown) {
   return String(value ?? "").trim();
 }
@@ -22,6 +24,41 @@ function normalizeReportNumber(value: unknown) {
 function formatDate(date: Date | null) {
   if (!date) return null;
   return date.toISOString().slice(0, 10);
+}
+
+function parseDateOnly(value: string, label: string) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    throw new Error(`${label} должен быть в формате YYYY-MM-DD`);
+  }
+
+  const [yearText, monthText, dayText] = value.split("-");
+  const year = Number(yearText);
+  const month = Number(monthText);
+  const day = Number(dayText);
+
+  const date = new Date(Date.UTC(year, month - 1, day));
+
+  if (
+    Number.isNaN(date.getTime()) ||
+    date.getUTCFullYear() !== year ||
+    date.getUTCMonth() !== month - 1 ||
+    date.getUTCDate() !== day
+  ) {
+    throw new Error(`${label} содержит некорректную дату`);
+  }
+
+  return date;
+}
+
+function getWbSalesHistoricalStartDate() {
+  return parseDateOnly(
+    WB_SALES_HISTORICAL_START_DATE,
+    "WB_SALES_HISTORICAL_START_DATE"
+  );
+}
+
+function isBeforeWbSalesAvailablePeriod(dateTo: Date) {
+  return dateTo.getTime() < getWbSalesHistoricalStartDate().getTime();
 }
 
 async function getWbCompanies(options: CreateWbSalesHistoricalJobsOptions) {
@@ -183,6 +220,7 @@ async function createJobsForCompany(company: CompanyRow) {
   let skippedLoadedSales = 0;
   let skippedExistingJobs = 0;
   let skippedWithoutDates = 0;
+  let skippedBeforeAvailablePeriod = 0;
 
   for (const report of financeReports) {
     const reportNumber = normalizeReportNumber(report.reportNumber);
@@ -193,6 +231,11 @@ async function createJobsForCompany(company: CompanyRow) {
 
     if (!report.dateFrom || !report.dateTo) {
       skippedWithoutDates += 1;
+      continue;
+    }
+
+    if (isBeforeWbSalesAvailablePeriod(report.dateTo)) {
+      skippedBeforeAvailablePeriod += 1;
       continue;
     }
 
@@ -233,6 +276,8 @@ async function createJobsForCompany(company: CompanyRow) {
     skippedLoadedSales,
     skippedExistingJobs,
     skippedWithoutDates,
+    skippedBeforeAvailablePeriod,
+    wbSalesHistoricalStartDate: WB_SALES_HISTORICAL_START_DATE,
   };
 }
 
@@ -261,6 +306,11 @@ export async function createWbSalesHistoricalJobs(
       (sum, row) => sum + row.skippedWithoutDates,
       0
     ),
+    skippedBeforeAvailablePeriod: summaries.reduce(
+      (sum, row) => sum + row.skippedBeforeAvailablePeriod,
+      0
+    ),
+    wbSalesHistoricalStartDate: WB_SALES_HISTORICAL_START_DATE,
     summaries,
   };
 }
