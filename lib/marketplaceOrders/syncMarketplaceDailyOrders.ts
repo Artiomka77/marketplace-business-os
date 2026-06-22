@@ -67,11 +67,6 @@ function startOfUtcDay(date: Date) {
   );
 }
 
-function addUtcDays(date: Date, days: number) {
-  const result = new Date(date);
-  result.setUTCDate(result.getUTCDate() + days);
-  return result;
-}
 
 function getYesterdayMoscowDate(now = new Date()) {
   const moscowNow = new Date(now.getTime() + 3 * 60 * 60 * 1000);
@@ -209,8 +204,15 @@ async function fetchWbOrdersForDate(wbToken: string, date: Date) {
   return (await response.json()) as WbOrderRow[];
 }
 
+function addUtcDays(date: Date, days: number) {
+  const result = new Date(date);
+  result.setUTCDate(result.getUTCDate() + days);
+  return result;
+}
+
 async function fetchWbSalesFunnelForDate(wbToken: string, date: Date) {
   const dateText = formatDateOnly(date);
+  const pastDateText = formatDateOnly(addUtcDays(date, -1));
   const limit = 1000;
   let offset = 0;
 
@@ -233,9 +235,12 @@ async function fetchWbSalesFunnelForDate(wbToken: string, date: Date) {
             start: dateText,
             end: dateText,
           },
+          // WB Sales Funnel требует, чтобы pastPeriod был раньше selectedPeriod.
+          // Для нашей сверки нужен только selectedPeriod, но API всё равно валидирует пару периодов.
+          // Поэтому для однодневного отчёта ставим pastPeriod на предыдущий день.
           pastPeriod: {
-            start: dateText,
-            end: dateText,
+            start: pastDateText,
+            end: pastDateText,
           },
           nmIds: [],
           brandNames: [],
@@ -451,6 +456,8 @@ export async function syncWbDailyOrdersForCompany(params: {
       funnelError,
       funnelResult: funnelResult
         ? {
+            selectedDate: formatDateOnly(params.date),
+            pastDate: formatDateOnly(addUtcDays(params.date, -1)),
             ordersQty: funnelResult.ordersQty,
             ordersAmount: funnelResult.ordersAmount,
             productsCount: funnelResult.productsCount,
@@ -476,6 +483,8 @@ export async function syncWbDailyOrdersForCompany(params: {
     funnelError,
     funnelResult: funnelResult
       ? {
+          selectedDate: formatDateOnly(params.date),
+          pastDate: formatDateOnly(addUtcDays(params.date, -1)),
           ordersQty: funnelResult.ordersQty,
           ordersAmount: funnelResult.ordersAmount,
           productsCount: funnelResult.productsCount,
