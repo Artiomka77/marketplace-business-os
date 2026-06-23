@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 
 import { prisma } from "@/lib/prisma";
 import { syncMarketplaceDailyOrders } from "@/lib/marketplaceOrders/syncMarketplaceDailyOrders";
-import { syncOzonAds, syncOzonFinance } from "@/lib/ozon/syncOzon";
+import { syncOzonFinance } from "@/lib/ozon/syncOzon";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -135,32 +135,83 @@ async function runOzonDailyFinance(
   }
 }
 
-async function runOzonDailyAds(
+async function ensureOzonAdsJobForReportDate(
   connection: MarketplaceApiConnectionForDaily,
   date: Date
 ) {
-  try {
-    const result = await syncOzonAds(connection.companyId, {
-      dateFrom: date,
-      dateTo: date,
-    });
+  const dateFrom = date;
+  const dateTo = date;
 
+  const existingJob = await prisma.historicalSyncJob.findFirst({
+    where: {
+      companyId: connection.companyId,
+      companyName: connection.company.name,
+      marketplace: "OZON",
+      dataType: "ADS",
+      dateFrom,
+      dateTo,
+    },
+    select: {
+      id: true,
+      status: true,
+      cursorOffset: true,
+      lastError: true,
+    },
+  });
+
+  if (existingJob) {
     return {
       marketplace: "OZON",
       companyName: connection.company.name,
       dataType: "ADS",
       ok: true,
-      result,
-    };
-  } catch (error) {
-    return {
-      marketplace: "OZON",
-      companyName: connection.company.name,
-      dataType: "ADS",
-      ok: false,
-      error: getErrorMessage(error),
+      created: false,
+      jobId: existingJob.id,
+      status: existingJob.status,
+      cursorOffset: existingJob.cursorOffset,
+      lastError: existingJob.lastError,
+      dateFrom: formatDateOnly(dateFrom),
+      dateTo: formatDateOnly(dateTo),
+      message:
+        "Ozon Ads задача уже есть. Она будет обрабатываться отдельным cron /api/cron/historical-sync-ozon-ads, чтобы daily-priority-sync не зависал.",
     };
   }
+
+  const job = await prisma.historicalSyncJob.create({
+    data: {
+      companyId: connection.companyId,
+      companyName: connection.company.name,
+      marketplace: "OZON",
+      dataType: "ADS",
+      dateFrom,
+      dateTo,
+      cursorDate: dateFrom,
+      cursorOffset: 0,
+      status: "PENDING",
+      totalSteps: 1,
+      completedSteps: 0,
+    },
+    select: {
+      id: true,
+      status: true,
+      cursorOffset: true,
+    },
+  });
+
+  return {
+    marketplace: "OZON",
+    companyName: connection.company.name,
+    dataType: "ADS",
+    ok: true,
+    created: true,
+    jobId: job.id,
+    status: job.status,
+    cursorOffset: job.cursorOffset,
+    dateFrom: formatDateOnly(dateFrom),
+    dateTo: formatDateOnly(dateTo),
+    message:
+      "Ozon Ads задача создана. Она будет обрабатываться отдельным cron /api/cron/historical-sync-ozon-ads, чтобы daily-priority-sync не зависал.",
+  };
 }
 
 async function ensureWbAdsJobForReportDate(
@@ -257,15 +308,17 @@ export async function GET(req: Request) {
 
     for (const connection of connections) {
       if (connection.marketplace === "OZON") {
+        // Быстрый источник для Ozon — только Finance.
+        // Ozon Ads не запускаем здесь напрямую: Performance API может работать
+        // дольше лимита Vercel и валить весь daily-priority-sync по timeout.
         results.push(await runOzonDailyFinance(connection, date));
-        results.push(await runOzonDailyAds(connection, date));
+        results.push(await ensureOzonAdsJobForReportDate(connection, date));
       }
 
       if (connection.marketplace === "WB") {
-        // Важно: не запускаем WB Ads напрямую в FULL-режиме.
-        // WB часто отвечает 429 по global limiter.
+        // WB Ads тоже не запускаем напрямую в FULL-режиме.
         // Здесь только гарантируем свежую задачу, а загрузку делает отдельный
-        // route historical-sync-wb-ads маленькими чанками.
+        // route historical-sync-wb-ads безопасным темпом.
         results.push(await ensureWbAdsJobForReportDate(connection, date));
       }
     }
@@ -274,7 +327,7 @@ export async function GET(req: Request) {
       ok: true,
       date: dateText,
       purpose:
-        "Daily priority sync for Telegram owner report. Orders, Ozon Finance and Ozon Ads run directly. WB Ads is queued and processed safely in chunks before report delivery.",
+        "Daily priority sync for Telegram owner report. Orders and Ozon Finance run directly. Ozon Ads and WB Ads are queued and processed by separate cron routes to avoid Vercel timeout.",
       orderStats,
       results,
       executedAt: new Date().toISOString(),
