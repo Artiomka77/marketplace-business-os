@@ -1298,6 +1298,75 @@ function buildOwnerConclusion(report: DailyReport) {
   return lines;
 }
 
+function getHighDrrAction(report: DailyReport) {
+  const highestDrrItem = getHighestDrrItem(report);
+
+  if (!highestDrrItem || highestDrrItem.drrByOrders < 10) {
+    return null;
+  }
+
+  if (highestDrrItem.ordersAmount < 50000) {
+    return `Проверить ${highestDrrItem.label}: ДРР высокий, но объём заказов маленький — не масштабировать рекламу без проверки товаров и ставок.`;
+  }
+
+  return `Проверить ${highestDrrItem.label}: ДРР ${formatPercent(
+    highestDrrItem.drrByOrders
+  )} от заказов — найти кампании/товары, которые съедают бюджет.`;
+}
+
+function getSalesGapAction(report: DailyReport) {
+  if (report.totals.ordersAmount <= 0) return null;
+
+  const salesToOrdersRatio =
+    (report.totals.salesAmount / report.totals.ordersAmount) * 100;
+
+  if (salesToOrdersRatio < 55) {
+    return `Проверить разрыв заказов и продаж/начислений: сейчас продажи/начисления ≈ ${formatPercent(
+      salesToOrdersRatio
+    )} от суммы заказов. Для одного дня это может быть нормальной задержкой, но тренд нужно смотреть за 3–7 дней.`;
+  }
+
+  return null;
+}
+
+function buildOwnerActions(report: DailyReport) {
+  const actions: string[] = [];
+
+  if (report.totals.netCashFlow < 0) {
+    actions.push(
+      "Проверить крупные расходы дня и отделить обязательные платежи от тех, что можно перенести."
+    );
+  }
+
+  if (report.totals.ownerWithdrawals > 0 && report.totals.netCashFlow < 0) {
+    actions.push(
+      "На дни с минусовым ДДС не увеличивать вывод собственника без проверки ближайших платежей."
+    );
+  }
+
+  const highDrrAction = getHighDrrAction(report);
+
+  if (highDrrAction) {
+    actions.push(highDrrAction);
+  }
+
+  const salesGapAction = getSalesGapAction(report);
+
+  if (salesGapAction) {
+    actions.push(salesGapAction);
+  }
+
+  if (report.totals.stockQty > 0) {
+    actions.push(
+      `Остатки ${formatNumber(
+        report.totals.stockQty
+      )} шт: следующим шагом смотреть не общий остаток, а SKU с большим запасом и слабым спросом.`
+    );
+  }
+
+  return ["Что сделать сегодня:", ...actions.slice(0, 4).map((action, index) => `${index + 1}. ${action}`)];
+}
+
 function marketplaceLine(label: string, metrics: MarketplaceDailyMetrics) {
   const lines = [`${label}`, marketplaceOrdersLine(metrics), marketplaceSalesLine(metrics)];
 
@@ -1351,6 +1420,7 @@ export function formatDailyReportForTelegram(report: DailyReport) {
   }
 
   lines.push("", ...buildOwnerConclusion(report));
+  lines.push("", ...buildOwnerActions(report));
 
   for (const company of report.companies) {
     lines.push(
