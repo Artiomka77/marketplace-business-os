@@ -1163,6 +1163,141 @@ function marketplaceAdLine(metrics: MarketplaceDailyMetrics) {
   return `Реклама: ${formatMoney(metrics.adSpend)}`;
 }
 
+type MarketplaceConclusionItem = {
+  label: string;
+  drrByOrders: number;
+  drrBySales: number;
+  ordersAmount: number;
+  salesAmount: number;
+  adSpend: number;
+};
+
+function getMarketplaceConclusionItems(report: DailyReport) {
+  const items: MarketplaceConclusionItem[] = [];
+
+  for (const company of report.companies) {
+    items.push({
+      label: `${company.companyName} WB`,
+      drrByOrders: company.wb.drrByOrders,
+      drrBySales: company.wb.drrBySales,
+      ordersAmount: company.wb.ordersAmount,
+      salesAmount: company.wb.salesAmount,
+      adSpend: company.wb.adSpend,
+    });
+
+    items.push({
+      label: `${company.companyName} Ozon`,
+      drrByOrders: company.ozon.drrByOrders,
+      drrBySales: company.ozon.drrBySales,
+      ordersAmount: company.ozon.ordersAmount,
+      salesAmount: company.ozon.salesAmount,
+      adSpend: company.ozon.adSpend,
+    });
+  }
+
+  return items;
+}
+
+function getHighestDrrItem(report: DailyReport) {
+  const items = getMarketplaceConclusionItems(report).filter(
+    (item) => item.ordersAmount > 0 && item.adSpend > 0
+  );
+
+  if (items.length === 0) return null;
+
+  return items.sort((a, b) => b.drrByOrders - a.drrByOrders)[0];
+}
+
+function getDrrConclusion(report: DailyReport) {
+  const totalDrr = report.totals.drrByOrders;
+
+  if (report.totals.ordersAmount <= 0 || report.totals.adSpend <= 0) {
+    return "Реклама: нет достаточно данных для оценки ДРР.";
+  }
+
+  if (totalDrr <= 7) {
+    return `Реклама в рабочей зоне: ДРР ${formatPercent(
+      totalDrr
+    )} от заказов.`;
+  }
+
+  if (totalDrr <= 10) {
+    return `Реклама требует контроля: ДРР ${formatPercent(
+      totalDrr
+    )} от заказов.`;
+  }
+
+  return `Реклама перегрета: ДРР ${formatPercent(
+    totalDrr
+  )} от заказов, нужно проверить кампании.`;
+}
+
+function getCashFlowConclusion(report: DailyReport) {
+  if (report.totals.netCashFlow < 0) {
+    return `Денежный поток отрицательный: ${formatMoney(
+      report.totals.netCashFlow
+    )}. Деньги из бизнеса уходят быстрее, чем заходят.`;
+  }
+
+  if (report.totals.netCashFlow > 0) {
+    return `Денежный поток положительный: ${formatMoney(
+      report.totals.netCashFlow
+    )}. По кассе день прошёл устойчиво.`;
+  }
+
+  return "Денежный поток около нуля: касса без запаса прочности.";
+}
+
+function getProfitConclusion(report: DailyReport) {
+  if (report.totals.netProfitImpact < 0) {
+    return `Прибыль под давлением: ${formatMoney(
+      report.totals.netProfitImpact
+    )}. Нужно смотреть расходы и выводы.`;
+  }
+
+  if (report.totals.netProfitImpact > 0) {
+    return `По влиянию на прибыль день положительный: ${formatMoney(
+      report.totals.netProfitImpact
+    )}.`;
+  }
+
+  return "Влияние на прибыль около нуля.";
+}
+
+function buildOwnerConclusion(report: DailyReport) {
+  const lines: string[] = ["Вывод дня:"];
+
+  lines.push(
+    `Оборот заказов: ${formatMoney(report.totals.ordersAmount)} при остатках ${formatNumber(
+      report.totals.stockQty
+    )} шт.`
+  );
+
+  lines.push(getDrrConclusion(report));
+  lines.push(getCashFlowConclusion(report));
+  lines.push(getProfitConclusion(report));
+
+  if (report.totals.ownerWithdrawals > 0 && report.totals.netCashFlow < 0) {
+    lines.push(
+      `Вывод собственника ${formatMoney(
+        report.totals.ownerWithdrawals
+      )} усилил кассовый разрыв в этот день.`
+    );
+  }
+
+  const highestDrrItem = getHighestDrrItem(report);
+
+  if (highestDrrItem && highestDrrItem.drrByOrders >= 10) {
+    lines.push(
+      `Самая дорогая связка по рекламе: ${
+        highestDrrItem.label
+      } — ДРР ${formatPercent(highestDrrItem.drrByOrders)} от заказов.`
+    );
+  }
+
+  return lines;
+}
+
 function marketplaceLine(label: string, metrics: MarketplaceDailyMetrics) {
   const lines = [`${label}`, marketplaceOrdersLine(metrics), marketplaceSalesLine(metrics)];
 
@@ -1214,6 +1349,8 @@ export function formatDailyReportForTelegram(report: DailyReport) {
     lines.push("", "Что требует внимания:");
     lines.push(...report.warnings.map((warning) => `⚠️ ${warning}`));
   }
+
+  lines.push("", ...buildOwnerConclusion(report));
 
   for (const company of report.companies) {
     lines.push(
