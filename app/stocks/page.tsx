@@ -20,6 +20,14 @@ type ProductVisual = {
   imageUrl: string | null;
 };
 
+type CostLookup = {
+  bySupplierArticle: Map<string, number>;
+  bySupplierArticleCompact: Map<string, number>;
+  byNmId: Map<string, number>;
+  bySupplierArticleRoot: Map<string, number>;
+  bySupplierArticleRootCompact: Map<string, number>;
+};
+
 type CompanyStockSummary = {
   companyName: string;
   totalQty: number;
@@ -103,6 +111,97 @@ function toNumber(value: unknown) {
 
 function normalizeKey(value: unknown) {
   return String(value ?? "").trim();
+}
+
+function normalizeArticleForMatch(value: unknown) {
+  return String(value ?? "")
+    .toLowerCase()
+    .replaceAll("ё", "е")
+    .replace(/[\s\-_/\\.]+/g, "")
+    .trim();
+}
+
+function getSupplierArticleRoot(value: unknown) {
+  const vendorCode = normalizeKey(value);
+
+  if (!vendorCode) return "";
+
+  return vendorCode.split("-")[0]?.trim() ?? vendorCode;
+}
+
+function getSupplierArticleCandidates(value: unknown) {
+  const vendorCode = normalizeKey(value);
+
+  if (!vendorCode) return [];
+
+  const candidates = new Set<string>();
+  candidates.add(vendorCode);
+
+  const parts = vendorCode.split("-").map((part) => part.trim()).filter(Boolean);
+
+  if (parts.length > 1) {
+    for (let length = parts.length - 1; length >= 1; length--) {
+      candidates.add(parts.slice(0, length).join("-"));
+    }
+  }
+
+  candidates.add(getSupplierArticleRoot(vendorCode));
+
+  return Array.from(candidates).filter(Boolean);
+}
+
+function findCostBySupplierArticle(value: unknown, costs: CostLookup) {
+  const candidates = getSupplierArticleCandidates(value);
+
+  for (const candidate of candidates) {
+    const exact = costs.bySupplierArticle.get(candidate);
+
+    if (exact !== undefined) return exact;
+
+    const compact = costs.bySupplierArticleCompact.get(normalizeArticleForMatch(candidate));
+
+    if (compact !== undefined) return compact;
+
+    const root = getSupplierArticleRoot(candidate);
+    const rootExact = costs.bySupplierArticleRoot.get(root);
+
+    if (rootExact !== undefined) return rootExact;
+
+    const rootCompact = costs.bySupplierArticleRootCompact.get(normalizeArticleForMatch(root));
+
+    if (rootCompact !== undefined) return rootCompact;
+  }
+
+  return undefined;
+}
+
+function getCostPrice(params: {
+  vendorCode: string | null | undefined;
+  nmId?: string | null;
+  sku?: string | null;
+  ownCostPrice?: unknown;
+  costs: CostLookup;
+}) {
+  // В WbStock поле vendorCode — это артикул поставщика WB.
+  // Себестоимость WB ищем именно по нему и его вариантам написания.
+  const ownCostPrice = toNumber(params.ownCostPrice);
+
+  if (ownCostPrice > 0) return ownCostPrice;
+
+  const supplierArticleCost = findCostBySupplierArticle(params.vendorCode, params.costs);
+
+  if (supplierArticleCost !== undefined) return supplierArticleCost;
+
+  const nmId = normalizeKey(params.nmId);
+  const sku = normalizeKey(params.sku);
+
+  return (
+    (nmId ? params.costs.byNmId.get(nmId) : undefined) ??
+    (sku ? params.costs.byNmId.get(sku) : undefined) ??
+    findCostBySupplierArticle(nmId, params.costs) ??
+    findCostBySupplierArticle(sku, params.costs) ??
+    0
+  );
 }
 
 function normalizeSearchValue(value: unknown) {
@@ -677,16 +776,61 @@ export default async function StocksPage({
   ]);
 
   const costByVendorCode = new Map<string, number>();
+  const costByVendorCodeCompact = new Map<string, number>();
+  const costByNmId = new Map<string, number>();
+  const costByVendorRoot = new Map<string, number>();
+  const costByVendorRootCompact = new Map<string, number>();
   const costNameByVendorCode = new Map<string, string>();
 
   for (const cost of productCosts) {
     const vendorCode = normalizeKey(cost.vendorCode);
+    const nmId = normalizeKey(cost.nmId);
+    const costPrice = toNumber(cost.costPrice);
 
-    if (!vendorCode || costByVendorCode.has(vendorCode)) continue;
+    if (vendorCode) {
+      const candidates = getSupplierArticleCandidates(vendorCode);
 
-    costByVendorCode.set(vendorCode, toNumber(cost.costPrice));
-    costNameByVendorCode.set(vendorCode, normalizeKey(cost.name));
+      for (const candidate of candidates) {
+        if (!costByVendorCode.has(candidate)) {
+          costByVendorCode.set(candidate, costPrice);
+        }
+
+        const compactCandidate = normalizeArticleForMatch(candidate);
+
+        if (compactCandidate && !costByVendorCodeCompact.has(compactCandidate)) {
+          costByVendorCodeCompact.set(compactCandidate, costPrice);
+        }
+      }
+
+      if (!costNameByVendorCode.has(vendorCode)) {
+        costNameByVendorCode.set(vendorCode, normalizeKey(cost.name));
+      }
+
+      const vendorRoot = getSupplierArticleRoot(vendorCode);
+
+      if (vendorRoot && !costByVendorRoot.has(vendorRoot)) {
+        costByVendorRoot.set(vendorRoot, costPrice);
+      }
+
+      const compactRoot = normalizeArticleForMatch(vendorRoot);
+
+      if (compactRoot && !costByVendorRootCompact.has(compactRoot)) {
+        costByVendorRootCompact.set(compactRoot, costPrice);
+      }
+    }
+
+    if (nmId && !costByNmId.has(nmId)) {
+      costByNmId.set(nmId, costPrice);
+    }
   }
+
+  const costs: CostLookup = {
+    bySupplierArticle: costByVendorCode,
+    bySupplierArticleCompact: costByVendorCodeCompact,
+    byNmId: costByNmId,
+    bySupplierArticleRoot: costByVendorRoot,
+    bySupplierArticleRootCompact: costByVendorRootCompact,
+  };
 
   const ozonProductByVendorCode = new Map<string, ProductVisual>();
   const ozonProductBySku = new Map<string, ProductVisual>();
@@ -789,7 +933,14 @@ export default async function StocksPage({
             toNumber(stock.inTransitToCustomer) +
             toNumber(stock.inTransitReturns);
 
-          return qty * (costByVendorCode.get(normalizeKey(stock.vendorCode)) ?? 0);
+          return (
+            qty *
+            getCostPrice({
+              vendorCode: stock.vendorCode,
+              nmId: stock.nmId,
+              costs,
+            })
+          );
         })
       );
 
@@ -823,7 +974,14 @@ export default async function StocksPage({
             toNumber(stock.inTransitQty) +
             toNumber(stock.returnQty);
 
-          return qty * (costByVendorCode.get(normalizeKey(stock.vendorCode)) ?? 0);
+          return (
+            qty *
+            getCostPrice({
+              vendorCode: stock.vendorCode,
+              sku: stock.sku,
+              costs,
+            })
+          );
         })
       );
 
@@ -838,20 +996,24 @@ export default async function StocksPage({
       );
       const warehouseTotalCost = sum(
         companyWarehouseStocks.map((stock) => {
-          const costPrice =
-            toNumber(stock.costPrice) ||
-            costByVendorCode.get(normalizeKey(stock.vendorCode)) ||
-            0;
+          const costPrice = getCostPrice({
+            vendorCode: stock.vendorCode,
+            sku: stock.sku,
+            ownCostPrice: stock.costPrice,
+            costs,
+          });
 
           return toNumber(stock.warehouseQty) * costPrice;
         })
       );
       const availableForSupplyCost = sum(
         companyWarehouseStocks.map((stock) => {
-          const costPrice =
-            toNumber(stock.costPrice) ||
-            costByVendorCode.get(normalizeKey(stock.vendorCode)) ||
-            0;
+          const costPrice = getCostPrice({
+            vendorCode: stock.vendorCode,
+            sku: stock.sku,
+            ownCostPrice: stock.costPrice,
+            costs,
+          });
 
           return toNumber(stock.availableForSupplyQty) * costPrice;
         })
@@ -933,7 +1095,11 @@ export default async function StocksPage({
         toNumber(stock.totalStock) +
         toNumber(stock.inTransitToCustomer) +
         toNumber(stock.inTransitReturns);
-      const costPrice = costByVendorCode.get(normalizeKey(vendorCode)) ?? 0;
+      const costPrice = getCostPrice({
+        vendorCode,
+        nmId: stock.nmId,
+        costs,
+      });
       const visual = makeRowVisual({
         vendorCode,
         sku: null,
@@ -972,7 +1138,11 @@ export default async function StocksPage({
         toNumber(stock.supplyQty) +
         toNumber(stock.inTransitQty) +
         toNumber(stock.returnQty);
-      const costPrice = costByVendorCode.get(normalizeKey(vendorCode)) ?? 0;
+      const costPrice = getCostPrice({
+        vendorCode,
+        sku: stock.sku,
+        costs,
+      });
       const visual = makeRowVisual({
         vendorCode,
         sku: stock.sku,
@@ -1002,10 +1172,12 @@ export default async function StocksPage({
     }),
     ...warehouseStocks.map((stock) => {
       const vendorCode = stock.vendorCode;
-      const costPrice =
-        toNumber(stock.costPrice) ||
-        costByVendorCode.get(normalizeKey(stock.vendorCode)) ||
-        0;
+      const costPrice = getCostPrice({
+        vendorCode: stock.vendorCode,
+        sku: stock.sku,
+        ownCostPrice: stock.costPrice,
+        costs,
+      });
       const visual = makeRowVisual({
         vendorCode,
         sku: stock.sku,
@@ -1052,13 +1224,16 @@ export default async function StocksPage({
     if (!productOptionsMap.has(row.vendorCode)) {
       productOptionsMap.set(row.vendorCode, {
         vendorCode: row.vendorCode,
-        label: productTitle(row),
+        label: row.vendorCode,
       });
     }
   }
 
   const productOptions = Array.from(productOptionsMap.values()).sort((a, b) =>
-    a.label.localeCompare(b.label, "ru")
+    a.vendorCode.localeCompare(b.vendorCode, "ru", {
+      numeric: true,
+      sensitivity: "base",
+    })
   );
 
   const filteredRows = allRows
