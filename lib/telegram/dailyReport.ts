@@ -37,6 +37,8 @@ type MarketplaceDailyMetrics = {
   salesDataMissingReason: string | null;
   adSpend: number;
   adSpendSource: string;
+  adDataMissing: boolean;
+  adDataMissingReason: string | null;
   drrByOrders: number;
   drrBySales: number;
   stockQty: number;
@@ -687,6 +689,8 @@ async function getWbMetrics(companyName: string, range: DateRange) {
     salesDataMissingReason,
     adSpend,
     adSpendSource: "WB Ads",
+    adDataMissing: false,
+    adDataMissingReason: null,
     drrByOrders: ordersDataMissing ? 0 : calculateDrr(adSpend, orderStats.ordersAmount),
     drrBySales: salesDataMissing ? 0 : calculateDrr(adSpend, salesAmount),
     stockQty,
@@ -756,17 +760,28 @@ async function getOzonMetrics(companyName: string, range: DateRange) {
     0
   );
   const financeAdSpend = calculateOzonFinanceAdSpend(financeRows);
+  const financeAdRowsCount = financeRows.filter((row) =>
+    isOzonFinanceAdOperation(row.operationType)
+  ).length;
+  const performanceAdRowsCount = adsRows.length;
 
   // Для управленческого отчёта берём фактические рекламные списания из Ozon Finance,
   // если они есть. Performance API оставляем как fallback, чтобы не задвоить CPC/CPO.
   const adSpend =
-    financeAdSpend > 0 ? financeAdSpend : performanceAdSpend;
+    financeAdRowsCount > 0 ? financeAdSpend : performanceAdSpend;
   const adSpendSource =
-    financeAdSpend > 0 ? "Ozon Finance Ads" : "Ozon Performance Ads";
+    financeAdRowsCount > 0 ? "Ozon Finance Ads" : "Ozon Performance Ads";
 
   const ordersDataMissing = orderStats.rowsCount === 0;
   const ordersDataMissingReason = ordersDataMissing
     ? "Ozon заказы за этот период ещё не загружены в MarketplaceDailyOrderStat"
+    : null;
+
+  const hasOzonActivity = orderStats.rowsCount > 0 || salesAmount > 0;
+  const adDataMissing =
+    hasOzonActivity && financeAdRowsCount === 0 && performanceAdRowsCount === 0;
+  const adDataMissingReason = adDataMissing
+    ? "Ozon рекламные расходы за этот период ещё не загружены из Ozon Finance/Performance"
     : null;
 
   return {
@@ -783,6 +798,8 @@ async function getOzonMetrics(companyName: string, range: DateRange) {
     salesDataMissingReason: null,
     adSpend,
     adSpendSource,
+    adDataMissing,
+    adDataMissingReason,
     drrByOrders: ordersDataMissing ? 0 : calculateDrr(adSpend, orderStats.ordersAmount),
     drrBySales: calculateDrr(adSpend, salesAmount),
     stockQty,
@@ -837,6 +854,14 @@ function buildWarnings(report: DailyReport) {
 
     if (company.ozon.ordersDataMissing) {
       warnings.push(`${company.companyName} Ozon: заказы ещё не загружены`);
+    }
+
+    if (company.wb.adDataMissing) {
+      warnings.push(`${company.companyName} WB: реклама ещё не загружена`);
+    }
+
+    if (company.ozon.adDataMissing) {
+      warnings.push(`${company.companyName} Ozon: реклама ещё не загружена`);
     }
 
     if (company.wb.salesDataMissing) {
@@ -986,6 +1011,14 @@ function marketplaceOrdersLine(metrics: MarketplaceDailyMetrics) {
   )}`;
 }
 
+function marketplaceAdLine(metrics: MarketplaceDailyMetrics) {
+  if (metrics.adDataMissing) {
+    return "Реклама: данные ещё не загружены";
+  }
+
+  return `Реклама: ${formatMoney(metrics.adSpend)}`;
+}
+
 function marketplaceLine(label: string, metrics: MarketplaceDailyMetrics) {
   const lines = [`${label}`, marketplaceOrdersLine(metrics), marketplaceSalesLine(metrics)];
 
@@ -997,8 +1030,12 @@ function marketplaceLine(label: string, metrics: MarketplaceDailyMetrics) {
     lines.push(`Источник продаж: ${metrics.salesDataMissingReason}`);
   }
 
+  if (metrics.adDataMissingReason) {
+    lines.push(`Источник рекламы: ${metrics.adDataMissingReason}`);
+  }
+
   lines.push(
-    `Реклама: ${formatMoney(metrics.adSpend)}`,
+    marketplaceAdLine(metrics),
     `ДРР: от заказов ${formatPercent(metrics.drrByOrders)} (от продаж/начислений ${formatPercent(
       metrics.drrBySales
     )})`,

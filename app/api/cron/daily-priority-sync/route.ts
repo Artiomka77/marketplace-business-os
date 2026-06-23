@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 
 import { prisma } from "@/lib/prisma";
 import { syncMarketplaceDailyOrders } from "@/lib/marketplaceOrders/syncMarketplaceDailyOrders";
-import { syncOzonFinance } from "@/lib/ozon/syncOzon";
+import { syncOzonAds, syncOzonFinance } from "@/lib/ozon/syncOzon";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -135,6 +135,34 @@ async function runOzonDailyFinance(
   }
 }
 
+async function runOzonDailyAds(
+  connection: MarketplaceApiConnectionForDaily,
+  date: Date
+) {
+  try {
+    const result = await syncOzonAds(connection.companyId, {
+      dateFrom: date,
+      dateTo: date,
+    });
+
+    return {
+      marketplace: "OZON",
+      companyName: connection.company.name,
+      dataType: "ADS",
+      ok: true,
+      result,
+    };
+  } catch (error) {
+    return {
+      marketplace: "OZON",
+      companyName: connection.company.name,
+      dataType: "ADS",
+      ok: false,
+      error: getErrorMessage(error),
+    };
+  }
+}
+
 async function ensureWbAdsJobForReportDate(
   connection: MarketplaceApiConnectionForDaily,
   date: Date
@@ -230,6 +258,7 @@ export async function GET(req: Request) {
     for (const connection of connections) {
       if (connection.marketplace === "OZON") {
         results.push(await runOzonDailyFinance(connection, date));
+        results.push(await runOzonDailyAds(connection, date));
       }
 
       if (connection.marketplace === "WB") {
@@ -245,7 +274,7 @@ export async function GET(req: Request) {
       ok: true,
       date: dateText,
       purpose:
-        "Daily priority sync for Telegram owner report. Orders and Ozon Finance run directly. WB Ads is queued and processed safely in chunks before report delivery.",
+        "Daily priority sync for Telegram owner report. Orders, Ozon Finance and Ozon Ads run directly. WB Ads is queued and processed safely in chunks before report delivery.",
       orderStats,
       results,
       executedAt: new Date().toISOString(),
