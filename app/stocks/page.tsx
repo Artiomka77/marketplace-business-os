@@ -105,6 +105,49 @@ function normalizeKey(value: unknown) {
   return String(value ?? "").trim();
 }
 
+function normalizeSearchValue(value: unknown) {
+  return String(value ?? "")
+    .toLowerCase()
+    .replaceAll("ё", "е")
+    .replace(/[\s\-_/\\.]+/g, "")
+    .trim();
+}
+
+function rowMatchesSearch(row: UnifiedStockRow, query: string) {
+  const normalizedQuery = normalizeSearchValue(query);
+
+  if (!normalizedQuery) return true;
+
+  const fields = [
+    row.productName,
+    row.vendorCode,
+    row.sku,
+    row.nmId,
+    row.barcode,
+    row.size,
+    row.companyName,
+    row.source,
+    row.warehouseName,
+    row.clusterName,
+  ];
+
+  const textHaystack = fields
+    .map((field) => String(field ?? "").toLowerCase().replaceAll("ё", "е"))
+    .join(" ");
+
+  const compactHaystack = normalizeSearchValue(fields.join(" "));
+
+  return (
+    textHaystack.includes(String(query).toLowerCase().replaceAll("ё", "е")) ||
+    compactHaystack.includes(normalizedQuery)
+  );
+}
+
+function getSelectedProduct(value?: string) {
+  if (!value || value === "ALL") return "";
+  return normalizeKey(value);
+}
+
 function getSelectedSource(value?: string): StockSource {
   if (value === "WB" || value === "OZON" || value === "OWN") return value;
   return "ALL";
@@ -404,8 +447,8 @@ export default async function StocksPage({
   const rowsLimit = getRowsLimit(params.rows);
   const sortKey = getSortKey(params.sort);
   const sortDir = getSortDir(params.dir);
-  const selectedProduct = normalizeKey(params.product);
-  const searchQuery = normalizeKey(params.q).toLowerCase();
+  const selectedProduct = getSelectedProduct(params.product);
+  const searchQuery = normalizeKey(params.q);
 
   const companies = await prisma.company.findMany({
     where: {
@@ -436,14 +479,18 @@ export default async function StocksPage({
         }
       : undefined;
 
-  const [wbStocks, ozonStocks, warehouseStocks, stockImports, productCosts] =
+  const [rawWbStocks, ozonStocks, warehouseStocks, stockImports, productCosts] =
     await Promise.all([
       prisma.wbStock.findMany({
         where: {
           companyName: companyWhere,
-          warehouseName: "__TOTAL__",
         },
-        orderBy: [{ companyName: "asc" }, { vendorCode: "asc" }, { size: "asc" }],
+        orderBy: [
+          { companyName: "asc" },
+          { vendorCode: "asc" },
+          { size: "asc" },
+          { warehouseName: "asc" },
+        ],
       }),
       prisma.ozonStock.findMany({
         where: {
@@ -494,6 +541,26 @@ export default async function StocksPage({
         },
       }),
     ]);
+
+  const companiesWithWbTotalRows = new Set(
+    rawWbStocks
+      .filter((stock) => stock.warehouseName === "__TOTAL__")
+      .map((stock) => normalizeKey(stock.companyName))
+      .filter(Boolean)
+  );
+
+  const wbStocks =
+    companiesWithWbTotalRows.size > 0
+      ? rawWbStocks.filter((stock) => {
+          const stockCompanyName = normalizeKey(stock.companyName);
+
+          if (!companiesWithWbTotalRows.has(stockCompanyName)) {
+            return true;
+          }
+
+          return stock.warehouseName === "__TOTAL__";
+        })
+      : rawWbStocks;
 
   const vendorCodes = Array.from(
     new Set(
@@ -882,7 +949,10 @@ export default async function StocksPage({
         nmId: stock.nmId,
         barcode: stock.barcode,
         size: stock.size,
-        warehouseName: "WB",
+        warehouseName:
+          stock.warehouseName && stock.warehouseName !== "__TOTAL__"
+            ? stock.warehouseName
+            : "WB",
         clusterName: null,
         qty,
         reservedQty: 0,
@@ -996,21 +1066,7 @@ export default async function StocksPage({
       if (selectedSource !== "ALL" && row.source !== selectedSource) return false;
       if (selectedProduct && row.vendorCode !== selectedProduct) return false;
 
-      if (searchQuery) {
-        const haystack = [
-          row.productName,
-          row.vendorCode,
-          row.sku,
-          row.nmId,
-          row.barcode,
-          row.size,
-          row.companyName,
-        ]
-          .join(" ")
-          .toLowerCase();
-
-        if (!haystack.includes(searchQuery)) return false;
-      }
+      if (searchQuery && !rowMatchesSearch(row, searchQuery)) return false;
 
       return true;
     })
@@ -1045,59 +1101,55 @@ export default async function StocksPage({
 
       <div className="p-4 sm:p-6 lg:p-8">
         <div className="mx-auto max-w-7xl space-y-4">
-          <section className="rounded-[30px] border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
-            <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+          <section className="rounded-[28px] border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+            <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(520px,auto)] xl:items-center">
               <div>
-                <h1 className="text-3xl font-black tracking-tight text-slate-950 sm:text-4xl">
+                <h1 className="text-3xl font-black tracking-tight text-slate-950">
                   Остатки товаров
                 </h1>
-                <p className="mt-2 max-w-3xl text-sm font-semibold leading-6 text-slate-500">
-                  Остатки на маркетплейсах и собственном складе с оценкой по
-                  себестоимости.
+                <p className="mt-1 max-w-3xl text-sm font-semibold leading-6 text-slate-500">
+                  Остатки WB, Ozon и собственного склада с оценкой по себестоимости.
                 </p>
               </div>
 
-              <div className="flex flex-wrap gap-2">
-                <Link
-                  href="/api/templates/ozon-warehouse-stock"
-                  className="inline-flex items-center justify-center rounded-2xl bg-emerald-50 px-4 py-3 text-sm font-black text-emerald-700 ring-1 ring-emerald-100 transition hover:bg-emerald-100"
-                >
-                  ⇩ Скачать шаблон остатков
-                </Link>
+              <div className="flex flex-col gap-3 xl:items-end">
+                <div className="flex flex-wrap justify-start gap-2 xl:justify-end">
+                  <Link
+                    href="/api/templates/ozon-warehouse-stock"
+                    className="inline-flex items-center justify-center rounded-2xl bg-emerald-50 px-4 py-2.5 text-sm font-black text-emerald-700 ring-1 ring-emerald-100 transition hover:bg-emerald-100"
+                  >
+                    ⇩ Скачать шаблон остатков
+                  </Link>
 
-                <Link
-                  href="/import?reportType=OZON_WAREHOUSE_STOCK"
-                  className="inline-flex items-center justify-center rounded-2xl bg-slate-950 px-4 py-3 text-sm font-black text-white shadow-lg shadow-slate-300 transition hover:bg-slate-800"
-                >
-                  Загрузить остатки
-                </Link>
+                  <Link
+                    href="/import?reportType=OZON_WAREHOUSE_STOCK"
+                    className="inline-flex items-center justify-center rounded-2xl bg-slate-950 px-4 py-2.5 text-sm font-black text-white shadow-lg shadow-slate-300 transition hover:bg-slate-800"
+                  >
+                    Загрузить остатки
+                  </Link>
+                </div>
+
+                <form className="grid w-full gap-2 sm:grid-cols-[minmax(260px,1fr)_150px] xl:w-[520px]">
+                  <select
+                    name="companyName"
+                    defaultValue={selectedCompanyName ?? "ALL"}
+                    className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 outline-none transition focus:border-violet-200 focus:ring-4 focus:ring-violet-50"
+                    aria-label="Компания"
+                  >
+                    <option value="ALL">Все компании</option>
+                    {companyNames.map((companyName) => (
+                      <option key={companyName} value={companyName}>
+                        {companyName}
+                      </option>
+                    ))}
+                  </select>
+
+                  <button className="rounded-2xl bg-slate-950 px-5 py-2.5 text-sm font-black text-white shadow-lg shadow-slate-300 transition hover:bg-slate-800">
+                    Применить
+                  </button>
+                </form>
               </div>
             </div>
-
-            <form className="mt-5 grid gap-3 lg:grid-cols-[minmax(0,360px)_180px] lg:items-end">
-              <label className="block">
-                <span className="text-xs font-black uppercase tracking-[0.12em] text-slate-400">
-                  Компания
-                </span>
-
-                <select
-                  name="companyName"
-                  defaultValue={selectedCompanyName ?? "ALL"}
-                  className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-700 outline-none transition focus:border-violet-200 focus:ring-4 focus:ring-violet-50"
-                >
-                  <option value="ALL">Все компании</option>
-                  {companyNames.map((companyName) => (
-                    <option key={companyName} value={companyName}>
-                      {companyName}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <button className="rounded-2xl bg-slate-950 px-5 py-3 text-sm font-black text-white shadow-lg shadow-slate-300 transition hover:bg-slate-800">
-                Применить
-              </button>
-            </form>
           </section>
 
           <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
