@@ -58,6 +58,8 @@ function buildMarketplaceAiFacts(report: any) {
     drrZone: DrrZone;
     salesLabel: string;
     salesQtyIsReliable: boolean;
+    isLowVolume: boolean;
+    isSmallAdSpend: boolean;
   }> = [];
 
   for (const company of Array.isArray(report?.companies) ? report.companies : []) {
@@ -85,6 +87,8 @@ function buildMarketplaceAiFacts(report: any) {
         drrZone,
         salesLabel: compact.salesLabel,
         salesQtyIsReliable: compact.salesQtyIsReliable,
+        isLowVolume: compact.ordersAmount > 0 && compact.ordersAmount < 50_000,
+        isSmallAdSpend: compact.adSpend > 0 && compact.adSpend < 10_000,
       });
     }
   }
@@ -125,6 +129,8 @@ function buildMarketplaceAiFacts(report: any) {
       drrZone: item.drrZone,
       salesLabel: item.salesLabel,
       salesQtyIsReliable: item.salesQtyIsReliable,
+      isLowVolume: item.isLowVolume,
+      isSmallAdSpend: item.isSmallAdSpend,
     })),
     highestDrrByOrders,
     highestDrrBySales,
@@ -190,6 +196,12 @@ function compactReportForAi(report: any) {
         control: "ДРР от заказов больше 7% и до 10% — требует контроля",
         check: "ДРР от заказов выше 10% — нужно проверить рекламу",
       },
+      actionRules: {
+        doNotRecommendStoppingAdsOnLowVolume:
+          "Если связка имеет высокий ДРР, но маленький объём заказов или маленький рекламный расход, не пиши 'остановить рекламу'. Пиши: не масштабировать, проверить ставки, товары и связки.",
+        stopAdsOnlyWhenStrongEvidence:
+          "Рекомендация остановить рекламу допустима только при явном большом перерасходе, высоком ДРР и достаточном объёме данных.",
+      },
       ozonSalesQtyNote:
         "Для Ozon salesQty может быть 0, потому что в отчёте используется показатель 'Начисления', а не надёжное количество продаж.",
       ...buildMarketplaceAiFacts(compactReport),
@@ -248,6 +260,8 @@ export async function generateDailyReportAiAnalysis(
         "Не связывай отрицательный ДДС с рекламой, если в JSON нет прямого подтверждения, что именно реклама стала причиной кассового минуса.",
         "Если ДДС отрицательный и есть вывод собственника, главным риском считай кассовый разрыв и вывод денег при минусовой кассе.",
         "Приоритетно выделяй самую слабую связку по ДРР от заказов и по ДРР от продаж/начислений.",
+        "Если высокий ДРР найден на маленьком объёме заказов или маленьком рекламном расходе, не советуй остановить рекламу; советуй не масштабировать и проверить товары, ставки и связки.",
+        "Совет 'остановить рекламу' можно давать только при явном большом перерасходе, высоком ДРР и достаточном объёме данных.",
         "Учитывай, что Ozon salesQty может быть 0, потому что для Ozon сейчас используется показатель 'Начисления', а не надёжное количество продаж.",
         "Если данных недостаточно или есть признаки неполной загрузки, прямо напиши: нужно проверить источник данных.",
         "Не давай общие советы вроде 'улучшить продажи'. Давай управленческие действия на сегодня.",
