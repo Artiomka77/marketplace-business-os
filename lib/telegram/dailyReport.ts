@@ -409,26 +409,62 @@ function keepLatestOzonAdsRowsPerDate<
   });
 }
 
-async function getLatestWbStockQty(companyName: string) {
-  const latestStockImport = await prisma.importSession.findFirst({
-    where: {
-      companyName,
-      reportType: "WB_STOCK",
-    },
-    orderBy: {
-      createdAt: "desc",
-    },
-  });
+type WbStockRowForReport = {
+  warehouseName: string | null;
+  vendorCode: string | null;
+  barcode: string | null;
+  nmId: string | null;
+  chrtId: string | null;
+  size: string | null;
+  inTransitToCustomer: number | null;
+  inTransitReturns: number | null;
+  totalStock: number | null;
+  warehouseQty: number | null;
+};
 
-  const rows = await prisma.wbStock.findMany({
-    where: {
-      companyName,
-      ...(latestStockImport ? { importSessionId: latestStockImport.id } : {}),
-      warehouseName: "__TOTAL__",
-    },
-  });
+function getWbStockProductKey(row: WbStockRowForReport) {
+  return [
+    row.nmId ?? "",
+    row.chrtId ?? "",
+    row.barcode ?? "",
+    row.vendorCode ?? "",
+    row.size ?? "",
+  ].join("|");
+}
 
-  return rows.reduce(
+function calculateWbStockQty(rows: WbStockRowForReport[]) {
+  if (rows.length === 0) return 0;
+
+  const totalRows = rows.filter((row) => row.warehouseName === "__TOTAL__");
+
+  if (totalRows.length > 0) {
+    return totalRows.reduce(
+      (sum, row) =>
+        sum +
+        toNumber(row.inTransitToCustomer) +
+        toNumber(row.inTransitReturns) +
+        toNumber(row.totalStock),
+      0
+    );
+  }
+
+  const hasWarehouseQty = rows.some((row) => toNumber(row.warehouseQty) > 0);
+
+  if (hasWarehouseQty) {
+    return rows.reduce((sum, row) => sum + toNumber(row.warehouseQty), 0);
+  }
+
+  const latestByProduct = new Map<string, WbStockRowForReport>();
+
+  for (const row of rows) {
+    const key = getWbStockProductKey(row);
+
+    if (!latestByProduct.has(key)) {
+      latestByProduct.set(key, row);
+    }
+  }
+
+  return Array.from(latestByProduct.values()).reduce(
     (sum, row) =>
       sum +
       toNumber(row.inTransitToCustomer) +
@@ -438,21 +474,79 @@ async function getLatestWbStockQty(companyName: string) {
   );
 }
 
-async function getLatestOzonStockQty(companyName: string) {
+async function getLatestWbStockQty(companyName: string) {
   const latestStockImport = await prisma.importSession.findFirst({
     where: {
       companyName,
-      reportType: "OZON_STOCK",
+      reportType: "WB_STOCK",
     },
     orderBy: {
       createdAt: "desc",
     },
+    select: {
+      id: true,
+    },
   });
 
+  let rows = latestStockImport
+    ? await prisma.wbStock.findMany({
+        where: {
+          companyName,
+          importSessionId: latestStockImport.id,
+        },
+        select: {
+          warehouseName: true,
+          vendorCode: true,
+          barcode: true,
+          nmId: true,
+          chrtId: true,
+          size: true,
+          inTransitToCustomer: true,
+          inTransitReturns: true,
+          totalStock: true,
+          warehouseQty: true,
+        },
+      })
+    : [];
+
+  // Часть API-синхронизаций хранит актуальные остатки без ImportSession.
+  // Поэтому если по последней сессии строк нет, берём текущие строки компании.
+  if (rows.length === 0) {
+    rows = await prisma.wbStock.findMany({
+      where: {
+        companyName,
+      },
+      select: {
+        warehouseName: true,
+        vendorCode: true,
+        barcode: true,
+        nmId: true,
+        chrtId: true,
+        size: true,
+        inTransitToCustomer: true,
+        inTransitReturns: true,
+        totalStock: true,
+        warehouseQty: true,
+      },
+    });
+  }
+
+  return calculateWbStockQty(rows);
+}
+
+async function getLatestOzonStockQty(companyName: string) {
+  // Ozon stock sync перезаписывает текущие строки по компании и часто хранит
+  // importSessionId = null. Поэтому нельзя искать только последнюю ImportSession.
   const rows = await prisma.ozonStock.findMany({
     where: {
       companyName,
-      ...(latestStockImport ? { importSessionId: latestStockImport.id } : {}),
+    },
+    select: {
+      availableQty: true,
+      preparingQty: true,
+      supplyQty: true,
+      inTransitQty: true,
+      returnQty: true,
     },
   });
 

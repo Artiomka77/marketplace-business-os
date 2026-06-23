@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 
 import { prisma } from "@/lib/prisma";
 import { syncMarketplaceDailyOrders } from "@/lib/marketplaceOrders/syncMarketplaceDailyOrders";
+import { syncOzonStocks } from "@/lib/ozon/syncOzon";
+import { syncWbStock } from "@/lib/wb/syncWbStock";
 import { syncWbDailySales } from "@/lib/wb/syncWbDailySales";
 import { syncOzonFinance } from "@/lib/ozon/syncOzon";
 
@@ -106,6 +108,54 @@ async function getActiveConnections() {
       },
     ],
   });
+}
+
+async function runOzonStocks(
+  connection: MarketplaceApiConnectionForDaily
+) {
+  try {
+    const result = await syncOzonStocks(connection.companyId);
+
+    return {
+      marketplace: "OZON",
+      companyName: connection.company.name,
+      dataType: "STOCK",
+      ok: true,
+      result,
+    };
+  } catch (error) {
+    return {
+      marketplace: "OZON",
+      companyName: connection.company.name,
+      dataType: "STOCK",
+      ok: false,
+      error: getErrorMessage(error),
+    };
+  }
+}
+
+async function runWbStock(
+  connection: MarketplaceApiConnectionForDaily
+) {
+  try {
+    const result = await syncWbStock(connection.companyId);
+
+    return {
+      marketplace: "WB",
+      companyName: connection.company.name,
+      dataType: "STOCK",
+      ok: true,
+      result,
+    };
+  } catch (error) {
+    return {
+      marketplace: "WB",
+      companyName: connection.company.name,
+      dataType: "STOCK",
+      ok: false,
+      error: getErrorMessage(error),
+    };
+  }
 }
 
 async function runOzonDailyFinance(
@@ -260,6 +310,7 @@ export async function GET(req: Request) {
         // Для ежедневного отчёта основной безопасный источник рекламных расходов Ozon —
         // Ozon Finance. Performance Ads не ставим в срочную очередь: он часто работает
         // дольше лимита Vercel и не должен ломать утренний отчёт.
+        results.push(await runOzonStocks(connection));
         results.push(await runOzonDailyFinance(connection, date));
       }
 
@@ -279,7 +330,7 @@ export async function GET(req: Request) {
       ok: true,
       date: dateText,
       purpose:
-        "Daily priority sync for Telegram owner report. Orders, WB Daily Sales and Ozon Finance run directly. WB Ads is queued and processed by a separate cron route to avoid Vercel timeout. Ozon Ads Performance is not required for the morning report because Ozon ad expenses come from Ozon Finance.",
+        "Daily priority sync for Telegram owner report. Orders, stocks, WB Daily Sales and Ozon Finance run directly. WB Ads is queued and processed by a separate cron route to avoid Vercel timeout. Ozon Ads Performance is not required for the morning report because Ozon ad expenses come from Ozon Finance.",
       orderStats,
       results,
       executedAt: new Date().toISOString(),
