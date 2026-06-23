@@ -6,9 +6,14 @@ type StockSearchParams = {
   companyName?: string;
   source?: string;
   rows?: string;
+  sort?: string;
+  dir?: string;
+  product?: string;
+  q?: string;
 };
 
 type StockSource = "ALL" | "WB" | "OZON" | "OWN";
+type SortKey = "product" | "vendorCode" | "qty" | "costPrice" | "totalCost" | "availableForSupplyQty";
 
 type ProductVisual = {
   name: string | null;
@@ -21,33 +26,26 @@ type CompanyStockSummary = {
   totalCost: number;
   lastUpdate: string;
   wb: {
+    totalQty: number;
+    totalCost: number;
     stockQty: number;
     inTransitToCustomerQty: number;
     inTransitReturnsQty: number;
-    totalQty: number;
-    totalCost: number;
-    rowsCount: number;
-    latestDate: string;
   };
   ozon: {
-    availableQty: number;
-    preparingQty: number;
-    supplyQty: number;
-    inTransitQty: number;
-    returnQty: number;
     totalQty: number;
     totalCost: number;
-    rowsCount: number;
-    latestDate: string;
+    availableQty: number;
+    preparingQty: number;
+    inTransitQty: number;
   };
   warehouse: {
     warehouseQty: number;
+    totalCost: number;
     reservedQty: number;
     availableForSupplyQty: number;
-    totalCost: number;
     availableForSupplyCost: number;
     rowsCount: number;
-    latestDate: string;
   };
 };
 
@@ -107,8 +105,33 @@ function normalizeKey(value: unknown) {
   return String(value ?? "").trim();
 }
 
-function uniqCount(values: Array<string | null | undefined>) {
-  return new Set(values.map((value) => normalizeKey(value)).filter(Boolean)).size;
+function getSelectedSource(value?: string): StockSource {
+  if (value === "WB" || value === "OZON" || value === "OWN") return value;
+  return "ALL";
+}
+
+function getRowsLimit(value?: string) {
+  const parsed = Number(value ?? 20);
+  return [20, 50, 100, 200].includes(parsed) ? parsed : 20;
+}
+
+function getSortKey(value?: string): SortKey {
+  if (
+    value === "product" ||
+    value === "vendorCode" ||
+    value === "qty" ||
+    value === "costPrice" ||
+    value === "totalCost" ||
+    value === "availableForSupplyQty"
+  ) {
+    return value;
+  }
+
+  return "product";
+}
+
+function getSortDir(value?: string) {
+  return value === "desc" ? "desc" : "asc";
 }
 
 function getLatestImportDateByCompany(params: {
@@ -133,67 +156,6 @@ function getLatestImportDateByCompany(params: {
   return params.reportType === "WB_STOCK"
     ? extractStockDate(latest.fileName, latest.createdAt)
     : formatDate(latest.createdAt);
-}
-
-function getInventoryDateLabel(
-  rows: Array<{
-    companyName: string;
-    inventoryDate: Date | null;
-    createdAt: Date;
-  }>,
-  companyName: string
-) {
-  const companyRows = rows.filter((row) => row.companyName === companyName);
-
-  const latestInventoryDate = companyRows
-    .map((row) => row.inventoryDate)
-    .filter((date): date is Date => Boolean(date))
-    .sort((a, b) => b.getTime() - a.getTime())[0];
-
-  if (latestInventoryDate) return formatDate(latestInventoryDate);
-
-  const latestCreatedAt = companyRows
-    .map((row) => row.createdAt)
-    .filter(Boolean)
-    .sort((a, b) => b.getTime() - a.getTime())[0];
-
-  return formatDate(latestCreatedAt);
-}
-
-function getSourceBadgeClass(source: UnifiedStockRow["source"]) {
-  if (source === "WB") {
-    return "bg-violet-50 text-violet-700 ring-violet-100";
-  }
-
-  if (source === "OZON") {
-    return "bg-blue-50 text-blue-700 ring-blue-100";
-  }
-
-  return "bg-emerald-50 text-emerald-700 ring-emerald-100";
-}
-
-function getSourceLabel(source: UnifiedStockRow["source"]) {
-  if (source === "WB") return "WB";
-  if (source === "OZON") return "Ozon";
-  return "Склад";
-}
-
-function getRowsLimit(value?: string) {
-  const parsed = Number(value ?? 20);
-
-  if ([20, 50, 100, 200].includes(parsed)) {
-    return parsed;
-  }
-
-  return 20;
-}
-
-function getSelectedSource(value?: string): StockSource {
-  if (value === "WB" || value === "OZON" || value === "OWN") {
-    return value;
-  }
-
-  return "ALL";
 }
 
 function getProductVisual(params: {
@@ -222,167 +184,213 @@ function getProductVisual(params: {
   );
 }
 
+function sourceLabel(source: UnifiedStockRow["source"]) {
+  if (source === "WB") return "WB";
+  if (source === "OZON") return "Ozon";
+  return "Склад";
+}
+
+function sourceClass(source: UnifiedStockRow["source"]) {
+  if (source === "WB") return "bg-violet-50 text-violet-700 ring-violet-100";
+  if (source === "OZON") return "bg-blue-50 text-blue-700 ring-blue-100";
+  return "bg-emerald-50 text-emerald-700 ring-emerald-100";
+}
+
+function productTitle(row: UnifiedStockRow) {
+  return row.productName ?? row.vendorCode;
+}
+
+function makeUrl(params: StockSearchParams, patch: Record<string, string | null | undefined>) {
+  const next = new URLSearchParams();
+
+  const merged: Record<string, string | undefined> = {
+    companyName: params.companyName,
+    source: params.source,
+    rows: params.rows,
+    sort: params.sort,
+    dir: params.dir,
+    product: params.product,
+    q: params.q,
+  };
+
+  for (const [key, value] of Object.entries(patch)) {
+    if (value === null) {
+      delete merged[key];
+    } else if (value !== undefined) {
+      merged[key] = value;
+    }
+  }
+
+  for (const [key, value] of Object.entries(merged)) {
+    if (value && value !== "ALL") {
+      next.set(key, value);
+    }
+  }
+
+  const query = next.toString();
+  return query ? `/stocks?${query}` : "/stocks";
+}
+
+function sortHref(params: StockSearchParams, key: SortKey) {
+  const currentKey = getSortKey(params.sort);
+  const currentDir = getSortDir(params.dir);
+  const nextDir = currentKey === key && currentDir === "asc" ? "desc" : "asc";
+
+  return makeUrl(params, {
+    sort: key,
+    dir: nextDir,
+  });
+}
+
+function SortHeader({
+  params,
+  sortKey,
+  children,
+  align = "left",
+}: {
+  params: StockSearchParams;
+  sortKey: SortKey;
+  children: React.ReactNode;
+  align?: "left" | "right";
+}) {
+  const active = getSortKey(params.sort) === sortKey;
+  const dir = getSortDir(params.dir);
+
+  return (
+    <Link
+      href={sortHref(params, sortKey)}
+      className={`inline-flex items-center gap-1 ${
+        align === "right" ? "justify-end" : "justify-start"
+      } ${active ? "text-slate-950" : "text-slate-400"}`}
+    >
+      <span>{children}</span>
+      <span className="text-[10px]">{active ? (dir === "asc" ? "↑" : "↓") : "↕"}</span>
+    </Link>
+  );
+}
+
 function MetricCard({
   title,
   value,
   money,
   hint,
-  tone = "slate",
+  tone,
   icon,
 }: {
   title: string;
   value: string;
   money: string;
   hint: string;
-  tone?: "slate" | "violet" | "blue" | "emerald" | "amber";
+  tone: "violet" | "blue" | "emerald" | "amber";
   icon: string;
 }) {
-  const toneClasses = {
-    slate: "bg-white text-slate-950 ring-slate-200",
-    violet: "bg-violet-50 text-violet-950 ring-violet-100",
-    blue: "bg-blue-50 text-blue-950 ring-blue-100",
-    emerald: "bg-emerald-50 text-emerald-950 ring-emerald-100",
-    amber: "bg-amber-50 text-amber-950 ring-amber-100",
-  };
-
-  const iconClasses = {
-    slate: "bg-slate-100 text-slate-700 ring-slate-200",
-    violet: "bg-violet-100 text-violet-700 ring-violet-200",
-    blue: "bg-blue-100 text-blue-700 ring-blue-200",
-    emerald: "bg-emerald-100 text-emerald-700 ring-emerald-200",
-    amber: "bg-amber-100 text-amber-700 ring-amber-200",
+  const classes = {
+    violet: "border-violet-100 bg-violet-50 text-violet-700",
+    blue: "border-blue-100 bg-blue-50 text-blue-700",
+    emerald: "border-emerald-100 bg-emerald-50 text-emerald-700",
+    amber: "border-amber-100 bg-amber-50 text-amber-700",
   };
 
   return (
-    <div className={`rounded-[28px] p-5 shadow-sm ring-1 ${toneClasses[tone]}`}>
+    <div className={`rounded-[26px] border p-5 shadow-sm ${classes[tone]}`}>
       <div className="flex items-start justify-between gap-4">
         <div>
-          <div className="text-xs font-black uppercase tracking-[0.12em] text-slate-400">
+          <div className="text-xs font-black uppercase tracking-[0.12em]">
             {title}
           </div>
-          <div className="mt-3 text-3xl font-black tracking-tight">{value}</div>
+          <div className="mt-3 text-3xl font-black tracking-tight text-slate-950">
+            {value}
+          </div>
           <div className="mt-2 text-base font-black text-slate-800">
-            {money} себест.
+            {money}
           </div>
         </div>
 
-        <div
-          className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl text-lg font-black ring-1 ${iconClasses[tone]}`}
-        >
+        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-white/70 text-base font-black ring-1 ring-white/70">
           {icon}
         </div>
       </div>
 
-      <div className="mt-3 text-sm font-semibold leading-5 text-slate-500">
+      <div className="mt-3 text-sm font-semibold leading-5 text-slate-600">
         {hint}
       </div>
     </div>
   );
 }
 
-function AttentionCard({
+function ProductPhoto({ imageUrl, title }: { imageUrl: string | null; title: string }) {
+  if (imageUrl) {
+    return (
+      <img
+        src={imageUrl}
+        alt={title}
+        className="h-14 w-14 rounded-2xl border border-slate-200 bg-slate-50 object-cover"
+      />
+    );
+  }
+
+  return (
+    <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-slate-200 bg-slate-50 text-xs font-black text-slate-400">
+      фото
+    </div>
+  );
+}
+
+function CompactAttention({
   lowStockCount,
-  noOwnWarehouseDataCount,
-  highReservedQty,
-  totalAvailableForSupplyQty,
+  ownWarehouseMissingCount,
+  reservedQty,
 }: {
   lowStockCount: number;
-  noOwnWarehouseDataCount: number;
-  highReservedQty: number;
-  totalAvailableForSupplyQty: number;
+  ownWarehouseMissingCount: number;
+  reservedQty: number;
 }) {
   return (
-    <aside className="rounded-[34px] border border-slate-200 bg-white p-5 shadow-sm">
+    <aside className="rounded-[30px] border border-slate-200 bg-white p-5 shadow-sm">
       <div className="flex items-center gap-3">
-        <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-amber-50 text-xl ring-1 ring-amber-100">
+        <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-amber-50 text-lg ring-1 ring-amber-100">
           ⚠️
         </div>
         <div>
-          <h2 className="text-xl font-black tracking-tight text-slate-950">
+          <h2 className="text-xl font-black text-slate-950">
             Что требует внимания
           </h2>
           <p className="text-sm font-semibold text-slate-500">
-            Короткие подсказки по остаткам
+            Короткие подсказки
           </p>
         </div>
       </div>
 
       <div className="mt-5 space-y-3">
         <div className="rounded-2xl bg-amber-50 p-4 ring-1 ring-amber-100">
-          <div className="text-sm font-black text-slate-950">
-            Низкий остаток
-          </div>
+          <div className="font-black text-slate-950">Низкий остаток</div>
           <p className="mt-1 text-sm font-semibold leading-5 text-slate-600">
             {lowStockCount > 0
-              ? `${formatNumber(
-                  lowStockCount
-                )} позиций имеют остаток менее 10 шт.`
-              : "Критичных низких остатков в текущей выборке нет."}
+              ? `${formatNumber(lowStockCount)} позиций меньше 10 шт.`
+              : "Критичных низких остатков в выборке нет."}
           </p>
         </div>
 
         <div className="rounded-2xl bg-blue-50 p-4 ring-1 ring-blue-100">
-          <div className="text-sm font-black text-slate-950">
-            Собственный склад
-          </div>
+          <div className="font-black text-slate-950">Собственный склад</div>
           <p className="mt-1 text-sm font-semibold leading-5 text-slate-600">
-            {noOwnWarehouseDataCount > 0
+            {ownWarehouseMissingCount > 0
               ? `${formatNumber(
-                  noOwnWarehouseDataCount
-                )} компаний пока без загруженных остатков собственного склада.`
-              : `К поставке доступно ${formatNumber(
-                  totalAvailableForSupplyQty
-                )} шт.`}
+                  ownWarehouseMissingCount
+                )} компаний без загруженного своего склада.`
+              : "Складские остатки загружены."}
           </p>
         </div>
 
         <div className="rounded-2xl bg-violet-50 p-4 ring-1 ring-violet-100">
-          <div className="text-sm font-black text-slate-950">Резерв</div>
+          <div className="font-black text-slate-950">Резерв</div>
           <p className="mt-1 text-sm font-semibold leading-5 text-slate-600">
-            В резерве сейчас {formatNumber(highReservedQty)} шт. Проверьте, не
-            блокирует ли резерв поставки.
+            В резерве {formatNumber(reservedQty)} шт. Проверьте, не блокирует ли
+            он поставки.
           </p>
         </div>
       </div>
     </aside>
-  );
-}
-
-function ProductPhoto({
-  imageUrl,
-  title,
-}: {
-  imageUrl: string | null;
-  title: string;
-}) {
-  if (imageUrl) {
-    return (
-      <img
-        src={imageUrl}
-        alt={title}
-        className="h-12 w-12 rounded-2xl border border-slate-200 bg-slate-50 object-cover"
-      />
-    );
-  }
-
-  return (
-    <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-slate-200 bg-slate-50 text-xs font-black text-slate-400">
-      фото
-    </div>
-  );
-}
-
-function EmptyState() {
-  return (
-    <div className="rounded-[34px] border border-dashed border-slate-300 bg-white p-10 text-center shadow-sm">
-      <div className="text-2xl font-black text-slate-950">
-        Компании пока не найдены
-      </div>
-      <p className="mx-auto mt-3 max-w-xl text-sm font-semibold leading-6 text-slate-500">
-        Добавьте компанию в настройках, после этого она появится в разделе
-        остатков автоматически.
-      </p>
-    </div>
   );
 }
 
@@ -394,6 +402,10 @@ export default async function StocksPage({
   const params = searchParams ? await searchParams : {};
   const selectedSource = getSelectedSource(params.source);
   const rowsLimit = getRowsLimit(params.rows);
+  const sortKey = getSortKey(params.sort);
+  const sortDir = getSortDir(params.dir);
+  const selectedProduct = normalizeKey(params.product);
+  const searchQuery = normalizeKey(params.q).toLowerCase();
 
   const companies = await prisma.company.findMany({
     where: {
@@ -512,26 +524,65 @@ export default async function StocksPage({
     )
   );
 
+  const ozonProductWhere =
+    vendorCodes.length > 0 || skus.length > 0
+      ? {
+          OR: [
+            ...(vendorCodes.length > 0
+              ? [
+                  {
+                    vendorCode: {
+                      in: vendorCodes,
+                    },
+                  },
+                ]
+              : []),
+            ...(skus.length > 0
+              ? [
+                  {
+                    sku: {
+                      in: skus,
+                    },
+                  },
+                ]
+              : []),
+          ],
+        }
+      : {
+          id: "__NO_PRODUCTS__",
+        };
+
+  const wbProductWhere =
+    vendorCodes.length > 0 || nmIds.length > 0
+      ? {
+          OR: [
+            ...(vendorCodes.length > 0
+              ? [
+                  {
+                    vendorCode: {
+                      in: vendorCodes,
+                    },
+                  },
+                ]
+              : []),
+            ...(nmIds.length > 0
+              ? [
+                  {
+                    nmId: {
+                      in: nmIds,
+                    },
+                  },
+                ]
+              : []),
+          ],
+        }
+      : {
+          id: "__NO_PRODUCTS__",
+        };
+
   const [ozonProducts, wbProductCards] = await Promise.all([
     prisma.ozonProduct.findMany({
-      where: {
-        OR: [
-          vendorCodes.length > 0
-            ? {
-                vendorCode: {
-                  in: vendorCodes,
-                },
-              }
-            : {},
-          skus.length > 0
-            ? {
-                sku: {
-                  in: skus,
-                },
-              }
-            : {},
-        ],
-      },
+      where: ozonProductWhere,
       orderBy: {
         createdAt: "desc",
       },
@@ -544,24 +595,7 @@ export default async function StocksPage({
       },
     }),
     prisma.wbProductCard.findMany({
-      where: {
-        OR: [
-          vendorCodes.length > 0
-            ? {
-                vendorCode: {
-                  in: vendorCodes,
-                },
-              }
-            : {},
-          nmIds.length > 0
-            ? {
-                nmId: {
-                  in: nmIds,
-                },
-              }
-            : {},
-        ],
-      },
+      where: wbProductWhere,
       orderBy: {
         lastSyncedAt: "desc",
       },
@@ -780,52 +814,26 @@ export default async function StocksPage({
         totalCost: wbTotalCost + ozonTotalCost + warehouseTotalCost,
         lastUpdate: latestDates[0] ?? "Нет данных",
         wb: {
+          totalQty: wbTotalQty,
+          totalCost: wbTotalCost,
           stockQty: wbStockQty,
           inTransitToCustomerQty: wbTransitToCustomerQty,
           inTransitReturnsQty: wbTransitReturnsQty,
-          totalQty: wbTotalQty,
-          totalCost: wbTotalCost,
-          rowsCount: companyWbStocks.length,
-          latestDate: getLatestImportDateByCompany({
-            companyName,
-            reportType: "WB_STOCK",
-            imports: stockImports,
-          }),
         },
         ozon: {
-          availableQty: ozonAvailableQty,
-          preparingQty: ozonPreparingQty,
-          supplyQty: ozonSupplyQty,
-          inTransitQty: ozonInTransitQty,
-          returnQty: ozonReturnQty,
           totalQty: ozonTotalQty,
           totalCost: ozonTotalCost,
-          rowsCount: companyOzonStocks.length,
-          latestDate: getLatestImportDateByCompany({
-            companyName,
-            reportType: "OZON_STOCK",
-            imports: stockImports,
-          }),
+          availableQty: ozonAvailableQty,
+          preparingQty: ozonPreparingQty,
+          inTransitQty: ozonInTransitQty,
         },
         warehouse: {
           warehouseQty,
+          totalCost: warehouseTotalCost,
           reservedQty,
           availableForSupplyQty,
-          totalCost: warehouseTotalCost,
           availableForSupplyCost,
           rowsCount: companyWarehouseStocks.length,
-          latestDate:
-            getLatestImportDateByCompany({
-              companyName,
-              reportType: "OZON_WAREHOUSE_STOCK",
-              imports: stockImports,
-            }) !== "Нет данных"
-              ? getLatestImportDateByCompany({
-                  companyName,
-                  reportType: "OZON_WAREHOUSE_STOCK",
-                  imports: stockImports,
-                })
-              : getInventoryDateLabel(warehouseStocks, companyName),
         },
       };
     }
@@ -851,7 +859,7 @@ export default async function StocksPage({
     summaries.map((summary) => summary.warehouse.reservedQty)
   );
 
-  const unifiedRows: UnifiedStockRow[] = [
+  const allRows: UnifiedStockRow[] = [
     ...wbStocks.map((stock) => {
       const vendorCode = stock.vendorCode ?? "—";
       const qty =
@@ -881,7 +889,8 @@ export default async function StocksPage({
         availableForSupplyQty: qty,
         costPrice,
         totalCost: qty * costPrice,
-        productName: visual.name ?? costNameByVendorCode.get(normalizeKey(vendorCode)) ?? null,
+        productName:
+          visual.name ?? costNameByVendorCode.get(normalizeKey(vendorCode)) ?? null,
         imageUrl: visual.imageUrl,
       };
     }),
@@ -916,7 +925,8 @@ export default async function StocksPage({
         availableForSupplyQty: toNumber(stock.availableQty),
         costPrice,
         totalCost: qty * costPrice,
-        productName: visual.name ?? costNameByVendorCode.get(normalizeKey(vendorCode)) ?? null,
+        productName:
+          visual.name ?? costNameByVendorCode.get(normalizeKey(vendorCode)) ?? null,
         imageUrl: visual.imageUrl,
       };
     }),
@@ -956,75 +966,115 @@ export default async function StocksPage({
         imageUrl: visual.imageUrl,
       };
     }),
-  ]
+  ].filter((row) => row.qty > 0 || row.availableForSupplyQty > 0);
+
+  const productOptionsMap = new Map<
+    string,
+    {
+      vendorCode: string;
+      label: string;
+    }
+  >();
+
+  for (const row of allRows) {
+    if (!row.vendorCode || row.vendorCode === "—") continue;
+
+    if (!productOptionsMap.has(row.vendorCode)) {
+      productOptionsMap.set(row.vendorCode, {
+        vendorCode: row.vendorCode,
+        label: productTitle(row),
+      });
+    }
+  }
+
+  const productOptions = Array.from(productOptionsMap.values()).sort((a, b) =>
+    a.label.localeCompare(b.label, "ru")
+  );
+
+  const filteredRows = allRows
     .filter((row) => {
-      if (row.qty <= 0 && row.availableForSupplyQty <= 0) return false;
       if (selectedSource !== "ALL" && row.source !== selectedSource) return false;
+      if (selectedProduct && row.vendorCode !== selectedProduct) return false;
+
+      if (searchQuery) {
+        const haystack = [
+          row.productName,
+          row.vendorCode,
+          row.sku,
+          row.nmId,
+          row.barcode,
+          row.size,
+          row.companyName,
+        ]
+          .join(" ")
+          .toLowerCase();
+
+        if (!haystack.includes(searchQuery)) return false;
+      }
+
       return true;
     })
     .sort((a, b) => {
-      if (a.companyName !== b.companyName) {
-        return a.companyName.localeCompare(b.companyName, "ru");
+      const direction = sortDir === "asc" ? 1 : -1;
+
+      if (sortKey === "product") {
+        return productTitle(a).localeCompare(productTitle(b), "ru") * direction;
       }
 
-      if (a.source !== b.source) {
-        return a.source.localeCompare(b.source, "ru");
+      if (sortKey === "vendorCode") {
+        return a.vendorCode.localeCompare(b.vendorCode, "ru") * direction;
       }
 
-      return a.vendorCode.localeCompare(b.vendorCode, "ru");
+      return (toNumber(a[sortKey]) - toNumber(b[sortKey])) * direction;
     });
 
-  const visibleRows = unifiedRows.slice(0, rowsLimit);
+  const visibleRows = filteredRows.slice(0, rowsLimit);
 
-  const lowStockCount = unifiedRows.filter((row) => row.qty > 0 && row.qty < 10).length;
-  const noOwnWarehouseDataCount = summaries.filter(
+  const lowStockCount = filteredRows.filter((row) => row.qty > 0 && row.qty < 10).length;
+  const ownWarehouseMissingCount = summaries.filter(
     (summary) => summary.warehouse.rowsCount === 0
   ).length;
 
-  const isCompanyDetail = Boolean(selectedCompanyName);
+  const selectedCompanySummary = selectedCompanyName
+    ? summaries.find((summary) => summary.companyName === selectedCompanyName)
+    : null;
 
   return (
     <main className="min-h-screen bg-slate-100">
       <MarketplaceNav />
 
       <div className="p-4 sm:p-6 lg:p-8">
-        <div className="mx-auto max-w-7xl space-y-5">
-          <section className="rounded-[34px] border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
-            <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
+        <div className="mx-auto max-w-7xl space-y-4">
+          <section className="rounded-[30px] border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+            <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
               <div>
-                <div className="inline-flex rounded-full bg-violet-50 px-3 py-1 text-xs font-black uppercase tracking-[0.14em] text-violet-700 ring-1 ring-violet-100">
-                  Складской контур
-                </div>
-
-                <h1 className="mt-4 text-4xl font-black tracking-tight text-slate-950 sm:text-5xl">
+                <h1 className="text-3xl font-black tracking-tight text-slate-950 sm:text-4xl">
                   Остатки товаров
                 </h1>
-
-                <p className="mt-4 max-w-3xl text-sm font-semibold leading-6 text-slate-500">
-                  Актуальные остатки на маркетплейсах и собственном складе с
-                  оценкой в себестоимости. Выберите компанию, чтобы провалиться
-                  в детализацию по складам и товарам.
+                <p className="mt-2 max-w-3xl text-sm font-semibold leading-6 text-slate-500">
+                  Остатки на маркетплейсах и собственном складе с оценкой по
+                  себестоимости.
                 </p>
               </div>
 
               <div className="flex flex-wrap gap-2">
                 <Link
                   href="/api/templates/ozon-warehouse-stock"
-                  className="inline-flex items-center justify-center rounded-2xl bg-emerald-50 px-5 py-3 text-sm font-black text-emerald-700 ring-1 ring-emerald-100 transition hover:bg-emerald-100"
+                  className="inline-flex items-center justify-center rounded-2xl bg-emerald-50 px-4 py-3 text-sm font-black text-emerald-700 ring-1 ring-emerald-100 transition hover:bg-emerald-100"
                 >
                   ⇩ Скачать шаблон остатков
                 </Link>
 
                 <Link
                   href="/import?reportType=OZON_WAREHOUSE_STOCK"
-                  className="inline-flex items-center justify-center rounded-2xl bg-slate-950 px-5 py-3 text-sm font-black text-white shadow-lg shadow-slate-300 transition hover:bg-slate-800"
+                  className="inline-flex items-center justify-center rounded-2xl bg-slate-950 px-4 py-3 text-sm font-black text-white shadow-lg shadow-slate-300 transition hover:bg-slate-800"
                 >
                   Загрузить остатки
                 </Link>
               </div>
             </div>
 
-            <form className="mt-6 grid gap-4 lg:grid-cols-[minmax(0,1fr)_220px] lg:items-end">
+            <form className="mt-5 grid gap-3 lg:grid-cols-[minmax(0,360px)_180px] lg:items-end">
               <label className="block">
                 <span className="text-xs font-black uppercase tracking-[0.12em] text-slate-400">
                   Компания
@@ -1085,233 +1135,230 @@ export default async function StocksPage({
             />
           </section>
 
-          <section className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
-            <section className="rounded-[34px] border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+          <section className="grid gap-5 xl:grid-cols-4">
+            <section className="rounded-[30px] border border-slate-200 bg-white p-5 shadow-sm xl:col-span-3">
               <div>
                 <h2 className="text-2xl font-black tracking-tight text-slate-950">
-                  {isCompanyDetail
+                  {selectedCompanyName
                     ? `Компания: ${selectedCompanyName}`
                     : "Остатки по компаниям"}
                 </h2>
-                <p className="mt-2 text-sm font-semibold leading-6 text-slate-500">
-                  Общий остаток по всем источникам: WB + Ozon + собственный
-                  склад.
+                <p className="mt-1 text-sm font-semibold text-slate-500">
+                  Общий остаток по всем источникам: WB + Ozon + собственный склад.
                 </p>
               </div>
 
-              <div className="mt-5 space-y-3">
+              <div
+                className={`mt-5 grid gap-4 ${
+                  selectedCompanyName ? "grid-cols-1" : "xl:grid-cols-2"
+                }`}
+              >
                 {summaries.map((summary) => (
-                  <div
+                  <article
                     key={summary.companyName}
                     className="rounded-[26px] border border-slate-200 bg-white p-4 shadow-sm"
                   >
-                    <div className="grid gap-4 xl:grid-cols-[220px_1fr_150px] xl:items-center">
+                    <div className="flex items-start justify-between gap-3 border-b border-slate-100 pb-4">
                       <div className="flex items-center gap-3">
-                        <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-violet-600 text-base font-black text-white shadow-sm">
+                        <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-violet-600 text-base font-black text-white">
                           {summary.companyName.slice(0, 1)}
                         </div>
                         <div>
-                          <div className="text-lg font-black text-slate-950">
+                          <h3 className="text-lg font-black text-slate-950">
                             {summary.companyName}
-                          </div>
-                          <div className="text-xs font-bold text-slate-400">
+                          </h3>
+                          <p className="text-xs font-bold text-slate-400">
                             Обновление: {summary.lastUpdate}
-                          </div>
+                          </p>
                         </div>
                       </div>
 
-                      <div className="grid gap-3 md:grid-cols-4">
-                        <div className="rounded-2xl bg-slate-50 p-3 ring-1 ring-slate-100">
-                          <div className="text-xs font-black uppercase text-slate-400">
-                            Итого
-                          </div>
-                          <div className="mt-1 text-lg font-black text-slate-950">
-                            {formatNumber(summary.totalQty)} шт
-                          </div>
-                          <div className="text-sm font-bold text-slate-500">
-                            {formatMoney(summary.totalCost)}
-                          </div>
-                        </div>
-
-                        <div className="rounded-2xl bg-violet-50 p-3 ring-1 ring-violet-100">
-                          <div className="text-xs font-black uppercase text-violet-500">
-                            WB
-                          </div>
-                          <div className="mt-1 text-lg font-black text-slate-950">
-                            {formatNumber(summary.wb.totalQty)} шт
-                          </div>
-                          <div className="text-sm font-bold text-slate-500">
-                            {formatMoney(summary.wb.totalCost)}
-                          </div>
-                        </div>
-
-                        <div className="rounded-2xl bg-blue-50 p-3 ring-1 ring-blue-100">
-                          <div className="text-xs font-black uppercase text-blue-500">
-                            Ozon
-                          </div>
-                          <div className="mt-1 text-lg font-black text-slate-950">
-                            {formatNumber(summary.ozon.totalQty)} шт
-                          </div>
-                          <div className="text-sm font-bold text-slate-500">
-                            {formatMoney(summary.ozon.totalCost)}
-                          </div>
-                        </div>
-
-                        <div className="rounded-2xl bg-emerald-50 p-3 ring-1 ring-emerald-100">
-                          <div className="text-xs font-black uppercase text-emerald-500">
-                            Склад
-                          </div>
-                          <div className="mt-1 text-lg font-black text-slate-950">
-                            {formatNumber(summary.warehouse.warehouseQty)} шт
-                          </div>
-                          <div className="text-sm font-bold text-slate-500">
-                            {formatMoney(summary.warehouse.totalCost)}
-                          </div>
-                        </div>
-                      </div>
-
-                      <Link
-                        href={`/stocks?companyName=${encodeURIComponent(
-                          summary.companyName
-                        )}`}
-                        className="inline-flex items-center justify-center rounded-2xl bg-slate-950 px-4 py-3 text-sm font-black text-white shadow-lg shadow-slate-300 transition hover:bg-slate-800"
-                      >
-                        Подробнее →
-                      </Link>
+                      {!selectedCompanyName ? (
+                        <Link
+                          href={`/stocks?companyName=${encodeURIComponent(
+                            summary.companyName
+                          )}`}
+                          className="rounded-2xl border border-slate-200 bg-white px-3 py-2 text-xs font-black text-slate-700 transition hover:bg-slate-50"
+                        >
+                          Подробнее →
+                        </Link>
+                      ) : (
+                        <Link
+                          href="/stocks"
+                          className="rounded-2xl border border-slate-200 bg-white px-3 py-2 text-xs font-black text-slate-700 transition hover:bg-slate-50"
+                        >
+                          Все компании
+                        </Link>
+                      )}
                     </div>
-                  </div>
-                ))}
 
-                {summaries.length === 0 ? <EmptyState /> : null}
+                    <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                      <div className="rounded-2xl bg-slate-50 p-3 ring-1 ring-slate-100">
+                        <div className="text-xs font-black uppercase text-slate-400">
+                          Итого
+                        </div>
+                        <div className="mt-1 text-xl font-black text-slate-950">
+                          {formatNumber(summary.totalQty)} шт
+                        </div>
+                        <div className="text-sm font-bold text-slate-500">
+                          {formatMoney(summary.totalCost)}
+                        </div>
+                      </div>
+
+                      <div className="rounded-2xl bg-violet-50 p-3 ring-1 ring-violet-100">
+                        <div className="text-xs font-black uppercase text-violet-500">
+                          WB
+                        </div>
+                        <div className="mt-1 text-xl font-black text-slate-950">
+                          {formatNumber(summary.wb.totalQty)} шт
+                        </div>
+                        <div className="text-sm font-bold text-slate-500">
+                          {formatMoney(summary.wb.totalCost)}
+                        </div>
+                      </div>
+
+                      <div className="rounded-2xl bg-blue-50 p-3 ring-1 ring-blue-100">
+                        <div className="text-xs font-black uppercase text-blue-500">
+                          Ozon
+                        </div>
+                        <div className="mt-1 text-xl font-black text-slate-950">
+                          {formatNumber(summary.ozon.totalQty)} шт
+                        </div>
+                        <div className="text-sm font-bold text-slate-500">
+                          {formatMoney(summary.ozon.totalCost)}
+                        </div>
+                      </div>
+
+                      <div className="rounded-2xl bg-emerald-50 p-3 ring-1 ring-emerald-100">
+                        <div className="text-xs font-black uppercase text-emerald-500">
+                          Склад
+                        </div>
+                        <div className="mt-1 text-xl font-black text-slate-950">
+                          {formatNumber(summary.warehouse.warehouseQty)} шт
+                        </div>
+                        <div className="text-sm font-bold text-slate-500">
+                          {formatMoney(summary.warehouse.totalCost)}
+                        </div>
+                      </div>
+                    </div>
+                  </article>
+                ))}
               </div>
+
+              {summaries.length === 0 ? (
+                <div className="mt-5 rounded-2xl border border-dashed border-slate-300 p-8 text-center text-sm font-bold text-slate-500">
+                  Компании пока не найдены.
+                </div>
+              ) : null}
             </section>
 
-            <AttentionCard
+            <CompactAttention
               lowStockCount={lowStockCount}
-              noOwnWarehouseDataCount={noOwnWarehouseDataCount}
-              highReservedQty={totalReservedQty}
-              totalAvailableForSupplyQty={totalAvailableForSupplyQty}
+              ownWarehouseMissingCount={ownWarehouseMissingCount}
+              reservedQty={totalReservedQty}
             />
           </section>
 
-          {isCompanyDetail ? (
+          {selectedCompanySummary ? (
             <section className="grid gap-4 xl:grid-cols-3">
-              {summaries.map((summary) => (
-                <>
-                  <div
-                    key={`${summary.companyName}-wb`}
-                    className="rounded-[28px] border border-violet-100 bg-violet-50 p-5 shadow-sm"
-                  >
-                    <div className="text-xs font-black uppercase tracking-[0.12em] text-violet-600">
-                      Wildberries
-                    </div>
-                    <div className="mt-3 text-3xl font-black text-slate-950">
-                      {formatNumber(summary.wb.totalQty)} шт
-                    </div>
-                    <div className="mt-1 text-lg font-black text-slate-700">
-                      {formatMoney(summary.wb.totalCost)}
-                    </div>
-                    <div className="mt-4 grid gap-2 text-sm font-bold text-slate-600">
-                      <div>На складах: {formatNumber(summary.wb.stockQty)} шт</div>
-                      <div>
-                        К покупателям:{" "}
-                        {formatNumber(summary.wb.inTransitToCustomerQty)} шт
-                      </div>
-                      <div>
-                        Возвраты: {formatNumber(summary.wb.inTransitReturnsQty)} шт
-                      </div>
-                    </div>
+              <div className="rounded-[26px] border border-violet-100 bg-violet-50 p-5 shadow-sm">
+                <div className="text-xs font-black uppercase tracking-[0.12em] text-violet-600">
+                  Wildberries
+                </div>
+                <div className="mt-3 text-3xl font-black text-slate-950">
+                  {formatNumber(selectedCompanySummary.wb.totalQty)} шт
+                </div>
+                <div className="mt-1 text-lg font-black text-slate-700">
+                  {formatMoney(selectedCompanySummary.wb.totalCost)}
+                </div>
+                <div className="mt-4 grid gap-2 text-sm font-bold text-slate-600">
+                  <div>
+                    На складах: {formatNumber(selectedCompanySummary.wb.stockQty)} шт
                   </div>
+                  <div>
+                    К покупателям:{" "}
+                    {formatNumber(
+                      selectedCompanySummary.wb.inTransitToCustomerQty
+                    )}{" "}
+                    шт
+                  </div>
+                  <div>
+                    Возвраты:{" "}
+                    {formatNumber(selectedCompanySummary.wb.inTransitReturnsQty)} шт
+                  </div>
+                </div>
+              </div>
 
-                  <div
-                    key={`${summary.companyName}-ozon`}
-                    className="rounded-[28px] border border-blue-100 bg-blue-50 p-5 shadow-sm"
-                  >
-                    <div className="text-xs font-black uppercase tracking-[0.12em] text-blue-600">
-                      Ozon
-                    </div>
-                    <div className="mt-3 text-3xl font-black text-slate-950">
-                      {formatNumber(summary.ozon.totalQty)} шт
-                    </div>
-                    <div className="mt-1 text-lg font-black text-slate-700">
-                      {formatMoney(summary.ozon.totalCost)}
-                    </div>
-                    <div className="mt-4 grid gap-2 text-sm font-bold text-slate-600">
-                      <div>Доступно: {formatNumber(summary.ozon.availableQty)} шт</div>
-                      <div>
-                        Готовится: {formatNumber(summary.ozon.preparingQty)} шт
-                      </div>
-                      <div>В пути: {formatNumber(summary.ozon.inTransitQty)} шт</div>
-                    </div>
+              <div className="rounded-[26px] border border-blue-100 bg-blue-50 p-5 shadow-sm">
+                <div className="text-xs font-black uppercase tracking-[0.12em] text-blue-600">
+                  Ozon
+                </div>
+                <div className="mt-3 text-3xl font-black text-slate-950">
+                  {formatNumber(selectedCompanySummary.ozon.totalQty)} шт
+                </div>
+                <div className="mt-1 text-lg font-black text-slate-700">
+                  {formatMoney(selectedCompanySummary.ozon.totalCost)}
+                </div>
+                <div className="mt-4 grid gap-2 text-sm font-bold text-slate-600">
+                  <div>
+                    Доступно: {formatNumber(selectedCompanySummary.ozon.availableQty)} шт
                   </div>
+                  <div>
+                    Готовится: {formatNumber(selectedCompanySummary.ozon.preparingQty)} шт
+                  </div>
+                  <div>
+                    В пути: {formatNumber(selectedCompanySummary.ozon.inTransitQty)} шт
+                  </div>
+                </div>
+              </div>
 
-                  <div
-                    key={`${summary.companyName}-warehouse`}
-                    className="rounded-[28px] border border-emerald-100 bg-emerald-50 p-5 shadow-sm"
-                  >
-                    <div className="text-xs font-black uppercase tracking-[0.12em] text-emerald-600">
-                      Собственный склад
-                    </div>
-                    <div className="mt-3 text-3xl font-black text-slate-950">
-                      {formatNumber(summary.warehouse.warehouseQty)} шт
-                    </div>
-                    <div className="mt-1 text-lg font-black text-slate-700">
-                      {formatMoney(summary.warehouse.totalCost)}
-                    </div>
-                    <div className="mt-4 grid gap-2 text-sm font-bold text-slate-600">
-                      <div>
-                        Доступно к поставке:{" "}
-                        {formatNumber(summary.warehouse.availableForSupplyQty)} шт
-                      </div>
-                      <div>Резерв: {formatNumber(summary.warehouse.reservedQty)} шт</div>
-                      <div>
-                        Артикулов:{" "}
-                        {formatNumber(
-                          uniqCount(
-                            warehouseStocks
-                              .filter(
-                                (stock) =>
-                                  stock.companyName === summary.companyName
-                              )
-                              .map((stock) => stock.vendorCode)
-                          )
-                        )}
-                      </div>
-                    </div>
+              <div className="rounded-[26px] border border-emerald-100 bg-emerald-50 p-5 shadow-sm">
+                <div className="text-xs font-black uppercase tracking-[0.12em] text-emerald-600">
+                  Собственный склад
+                </div>
+                <div className="mt-3 text-3xl font-black text-slate-950">
+                  {formatNumber(selectedCompanySummary.warehouse.warehouseQty)} шт
+                </div>
+                <div className="mt-1 text-lg font-black text-slate-700">
+                  {formatMoney(selectedCompanySummary.warehouse.totalCost)}
+                </div>
+                <div className="mt-4 grid gap-2 text-sm font-bold text-slate-600">
+                  <div>
+                    К поставке:{" "}
+                    {formatNumber(
+                      selectedCompanySummary.warehouse.availableForSupplyQty
+                    )}{" "}
+                    шт
                   </div>
-                </>
-              ))}
+                  <div>
+                    Резерв: {formatNumber(selectedCompanySummary.warehouse.reservedQty)} шт
+                  </div>
+                  <div>
+                    Себест. к поставке:{" "}
+                    {formatMoney(
+                      selectedCompanySummary.warehouse.availableForSupplyCost
+                    )}
+                  </div>
+                </div>
+              </div>
             </section>
           ) : null}
 
-          <section className="rounded-[34px] border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+          <section className="rounded-[30px] border border-slate-200 bg-white p-5 shadow-sm">
             <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
               <div>
                 <h2 className="text-2xl font-black tracking-tight text-slate-950">
                   Детализация по товарам
                 </h2>
-                <p className="mt-2 max-w-3xl text-sm font-semibold leading-6 text-slate-500">
-                  Остатки и стоимость в разрезе товаров. Для подробного анализа
-                  выберите компанию и источник.
+                <p className="mt-1 max-w-3xl text-sm font-semibold leading-6 text-slate-500">
+                  Выберите товар, чтобы увидеть все размеры и остатки по
+                  маркетплейсам и складам.
                 </p>
               </div>
 
               <div className="flex flex-wrap gap-2">
-                {isCompanyDetail ? (
-                  <Link
-                    href="/stocks"
-                    className="inline-flex items-center justify-center rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-black text-slate-700 transition hover:bg-slate-50"
-                  >
-                    ← Все компании
-                  </Link>
-                ) : null}
-
                 <Link
-                  href={`/stocks?${new URLSearchParams({
-                    ...(selectedCompanyName ? { companyName: selectedCompanyName } : {}),
-                    source: selectedSource,
-                    rows: String(rowsLimit),
-                  }).toString()}`}
+                  href={makeUrl(params, {})}
                   className="inline-flex items-center justify-center rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-black text-slate-700 transition hover:bg-slate-50"
                 >
                   Экспорт в Excel
@@ -1319,16 +1366,34 @@ export default async function StocksPage({
               </div>
             </div>
 
-            <form className="mt-5 grid gap-3 xl:grid-cols-[minmax(260px,1fr)_180px_180px_170px_140px]">
+            <form className="mt-5 grid gap-3 xl:grid-cols-[minmax(240px,1fr)_220px_170px_160px_140px]">
               <input
                 type="hidden"
                 name="companyName"
                 value={selectedCompanyName ?? "ALL"}
               />
 
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-bold text-slate-500">
-                Поиск по названию и артикулу добавим следующим шагом
-              </div>
+              <input
+                name="q"
+                defaultValue={params.q ?? ""}
+                placeholder="Поиск по названию, артикулу, SKU"
+                className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-700 outline-none transition focus:border-violet-200 focus:ring-4 focus:ring-violet-50"
+              />
+
+              <select
+                name="product"
+                defaultValue={selectedProduct || "ALL"}
+                className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-700 outline-none"
+              >
+                <option value="ALL">Товар: все</option>
+                {productOptions.map((product) => (
+                  <option key={product.vendorCode} value={product.vendorCode}>
+                    {product.label.length > 34
+                      ? `${product.label.slice(0, 34)}...`
+                      : product.label}
+                  </option>
+                ))}
+              </select>
 
               <select
                 name="source"
@@ -1352,17 +1417,23 @@ export default async function StocksPage({
                 <option value="200">Показывать: 200</option>
               </select>
 
-              <Link
-                href={selectedCompanyName ? `/stocks?companyName=${encodeURIComponent(selectedCompanyName)}` : "/stocks"}
-                className="inline-flex items-center justify-center rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-black text-slate-700 transition hover:bg-slate-50"
-              >
-                Сбросить
-              </Link>
-
               <button className="rounded-2xl bg-slate-950 px-5 py-3 text-sm font-black text-white shadow-lg shadow-slate-300 transition hover:bg-slate-800">
                 Применить
               </button>
             </form>
+
+            <div className="mt-3">
+              <Link
+                href={
+                  selectedCompanyName
+                    ? `/stocks?companyName=${encodeURIComponent(selectedCompanyName)}`
+                    : "/stocks"
+                }
+                className="inline-flex rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-black text-slate-600 transition hover:bg-slate-50"
+              >
+                Сбросить фильтры
+              </Link>
+            </div>
 
             <div className="mt-5 overflow-hidden rounded-[26px] border border-slate-200">
               <div className="overflow-x-auto">
@@ -1370,17 +1441,45 @@ export default async function StocksPage({
                   <thead className="bg-slate-50 text-xs font-black uppercase tracking-[0.12em] text-slate-400">
                     <tr>
                       <th className="px-4 py-4">Фото</th>
-                      <th className="px-4 py-4">Товар</th>
-                      <th className="px-4 py-4">Артикул</th>
+                      <th className="px-4 py-4">
+                        <SortHeader params={params} sortKey="product">
+                          Товар
+                        </SortHeader>
+                      </th>
+                      <th className="px-4 py-4">
+                        <SortHeader params={params} sortKey="vendorCode">
+                          Артикул
+                        </SortHeader>
+                      </th>
                       <th className="px-4 py-4">SKU / NM ID</th>
                       <th className="px-4 py-4">Размер</th>
                       <th className="px-4 py-4">Источник</th>
                       <th className="px-4 py-4">Склад / кластер</th>
-                      <th className="px-4 py-4 text-right">Остаток</th>
-                      <th className="px-4 py-4 text-right">Себест. за ед.</th>
-                      <th className="px-4 py-4 text-right">Стоимость остатка</th>
+                      <th className="px-4 py-4 text-right">
+                        <SortHeader params={params} sortKey="qty" align="right">
+                          Остаток
+                        </SortHeader>
+                      </th>
+                      <th className="px-4 py-4 text-right">
+                        <SortHeader params={params} sortKey="costPrice" align="right">
+                          Себест. за ед.
+                        </SortHeader>
+                      </th>
+                      <th className="px-4 py-4 text-right">
+                        <SortHeader params={params} sortKey="totalCost" align="right">
+                          Стоимость остатка
+                        </SortHeader>
+                      </th>
                       <th className="px-4 py-4 text-right">Резерв</th>
-                      <th className="px-4 py-4 text-right">К поставке</th>
+                      <th className="px-4 py-4 text-right">
+                        <SortHeader
+                          params={params}
+                          sortKey="availableForSupplyQty"
+                          align="right"
+                        >
+                          К поставке
+                        </SortHeader>
+                      </th>
                     </tr>
                   </thead>
 
@@ -1390,15 +1489,17 @@ export default async function StocksPage({
                         <td className="px-4 py-4">
                           <ProductPhoto
                             imageUrl={row.imageUrl}
-                            title={row.productName ?? row.vendorCode}
+                            title={productTitle(row)}
                           />
                         </td>
                         <td className="px-4 py-4">
-                          <div className="font-black text-slate-950">
-                            {row.productName ?? "Название не загружено"}
-                          </div>
-                          <div className="mt-1 text-xs font-bold text-slate-400">
-                            {row.companyName}
+                          <div className="max-w-[240px]">
+                            <div className="line-clamp-2 text-sm font-black leading-5 text-slate-950">
+                              {row.productName ?? "Название не загружено"}
+                            </div>
+                            <div className="mt-1 text-xs font-bold text-slate-400">
+                              {row.companyName}
+                            </div>
                           </div>
                         </td>
                         <td className="px-4 py-4 font-black text-slate-950">
@@ -1412,11 +1513,11 @@ export default async function StocksPage({
                         </td>
                         <td className="px-4 py-4">
                           <span
-                            className={`inline-flex rounded-full px-3 py-1 text-xs font-black ring-1 ${getSourceBadgeClass(
+                            className={`inline-flex rounded-full px-3 py-1 text-xs font-black ring-1 ${sourceClass(
                               row.source
                             )}`}
                           >
-                            {getSourceLabel(row.source)}
+                            {sourceLabel(row.source)}
                           </span>
                         </td>
                         <td className="px-4 py-4 text-slate-500">
@@ -1446,7 +1547,7 @@ export default async function StocksPage({
                           colSpan={12}
                           className="px-4 py-12 text-center text-sm font-bold text-slate-500"
                         >
-                          Остатки пока не загружены.
+                          По выбранным фильтрам остатков нет.
                         </td>
                       </tr>
                     ) : null}
@@ -1458,11 +1559,11 @@ export default async function StocksPage({
             <div className="mt-4 flex flex-col gap-3 text-sm font-bold text-slate-500 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 Показано {formatNumber(visibleRows.length)} из{" "}
-                {formatNumber(unifiedRows.length)} строк
+                {formatNumber(filteredRows.length)} строк
               </div>
 
               <div className="rounded-2xl bg-slate-50 px-4 py-2 ring-1 ring-slate-200">
-                Лимит строк меняется фильтром “Показывать”
+                Сортировка доступна по товару, артикулу, остаткам и себестоимости
               </div>
             </div>
           </section>

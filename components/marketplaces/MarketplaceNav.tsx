@@ -7,7 +7,7 @@ const items = [
   { title: "Прибыль WB", href: "/profit-wb" },
   { title: "Прибыль Ozon", href: "/profit-ozon" },
   { title: "ABC-анализ", href: "/abc" },
-  { title: "Остатки WB", href: "/stocks" },
+  { title: "Остатки товаров", href: "/stocks" },
   { title: "Связки рекламы", href: "/ads-mapping" },
 ];
 
