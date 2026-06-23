@@ -576,6 +576,51 @@ function calculateDrr(adSpend: number, salesAmount: number) {
   return (adSpend / salesAmount) * 100;
 }
 
+
+function getMoscowDateKey(date: Date | null | undefined) {
+  if (!date) return "unknown";
+
+  return new Date(date.getTime() + 3 * 60 * 60 * 1000)
+    .toISOString()
+    .slice(0, 10);
+}
+
+function isWbDailyStatisticsSaleRow(row: {
+  reportNumber: string | null;
+}) {
+  return String(row.reportNumber ?? "").startsWith("WB_DAILY_STATISTICS_");
+}
+
+function selectPreferredWbSaleRows<
+  T extends {
+    reportNumber: string | null;
+    saleDate: Date | null;
+  },
+>(rows: T[]) {
+  const rowsByDay = new Map<string, T[]>();
+
+  for (const row of rows) {
+    const key = getMoscowDateKey(row.saleDate);
+    const current = rowsByDay.get(key) ?? [];
+
+    current.push(row);
+    rowsByDay.set(key, current);
+  }
+
+  const preferredRows: T[] = [];
+
+  for (const dayRows of rowsByDay.values()) {
+    const finalRows = dayRows.filter((row) => !isWbDailyStatisticsSaleRow(row));
+    const dailyRows = dayRows.filter((row) => isWbDailyStatisticsSaleRow(row));
+
+    // Если за день уже есть финальный недельный WB Sales — используем его.
+    // Иначе используем оперативный daily sales, чтобы не было пустоты в утреннем отчёте.
+    preferredRows.push(...(finalRows.length > 0 ? finalRows : dailyRows));
+  }
+
+  return preferredRows;
+}
+
 async function getWbMetrics(companyName: string, range: DateRange) {
   const [orderStats, salesRows, adsRowsRaw, stockQty] = await Promise.all([
     getOrderStats({
@@ -592,6 +637,8 @@ async function getWbMetrics(companyName: string, range: DateRange) {
         },
       },
       select: {
+        reportNumber: true,
+        saleDate: true,
         paymentReason: true,
         quantity: true,
         wbRealizedAmount: true,
@@ -643,10 +690,12 @@ async function getWbMetrics(companyName: string, range: DateRange) {
     getLatestWbStockQty(companyName),
   ]);
 
+  const effectiveSalesRows = selectPreferredWbSaleRows(salesRows);
+
   let salesQty = 0;
   let salesAmount = 0;
 
-  for (const row of salesRows) {
+  for (const row of effectiveSalesRows) {
     const qty = Math.abs(Number(row.quantity ?? 0)) || 1;
     const amount = Math.abs(toNumber(row.wbRealizedAmount));
 
@@ -667,7 +716,8 @@ async function getWbMetrics(companyName: string, range: DateRange) {
     ? "WB заказы за этот период ещё не загружены в MarketplaceDailyOrderStat"
     : null;
 
-  const salesDataMissing = salesRows.length === 0 && orderStats.ordersQty > 0;
+  const salesDataMissing =
+    effectiveSalesRows.length === 0 && orderStats.ordersQty > 0;
   const salesDataMissingReason = salesDataMissing
     ? "WB Sales/выкупы за этот период ещё не загружены в WbSale"
     : null;

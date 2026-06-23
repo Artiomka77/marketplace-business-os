@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { prisma } from "@/lib/prisma";
 import { syncMarketplaceDailyOrders } from "@/lib/marketplaceOrders/syncMarketplaceDailyOrders";
+import { syncWbDailySales } from "@/lib/wb/syncWbDailySales";
 import { syncOzonFinance } from "@/lib/ozon/syncOzon";
 
 export const dynamic = "force-dynamic";
@@ -129,6 +130,33 @@ async function runOzonDailyFinance(
       marketplace: "OZON",
       companyName: connection.company.name,
       dataType: "FINANCE",
+      ok: false,
+      error: getErrorMessage(error),
+    };
+  }
+}
+
+async function runWbDailySales(
+  connection: MarketplaceApiConnectionForDaily,
+  date: Date
+) {
+  try {
+    const result = await syncWbDailySales(connection.companyId, {
+      date,
+    });
+
+    return {
+      marketplace: "WB",
+      companyName: connection.company.name,
+      dataType: "SALES_DAILY",
+      ok: true,
+      result,
+    };
+  } catch (error) {
+    return {
+      marketplace: "WB",
+      companyName: connection.company.name,
+      dataType: "SALES_DAILY",
       ok: false,
       error: getErrorMessage(error),
     };
@@ -316,7 +344,11 @@ export async function GET(req: Request) {
       }
 
       if (connection.marketplace === "WB") {
-        // WB Ads тоже не запускаем напрямую в FULL-режиме.
+        // WB Daily Sales — короткий оперативный источник продаж/возвратов.
+        // Он нужен, чтобы утренний отчёт не оставался без WB продаж до недельного финального отчёта.
+        results.push(await runWbDailySales(connection, date));
+
+        // WB Ads не запускаем напрямую в FULL-режиме.
         // Здесь только гарантируем свежую задачу, а загрузку делает отдельный
         // route historical-sync-wb-ads безопасным темпом.
         results.push(await ensureWbAdsJobForReportDate(connection, date));
@@ -327,7 +359,7 @@ export async function GET(req: Request) {
       ok: true,
       date: dateText,
       purpose:
-        "Daily priority sync for Telegram owner report. Orders and Ozon Finance run directly. Ozon Ads and WB Ads are queued and processed by separate cron routes to avoid Vercel timeout.",
+        "Daily priority sync for Telegram owner report. Orders, WB Daily Sales and Ozon Finance run directly. Ozon Ads and WB Ads are queued and processed by separate cron routes to avoid Vercel timeout.",
       orderStats,
       results,
       executedAt: new Date().toISOString(),
