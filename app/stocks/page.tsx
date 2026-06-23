@@ -269,11 +269,13 @@ function getSortKey(value?: string): SortKey {
     return value;
   }
 
-  return "product";
+  return "qty";
 }
 
 function getSortDir(value?: string) {
-  return value === "desc" ? "desc" : "asc";
+  if (value === "asc" || value === "desc") return value;
+
+  return "desc";
 }
 
 function getLatestImportDateByCompany(params: {
@@ -1419,51 +1421,51 @@ export default async function StocksPage({
                       )}
                     </div>
 
-                    <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                      <div className="rounded-2xl bg-slate-50 p-3 ring-1 ring-slate-100">
+                    <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+                      <div className="rounded-2xl bg-slate-50 p-2.5 ring-1 ring-slate-100">
                         <div className="text-xs font-black uppercase text-slate-400">
                           Итого
                         </div>
-                        <div className="mt-1 text-xl font-black text-slate-950">
+                        <div className="mt-1 whitespace-nowrap text-base font-black text-slate-950">
                           {formatNumber(summary.totalQty)} шт
                         </div>
-                        <div className="text-sm font-bold text-slate-500">
+                        <div className="mt-0.5 whitespace-nowrap text-xs font-bold text-slate-500">
                           {formatMoney(summary.totalCost)}
                         </div>
                       </div>
 
-                      <div className="rounded-2xl bg-violet-50 p-3 ring-1 ring-violet-100">
+                      <div className="rounded-2xl bg-violet-50 p-2.5 ring-1 ring-violet-100">
                         <div className="text-xs font-black uppercase text-violet-500">
                           WB
                         </div>
-                        <div className="mt-1 text-xl font-black text-slate-950">
+                        <div className="mt-1 whitespace-nowrap text-base font-black text-slate-950">
                           {formatNumber(summary.wb.totalQty)} шт
                         </div>
-                        <div className="text-sm font-bold text-slate-500">
+                        <div className="mt-0.5 whitespace-nowrap text-xs font-bold text-slate-500">
                           {formatMoney(summary.wb.totalCost)}
                         </div>
                       </div>
 
-                      <div className="rounded-2xl bg-blue-50 p-3 ring-1 ring-blue-100">
+                      <div className="rounded-2xl bg-blue-50 p-2.5 ring-1 ring-blue-100">
                         <div className="text-xs font-black uppercase text-blue-500">
                           Ozon
                         </div>
-                        <div className="mt-1 text-xl font-black text-slate-950">
+                        <div className="mt-1 whitespace-nowrap text-base font-black text-slate-950">
                           {formatNumber(summary.ozon.totalQty)} шт
                         </div>
-                        <div className="text-sm font-bold text-slate-500">
+                        <div className="mt-0.5 whitespace-nowrap text-xs font-bold text-slate-500">
                           {formatMoney(summary.ozon.totalCost)}
                         </div>
                       </div>
 
-                      <div className="rounded-2xl bg-emerald-50 p-3 ring-1 ring-emerald-100">
+                      <div className="rounded-2xl bg-emerald-50 p-2.5 ring-1 ring-emerald-100">
                         <div className="text-xs font-black uppercase text-emerald-500">
                           Склад
                         </div>
-                        <div className="mt-1 text-xl font-black text-slate-950">
+                        <div className="mt-1 whitespace-nowrap text-base font-black text-slate-950">
                           {formatNumber(summary.warehouse.warehouseQty)} шт
                         </div>
-                        <div className="text-sm font-bold text-slate-500">
+                        <div className="mt-0.5 whitespace-nowrap text-xs font-bold text-slate-500">
                           {formatMoney(summary.warehouse.totalCost)}
                         </div>
                       </div>
@@ -1790,7 +1792,7 @@ export default async function StocksPage({
               </div>
 
               <div className="rounded-2xl bg-slate-50 px-4 py-2 ring-1 ring-slate-200">
-                Сортировка доступна по товару, артикулу, остаткам и себестоимости
+                По умолчанию: больше остатков → меньше. Можно сортировать по клику
               </div>
             </div>
           </section>
