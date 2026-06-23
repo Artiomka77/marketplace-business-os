@@ -4,6 +4,7 @@ import {
   buildDailyReport,
   formatDailyReportForTelegram,
 } from "@/lib/telegram/dailyReport";
+import { generateDailyReportAiAnalysis } from "@/lib/telegram/dailyReportAi";
 import {
   getTelegramAllowedChatIds,
   sendTelegramMessage,
@@ -38,6 +39,7 @@ export async function GET(req: Request) {
   const to = url.searchParams.get("to") ?? undefined;
   const preset = url.searchParams.get("period") ?? url.searchParams.get("preset") ?? undefined;
   const shouldSend = url.searchParams.get("send") !== "false";
+  const shouldUseAi = url.searchParams.get("ai") === "true";
 
   const allowedPresets = [
     "yesterday",
@@ -64,12 +66,32 @@ export async function GET(req: Request) {
       ? (preset as (typeof allowedPresets)[number])
       : undefined,
   });
-  const message = formatDailyReportForTelegram(report);
+
+  const baseMessage = formatDailyReportForTelegram(report);
+
+  let aiAnalysis: string | null = null;
+  let aiError: string | null = null;
+
+  if (shouldUseAi) {
+    const aiResult = await generateDailyReportAiAnalysis(report);
+    aiAnalysis = aiResult.text;
+    aiError = aiResult.error;
+  }
+
+  const message =
+    shouldUseAi && aiAnalysis
+      ? `${baseMessage}\n\n${aiAnalysis}`
+      : baseMessage;
 
   if (!shouldSend) {
     return NextResponse.json({
       ok: true,
       sent: false,
+      ai: {
+        enabled: shouldUseAi,
+        error: aiError,
+        analysis: aiAnalysis,
+      },
       date: report.dateLabel,
       message,
       report,
@@ -83,6 +105,11 @@ export async function GET(req: Request) {
       {
         ok: false,
         error: "TELEGRAM_ALLOWED_CHAT_IDS is empty",
+        ai: {
+          enabled: shouldUseAi,
+          error: aiError,
+          analysis: aiAnalysis,
+        },
         date: report.dateLabel,
         message,
       },
@@ -100,6 +127,11 @@ export async function GET(req: Request) {
   return NextResponse.json({
     ok: true,
     sent: true,
+    ai: {
+      enabled: shouldUseAi,
+      error: aiError,
+      analysis: aiAnalysis,
+    },
     recipients: chatIds.length,
     date: report.dateLabel,
   });
