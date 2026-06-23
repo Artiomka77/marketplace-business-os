@@ -11,6 +11,10 @@ import {
   formatDailyReportForTelegram,
   type DailyReportPeriodPreset,
 } from "@/lib/telegram/dailyReport";
+import { generateDailyReportAiAnalysis } from "@/lib/telegram/dailyReportAi";
+
+export const dynamic = "force-dynamic";
+export const maxDuration = 60;
 
 type TelegramChat = {
   id: number | string;
@@ -320,6 +324,12 @@ function reportPeriodInlineKeyboard() {
       ],
       [
         {
+          text: "🤖 Ответ ИИ",
+          callback_data: "report_ai:yesterday",
+        },
+      ],
+      [
+        {
           text: "← Главное меню",
           callback_data: "quick_menu",
         },
@@ -344,6 +354,8 @@ function getReportMenuMessage() {
     "• 3 месяца — квартальный взгляд",
     "• 6 месяцев — длинный период",
     "• Год — годовая картина",
+    "",
+    "🤖 Ответ ИИ — отчёт за вчера с AI-анализом.",
   ].join("\\n");
 }
 
@@ -445,6 +457,7 @@ function getHelpMessage(chatId: string) {
     "👤 Вывод собственника — личный вывод",
     "🏦 Кредит / займ — тело и проценты кредита",
     "📊 Отчёт собственника — сводка за нужный период",
+    "🤖 Ответ ИИ — отчёт за вчера с AI-анализом",
     "📋 Последние операции — последние операции из Telegram",
     "📅 Сегодня — операции за сегодня",
     "↩️ Отменить последнюю — удалить последнюю Telegram-операцию",
@@ -458,6 +471,7 @@ function getHelpMessage(chatId: string) {
     "/today — операции за сегодня",
     "/daily — сводка собственника за вчера",
     "/report — выбрать период отчёта",
+    "/report_ai — отчёт за вчера с AI-анализом",
     "/report_yesterday — отчёт за вчера",
     "/report_day_before_yesterday — отчёт за позавчера",
     "/report_current_week — текущая неделя",
@@ -838,12 +852,35 @@ async function sendTodayOperations(chatId: string) {
 
 async function sendDailyOwnerReport(
   chatId: string,
-  preset: DailyReportPeriodPreset = "yesterday"
+  preset: DailyReportPeriodPreset = "yesterday",
+  useAi = false
 ) {
   const report = await buildDailyReport({ preset });
-  const message = formatDailyReportForTelegram(report);
+  const baseMessage = formatDailyReportForTelegram(report);
 
-  await sendMessage(chatId, message);
+  if (!useAi) {
+    await sendMessage(chatId, baseMessage);
+    return;
+  }
+
+  const aiResult = await generateDailyReportAiAnalysis(report);
+
+  if (aiResult.text) {
+    await sendMessage(chatId, `${baseMessage}\n\n${aiResult.text}`);
+    return;
+  }
+
+  await sendMessage(
+    chatId,
+    [
+      baseMessage,
+      "",
+      "🤖 AI-анализ временно недоступен.",
+      aiResult.error ? `Причина: ${aiResult.error}` : null,
+    ]
+      .filter((line) => line !== null)
+      .join("\n")
+  );
 }
 
 async function sendReportMenu(chatId: string) {
@@ -1054,6 +1091,23 @@ async function createDraftFromMessage(message: TelegramMessage) {
     normalizedCommandText.includes("отчёт собственника")
   ) {
     await sendReportMenu(chatId);
+    return;
+  }
+
+  if (
+    normalizedCommandText === "/report_ai" ||
+    normalizedCommandText === "/daily_ai" ||
+    normalizedCommandText === "/ai" ||
+    normalizedCommandText.includes("ответ искусственного интеллекта") ||
+    normalizedCommandText.includes("ответ ии") ||
+    normalizedCommandText.includes("ответ ai") ||
+    normalizedCommandText.includes("ai-ответ") ||
+    normalizedCommandText.includes("ии-анализ") ||
+    normalizedCommandText.includes("ai-анализ") ||
+    normalizedCommandText.includes("ai анализ")
+  ) {
+    await sendMessage(chatId, "Готовлю отчёт с AI-анализом. Это может занять несколько секунд.");
+    await sendDailyOwnerReport(chatId, "yesterday", true);
     return;
   }
 
@@ -2007,6 +2061,41 @@ async function handleCallbackQuery(callbackQuery: TelegramCallbackQuery) {
 
     if (chatId) {
       await sendReportMenu(chatId);
+    }
+
+    return;
+  }
+
+  if (data.startsWith("report_ai:")) {
+    const message = callbackQuery.message;
+    const chatId = message?.chat.id ? String(message.chat.id) : null;
+    const preset = data.replace("report_ai:", "");
+
+    await answerCallbackQuery(callbackQuery.id, "Готовлю AI-анализ");
+
+    const allowedReportPresets = [
+      "yesterday",
+      "day_before_yesterday",
+      "3d",
+      "current_week",
+      "7d",
+      "15d",
+      "month",
+      "3m",
+      "6m",
+      "year",
+      // Старые значения оставляем для обратной совместимости.
+      "30d",
+      "90d",
+      "365d",
+    ] as const;
+
+    if (chatId && allowedReportPresets.includes(preset as any)) {
+      await sendDailyOwnerReport(
+        chatId,
+        preset as (typeof allowedReportPresets)[number],
+        true
+      );
     }
 
     return;
