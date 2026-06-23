@@ -15,6 +15,8 @@ import { normalizeOzonFinance } from "@/lib/import/normalizers/ozonFinanceNormal
 import { normalizeOzonAds } from "@/lib/import/normalizers/ozonAdsNormalizer";
 import { normalizeOzonStock } from "@/lib/import/normalizers/ozonStockNormalizer";
 import { normalizeOzonProduct } from "@/lib/import/normalizers/ozonProductNormalizer";
+import { normalizeOzonSupplyRecommendation } from "@/lib/import/normalizers/ozonSupplyRecommendationNormalizer";
+import { normalizeOzonWarehouseStock } from "@/lib/import/normalizers/ozonWarehouseStockNormalizer";
 import { normalizeFinanceTransactions } from "@/lib/import/normalizers/financeTransactionNormalizer";
 
 function parseWbAdsPeriodFromFileName(fileName: string) {
@@ -261,6 +263,24 @@ export async function POST(req: Request) {
         data,
         importSession.id,
         companyName
+      );
+      normalizedRows = result.savedRows;
+    }
+
+    if (detection.reportType === "OZON_SUPPLY_RECOMMENDATION") {
+      const result = await normalizeOzonSupplyRecommendation(
+        data,
+        importSession.id,
+        companyName
+      );
+      normalizedRows = result.savedRows;
+    }
+
+    if (detection.reportType === "OZON_WAREHOUSE_STOCK") {
+      const result = await normalizeOzonWarehouseStock(
+        data,
+        importSession.id,
+        companyName ?? "ИП Петров"
       );
       normalizedRows = result.savedRows;
     }

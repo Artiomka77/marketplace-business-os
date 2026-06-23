@@ -275,7 +275,7 @@ model WbProductCard {
   photoBigUrl   String?
 
   updatedAtFromApi DateTime?
-  lastSyncedAt     DateTime @default(now())
+  lastSyncedAt     DateTime  @default(now())
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -592,7 +592,6 @@ model BudgetPlan {
   @@unique([companyName, periodYear, periodMonth])
 }
 
-
 model MarketplaceDailyOrderStat {
   id String @id @default(cuid())
 
@@ -638,7 +637,7 @@ model MarketplaceApiConnection {
   status String @default("NOT_CONNECTED")
   // NOT_CONNECTED | CONNECTED | ERROR
 
-   lastSyncAt    DateTime?
+  lastSyncAt    DateTime?
   lastAttemptAt DateTime?
   retryCount    Int       @default(0)
   lastError     String?
@@ -649,6 +648,84 @@ model MarketplaceApiConnection {
   @@unique([companyId, marketplace])
   @@index([companyId])
   @@index([marketplace])
+}
+
+model OzonSupplyRecommendation {
+  id String @id @default(cuid())
+
+  importSessionId String?
+  companyName     String?
+
+  sku        String?
+  vendorCode String
+
+  productName String?
+
+  recommendationPeriodDays Int?
+  recommendedSupplyQty     Int  @default(0)
+
+  recommendation String?
+  clusterName    String
+  salesScheme    String?
+
+  daysWithoutStock28 Int?
+
+  avgDeliveryHours   Decimal?
+  avgDailySalesRub28 Decimal?
+  avgDailySalesQty28 Decimal?
+
+  productFlag String?
+
+  daysToStockEndFbo Decimal?
+  daysToStockEndFbs Decimal?
+
+  fboStockQty Int?
+  fbsStockQty Int?
+
+  inTransitToOzonQty Int?
+
+  createdAt DateTime @default(now())
+
+  @@index([importSessionId])
+  @@index([companyName])
+  @@index([sku])
+  @@index([vendorCode])
+  @@index([clusterName])
+  @@index([recommendation])
+  @@index([recommendationPeriodDays])
+}
+
+model OzonWarehouseStock {
+  id String @id @default(cuid())
+
+  importSessionId String?
+  companyName     String
+
+  vendorCode String
+  sku        String?
+
+  productName String?
+  color       String?
+  size        String?
+  barcode     String?
+
+  warehouseQty          Int @default(0)
+  reservedQty           Int @default(0)
+  availableForSupplyQty Int @default(0)
+
+  costPrice Decimal?
+
+  inventoryDate DateTime?
+  comment       String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([importSessionId])
+  @@index([companyName])
+  @@index([vendorCode])
+  @@index([sku])
+  @@index([inventoryDate])
 }
 
 model HistoricalSyncJob {
@@ -678,7 +755,7 @@ model HistoricalSyncJob {
 
   lastAttemptAt DateTime?
   lastError     String?
-  retryCount    Int @default(0)
+  retryCount    Int       @default(0)
 
   startedAt  DateTime?
   finishedAt DateTime?

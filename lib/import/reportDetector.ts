@@ -11,6 +11,8 @@ export type ReportType =
   | "OZON_ADS"
   | "OZON_STOCK"
   | "OZON_PRODUCT"
+  | "OZON_SUPPLY_RECOMMENDATION"
+  | "OZON_WAREHOUSE_STOCK"
   | "FINANCE_TRANSACTIONS"
   | "FINANCE_CATEGORIES"
   | "LOANS"
@@ -40,6 +42,11 @@ function rowHasAny(row: unknown[], expected: string[]) {
   return expected.some((column) => rowHas(row, column));
 }
 
+function rowHasTextIncludes(row: unknown[], expectedPart: string) {
+  const target = normalize(expectedPart);
+  return row.some((cell) => normalize(cell).includes(target));
+}
+
 function countMatches(row: unknown[], columns: string[]) {
   return columns.filter((column) => rowHas(row, column));
 }
@@ -48,6 +55,34 @@ const reportSignatures: {
   type: ReportType;
   columns: string[];
 }[] = [
+  {
+    type: "OZON_SUPPLY_RECOMMENDATION",
+    columns: [
+      "SKU",
+      "Артикул",
+      "Название товара",
+      "Рекомендация",
+      "Кластер",
+      "Схема продаж",
+      "Дней без остатка за 28 дней",
+      "Остаток FBO, шт",
+      "Остаток FBS, шт",
+      "Товары в пути на склад Ozon, шт",
+      "Среднесуточные продажи, шт. за 28дн",
+    ],
+  },
+  {
+    type: "OZON_WAREHOUSE_STOCK",
+    columns: [
+      "Компания",
+      "Артикул",
+      "SKU Ozon",
+      "Название товара",
+      "Количество на складе, шт",
+      "Резерв, шт",
+      "Доступно к поставке, шт",
+    ],
+  },
   {
     type: "FINANCE_TRANSACTIONS",
     columns: [
@@ -227,6 +262,44 @@ export function detectWorkbookReport(workbook: XLSX.WorkBook): DetectionResult {
       const row = matrix[rowIndex];
 
       if (
+        rowHas(row, "SKU") &&
+        rowHas(row, "Артикул") &&
+        rowHas(row, "Кластер") &&
+        rowHas(row, "Рекомендация") &&
+        rowHasTextIncludes(row, "Рекомендуемая поставка")
+      ) {
+        return {
+          reportType: "OZON_SUPPLY_RECOMMENDATION",
+          sheetName,
+          headerRowIndex: rowIndex,
+          matchedColumns: [
+            "SKU",
+            "Артикул",
+            "Кластер",
+            "Рекомендация",
+            "Рекомендуемая поставка",
+          ],
+        };
+      }
+
+      if (
+        rowHas(row, "Компания") &&
+        rowHas(row, "Артикул") &&
+        rowHas(row, "Количество на складе, шт")
+      ) {
+        return {
+          reportType: "OZON_WAREHOUSE_STOCK",
+          sheetName,
+          headerRowIndex: rowIndex,
+          matchedColumns: [
+            "Компания",
+            "Артикул",
+            "Количество на складе, шт",
+          ],
+        };
+      }
+
+      if (
         normalize(sheetName).includes("операции") &&
         rowHasAny(row, ["Дата", "Дата платежа"]) &&
         rowHas(row, "Статья") &&
@@ -340,7 +413,9 @@ export function detectWorkbookReport(workbook: XLSX.WorkBook): DetectionResult {
     bestResult.reportType === "PRODUCT_COST" ||
     bestResult.reportType === "FINANCE_TRANSACTIONS" ||
     bestResult.reportType === "FINANCE_CATEGORIES" ||
-    bestResult.reportType === "LOANS"
+    bestResult.reportType === "LOANS" ||
+    bestResult.reportType === "OZON_SUPPLY_RECOMMENDATION" ||
+    bestResult.reportType === "OZON_WAREHOUSE_STOCK"
   ) {
     return bestResult;
   }

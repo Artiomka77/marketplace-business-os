@@ -58,6 +58,21 @@ const supportedReports = [
     path: "Продвижение → Аналитика продвижения → Скачать отчет → Выбрать период",
     tag: "Ozon",
   },
+  {
+    title: "Ozon — Планирование поставок",
+    desc: "Доступность товаров, рекомендации Ozon и потребность по кластерам.",
+    path: "Ozon → FBO → Планирование поставок → Скачать файл доступности товаров",
+    tag: "Ozon",
+    reportType: "OZON_SUPPLY_RECOMMENDATION",
+  },
+  {
+    title: "Ozon — Наш склад",
+    desc: "Остатки товаров на вашем складе для распределения поставок по кластерам.",
+    path: "Скачать шаблон → заполнить артикулы и остатки → загрузить файл",
+    tag: "Supply",
+    reportType: "OZON_WAREHOUSE_STOCK",
+    templateHref: "/api/templates/ozon-warehouse-stock",
+  },
 ];
 
 function getReportTypeLabel(reportType?: string) {
@@ -70,6 +85,9 @@ function getReportTypeLabel(reportType?: string) {
   if (reportType === "OZON_ADS") return "Ozon реклама";
   if (reportType === "OZON_STOCK") return "Ozon остатки";
   if (reportType === "OZON_PRODUCT") return "Ozon товары";
+  if (reportType === "OZON_SUPPLY_RECOMMENDATION")
+    return "Ozon планирование поставок";
+  if (reportType === "OZON_WAREHOUSE_STOCK") return "Ozon наш склад";
   if (reportType === "PRODUCT_COST") return "Себестоимость";
   return reportType ?? "—";
 }
@@ -100,6 +118,10 @@ function ImportPageContent() {
   const searchParams = useSearchParams();
   const requestedReportType = searchParams.get("reportType") ?? "";
   const isFinanceImport = requestedReportType === "FINANCE_TRANSACTIONS";
+  const requestedReport = supportedReports.find(
+    (report) => report.reportType === requestedReportType
+  );
+  const requestedTemplateHref = requestedReport?.templateHref ?? null;
 
   const [file, setFile] = useState<File | null>(null);
   const [companyName, setCompanyName] = useState(companies[0]);
@@ -108,11 +130,15 @@ function ImportPageContent() {
 
   const title = isFinanceImport
     ? "Загрузка финансовых операций"
-    : "Импорт Excel-файлов";
+    : requestedReport
+      ? `Загрузка: ${requestedReport.title}`
+      : "Импорт Excel-файлов";
 
   const description = isFinanceImport
     ? "Загрузите заполненный Excel-шаблон с поступлениями, расходами, кредитами, выводами и переводами."
-    : "Выберите компанию и загрузите Excel-отчёт. Система сама определит тип файла и сохранит данные.";
+    : requestedReport
+      ? requestedReport.desc
+      : "Выберите компанию и загрузите Excel-отчёт. Система сама определит тип файла и сохранит данные.";
 
   const highlightedReports = useMemo(() => {
     if (!requestedReportType) return supportedReports;
@@ -178,9 +204,9 @@ function ImportPageContent() {
             </div>
 
             <div className="flex flex-wrap gap-2">
-              {isFinanceImport ? (
+              {requestedTemplateHref ? (
                 <a
-                  href="/api/templates/finance-transactions"
+                  href={requestedTemplateHref}
                   className="inline-flex items-center gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-black text-emerald-700 shadow-sm transition hover:bg-emerald-100"
                 >
                   ⇩ Скачать шаблон
