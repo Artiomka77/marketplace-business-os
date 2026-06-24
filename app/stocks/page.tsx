@@ -13,6 +13,9 @@ type StockSearchParams = {
   dir?: string;
   product?: string;
   q?: string;
+  sizeRows?: string;
+  sizeSort?: string;
+  sizeOpen?: string;
 };
 
 type StockSource = "ALL" | "WB" | "OZON" | "OWN";
@@ -82,27 +85,40 @@ type UnifiedStockRow = {
   imageUrl: string | null;
 };
 
+type ProductSizeRow = {
+  size: string;
+  qty: number;
+  totalCost: number;
+};
+
+type ProductSizeSourceSummary = {
+  totalQty: number;
+  totalCost: number;
+  sizes: ProductSizeRow[];
+};
+
 type ProductSizeSummary = {
+  groupKey: string;
+  marketplaceArticle: string;
   vendorCode: string;
   productName: string | null;
   imageUrl: string | null;
   companyName: string;
-  totalQty: number;
-  totalCost: number;
-  wbQty: number;
-  ozonQty: number;
-  ownQty: number;
+  wb: ProductSizeSourceSummary;
+  ozon: ProductSizeSourceSummary;
+  own: ProductSizeSourceSummary;
   lowSizeCount: number;
   missingSizeCount: number;
-  sizes: Array<{
-    size: string;
-    totalQty: number;
-    wbQty: number;
-    ozonQty: number;
-    ownQty: number;
-    totalCost: number;
-  }>;
 };
+
+type SizeSummarySortKey =
+  | "totalDesc"
+  | "totalAsc"
+  | "wbDesc"
+  | "ozonDesc"
+  | "ownDesc"
+  | "lowDesc"
+  | "nameAsc";
 
 function formatNumber(value: number) {
   return Math.round(value).toLocaleString("ru-RU");
@@ -493,16 +509,88 @@ function getDisplaySize(row: UnifiedStockRow) {
   return normalizeKey(row.size) || inferSizeFromVendorCode(row.vendorCode);
 }
 
-function getProductGroupKey(row: UnifiedStockRow) {
-  const article = normalizeKey(row.vendorCode);
-  const name = normalizeKey(row.productName);
-  const company = normalizeKey(row.companyName);
+function getUnifiedMarketplaceArticle(row: UnifiedStockRow) {
+  if (row.source === "WB") {
+    const nmId = normalizeKey(row.nmId);
 
-  return `${company}::${article || name}`;
+    if (nmId) return nmId;
+  }
+
+  const marketplaceBaseArticle = getMarketplaceBaseArticle(row.vendorCode);
+
+  if (marketplaceBaseArticle) return marketplaceBaseArticle;
+
+  const vendorCode = normalizeKey(row.vendorCode);
+
+  if (vendorCode && vendorCode !== "—") return vendorCode;
+
+  return normalizeKey(row.productName);
+}
+
+function getProductGroupKey(row: UnifiedStockRow) {
+  const company = normalizeKey(row.companyName);
+  const unifiedArticle = getUnifiedMarketplaceArticle(row);
+
+  return `${company}::${unifiedArticle}`;
 }
 
 function getProductSizeLabel(row: UnifiedStockRow) {
   return getDisplaySize(row) ?? "Без размера";
+}
+
+function emptyProductSizeSourceSummary(): ProductSizeSourceSummary {
+  return {
+    totalQty: 0,
+    totalCost: 0,
+    sizes: [],
+  };
+}
+
+function addSizeToSourceSummary(
+  source: ProductSizeSourceSummary,
+  params: {
+    size: string;
+    qty: number;
+    totalCost: number;
+  }
+) {
+  source.totalQty += params.qty;
+  source.totalCost += params.totalCost;
+
+  let sizeRow = source.sizes.find((item) => item.size === params.size);
+
+  if (!sizeRow) {
+    sizeRow = {
+      size: params.size,
+      qty: 0,
+      totalCost: 0,
+    };
+
+    source.sizes.push(sizeRow);
+  }
+
+  sizeRow.qty += params.qty;
+  sizeRow.totalCost += params.totalCost;
+}
+
+function sortSizeRows(rows: ProductSizeRow[]) {
+  return rows.sort((a, b) => {
+    const aNumber = Number(String(a.size).match(/\d+/)?.[0] ?? 0);
+    const bNumber = Number(String(b.size).match(/\d+/)?.[0] ?? 0);
+
+    if (a.size === "Без размера") return 1;
+    if (b.size === "Без размера") return -1;
+    if (aNumber !== bNumber) return aNumber - bNumber;
+
+    return a.size.localeCompare(b.size, "ru", {
+      numeric: true,
+      sensitivity: "base",
+    });
+  });
+}
+
+function getProductSummaryTotal(group: ProductSizeSummary) {
+  return group.wb.totalQty + group.ozon.totalQty + group.own.totalQty;
 }
 
 function buildProductSizeSummaries(rows: UnifiedStockRow[]) {
@@ -511,85 +599,148 @@ function buildProductSizeSummaries(rows: UnifiedStockRow[]) {
   for (const row of rows) {
     const key = getProductGroupKey(row);
     const size = getProductSizeLabel(row);
+    const marketplaceArticle = getUnifiedMarketplaceArticle(row);
 
     const current =
       groups.get(key) ??
       ({
-        vendorCode: row.vendorCode,
+        groupKey: key,
+        marketplaceArticle,
+        vendorCode:
+          row.source === "OZON" && marketplaceArticle
+            ? marketplaceArticle
+            : row.vendorCode,
         productName: row.productName,
         imageUrl: row.imageUrl,
         companyName: row.companyName,
-        totalQty: 0,
-        totalCost: 0,
-        wbQty: 0,
-        ozonQty: 0,
-        ownQty: 0,
+        wb: emptyProductSizeSourceSummary(),
+        ozon: emptyProductSizeSourceSummary(),
+        own: emptyProductSizeSourceSummary(),
         lowSizeCount: 0,
         missingSizeCount: 0,
-        sizes: [],
       } satisfies ProductSizeSummary);
 
-    current.totalQty += row.qty;
-    current.totalCost += row.totalCost;
+    if (!current.productName && row.productName) {
+      current.productName = row.productName;
+    }
 
-    if (row.source === "WB") current.wbQty += row.qty;
-    if (row.source === "OZON") current.ozonQty += row.qty;
-    if (row.source === "OWN") current.ownQty += row.qty;
+    if (!current.imageUrl && row.imageUrl) {
+      current.imageUrl = row.imageUrl;
+    }
+
+    if (!current.marketplaceArticle && marketplaceArticle) {
+      current.marketplaceArticle = marketplaceArticle;
+    }
 
     if (!getDisplaySize(row)) {
       current.missingSizeCount += 1;
     }
 
-    let sizeRow = current.sizes.find((item) => item.size === size);
+    const source =
+      row.source === "WB"
+        ? current.wb
+        : row.source === "OZON"
+          ? current.ozon
+          : current.own;
 
-    if (!sizeRow) {
-      sizeRow = {
-        size,
-        totalQty: 0,
-        wbQty: 0,
-        ozonQty: 0,
-        ownQty: 0,
-        totalCost: 0,
-      };
-      current.sizes.push(sizeRow);
-    }
-
-    sizeRow.totalQty += row.qty;
-    sizeRow.totalCost += row.totalCost;
-
-    if (row.source === "WB") sizeRow.wbQty += row.qty;
-    if (row.source === "OZON") sizeRow.ozonQty += row.qty;
-    if (row.source === "OWN") sizeRow.ownQty += row.qty;
+    addSizeToSourceSummary(source, {
+      size,
+      qty: row.qty,
+      totalCost: row.totalCost,
+    });
 
     groups.set(key, current);
   }
 
-  return Array.from(groups.values())
-    .map((group) => {
-      const sizes = group.sizes
-        .sort((a, b) => {
-          const aNumber = Number(String(a.size).match(/\d+/)?.[0] ?? 0);
-          const bNumber = Number(String(b.size).match(/\d+/)?.[0] ?? 0);
+  return Array.from(groups.values()).map((group) => {
+    const wbSizes = sortSizeRows(group.wb.sizes);
+    const ozonSizes = sortSizeRows(group.ozon.sizes);
+    const ownSizes = sortSizeRows(group.own.sizes);
+    const allSourceSizes = [...wbSizes, ...ozonSizes, ...ownSizes];
 
-          if (a.size === "Без размера") return 1;
-          if (b.size === "Без размера") return -1;
-          if (aNumber !== bNumber) return aNumber - bNumber;
+    return {
+      ...group,
+      wb: {
+        ...group.wb,
+        sizes: wbSizes,
+      },
+      ozon: {
+        ...group.ozon,
+        sizes: ozonSizes,
+      },
+      own: {
+        ...group.own,
+        sizes: ownSizes,
+      },
+      lowSizeCount: allSourceSizes.filter(
+        (size) => size.size !== "Без размера" && size.qty > 0 && size.qty < 10
+      ).length,
+    };
+  });
+}
 
-          return a.size.localeCompare(b.size, "ru", {
-            numeric: true,
-            sensitivity: "base",
-          });
-        });
+function getSizeSummaryRowsLimit(value: string | undefined, totalRows: number) {
+  if (value === "ALL") return totalRows;
 
-      return {
-        ...group,
-        lowSizeCount: sizes.filter(
-          (size) => size.size !== "Без размера" && size.totalQty > 0 && size.totalQty < 10
-        ).length,
-        sizes,
-      };
-    })
-    .sort((a, b) => b.totalQty - a.totalQty);
+  const parsed = Number(value ?? 20);
+
+  return [8, 20, 50, 100, 200].includes(parsed) ? parsed : 20;
+}
+
+function getSizeSummarySort(value?: string): SizeSummarySortKey {
+  if (
+    value === "totalDesc" ||
+    value === "totalAsc" ||
+    value === "wbDesc" ||
+    value === "ozonDesc" ||
+    value === "ownDesc" ||
+    value === "lowDesc" ||
+    value === "nameAsc"
+  ) {
+    return value;
+  }
+
+  return "totalDesc";
+}
+
+function sortProductSizeSummaries(
+  groups: ProductSizeSummary[],
+  sortKey: SizeSummarySortKey
+) {
+  return [...groups].sort((a, b) => {
+    if (sortKey === "totalAsc") {
+      return getProductSummaryTotal(a) - getProductSummaryTotal(b);
+    }
+
+    if (sortKey === "wbDesc") {
+      return b.wb.totalQty - a.wb.totalQty;
+    }
+
+    if (sortKey === "ozonDesc") {
+      return b.ozon.totalQty - a.ozon.totalQty;
+    }
+
+    if (sortKey === "ownDesc") {
+      return b.own.totalQty - a.own.totalQty;
+    }
+
+    if (sortKey === "lowDesc") {
+      return b.lowSizeCount - a.lowSizeCount;
+    }
+
+    if (sortKey === "nameAsc") {
+      return (a.productName ?? a.vendorCode).localeCompare(
+        b.productName ?? b.vendorCode,
+        "ru",
+        {
+          numeric: true,
+          sensitivity: "base",
+        }
+      );
+    }
+
+    return getProductSummaryTotal(b) - getProductSummaryTotal(a);
+  });
 }
 
 function sizeChipClass(qty: number, size: string) {
@@ -605,12 +756,86 @@ function sizeChipClass(qty: number, size: string) {
     return "bg-amber-50 text-amber-700 ring-amber-100";
   }
 
-  return "bg-emerald-50 text-emerald-700 ring-emerald-100";
+  return "bg-white text-slate-700 ring-slate-200";
+}
+
+function sourcePanelClass(source: "WB" | "OZON" | "OWN") {
+  if (source === "WB") return "bg-violet-50 ring-violet-100";
+  if (source === "OZON") return "bg-blue-50 ring-blue-100";
+
+  return "bg-emerald-50 ring-emerald-100";
+}
+
+function sourceTitleClass(source: "WB" | "OZON" | "OWN") {
+  if (source === "WB") return "text-violet-700";
+  if (source === "OZON") return "text-blue-700";
+
+  return "text-emerald-700";
+}
+
+function ProductSizeSourcePanel({
+  title,
+  source,
+  sourceKey,
+}: {
+  title: string;
+  source: ProductSizeSourceSummary;
+  sourceKey: "WB" | "OZON" | "OWN";
+}) {
+  return (
+    <div
+      className={`rounded-2xl px-3 py-2.5 ring-1 ${sourcePanelClass(
+        sourceKey
+      )}`}
+    >
+      <div className="flex items-center justify-between gap-2">
+        <div
+          className={`text-[10px] font-black uppercase tracking-[0.12em] ${sourceTitleClass(
+            sourceKey
+          )}`}
+        >
+          {title}
+        </div>
+        <div className="text-sm font-black text-slate-950">
+          {formatNumber(source.totalQty)} шт.
+        </div>
+      </div>
+
+      <div className="mt-2 flex flex-wrap gap-1.5">
+        {source.sizes.length > 0 ? (
+          source.sizes.slice(0, 12).map((size) => (
+            <span
+              key={`${sourceKey}-${size.size}`}
+              className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-black ring-1 ${sizeChipClass(
+                size.qty,
+                size.size
+              )}`}
+              title={`${title}: ${size.size} — ${formatNumber(size.qty)} шт.`}
+            >
+              <span>{size.size}</span>
+              <span>·</span>
+              <span>{formatNumber(size.qty)}</span>
+            </span>
+          ))
+        ) : (
+          <span className="inline-flex rounded-full bg-white px-2 py-1 text-[11px] font-black text-slate-400 ring-1 ring-slate-200">
+            нет остатка
+          </span>
+        )}
+
+        {source.sizes.length > 12 ? (
+          <span className="inline-flex rounded-full bg-white px-2 py-1 text-[11px] font-black text-slate-500 ring-1 ring-slate-200">
+            +{formatNumber(source.sizes.length - 12)}
+          </span>
+        ) : null}
+      </div>
+    </div>
+  );
 }
 
 function ProductSizeSummaryCard({ group }: { group: ProductSizeSummary }) {
   return (
-    <article className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm">
+    <article className="rounded-[22px] border border-slate-200 bg-white p-3 shadow-sm">
       <div className="flex items-start gap-3">
         <ProductPhoto
           imageUrl={group.imageUrl}
@@ -618,75 +843,34 @@ function ProductSizeSummaryCard({ group }: { group: ProductSizeSummary }) {
         />
 
         <div className="min-w-0 flex-1">
-          <div className="line-clamp-2 text-sm font-black leading-5 text-slate-950">
+          <div className="line-clamp-1 text-sm font-black leading-5 text-slate-950">
             {group.productName ?? "Название не загружено"}
           </div>
-          <div className="mt-1 break-all text-xs font-bold text-slate-500">
-            {group.vendorCode}
-          </div>
-          <div className="mt-1 text-xs font-bold text-slate-400">
-            {group.companyName}
-          </div>
-        </div>
-
-        <div className="text-right">
-          <div className="text-lg font-black text-slate-950">
-            {formatNumber(group.totalQty)}
-          </div>
-          <div className="text-[11px] font-bold text-slate-400">шт.</div>
-        </div>
-      </div>
-
-      <div className="mt-3 grid grid-cols-3 gap-2">
-        <div className="rounded-2xl bg-violet-50 px-3 py-2 ring-1 ring-violet-100">
-          <div className="text-[10px] font-black uppercase text-violet-500">WB</div>
-          <div className="mt-1 text-sm font-black text-slate-950">
-            {formatNumber(group.wbQty)}
-          </div>
-        </div>
-        <div className="rounded-2xl bg-blue-50 px-3 py-2 ring-1 ring-blue-100">
-          <div className="text-[10px] font-black uppercase text-blue-500">Ozon</div>
-          <div className="mt-1 text-sm font-black text-slate-950">
-            {formatNumber(group.ozonQty)}
-          </div>
-        </div>
-        <div className="rounded-2xl bg-emerald-50 px-3 py-2 ring-1 ring-emerald-100">
-          <div className="text-[10px] font-black uppercase text-emerald-500">Склад</div>
-          <div className="mt-1 text-sm font-black text-slate-950">
-            {formatNumber(group.ownQty)}
+          <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] font-black text-slate-500">
+            <span className="break-all">Связка: {group.marketplaceArticle}</span>
+            <span>{group.companyName}</span>
           </div>
         </div>
       </div>
 
-      <div className="mt-3 flex flex-wrap gap-2">
-        {group.sizes.slice(0, 18).map((size) => (
-          <span
-            key={size.size}
-            className={`inline-flex items-center gap-1 rounded-full px-3 py-1.5 text-xs font-black ring-1 ${sizeChipClass(
-              size.totalQty,
-              size.size
-            )}`}
-            title={`WB: ${formatNumber(size.wbQty)} · Ozon: ${formatNumber(
-              size.ozonQty
-            )} · склад: ${formatNumber(size.ownQty)}`}
-          >
-            <span>{size.size}</span>
-            <span>·</span>
-            <span>{formatNumber(size.totalQty)} шт</span>
-          </span>
-        ))}
-
-        {group.sizes.length > 18 ? (
-          <span className="inline-flex rounded-full bg-slate-50 px-3 py-1.5 text-xs font-black text-slate-500 ring-1 ring-slate-200">
-            +{formatNumber(group.sizes.length - 18)} размеров
-          </span>
-        ) : null}
+      <div className="mt-3 grid gap-2 lg:grid-cols-3">
+        <ProductSizeSourcePanel title="WB" source={group.wb} sourceKey="WB" />
+        <ProductSizeSourcePanel
+          title="Ozon"
+          source={group.ozon}
+          sourceKey="OZON"
+        />
+        <ProductSizeSourcePanel
+          title="Склад"
+          source={group.own}
+          sourceKey="OWN"
+        />
       </div>
 
       {group.lowSizeCount > 0 || group.missingSizeCount > 0 ? (
-        <div className="mt-3 rounded-2xl bg-amber-50 px-3 py-2 text-xs font-bold leading-5 text-amber-800 ring-1 ring-amber-100">
+        <div className="mt-2 rounded-2xl bg-amber-50 px-3 py-2 text-[11px] font-bold leading-4 text-amber-800 ring-1 ring-amber-100">
           {group.lowSizeCount > 0
-            ? `Низкий остаток по размерам: ${formatNumber(group.lowSizeCount)}.`
+            ? `Низкий остаток: ${formatNumber(group.lowSizeCount)} размер(а).`
             : null}{" "}
           {group.missingSizeCount > 0
             ? `Без размера: ${formatNumber(group.missingSizeCount)} строк.`
@@ -696,7 +880,6 @@ function ProductSizeSummaryCard({ group }: { group: ProductSizeSummary }) {
     </article>
   );
 }
-
 
 function makeUrl(params: StockSearchParams, patch: Record<string, string | null | undefined>) {
   const next = new URLSearchParams();
@@ -709,6 +892,9 @@ function makeUrl(params: StockSearchParams, patch: Record<string, string | null 
     dir: params.dir,
     product: params.product,
     q: params.q,
+    sizeRows: params.sizeRows,
+    sizeSort: params.sizeSort,
+    sizeOpen: params.sizeOpen,
   };
 
   for (const [key, value] of Object.entries(patch)) {
@@ -1665,7 +1851,17 @@ export default async function StocksPage({
     });
 
   const visibleRows = filteredRows.slice(0, rowsLimit);
-  const productSizeSummaries = buildProductSizeSummaries(filteredRows).slice(0, 8);
+  const sizeSummarySort = getSizeSummarySort(params.sizeSort);
+  const allProductSizeSummaries = sortProductSizeSummaries(
+    buildProductSizeSummaries(filteredRows),
+    sizeSummarySort
+  );
+  const sizeSummaryLimit = getSizeSummaryRowsLimit(
+    params.sizeRows,
+    allProductSizeSummaries.length
+  );
+  const productSizeSummaries = allProductSizeSummaries.slice(0, sizeSummaryLimit);
+  const sizeSummaryOpen = params.sizeOpen === "1";
 
   const lowStockCount = filteredRows.filter((row) => row.qty > 0 && row.qty < 10).length;
   const ownWarehouseMissingCount = summaries.filter(
@@ -2068,34 +2264,92 @@ export default async function StocksPage({
               </Link>
             </div>
 
-            {productSizeSummaries.length > 0 ? (
-              <section className="mt-5 rounded-[26px] border border-slate-200 bg-slate-50 p-4">
-                <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-                  <div>
-                    <h3 className="text-lg font-black tracking-tight text-slate-950">
-                      Быстрый разбор по размерам
-                    </h3>
-                    <p className="mt-1 max-w-3xl text-sm font-semibold leading-6 text-slate-500">
-                      Товары из текущей выборки, сгруппированные по размерам. Цвет
-                      подсказывает риск: жёлтый — меньше 10 шт., красный — 0 шт.,
-                      зелёный — запас нормальный.
-                    </p>
+            {allProductSizeSummaries.length > 0 ? (
+              <details
+                open={sizeSummaryOpen}
+                className="mt-5 rounded-[26px] border border-slate-200 bg-slate-50 p-4 shadow-sm"
+              >
+                <summary className="cursor-pointer list-none outline-none">
+                  <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                    <div>
+                      <h3 className="text-lg font-black tracking-tight text-slate-950">
+                        Быстрый разбор по размерам
+                      </h3>
+                      <p className="mt-1 max-w-4xl text-sm font-semibold leading-6 text-slate-500">
+                        Свернутый блок по всем товарам из текущей выборки. WB,
+                        Ozon и склад разделены, чтобы было видно, где именно
+                        лежит каждый размер.
+                      </p>
+                    </div>
+
+                    <div className="inline-flex items-center justify-center rounded-2xl bg-white px-4 py-2 text-sm font-black text-slate-600 ring-1 ring-slate-200">
+                      Показано {formatNumber(productSizeSummaries.length)} из{" "}
+                      {formatNumber(allProductSizeSummaries.length)}
+                    </div>
+                  </div>
+                </summary>
+
+                <form className="mt-4 grid gap-2 rounded-[22px] border border-slate-200 bg-white p-3 md:grid-cols-[minmax(0,1fr)_220px_180px_130px]">
+                  {selectedCompanyName ? (
+                    <input type="hidden" name="companyName" value={selectedCompanyName} />
+                  ) : null}
+                  {selectedSource !== "ALL" ? (
+                    <input type="hidden" name="source" value={selectedSource} />
+                  ) : null}
+                  {selectedProduct ? (
+                    <input type="hidden" name="product" value={selectedProduct} />
+                  ) : null}
+                  {searchQuery ? <input type="hidden" name="q" value={searchQuery} /> : null}
+                  <input type="hidden" name="rows" value={String(rowsLimit)} />
+                  <input type="hidden" name="sort" value={sortKey} />
+                  <input type="hidden" name="dir" value={sortDir} />
+                  <input type="hidden" name="sizeOpen" value="1" />
+
+                  <div className="flex items-center rounded-2xl bg-slate-50 px-4 py-3 text-sm font-black text-slate-600 ring-1 ring-slate-200">
+                    Управление группировкой размеров
                   </div>
 
-                  <div className="rounded-2xl bg-white px-4 py-2 text-sm font-black text-slate-600 ring-1 ring-slate-200">
-                    Топ {formatNumber(productSizeSummaries.length)} по остатку
-                  </div>
-                </div>
+                  <select
+                    name="sizeSort"
+                    defaultValue={sizeSummarySort}
+                    className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-700 outline-none"
+                  >
+                    <option value="totalDesc">Сначала больше всего</option>
+                    <option value="totalAsc">Сначала меньше всего</option>
+                    <option value="wbDesc">Больше всего на WB</option>
+                    <option value="ozonDesc">Больше всего на Ozon</option>
+                    <option value="ownDesc">Больше всего на складе</option>
+                    <option value="lowDesc">Сначала проблемные размеры</option>
+                    <option value="nameAsc">По названию А–Я</option>
+                  </select>
 
-                <div className="mt-4 grid gap-3 xl:grid-cols-2">
+                  <select
+                    name="sizeRows"
+                    defaultValue={params.sizeRows ?? "20"}
+                    className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-700 outline-none"
+                  >
+                    <option value="8">Показать 8</option>
+                    <option value="20">Показать 20</option>
+                    <option value="50">Показать 50</option>
+                    <option value="100">Показать 100</option>
+                    <option value="200">Показать 200</option>
+                    <option value="ALL">Показать все</option>
+                  </select>
+
+                  <button className="rounded-2xl bg-slate-950 px-5 py-3 text-sm font-black text-white shadow-lg shadow-slate-300 transition hover:bg-slate-800">
+                    Применить
+                  </button>
+                </form>
+
+                <div className="mt-4 grid gap-3">
                   {productSizeSummaries.map((group) => (
                     <ProductSizeSummaryCard
-                      key={`${group.companyName}-${group.vendorCode}`}
+                      key={group.groupKey}
                       group={group}
                     />
                   ))}
                 </div>
-              </section>
+              </details>
             ) : null}
 
             <div className="mt-5 overflow-hidden rounded-[26px] border border-slate-200">
