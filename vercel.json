@@ -9,12 +9,12 @@
       "schedule": "20 3 * * *"
     },
     {
-      "path": "/api/cron/sync-wb-daily-sales",
-      "schedule": "55 3 * * *"
+      "path": "/api/cron/priority-wb-ads",
+      "schedule": "30,42 3 * * *"
     },
     {
-      "path": "/api/cron/historical-sync-wb-ads",
-      "schedule": "5,15,25,35,45,55 3 * * *"
+      "path": "/api/cron/sync-wb-daily-sales",
+      "schedule": "55 3 * * *"
     },
     {
       "path": "/api/cron/sync-marketplace-orders",
@@ -30,15 +30,15 @@
     },
     {
       "path": "/api/cron/historical-sync-wb-ads",
-      "schedule": "5 * * * *"
+      "schedule": "5 5-22 * * *"
     },
     {
       "path": "/api/cron/historical-sync-wb-finance",
-      "schedule": "15 * * * *"
+      "schedule": "15 5-22 * * *"
     },
     {
       "path": "/api/cron/historical-sync-wb-sales",
-      "schedule": "45 * * * *"
+      "schedule": "45 5-22 * * *"
     },
     {
       "path": "/api/cron/sync-wb-stock",

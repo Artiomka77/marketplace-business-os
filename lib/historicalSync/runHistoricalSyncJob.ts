@@ -19,6 +19,8 @@ type RunHistoricalSyncJobOptions = {
   companyId?: string | null;
   marketplace?: MarketplaceFilter;
   dataTypes?: HistoricalDataType[];
+  dateFrom?: Date | null;
+  dateTo?: Date | null;
 };
 
 type HistoricalSyncJobRow = {
@@ -341,6 +343,8 @@ async function findNextHistoricalJob(options: RunHistoricalSyncJobOptions) {
   const job = await prisma.historicalSyncJob.findFirst({
     where: {
       ...(options.companyId ? { companyId: options.companyId } : {}),
+      ...(options.dateFrom ? { dateFrom: options.dateFrom } : {}),
+      ...(options.dateTo ? { dateTo: options.dateTo } : {}),
       AND: [
         getSupportedJobWhere(marketplace, options.dataTypes),
         getRunnableStatusWhere(),
