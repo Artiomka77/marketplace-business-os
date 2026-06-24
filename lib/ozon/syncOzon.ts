@@ -498,6 +498,33 @@ type OzonProductPicturesResponse = {
   };
 };
 
+type OzonProductAttributeValue = {
+  value?: string | number | null;
+};
+
+type OzonProductAttribute = {
+  id?: number;
+  name?: string;
+  values?: OzonProductAttributeValue[];
+};
+
+type OzonProductAttributesItem = {
+  id?: number;
+  product_id?: number;
+  offer_id?: string;
+  attributes?: OzonProductAttribute[];
+};
+
+type OzonProductAttributesResponse = {
+  items?: OzonProductAttributesItem[];
+  result?:
+    | OzonProductAttributesItem[]
+    | {
+        items?: OzonProductAttributesItem[];
+        last_id?: string;
+      };
+};
+
 async function fetchProductList(clientId: string, apiKey: string) {
   const products: OzonProductListItem[] = [];
   let lastId = "";
@@ -653,6 +680,165 @@ function getSku(item: OzonProductInfoItem) {
   return item.sku ?? item.fbo_sku ?? item.fbs_sku ?? null;
 }
 
+function normalizeSizeText(value: unknown) {
+  const text = String(value ?? "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  return text || null;
+}
+
+function inferSizeFromVendorCode(value: unknown) {
+  const vendorCode = String(value ?? "").trim();
+
+  if (!vendorCode || !vendorCode.includes("-")) return null;
+
+  const parts = vendorCode
+    .split("-")
+    .map((part) => part.trim())
+    .filter(Boolean);
+
+  const numericTail: string[] = [];
+
+  for (let index = parts.length - 1; index >= 0; index--) {
+    const part = parts[index];
+
+    if (!/^\d{2,3}$/.test(part)) break;
+
+    numericTail.unshift(part);
+
+    if (numericTail.length >= 2) break;
+  }
+
+  if (numericTail.length === 0) return null;
+
+  return numericTail.join(" / ");
+}
+
+function isSizeAttributeName(value: unknown) {
+  const name = String(value ?? "")
+    .toLowerCase()
+    .replaceAll("ё", "е")
+    .trim();
+
+  if (!name) return false;
+
+  const looksLikeSize =
+    name === "размер" ||
+    name.includes("размер товара") ||
+    name.includes("размер производителя") ||
+    name.includes("российский размер") ||
+    name.includes("manufacturer size") ||
+    name === "size";
+
+  const isPackageSize =
+    name.includes("упаков") ||
+    name.includes("габарит") ||
+    name.includes("длина") ||
+    name.includes("ширина") ||
+    name.includes("высота") ||
+    name.includes("package");
+
+  return looksLikeSize && !isPackageSize;
+}
+
+function getAttributeValueText(attribute: OzonProductAttribute) {
+  const values = attribute.values ?? [];
+
+  const result = values
+    .map((value) => normalizeSizeText(value.value))
+    .filter((value): value is string => Boolean(value))
+    .join(" / ");
+
+  return normalizeSizeText(result);
+}
+
+function extractSizeFromOzonAttributes(
+  item: OzonProductAttributesItem | null | undefined
+) {
+  for (const attribute of item?.attributes ?? []) {
+    if (!isSizeAttributeName(attribute.name)) continue;
+
+    const value = getAttributeValueText(attribute);
+
+    if (value) return value;
+  }
+
+  return null;
+}
+
+function getOzonProductAttributesItems(json: OzonProductAttributesResponse) {
+  if (Array.isArray(json.result)) return json.result;
+
+  return json.items ?? json.result?.items ?? [];
+}
+
+async function fetchProductAttributesBatch(
+  clientId: string,
+  apiKey: string,
+  productIds: number[]
+) {
+  if (productIds.length === 0) return [];
+
+  const response = await fetch(
+    "https://api-seller.ozon.ru/v4/product/info/attributes",
+    {
+      method: "POST",
+      headers: {
+        "Client-Id": clientId,
+        "Api-Key": apiKey,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        filter: {
+          product_id: productIds,
+          visibility: "ALL",
+        },
+        limit: productIds.length,
+      }),
+      cache: "no-store",
+    }
+  );
+
+  if (!response.ok) {
+    const text = await response.text().catch(() => "");
+    throw new Error(
+      `Ozon Product Attributes API: ${response.status} ${text}`.trim()
+    );
+  }
+
+  const json = (await response.json()) as OzonProductAttributesResponse;
+
+  return getOzonProductAttributesItems(json);
+}
+
+async function fetchOzonProductSizeByProductId(params: {
+  clientId: string;
+  apiKey: string;
+  productIds: number[];
+}) {
+  const sizeByProductId = new Map<number, string>();
+
+  for (const batch of chunkArray(params.productIds, 100)) {
+    const items = await fetchProductAttributesBatch(
+      params.clientId,
+      params.apiKey,
+      batch
+    );
+
+    for (const item of items) {
+      const productId = item.id ?? item.product_id;
+      const size = extractSizeFromOzonAttributes(item);
+
+      if (productId && size && !sizeByProductId.has(productId)) {
+        sizeByProductId.set(productId, size);
+      }
+    }
+  }
+
+  return sizeByProductId;
+}
+
 export async function syncOzonProducts(companyId: string) {
   const { company, connection } = await getOzonConnection(companyId);
 
@@ -697,6 +883,20 @@ export async function syncOzonProducts(companyId: string) {
     }
   }
 
+  let sizeByProductId = new Map<number, string>();
+
+  try {
+    sizeByProductId = await fetchOzonProductSizeByProductId({
+      clientId: connection.ozonClientId,
+      apiKey: connection.ozonApiKey,
+      productIds,
+    });
+  } catch (error) {
+    // Если характеристики временно недоступны, не ломаем синхронизацию товаров.
+    // Размер всё равно попробуем определить из артикула продавца.
+    console.warn("Ozon Product Attributes API skipped:", getErrorMessage(error));
+  }
+
   const infoByProductId = new Map<number, OzonProductInfoItem>();
   const picturesByProductId = new Map<number, OzonProductPicturesItem>();
 
@@ -726,12 +926,16 @@ export async function syncOzonProducts(companyId: string) {
       const sku = info ? getSku(info) : null;
       const productName = info?.name ?? null;
       const imageUrl = getOzonProductImageUrl(info, pictures);
+      const size =
+        (productId ? sizeByProductId.get(productId) : null) ??
+        inferSizeFromVendorCode(vendorCode);
 
       return {
         importSessionId: null,
         companyName: company.name,
         vendorCode,
         sku: sku ? String(sku) : productId ? String(productId) : "",
+        size,
         productName,
         imageUrl,
         imageSmallUrl: imageUrl,
@@ -834,7 +1038,33 @@ export async function syncOzonStocks(companyId: string) {
     connection.ozonApiKey
   );
 
+  const productIds = Array.from(
+    new Set(
+      items
+        .map((item) => item.product_id)
+        .filter((productId): productId is number => Boolean(productId))
+    )
+  );
+
+  let sizeByProductId = new Map<number, string>();
+
+  try {
+    sizeByProductId = await fetchOzonProductSizeByProductId({
+      clientId: connection.ozonClientId,
+      apiKey: connection.ozonApiKey,
+      productIds,
+    });
+  } catch (error) {
+    // Если API характеристик недоступен, остатки всё равно загружаем.
+    // Размер попробуем взять из артикула продавца.
+    console.warn("Ozon Product Attributes API skipped:", getErrorMessage(error));
+  }
+
   const data = items.flatMap((item) => {
+    const size =
+      (item.product_id ? sizeByProductId.get(item.product_id) : null) ??
+      inferSizeFromVendorCode(item.offer_id);
+
     const stocks = item.stocks ?? [];
 
     if (stocks.length === 0) {
@@ -844,6 +1074,7 @@ export async function syncOzonStocks(companyId: string) {
           companyName: company.name,
           sku: item.product_id ? String(item.product_id) : null,
           vendorCode: item.offer_id ?? null,
+          size,
           warehouseName: "Ozon",
           clusterName: null,
           availableQty: 0,
@@ -860,6 +1091,7 @@ export async function syncOzonStocks(companyId: string) {
       companyName: company.name,
       sku: stock.sku ? String(stock.sku) : item.product_id ? String(item.product_id) : null,
       vendorCode: item.offer_id ?? null,
+      size,
       warehouseName: stock.type ? `Ozon ${stock.type}` : "Ozon",
       clusterName: stock.shipment_type ?? null,
       availableQty: toIntSafe(stock.present),

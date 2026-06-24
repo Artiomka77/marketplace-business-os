@@ -391,6 +391,7 @@ model OzonStock {
 
   sku        String?
   vendorCode String?
+  size       String?
 
   warehouseName String?
   clusterName   String?
@@ -409,6 +410,7 @@ model OzonStock {
 
   @@index([sku])
   @@index([vendorCode])
+  @@index([size])
   @@index([companyName])
   @@index([warehouseName])
 }
@@ -421,6 +423,7 @@ model OzonProduct {
 
   vendorCode String
   sku        String
+  size      String?
 
   productName String?
 
@@ -434,6 +437,7 @@ model OzonProduct {
   @@index([vendorCode])
   @@index([companyName])
   @@index([sku])
+  @@index([size])
 }
 
 model FinanceCategory {

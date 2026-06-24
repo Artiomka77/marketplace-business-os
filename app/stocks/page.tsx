@@ -2,6 +2,9 @@ import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import MarketplaceNav from "@/components/marketplaces/MarketplaceNav";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 type StockSearchParams = {
   companyName?: string;
   source?: string;
@@ -435,6 +438,37 @@ function compactStockPlace(row: UnifiedStockRow) {
   if (place === "__TOTAL__") return "WB";
 
   return place;
+}
+
+function inferSizeFromVendorCode(value: unknown) {
+  const vendorCode = normalizeKey(value);
+
+  if (!vendorCode || !vendorCode.includes("-")) return null;
+
+  const parts = vendorCode
+    .split("-")
+    .map((part) => part.trim())
+    .filter(Boolean);
+
+  const numericTail: string[] = [];
+
+  for (let index = parts.length - 1; index >= 0; index--) {
+    const part = parts[index];
+
+    if (!/^\d{2,3}$/.test(part)) break;
+
+    numericTail.unshift(part);
+
+    if (numericTail.length >= 2) break;
+  }
+
+  if (numericTail.length === 0) return null;
+
+  return numericTail.join(" / ");
+}
+
+function getDisplaySize(row: UnifiedStockRow) {
+  return normalizeKey(row.size) || inferSizeFromVendorCode(row.vendorCode);
 }
 
 function makeUrl(params: StockSearchParams, patch: Record<string, string | null | undefined>) {
@@ -1300,7 +1334,7 @@ export default async function StocksPage({
         sku: stock.sku,
         nmId: null,
         barcode: null,
-        size: null,
+        size: stock.size,
         warehouseName: stock.warehouseName,
         clusterName: stock.clusterName,
         qty,
@@ -1880,15 +1914,15 @@ export default async function StocksPage({
 
                           <div
                             className={`mt-1 inline-flex rounded-full px-2.5 py-1 text-xs font-black ring-1 ${
-                              row.size
+                              getDisplaySize(row)
                                 ? "bg-slate-50 text-slate-700 ring-slate-200"
                                 : "bg-amber-50 text-amber-700 ring-amber-100"
                             }`}
                           >
-                            Размер: {row.size ?? "не загружен"}
+                            Размер: {getDisplaySize(row) ?? "не загружен"}
                           </div>
 
-                          {!row.size && row.barcode ? (
+                          {!getDisplaySize(row) && row.barcode ? (
                             <div className="mt-1 break-all text-[11px] font-bold leading-4 text-slate-400">
                               ШК: {row.barcode}
                             </div>
