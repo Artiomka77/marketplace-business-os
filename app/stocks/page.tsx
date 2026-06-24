@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
+import { getProfitAnalytics } from "@/lib/analytics/profitAnalytics";
+import { getProfitAnalyticsOzon } from "@/lib/analytics/profitAnalyticsOzon";
 import MarketplaceNav from "@/components/marketplaces/MarketplaceNav";
 
 export const dynamic = "force-dynamic";
@@ -16,10 +18,24 @@ type StockSearchParams = {
   sizeRows?: string;
   sizeSort?: string;
   sizeOpen?: string;
+  dateFrom?: string;
+  dateTo?: string;
 };
 
 type StockSource = "ALL" | "WB" | "OZON" | "OWN";
 type SortKey = "product" | "vendorCode" | "qty" | "costPrice" | "totalCost" | "availableForSupplyQty";
+type AbcCategory = "A" | "B" | "C";
+
+type WbProfitAnalyticsResult = Awaited<ReturnType<typeof getProfitAnalytics>>;
+type WbProfitRow = WbProfitAnalyticsResult["rows"][number];
+
+type OzonProfitAnalyticsResult = Awaited<ReturnType<typeof getProfitAnalyticsOzon>>;
+type OzonProfitRow = OzonProfitAnalyticsResult["rows"][number];
+
+type StockAbcInfo = {
+  abcByRevenue: AbcCategory;
+  abcByProfit: AbcCategory;
+};
 
 type ProductVisual = {
   name: string | null;
@@ -83,6 +99,7 @@ type UnifiedStockRow = {
   totalCost: number;
   productName: string | null;
   imageUrl: string | null;
+  abc: StockAbcInfo | null;
 };
 
 type ProductSizeRow = {
@@ -95,6 +112,7 @@ type ProductSizeSourceSummary = {
   totalQty: number;
   totalCost: number;
   sizes: ProductSizeRow[];
+  abc: StockAbcInfo | null;
 };
 
 type ProductSizeSummary = {
@@ -151,6 +169,168 @@ function toNumber(value: unknown) {
   const number = Number(value ?? 0);
   return Number.isFinite(number) ? number : 0;
 }
+
+function formatDateInput(date: Date) {
+  return date.toISOString().slice(0, 10);
+}
+
+function addUtcDays(date: Date, days: number) {
+  const result = new Date(date);
+  result.setUTCDate(result.getUTCDate() + days);
+  return result;
+}
+
+function getDefaultAbcPeriod() {
+  const now = new Date();
+  const dateTo = new Date(
+    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())
+  );
+  const dateFrom = addUtcDays(dateTo, -30);
+
+  return {
+    dateFrom: formatDateInput(dateFrom),
+    dateTo: formatDateInput(dateTo),
+  };
+}
+
+function calculateAbcByPositiveValue<T>(
+  rows: T[],
+  getValue: (row: T) => number
+): Map<T, AbcCategory> {
+  const result = new Map<T, AbcCategory>();
+
+  const sorted = [...rows].sort(
+    (a, b) => Math.max(0, getValue(b)) - Math.max(0, getValue(a))
+  );
+
+  const total = sorted.reduce((sum, row) => sum + Math.max(0, getValue(row)), 0);
+
+  if (total <= 0) {
+    for (const row of rows) result.set(row, "C");
+    return result;
+  }
+
+  let cumulative = 0;
+
+  for (const row of sorted) {
+    const positive = Math.max(0, getValue(row));
+
+    if (positive <= 0) {
+      result.set(row, "C");
+      continue;
+    }
+
+    const shareBefore = cumulative / total;
+    cumulative += positive;
+
+    if (shareBefore < 0.8) {
+      result.set(row, "A");
+    } else if (shareBefore < 0.95) {
+      result.set(row, "B");
+    } else {
+      result.set(row, "C");
+    }
+  }
+
+  return result;
+}
+
+function abcBadgeClass(value: AbcCategory) {
+  if (value === "A") return "bg-emerald-100 text-emerald-700 ring-emerald-200";
+  if (value === "B") return "bg-amber-100 text-amber-700 ring-amber-200";
+
+  return "bg-red-100 text-red-700 ring-red-200";
+}
+
+function toAbcCategory(value: unknown): AbcCategory {
+  return value === "A" || value === "B" || value === "C" ? value : "C";
+}
+
+function AbcBadge({
+  value,
+  label,
+  compact = false,
+}: {
+  value: AbcCategory;
+  label?: string;
+  compact?: boolean;
+}) {
+  return (
+    <span
+      title="ABC по прибыли за выбранный период"
+      className={`inline-flex items-center justify-center rounded-full font-black ring-1 ${abcBadgeClass(
+        value
+      )} ${
+        compact
+          ? "h-6 min-w-6 px-1.5 text-[11px]"
+          : "h-7 min-w-7 px-2 text-xs"
+      }`}
+    >
+      {label ? `${label} ${value}` : value}
+    </span>
+  );
+}
+
+function getStockAbcMapKey(companyName: unknown, article: unknown) {
+  const company = normalizeKey(companyName);
+  const normalizedArticle = normalizeKey(article);
+
+  return company && normalizedArticle ? `${company}::${normalizedArticle}` : "";
+}
+
+function registerStockAbc(
+  map: Map<string, StockAbcInfo>,
+  params: {
+    companyName?: string | null;
+    article?: string | null;
+    abc: StockAbcInfo;
+  }
+) {
+  const article = normalizeKey(params.article);
+
+  if (!article) return;
+
+  const companyKey = getStockAbcMapKey(params.companyName, article);
+
+  if (companyKey && !map.has(companyKey)) {
+    map.set(companyKey, params.abc);
+  }
+
+  if (!map.has(article)) {
+    map.set(article, params.abc);
+  }
+}
+
+function findStockAbc(
+  map: Map<string, StockAbcInfo>,
+  params: {
+    companyName?: string | null;
+    articles: Array<string | null | undefined>;
+  }
+) {
+  for (const article of params.articles) {
+    const normalizedArticle = normalizeKey(article);
+
+    if (!normalizedArticle) continue;
+
+    const companyKey = getStockAbcMapKey(params.companyName, normalizedArticle);
+    const companyValue = companyKey ? map.get(companyKey) : null;
+
+    if (companyValue) return companyValue;
+
+    const globalValue = map.get(normalizedArticle);
+
+    if (globalValue) return globalValue;
+  }
+
+  return null;
+}
+
+function rowCompanyName(value: unknown, fallback: string | null) {
+  return normalizeKey((value as { companyName?: string | null })?.companyName) || fallback;
+}
+
+
 
 function normalizeKey(value: unknown) {
   return String(value ?? "").trim();
@@ -543,6 +723,7 @@ function emptyProductSizeSourceSummary(): ProductSizeSourceSummary {
     totalQty: 0,
     totalCost: 0,
     sizes: [],
+    abc: null,
   };
 }
 
@@ -642,6 +823,10 @@ function buildProductSizeSummaries(rows: UnifiedStockRow[]) {
         : row.source === "OZON"
           ? current.ozon
           : current.own;
+
+    if (!source.abc && row.abc) {
+      source.abc = row.abc;
+    }
 
     addSizeToSourceSummary(source, {
       size,
@@ -796,8 +981,13 @@ function ProductSizeSourcePanel({
         >
           {title}
         </div>
-        <div className="text-sm font-black text-slate-950">
-          {formatNumber(source.totalQty)} шт.
+        <div className="flex items-center gap-2">
+          {source.abc && source.totalQty > 0 ? (
+            <AbcBadge value={source.abc.abcByProfit} compact />
+          ) : null}
+          <div className="text-sm font-black text-slate-950">
+            {formatNumber(source.totalQty)} шт.
+          </div>
         </div>
       </div>
 
@@ -895,6 +1085,8 @@ function makeUrl(params: StockSearchParams, patch: Record<string, string | null 
     sizeRows: params.sizeRows,
     sizeSort: params.sizeSort,
     sizeOpen: params.sizeOpen,
+    dateFrom: params.dateFrom,
+    dateTo: params.dateTo,
   };
 
   for (const [key, value] of Object.entries(patch)) {
@@ -1090,6 +1282,9 @@ export default async function StocksPage({
   const sortDir = getSortDir(params.dir);
   const selectedProduct = getSelectedProduct(params.product);
   const searchQuery = normalizeKey(params.q);
+  const defaultAbcPeriod = getDefaultAbcPeriod();
+  const abcDateFrom = params.dateFrom ?? defaultAbcPeriod.dateFrom;
+  const abcDateTo = params.dateTo ?? defaultAbcPeriod.dateTo;
 
   const companies = await prisma.company.findMany({
     where: {
@@ -1119,6 +1314,124 @@ export default async function StocksPage({
           in: visibleCompanyNames,
         }
       : undefined;
+
+  const [wbProfitAnalytics, ozonProfitAnalytics] = await Promise.all([
+    getProfitAnalytics({
+      dateFrom: abcDateFrom,
+      dateTo: abcDateTo,
+      companyName: selectedCompanyName ?? "ALL",
+    }),
+    getProfitAnalyticsOzon({
+      dateFrom: abcDateFrom,
+      dateTo: abcDateTo,
+      usnRate: "1",
+      vatRate: "5",
+      companyName: selectedCompanyName ?? "ALL",
+    }),
+  ]);
+
+  const wbAbcByRevenue = calculateAbcByPositiveValue(
+    wbProfitAnalytics.rows,
+    (row: WbProfitRow) => row.revenue
+  );
+  const wbAbcMap = new Map<string, StockAbcInfo>();
+
+  for (const row of wbProfitAnalytics.rows) {
+    const abc = {
+      abcByRevenue: wbAbcByRevenue.get(row) ?? "C",
+      abcByProfit: toAbcCategory(row.abcByProfit),
+    } satisfies StockAbcInfo;
+
+    const companyName = rowCompanyName(row, selectedCompanyName);
+
+    registerStockAbc(wbAbcMap, {
+      companyName,
+      article: row.nmId,
+      abc,
+    });
+
+    registerStockAbc(wbAbcMap, {
+      companyName,
+      article: row.vendorCode,
+      abc,
+    });
+  }
+
+  const ozonAbcMap = new Map<string, StockAbcInfo>();
+  const ozonGroupsForAbc = new Map<
+    string,
+    {
+      companyName: string | null;
+      baseArticle: string;
+      revenue: number;
+      netProfitAfterTax: number;
+      rows: OzonProfitRow[];
+    }
+  >();
+
+  for (const row of ozonProfitAnalytics.rows) {
+    const companyName = rowCompanyName(row, selectedCompanyName);
+    const baseArticle = getMarketplaceBaseArticle(row.vendorCode) || row.vendorCode;
+    const key = `${companyName ?? ""}::${baseArticle}`;
+    const current =
+      ozonGroupsForAbc.get(key) ??
+      ({
+        companyName,
+        baseArticle,
+        revenue: 0,
+        netProfitAfterTax: 0,
+        rows: [],
+      } satisfies {
+        companyName: string | null;
+        baseArticle: string;
+        revenue: number;
+        netProfitAfterTax: number;
+        rows: OzonProfitRow[];
+      });
+
+    current.revenue += row.revenue;
+    current.netProfitAfterTax += row.netProfitAfterTax;
+    current.rows.push(row);
+
+    ozonGroupsForAbc.set(key, current);
+  }
+
+  const ozonGroupedRowsForAbc = Array.from(ozonGroupsForAbc.values());
+  const ozonGroupedAbcByRevenue = calculateAbcByPositiveValue(
+    ozonGroupedRowsForAbc,
+    (row) => row.revenue
+  );
+  const ozonGroupedAbcByProfit = calculateAbcByPositiveValue(
+    ozonGroupedRowsForAbc,
+    (row) => row.netProfitAfterTax
+  );
+
+  for (const group of ozonGroupedRowsForAbc) {
+    const abc = {
+      abcByRevenue: ozonGroupedAbcByRevenue.get(group) ?? "C",
+      abcByProfit: ozonGroupedAbcByProfit.get(group) ?? "C",
+    } satisfies StockAbcInfo;
+
+    registerStockAbc(ozonAbcMap, {
+      companyName: group.companyName,
+      article: group.baseArticle,
+      abc,
+    });
+
+    for (const row of group.rows) {
+      registerStockAbc(ozonAbcMap, {
+        companyName: group.companyName,
+        article: row.vendorCode,
+        abc,
+      });
+
+      registerStockAbc(ozonAbcMap, {
+        companyName: group.companyName,
+        article: row.nmId,
+        abc,
+      });
+    }
+  }
 
   const [rawWbStocks, ozonStocks, warehouseStocks, stockImports, productCosts] =
     await Promise.all([
@@ -1717,6 +2030,10 @@ export default async function StocksPage({
         productName:
           visual.name ?? costNameByVendorCode.get(normalizeKey(vendorCode)) ?? null,
         imageUrl: visual.imageUrl,
+        abc: findStockAbc(wbAbcMap, {
+          companyName: stock.companyName,
+          articles: [stock.nmId, vendorCode],
+        }),
       };
     }),
     ...ozonStocks.map((stock) => {
@@ -1758,6 +2075,10 @@ export default async function StocksPage({
         productName:
           visual.name ?? costNameByVendorCode.get(normalizeKey(vendorCode)) ?? null,
         imageUrl: visual.imageUrl,
+        abc: findStockAbc(ozonAbcMap, {
+          companyName: stock.companyName,
+          articles: [getMarketplaceBaseArticle(vendorCode), vendorCode, stock.sku],
+        }),
       };
     }),
     ...warehouseStocks.map((stock) => {
@@ -1797,6 +2118,7 @@ export default async function StocksPage({
           costNameByVendorCode.get(normalizeKey(vendorCode)) ??
           null,
         imageUrl: visual.imageUrl,
+        abc: null,
       };
     }),
   ].filter((row) => row.qty > 0 || row.availableForSupplyQty > 0);
@@ -1907,6 +2229,8 @@ export default async function StocksPage({
                 </div>
 
                 <form className="grid w-full gap-2 sm:grid-cols-[minmax(260px,1fr)_150px] xl:w-[520px]">
+                  <input type="hidden" name="dateFrom" value={abcDateFrom} />
+                  <input type="hidden" name="dateTo" value={abcDateTo} />
                   <select
                     name="companyName"
                     defaultValue={selectedCompanyName ?? "ALL"}
@@ -2201,6 +2525,8 @@ export default async function StocksPage({
                 name="companyName"
                 value={selectedCompanyName ?? "ALL"}
               />
+              <input type="hidden" name="dateFrom" value={abcDateFrom} />
+              <input type="hidden" name="dateTo" value={abcDateTo} />
 
               <input
                 name="q"
@@ -2276,9 +2602,8 @@ export default async function StocksPage({
                         Быстрый разбор по размерам
                       </h3>
                       <p className="mt-1 max-w-4xl text-sm font-semibold leading-6 text-slate-500">
-                        Свернутый блок по всем товарам из текущей выборки. WB,
-                        Ozon и склад разделены, чтобы было видно, где именно
-                        лежит каждый размер.
+                        WB, Ozon и склад разделены по размерам. ABC — за период{" "}
+                        {abcDateFrom} — {abcDateTo}.
                       </p>
                     </div>
 
@@ -2289,10 +2614,19 @@ export default async function StocksPage({
                   </div>
                 </summary>
 
-                <form className="mt-4 grid gap-2 rounded-[22px] border border-slate-200 bg-white p-3 md:grid-cols-[minmax(0,1fr)_220px_180px_130px]">
-                  {selectedCompanyName ? (
-                    <input type="hidden" name="companyName" value={selectedCompanyName} />
-                  ) : null}
+                <form className="mt-4 grid gap-2 rounded-[22px] border border-slate-200 bg-white p-3 md:grid-cols-[minmax(0,1fr)_190px_220px_180px_130px]">
+                  <select
+                    name="companyName"
+                    defaultValue={selectedCompanyName ?? "ALL"}
+                    className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-700 outline-none"
+                  >
+                    <option value="ALL">Все компании</option>
+                    {companyNames.map((companyName) => (
+                      <option key={companyName} value={companyName}>
+                        {companyName}
+                      </option>
+                    ))}
+                  </select>
                   {selectedSource !== "ALL" ? (
                     <input type="hidden" name="source" value={selectedSource} />
                   ) : null}
@@ -2304,6 +2638,8 @@ export default async function StocksPage({
                   <input type="hidden" name="sort" value={sortKey} />
                   <input type="hidden" name="dir" value={sortDir} />
                   <input type="hidden" name="sizeOpen" value="1" />
+                  <input type="hidden" name="dateFrom" value={abcDateFrom} />
+                  <input type="hidden" name="dateTo" value={abcDateTo} />
 
                   <div className="flex items-center rounded-2xl bg-slate-50 px-4 py-3 text-sm font-black text-slate-600 ring-1 ring-slate-200">
                     Управление группировкой размеров
@@ -2455,6 +2791,14 @@ export default async function StocksPage({
                           >
                             {compactStockPlace(row)}
                           </div>
+                          {row.abc ? (
+                            <div className="mt-2 flex items-center gap-1.5">
+                              <span className="text-[11px] font-black text-slate-400">
+                                ABC
+                              </span>
+                              <AbcBadge value={row.abc.abcByProfit} compact />
+                            </div>
+                          ) : null}
                         </td>
 
                         <td className="px-3 py-3 text-right align-middle">
