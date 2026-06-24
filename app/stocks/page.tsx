@@ -1072,9 +1072,14 @@ function ProductSizeSourcePanel({
             <AbcBadge value={source.abc.abcByProfit} compact />
           ) : null}
           <div className="text-right">
-            <div className="text-sm font-black text-slate-950">
-              {formatNumber(source.totalQty)} шт.
-            </div>
+                    <div className="text-right">
+          <div className="text-sm font-black text-slate-950">
+            {formatNumber(source.totalQty)} шт.
+          </div>
+          <div className="mt-0.5 text-[11px] font-black text-slate-500">
+            {formatMoney(source.totalCost)}
+          </div>
+        </div>
             <div className="mt-0.5 text-[11px] font-black text-slate-500">
               {formatMoney(source.totalCost)}
             </div>
@@ -2675,13 +2680,13 @@ export default async function StocksPage({
                 name="q"
                 defaultValue={params.q ?? ""}
                 placeholder="Поиск по названию, артикулу, SKU"
-                className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-700 outline-none transition focus:border-violet-200 focus:ring-4 focus:ring-violet-50"
+                className="rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-bold text-slate-700 outline-none transition focus:border-violet-200 focus:ring-4 focus:ring-violet-50"
               />
 
               <select
                 name="product"
                 defaultValue={selectedProduct || "ALL"}
-                className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-700 outline-none"
+                className="rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-bold text-slate-700 outline-none"
               >
                 <option value="ALL">Товар: все</option>
                 {productOptions.map((product) => (
@@ -2696,7 +2701,7 @@ export default async function StocksPage({
               <select
                 name="source"
                 defaultValue={selectedSource}
-                className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-700 outline-none"
+                className="rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-bold text-slate-700 outline-none"
               >
                 <option value="ALL">Источник: все</option>
                 <option value="WB">WB</option>
@@ -2707,7 +2712,7 @@ export default async function StocksPage({
               <select
                 name="rows"
                 defaultValue={String(rowsLimit)}
-                className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-700 outline-none"
+                className="rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-bold text-slate-700 outline-none"
               >
                 <option value="20">Показывать: 20</option>
                 <option value="50">Показывать: 50</option>
@@ -2715,7 +2720,7 @@ export default async function StocksPage({
                 <option value="200">Показывать: 200</option>
               </select>
 
-              <button className="rounded-2xl bg-slate-950 px-5 py-3 text-sm font-black text-white shadow-lg shadow-slate-300 transition hover:bg-slate-800">
+              <button className="rounded-2xl bg-slate-950 px-4 py-2.5 text-sm font-black text-white shadow-lg shadow-slate-300 transition hover:bg-slate-800">
                 Применить
               </button>
             </form>
@@ -2745,7 +2750,7 @@ export default async function StocksPage({
                         Быстрый разбор по размерам
                       </h3>
                       <p className="mt-1 max-w-4xl text-sm font-semibold leading-6 text-slate-500">
-                        WB, Ozon и склад разделены по размерам. ABC — за период{" "}
+                        WB, Ozon и склад разделены по размерам. ABC считается по свежим данным продаж.{" "}
                         {abcDateFrom} — {abcDateTo}.
                       </p>
                     </div>
@@ -2761,7 +2766,7 @@ export default async function StocksPage({
                   <select
                     name="companyName"
                     defaultValue={selectedCompanyName ?? "ALL"}
-                    className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-700 outline-none"
+                    className="rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-bold text-slate-700 outline-none"
                   >
                     <option value="ALL">Все компании</option>
                     {companyNames.map((companyName) => (
@@ -2784,14 +2789,14 @@ export default async function StocksPage({
                   <input type="hidden" name="dateFrom" value={abcDateFrom} />
                   <input type="hidden" name="dateTo" value={abcDateTo} />
 
-                  <div className="flex items-center rounded-2xl bg-slate-50 px-4 py-3 text-sm font-black text-slate-600 ring-1 ring-slate-200">
-                    Управление группировкой размеров
+                  <div className="flex items-center rounded-2xl bg-slate-50 px-3 py-2.5 text-sm font-black text-slate-600 ring-1 ring-slate-200">
+                    Группировка
                   </div>
 
                   <select
                     name="sizeSort"
                     defaultValue={sizeSummarySort}
-                    className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-700 outline-none"
+                    className="rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-bold text-slate-700 outline-none"
                   >
                     <option value="totalDesc">Сначала больше всего</option>
                     <option value="totalAsc">Сначала меньше всего</option>
@@ -2805,7 +2810,7 @@ export default async function StocksPage({
                   <select
                     name="sizeRows"
                     defaultValue={params.sizeRows ?? "20"}
-                    className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-700 outline-none"
+                    className="rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-bold text-slate-700 outline-none"
                   >
                     <option value="8">Показать 8</option>
                     <option value="20">Показать 20</option>
@@ -2815,7 +2820,7 @@ export default async function StocksPage({
                     <option value="ALL">Показать все</option>
                   </select>
 
-                  <button className="rounded-2xl bg-slate-950 px-5 py-3 text-sm font-black text-white shadow-lg shadow-slate-300 transition hover:bg-slate-800">
+                  <button className="rounded-2xl bg-slate-950 px-4 py-2.5 text-sm font-black text-white shadow-lg shadow-slate-300 transition hover:bg-slate-800">
                     Применить
                   </button>
                 </form>
