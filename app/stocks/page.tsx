@@ -422,6 +422,21 @@ function productTitle(row: UnifiedStockRow) {
   return row.productName ?? row.vendorCode;
 }
 
+function rawStockPlace(row: UnifiedStockRow) {
+  return row.clusterName ?? row.warehouseName ?? "—";
+}
+
+function compactStockPlace(row: UnifiedStockRow) {
+  const place = rawStockPlace(row);
+
+  if (place === "SHIPMENT_TYPE_GENERAL") return "Ozon · общий";
+  if (place === "SHIPMENT_TYPE_CROSSDOCK") return "Ozon · кросс-док";
+  if (place === "SHIPMENT_TYPE_DIRECT") return "Ozon · прямой";
+  if (place === "__TOTAL__") return "WB";
+
+  return place;
+}
+
 function makeUrl(params: StockSearchParams, patch: Record<string, string | null | undefined>) {
   const next = new URLSearchParams();
 
@@ -1793,47 +1808,33 @@ export default async function StocksPage({
 
             <div className="mt-5 overflow-hidden rounded-[26px] border border-slate-200">
               <div className="overflow-x-auto">
-                <table className="w-full min-w-[1180px] text-left">
+                <table className="w-full min-w-[980px] table-fixed text-left">
                   <thead className="bg-slate-50 text-xs font-black uppercase tracking-[0.12em] text-slate-400">
                     <tr>
-                      <th className="px-4 py-4">Фото</th>
-                      <th className="px-4 py-4">
+                      <th className="sticky left-0 z-20 w-[330px] bg-slate-50 px-4 py-4 shadow-[1px_0_0_0_rgba(226,232,240,1)]">
                         <SortHeader params={params} sortKey="product">
                           Товар
                         </SortHeader>
                       </th>
-                      <th className="px-4 py-4">
+                      <th className="w-[180px] px-3 py-4">
                         <SortHeader params={params} sortKey="vendorCode">
-                          Артикул
+                          Артикул / SKU
                         </SortHeader>
                       </th>
-                      <th className="px-4 py-4">SKU / NM ID</th>
-                      <th className="px-4 py-4">Размер</th>
-                      <th className="px-4 py-4">Источник</th>
-                      <th className="px-4 py-4">Склад / кластер</th>
-                      <th className="px-4 py-4 text-right">
+                      <th className="w-[190px] px-3 py-4">Источник / склад</th>
+                      <th className="w-[110px] px-3 py-4 text-right">
                         <SortHeader params={params} sortKey="qty" align="right">
                           Остаток
                         </SortHeader>
                       </th>
-                      <th className="px-4 py-4 text-right">
+                      <th className="w-[120px] px-3 py-4 text-right">
                         <SortHeader params={params} sortKey="costPrice" align="right">
-                          Себест. за ед.
+                          Себест.
                         </SortHeader>
                       </th>
-                      <th className="px-4 py-4 text-right">
+                      <th className="w-[190px] px-4 py-4 text-right">
                         <SortHeader params={params} sortKey="totalCost" align="right">
-                          Стоимость остатка
-                        </SortHeader>
-                      </th>
-                      <th className="px-4 py-4 text-right">Резерв</th>
-                      <th className="px-4 py-4 text-right">
-                        <SortHeader
-                          params={params}
-                          sortKey="availableForSupplyQty"
-                          align="right"
-                        >
-                          К поставке
+                          Стоимость / поставка
                         </SortHeader>
                       </th>
                     </tr>
@@ -1841,33 +1842,40 @@ export default async function StocksPage({
 
                   <tbody className="divide-y divide-slate-100 bg-white text-sm">
                     {visibleRows.map((row) => (
-                      <tr key={row.key} className="hover:bg-slate-50">
-                        <td className="px-4 py-4">
-                          <ProductPhoto
-                            imageUrl={row.imageUrl}
-                            title={productTitle(row)}
-                          />
-                        </td>
-                        <td className="px-4 py-4">
-                          <div className="max-w-[240px]">
-                            <div className="line-clamp-2 text-sm font-black leading-5 text-slate-950">
-                              {row.productName ?? "Название не загружено"}
-                            </div>
-                            <div className="mt-1 text-xs font-bold text-slate-400">
-                              {row.companyName}
+                      <tr key={row.key} className="group hover:bg-slate-50">
+                        <td className="sticky left-0 z-10 bg-white px-4 py-3 shadow-[1px_0_0_0_rgba(241,245,249,1)] transition group-hover:bg-slate-50">
+                          <div className="flex items-center gap-3">
+                            <ProductPhoto
+                              imageUrl={row.imageUrl}
+                              title={productTitle(row)}
+                            />
+
+                            <div className="min-w-0">
+                              <div className="line-clamp-2 text-sm font-black leading-5 text-slate-950">
+                                {row.productName ?? "Название не загружено"}
+                              </div>
+                              <div className="mt-1 truncate text-xs font-bold text-slate-400">
+                                {row.companyName}
+                              </div>
                             </div>
                           </div>
                         </td>
-                        <td className="px-4 py-4 font-black text-slate-950">
-                          {row.vendorCode}
+
+                        <td className="px-3 py-3 align-middle">
+                          <div className="break-words text-sm font-black leading-5 text-slate-950">
+                            {row.vendorCode}
+                          </div>
+                          <div className="mt-1 break-all text-xs font-bold leading-4 text-slate-500">
+                            {row.sku ?? row.nmId ?? "—"}
+                          </div>
+                          {row.size ? (
+                            <div className="mt-1 text-xs font-bold text-slate-400">
+                              Размер: {row.size}
+                            </div>
+                          ) : null}
                         </td>
-                        <td className="px-4 py-4 text-slate-500">
-                          {row.sku ?? row.nmId ?? "—"}
-                        </td>
-                        <td className="px-4 py-4 text-slate-500">
-                          {row.size ?? "—"}
-                        </td>
-                        <td className="px-4 py-4">
+
+                        <td className="px-3 py-3 align-middle">
                           <span
                             className={`inline-flex rounded-full px-3 py-1 text-xs font-black ring-1 ${sourceClass(
                               row.source
@@ -1875,24 +1883,48 @@ export default async function StocksPage({
                           >
                             {sourceLabel(row.source)}
                           </span>
+                          <div
+                            className="mt-2 truncate text-xs font-bold leading-4 text-slate-500"
+                            title={rawStockPlace(row)}
+                          >
+                            {compactStockPlace(row)}
+                          </div>
                         </td>
-                        <td className="px-4 py-4 text-slate-500">
-                          {row.clusterName ?? row.warehouseName ?? "—"}
+
+                        <td className="px-3 py-3 text-right align-middle">
+                          <div className="text-base font-black text-slate-950">
+                            {formatNumber(row.qty)}
+                          </div>
+                          <div className="mt-1 text-[11px] font-bold text-slate-400">
+                            шт.
+                          </div>
                         </td>
-                        <td className="px-4 py-4 text-right font-black text-slate-950">
-                          {formatNumber(row.qty)}
+
+                        <td className="px-3 py-3 text-right align-middle">
+                          <div className="font-black text-slate-700">
+                            {formatMoney(row.costPrice)}
+                          </div>
+                          <div className="mt-1 text-[11px] font-bold text-slate-400">
+                            за ед.
+                          </div>
                         </td>
-                        <td className="px-4 py-4 text-right text-slate-500">
-                          {formatMoney(row.costPrice)}
-                        </td>
-                        <td className="px-4 py-4 text-right font-black text-slate-950">
-                          {formatMoney(row.totalCost)}
-                        </td>
-                        <td className="px-4 py-4 text-right text-slate-500">
-                          {formatNumber(row.reservedQty)}
-                        </td>
-                        <td className="px-4 py-4 text-right font-black text-emerald-700">
-                          {formatNumber(row.availableForSupplyQty)}
+
+                        <td className="px-4 py-3 text-right align-middle">
+                          <div className="font-black text-slate-950">
+                            {formatMoney(row.totalCost)}
+                          </div>
+                          <div className="mt-1 text-xs font-bold text-emerald-700">
+                            К поставке: {formatNumber(row.availableForSupplyQty)}
+                          </div>
+                          {row.reservedQty > 0 ? (
+                            <div className="mt-1 text-xs font-bold text-amber-600">
+                              Резерв: {formatNumber(row.reservedQty)}
+                            </div>
+                          ) : (
+                            <div className="mt-1 text-xs font-bold text-slate-400">
+                              Резерв: 0
+                            </div>
+                          )}
                         </td>
                       </tr>
                     ))}
@@ -1900,7 +1932,7 @@ export default async function StocksPage({
                     {visibleRows.length === 0 ? (
                       <tr>
                         <td
-                          colSpan={12}
+                          colSpan={6}
                           className="px-4 py-12 text-center text-sm font-bold text-slate-500"
                         >
                           По выбранным фильтрам остатков нет.
