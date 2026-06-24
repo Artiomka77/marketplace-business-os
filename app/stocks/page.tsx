@@ -1818,7 +1818,7 @@ export default async function StocksPage({
                       </th>
                       <th className="w-[180px] px-3 py-4">
                         <SortHeader params={params} sortKey="vendorCode">
-                          Артикул / SKU
+                          Артикул / SKU / размер
                         </SortHeader>
                       </th>
                       <th className="w-[190px] px-3 py-4">Источник / склад</th>
@@ -1863,14 +1863,34 @@ export default async function StocksPage({
 
                         <td className="px-3 py-3 align-middle">
                           <div className="break-words text-sm font-black leading-5 text-slate-950">
-                            {row.vendorCode}
+                            {row.vendorCode && row.vendorCode !== "—"
+                              ? row.vendorCode
+                              : row.source === "WB" && row.nmId
+                                ? `WB: ${row.nmId}`
+                                : "—"}
                           </div>
+
                           <div className="mt-1 break-all text-xs font-bold leading-4 text-slate-500">
-                            {row.sku ?? row.nmId ?? "—"}
+                            {row.sku
+                              ? `SKU: ${row.sku}`
+                              : row.nmId
+                                ? `NM ID: ${row.nmId}`
+                                : "SKU / NM ID: —"}
                           </div>
-                          {row.size ? (
-                            <div className="mt-1 text-xs font-bold text-slate-400">
-                              Размер: {row.size}
+
+                          <div
+                            className={`mt-1 inline-flex rounded-full px-2.5 py-1 text-xs font-black ring-1 ${
+                              row.size
+                                ? "bg-slate-50 text-slate-700 ring-slate-200"
+                                : "bg-amber-50 text-amber-700 ring-amber-100"
+                            }`}
+                          >
+                            Размер: {row.size ?? "не загружен"}
+                          </div>
+
+                          {!row.size && row.barcode ? (
+                            <div className="mt-1 break-all text-[11px] font-bold leading-4 text-slate-400">
+                              ШК: {row.barcode}
                             </div>
                           ) : null}
                         </td>
