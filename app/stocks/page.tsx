@@ -26,6 +26,8 @@ type CostLookup = {
   byNmId: Map<string, number>;
   bySupplierArticleRoot: Map<string, number>;
   bySupplierArticleRootCompact: Map<string, number>;
+  supplierArticleByCompanyAndWbArticle: Map<string, string>;
+  supplierArticleByWbArticle: Map<string, string>;
 };
 
 type CompanyStockSummary = {
@@ -175,25 +177,101 @@ function findCostBySupplierArticle(value: unknown, costs: CostLookup) {
   return undefined;
 }
 
+function getCompanyArticleKey(companyName: unknown, wbArticle: unknown) {
+  const company = normalizeKey(companyName);
+  const article = normalizeKey(wbArticle);
+
+  return company && article ? `${company}::${article}` : "";
+}
+
+function getMarketplaceBaseArticle(value: unknown) {
+  const article = normalizeKey(value);
+
+  if (!article) return "";
+
+  const baseArticle = article.split("-")[0]?.trim() ?? article;
+
+  return /^\d+$/.test(baseArticle) ? baseArticle : "";
+}
+
+function findSupplierArticleByWbArticle(params: {
+  companyName?: string | null;
+  wbArticle: unknown;
+  costs: CostLookup;
+}) {
+  const wbArticle = normalizeKey(params.wbArticle);
+
+  if (!wbArticle) return null;
+
+  const companyKey = getCompanyArticleKey(params.companyName, wbArticle);
+
+  return (
+    (companyKey
+      ? params.costs.supplierArticleByCompanyAndWbArticle.get(companyKey)
+      : undefined) ??
+    params.costs.supplierArticleByWbArticle.get(wbArticle) ??
+    null
+  );
+}
+
+function findCostByMappedWbArticle(params: {
+  companyName?: string | null;
+  wbArticle: unknown;
+  costs: CostLookup;
+}) {
+  const supplierArticle = findSupplierArticleByWbArticle({
+    companyName: params.companyName,
+    wbArticle: params.wbArticle,
+    costs: params.costs,
+  });
+
+  if (!supplierArticle) return undefined;
+
+  return findCostBySupplierArticle(supplierArticle, params.costs);
+}
+
 function getCostPrice(params: {
+  companyName?: string | null;
   vendorCode: string | null | undefined;
   nmId?: string | null;
   sku?: string | null;
   ownCostPrice?: unknown;
   costs: CostLookup;
 }) {
-  // В WbStock поле vendorCode — это артикул поставщика WB.
-  // Себестоимость WB ищем именно по нему и его вариантам написания.
   const ownCostPrice = toNumber(params.ownCostPrice);
 
   if (ownCostPrice > 0) return ownCostPrice;
 
-  const supplierArticleCost = findCostBySupplierArticle(params.vendorCode, params.costs);
+  // 1) Для WB vendorCode обычно является артикулом поставщика WB.
+  const supplierArticleCost = findCostBySupplierArticle(
+    params.vendorCode,
+    params.costs
+  );
 
   if (supplierArticleCost !== undefined) return supplierArticleCost;
 
   const nmId = normalizeKey(params.nmId);
   const sku = normalizeKey(params.sku);
+  const marketplaceBaseArticle = getMarketplaceBaseArticle(params.vendorCode);
+
+  // 2) Если есть WB-артикул / nmId, ищем артикул поставщика WB и через него себестоимость.
+  const costByNmIdMapping = findCostByMappedWbArticle({
+    companyName: params.companyName,
+    wbArticle: nmId,
+    costs: params.costs,
+  });
+
+  if (costByNmIdMapping !== undefined) return costByNmIdMapping;
+
+  // 3) Для Ozon-артикулов вида 914803449-134 или 233693455-152-44
+  // берём базу до первого тире и сопоставляем её с WB-артикулом.
+  const costByOzonBaseMapping = findCostByMappedWbArticle({
+    companyName: params.companyName,
+    wbArticle: marketplaceBaseArticle,
+    costs: params.costs,
+  });
+
+  if (costByOzonBaseMapping !== undefined) return costByOzonBaseMapping;
 
   return (
     (nmId ? params.costs.byNmId.get(nmId) : undefined) ??
@@ -768,6 +846,7 @@ export default async function StocksPage({
         lastSyncedAt: "desc",
       },
       select: {
+        companyName: true,
         nmId: true,
         vendorCode: true,
         title: true,
@@ -783,6 +862,8 @@ export default async function StocksPage({
   const costByVendorRoot = new Map<string, number>();
   const costByVendorRootCompact = new Map<string, number>();
   const costNameByVendorCode = new Map<string, string>();
+  const supplierArticleByCompanyAndWbArticle = new Map<string, string>();
+  const supplierArticleByWbArticle = new Map<string, string>();
 
   for (const cost of productCosts) {
     const vendorCode = normalizeKey(cost.vendorCode);
@@ -826,12 +907,51 @@ export default async function StocksPage({
     }
   }
 
+  const registerWbSupplierArticleMapping = (params: {
+    companyName?: string | null;
+    wbArticle?: string | null;
+    supplierArticle?: string | null;
+  }) => {
+    const wbArticle = normalizeKey(params.wbArticle);
+    const supplierArticle = normalizeKey(params.supplierArticle);
+
+    if (!wbArticle || !supplierArticle) return;
+
+    const companyKey = getCompanyArticleKey(params.companyName, wbArticle);
+
+    if (companyKey && !supplierArticleByCompanyAndWbArticle.has(companyKey)) {
+      supplierArticleByCompanyAndWbArticle.set(companyKey, supplierArticle);
+    }
+
+    if (!supplierArticleByWbArticle.has(wbArticle)) {
+      supplierArticleByWbArticle.set(wbArticle, supplierArticle);
+    }
+  };
+
+  for (const stock of wbStocks) {
+    registerWbSupplierArticleMapping({
+      companyName: stock.companyName,
+      wbArticle: stock.nmId,
+      supplierArticle: stock.vendorCode,
+    });
+  }
+
+  for (const product of wbProductCards) {
+    registerWbSupplierArticleMapping({
+      companyName: product.companyName,
+      wbArticle: product.nmId,
+      supplierArticle: product.vendorCode,
+    });
+  }
+
   const costs: CostLookup = {
     bySupplierArticle: costByVendorCode,
     bySupplierArticleCompact: costByVendorCodeCompact,
     byNmId: costByNmId,
     bySupplierArticleRoot: costByVendorRoot,
     bySupplierArticleRootCompact: costByVendorRootCompact,
+    supplierArticleByCompanyAndWbArticle,
+    supplierArticleByWbArticle,
   };
 
   const ozonProductByVendorCode = new Map<string, ProductVisual>();
@@ -938,6 +1058,7 @@ export default async function StocksPage({
           return (
             qty *
             getCostPrice({
+              companyName,
               vendorCode: stock.vendorCode,
               nmId: stock.nmId,
               costs,
@@ -979,6 +1100,7 @@ export default async function StocksPage({
           return (
             qty *
             getCostPrice({
+              companyName,
               vendorCode: stock.vendorCode,
               sku: stock.sku,
               costs,
@@ -999,6 +1121,7 @@ export default async function StocksPage({
       const warehouseTotalCost = sum(
         companyWarehouseStocks.map((stock) => {
           const costPrice = getCostPrice({
+            companyName,
             vendorCode: stock.vendorCode,
             sku: stock.sku,
             ownCostPrice: stock.costPrice,
@@ -1011,6 +1134,7 @@ export default async function StocksPage({
       const availableForSupplyCost = sum(
         companyWarehouseStocks.map((stock) => {
           const costPrice = getCostPrice({
+            companyName,
             vendorCode: stock.vendorCode,
             sku: stock.sku,
             ownCostPrice: stock.costPrice,
@@ -1098,6 +1222,7 @@ export default async function StocksPage({
         toNumber(stock.inTransitToCustomer) +
         toNumber(stock.inTransitReturns);
       const costPrice = getCostPrice({
+        companyName: stock.companyName,
         vendorCode,
         nmId: stock.nmId,
         costs,
@@ -1141,6 +1266,7 @@ export default async function StocksPage({
         toNumber(stock.inTransitQty) +
         toNumber(stock.returnQty);
       const costPrice = getCostPrice({
+        companyName: stock.companyName,
         vendorCode,
         sku: stock.sku,
         costs,
@@ -1175,6 +1301,7 @@ export default async function StocksPage({
     ...warehouseStocks.map((stock) => {
       const vendorCode = stock.vendorCode;
       const costPrice = getCostPrice({
+        companyName: stock.companyName,
         vendorCode: stock.vendorCode,
         sku: stock.sku,
         ownCostPrice: stock.costPrice,
