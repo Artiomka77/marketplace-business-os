@@ -82,6 +82,28 @@ type UnifiedStockRow = {
   imageUrl: string | null;
 };
 
+type ProductSizeSummary = {
+  vendorCode: string;
+  productName: string | null;
+  imageUrl: string | null;
+  companyName: string;
+  totalQty: number;
+  totalCost: number;
+  wbQty: number;
+  ozonQty: number;
+  ownQty: number;
+  lowSizeCount: number;
+  missingSizeCount: number;
+  sizes: Array<{
+    size: string;
+    totalQty: number;
+    wbQty: number;
+    ozonQty: number;
+    ownQty: number;
+    totalCost: number;
+  }>;
+};
+
 function formatNumber(value: number) {
   return Math.round(value).toLocaleString("ru-RU");
 }
@@ -470,6 +492,211 @@ function inferSizeFromVendorCode(value: unknown) {
 function getDisplaySize(row: UnifiedStockRow) {
   return normalizeKey(row.size) || inferSizeFromVendorCode(row.vendorCode);
 }
+
+function getProductGroupKey(row: UnifiedStockRow) {
+  const article = normalizeKey(row.vendorCode);
+  const name = normalizeKey(row.productName);
+  const company = normalizeKey(row.companyName);
+
+  return `${company}::${article || name}`;
+}
+
+function getProductSizeLabel(row: UnifiedStockRow) {
+  return getDisplaySize(row) ?? "Без размера";
+}
+
+function buildProductSizeSummaries(rows: UnifiedStockRow[]) {
+  const groups = new Map<string, ProductSizeSummary>();
+
+  for (const row of rows) {
+    const key = getProductGroupKey(row);
+    const size = getProductSizeLabel(row);
+
+    const current =
+      groups.get(key) ??
+      ({
+        vendorCode: row.vendorCode,
+        productName: row.productName,
+        imageUrl: row.imageUrl,
+        companyName: row.companyName,
+        totalQty: 0,
+        totalCost: 0,
+        wbQty: 0,
+        ozonQty: 0,
+        ownQty: 0,
+        lowSizeCount: 0,
+        missingSizeCount: 0,
+        sizes: [],
+      } satisfies ProductSizeSummary);
+
+    current.totalQty += row.qty;
+    current.totalCost += row.totalCost;
+
+    if (row.source === "WB") current.wbQty += row.qty;
+    if (row.source === "OZON") current.ozonQty += row.qty;
+    if (row.source === "OWN") current.ownQty += row.qty;
+
+    if (!getDisplaySize(row)) {
+      current.missingSizeCount += 1;
+    }
+
+    let sizeRow = current.sizes.find((item) => item.size === size);
+
+    if (!sizeRow) {
+      sizeRow = {
+        size,
+        totalQty: 0,
+        wbQty: 0,
+        ozonQty: 0,
+        ownQty: 0,
+        totalCost: 0,
+      };
+      current.sizes.push(sizeRow);
+    }
+
+    sizeRow.totalQty += row.qty;
+    sizeRow.totalCost += row.totalCost;
+
+    if (row.source === "WB") sizeRow.wbQty += row.qty;
+    if (row.source === "OZON") sizeRow.ozonQty += row.qty;
+    if (row.source === "OWN") sizeRow.ownQty += row.qty;
+
+    groups.set(key, current);
+  }
+
+  return Array.from(groups.values())
+    .map((group) => {
+      const sizes = group.sizes
+        .sort((a, b) => {
+          const aNumber = Number(String(a.size).match(/\d+/)?.[0] ?? 0);
+          const bNumber = Number(String(b.size).match(/\d+/)?.[0] ?? 0);
+
+          if (a.size === "Без размера") return 1;
+          if (b.size === "Без размера") return -1;
+          if (aNumber !== bNumber) return aNumber - bNumber;
+
+          return a.size.localeCompare(b.size, "ru", {
+            numeric: true,
+            sensitivity: "base",
+          });
+        });
+
+      return {
+        ...group,
+        lowSizeCount: sizes.filter(
+          (size) => size.size !== "Без размера" && size.totalQty > 0 && size.totalQty < 10
+        ).length,
+        sizes,
+      };
+    })
+    .sort((a, b) => b.totalQty - a.totalQty);
+}
+
+function sizeChipClass(qty: number, size: string) {
+  if (size === "Без размера") {
+    return "bg-amber-50 text-amber-700 ring-amber-100";
+  }
+
+  if (qty <= 0) {
+    return "bg-rose-50 text-rose-700 ring-rose-100";
+  }
+
+  if (qty < 10) {
+    return "bg-amber-50 text-amber-700 ring-amber-100";
+  }
+
+  return "bg-emerald-50 text-emerald-700 ring-emerald-100";
+}
+
+function ProductSizeSummaryCard({ group }: { group: ProductSizeSummary }) {
+  return (
+    <article className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm">
+      <div className="flex items-start gap-3">
+        <ProductPhoto
+          imageUrl={group.imageUrl}
+          title={group.productName ?? group.vendorCode}
+        />
+
+        <div className="min-w-0 flex-1">
+          <div className="line-clamp-2 text-sm font-black leading-5 text-slate-950">
+            {group.productName ?? "Название не загружено"}
+          </div>
+          <div className="mt-1 break-all text-xs font-bold text-slate-500">
+            {group.vendorCode}
+          </div>
+          <div className="mt-1 text-xs font-bold text-slate-400">
+            {group.companyName}
+          </div>
+        </div>
+
+        <div className="text-right">
+          <div className="text-lg font-black text-slate-950">
+            {formatNumber(group.totalQty)}
+          </div>
+          <div className="text-[11px] font-bold text-slate-400">шт.</div>
+        </div>
+      </div>
+
+      <div className="mt-3 grid grid-cols-3 gap-2">
+        <div className="rounded-2xl bg-violet-50 px-3 py-2 ring-1 ring-violet-100">
+          <div className="text-[10px] font-black uppercase text-violet-500">WB</div>
+          <div className="mt-1 text-sm font-black text-slate-950">
+            {formatNumber(group.wbQty)}
+          </div>
+        </div>
+        <div className="rounded-2xl bg-blue-50 px-3 py-2 ring-1 ring-blue-100">
+          <div className="text-[10px] font-black uppercase text-blue-500">Ozon</div>
+          <div className="mt-1 text-sm font-black text-slate-950">
+            {formatNumber(group.ozonQty)}
+          </div>
+        </div>
+        <div className="rounded-2xl bg-emerald-50 px-3 py-2 ring-1 ring-emerald-100">
+          <div className="text-[10px] font-black uppercase text-emerald-500">Склад</div>
+          <div className="mt-1 text-sm font-black text-slate-950">
+            {formatNumber(group.ownQty)}
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-3 flex flex-wrap gap-2">
+        {group.sizes.slice(0, 18).map((size) => (
+          <span
+            key={size.size}
+            className={`inline-flex items-center gap-1 rounded-full px-3 py-1.5 text-xs font-black ring-1 ${sizeChipClass(
+              size.totalQty,
+              size.size
+            )}`}
+            title={`WB: ${formatNumber(size.wbQty)} · Ozon: ${formatNumber(
+              size.ozonQty
+            )} · склад: ${formatNumber(size.ownQty)}`}
+          >
+            <span>{size.size}</span>
+            <span>·</span>
+            <span>{formatNumber(size.totalQty)} шт</span>
+          </span>
+        ))}
+
+        {group.sizes.length > 18 ? (
+          <span className="inline-flex rounded-full bg-slate-50 px-3 py-1.5 text-xs font-black text-slate-500 ring-1 ring-slate-200">
+            +{formatNumber(group.sizes.length - 18)} размеров
+          </span>
+        ) : null}
+      </div>
+
+      {group.lowSizeCount > 0 || group.missingSizeCount > 0 ? (
+        <div className="mt-3 rounded-2xl bg-amber-50 px-3 py-2 text-xs font-bold leading-5 text-amber-800 ring-1 ring-amber-100">
+          {group.lowSizeCount > 0
+            ? `Низкий остаток по размерам: ${formatNumber(group.lowSizeCount)}.`
+            : null}{" "}
+          {group.missingSizeCount > 0
+            ? `Без размера: ${formatNumber(group.missingSizeCount)} строк.`
+            : null}
+        </div>
+      ) : null}
+    </article>
+  );
+}
+
 
 function makeUrl(params: StockSearchParams, patch: Record<string, string | null | undefined>) {
   const next = new URLSearchParams();
@@ -1438,6 +1665,7 @@ export default async function StocksPage({
     });
 
   const visibleRows = filteredRows.slice(0, rowsLimit);
+  const productSizeSummaries = buildProductSizeSummaries(filteredRows).slice(0, 8);
 
   const lowStockCount = filteredRows.filter((row) => row.qty > 0 && row.qty < 10).length;
   const ownWarehouseMissingCount = summaries.filter(
@@ -1839,6 +2067,36 @@ export default async function StocksPage({
                 Сбросить фильтры
               </Link>
             </div>
+
+            {productSizeSummaries.length > 0 ? (
+              <section className="mt-5 rounded-[26px] border border-slate-200 bg-slate-50 p-4">
+                <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+                  <div>
+                    <h3 className="text-lg font-black tracking-tight text-slate-950">
+                      Быстрый разбор по размерам
+                    </h3>
+                    <p className="mt-1 max-w-3xl text-sm font-semibold leading-6 text-slate-500">
+                      Товары из текущей выборки, сгруппированные по размерам. Цвет
+                      подсказывает риск: жёлтый — меньше 10 шт., красный — 0 шт.,
+                      зелёный — запас нормальный.
+                    </p>
+                  </div>
+
+                  <div className="rounded-2xl bg-white px-4 py-2 text-sm font-black text-slate-600 ring-1 ring-slate-200">
+                    Топ {formatNumber(productSizeSummaries.length)} по остатку
+                  </div>
+                </div>
+
+                <div className="mt-4 grid gap-3 xl:grid-cols-2">
+                  {productSizeSummaries.map((group) => (
+                    <ProductSizeSummaryCard
+                      key={`${group.companyName}-${group.vendorCode}`}
+                      group={group}
+                    />
+                  ))}
+                </div>
+              </section>
+            ) : null}
 
             <div className="mt-5 overflow-hidden rounded-[26px] border border-slate-200">
               <div className="overflow-x-auto">
