@@ -2747,8 +2747,7 @@ export default async function StocksPage({
                         Быстрый разбор по размерам
                       </h3>
                       <p className="mt-1 max-w-4xl text-sm font-semibold leading-6 text-slate-500">
-                        WB, Ozon и склад разделены по размерам. ABC считается по свежим данным продаж.{" "}
-                        {abcDateFrom} — {abcDateTo}.
+                        WB, Ozon и склад разделены по размерам. ABC считается по свежим данным продаж.
                       </p>
                     </div>
 
