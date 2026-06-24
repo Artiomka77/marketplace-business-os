@@ -1067,19 +1067,16 @@ function ProductSizeSourcePanel({
         >
           {title}
         </div>
+
         <div className="flex items-center gap-2">
           {source.abc && source.totalQty > 0 ? (
             <AbcBadge value={source.abc.abcByProfit} compact />
           ) : null}
+
           <div className="text-right">
-                    <div className="text-right">
-          <div className="text-sm font-black text-slate-950">
-            {formatNumber(source.totalQty)} шт.
-          </div>
-          <div className="mt-0.5 text-[11px] font-black text-slate-500">
-            {formatMoney(source.totalCost)}
-          </div>
-        </div>
+            <div className="text-sm font-black text-slate-950">
+              {formatNumber(source.totalQty)} шт.
+            </div>
             <div className="mt-0.5 text-[11px] font-black text-slate-500">
               {formatMoney(source.totalCost)}
             </div>
