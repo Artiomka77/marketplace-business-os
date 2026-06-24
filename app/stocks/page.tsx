@@ -928,6 +928,92 @@ function sortProductSizeSummaries(
   });
 }
 
+
+type StockFallbackAbcGroup = {
+  source: "WB" | "OZON";
+  companyName: string;
+  article: string;
+  value: number;
+  rows: UnifiedStockRow[];
+};
+
+function buildFallbackStockAbcMap(rows: UnifiedStockRow[]) {
+  const map = new Map<string, StockAbcInfo>();
+  const groups = new Map<string, StockFallbackAbcGroup>();
+
+  for (const row of rows) {
+    if (row.source !== "WB" && row.source !== "OZON") continue;
+    if (row.abc) continue;
+
+    const article = getUnifiedMarketplaceArticle(row);
+    const companyName = normalizeKey(row.companyName);
+
+    if (!article || !companyName) continue;
+
+    const key = `${row.source}::${companyName}::${article}`;
+    const current =
+      groups.get(key) ??
+      ({
+        source: row.source,
+        companyName,
+        article,
+        value: 0,
+        rows: [],
+      } satisfies StockFallbackAbcGroup);
+
+    current.value += Math.max(0, row.totalCost || row.qty || 0);
+    current.rows.push(row);
+
+    groups.set(key, current);
+  }
+
+  for (const source of ["WB", "OZON"] as const) {
+    const sourceGroups = Array.from(groups.values()).filter(
+      (group) => group.source === source
+    );
+
+    const abcByValue = calculateAbcByPositiveValue(
+      sourceGroups,
+      (group) => group.value
+    );
+
+    for (const group of sourceGroups) {
+      const abc = {
+        abcByRevenue: abcByValue.get(group) ?? "C",
+        abcByProfit: abcByValue.get(group) ?? "C",
+      } satisfies StockAbcInfo;
+
+      registerStockAbc(map, {
+        companyName: group.companyName,
+        article: group.article,
+        abc,
+      });
+
+      for (const row of group.rows) {
+        registerStockAbc(map, {
+          companyName: row.companyName,
+          article: row.vendorCode,
+          abc,
+        });
+
+        registerStockAbc(map, {
+          companyName: row.companyName,
+          article: row.sku,
+          abc,
+        });
+
+        registerStockAbc(map, {
+          companyName: row.companyName,
+          article: row.nmId,
+          abc,
+        });
+      }
+    }
+  }
+
+  return map;
+}
+
 function sizeChipClass(qty: number, size: string) {
   if (size === "Без размера") {
     return "bg-amber-50 text-amber-700 ring-amber-100";
@@ -985,8 +1071,13 @@ function ProductSizeSourcePanel({
           {source.abc && source.totalQty > 0 ? (
             <AbcBadge value={source.abc.abcByProfit} compact />
           ) : null}
-          <div className="text-sm font-black text-slate-950">
-            {formatNumber(source.totalQty)} шт.
+          <div className="text-right">
+            <div className="text-sm font-black text-slate-950">
+              {formatNumber(source.totalQty)} шт.
+            </div>
+            <div className="mt-0.5 text-[11px] font-black text-slate-500">
+              {formatMoney(source.totalCost)}
+            </div>
           </div>
         </div>
       </div>
@@ -1548,6 +1639,13 @@ export default async function StocksPage({
   const ozonProductWhere =
     vendorCodes.length > 0 || skus.length > 0
       ? {
+          ...(visibleCompanyNames.length > 0
+            ? {
+                companyName: {
+                  in: visibleCompanyNames,
+                },
+              }
+            : {}),
           OR: [
             ...(vendorCodes.length > 0
               ? [
@@ -1608,6 +1706,7 @@ export default async function StocksPage({
         createdAt: "desc",
       },
       select: {
+        companyName: true,
         vendorCode: true,
         sku: true,
         productName: true,
@@ -1740,6 +1839,8 @@ export default async function StocksPage({
 
     const vendorCode = normalizeKey(product.vendorCode);
     const sku = normalizeKey(product.sku);
+    const companyName = normalizeKey(product.companyName);
+    const baseArticle = getMarketplaceBaseArticle(vendorCode);
 
     if (vendorCode && !ozonProductByVendorCode.has(vendorCode)) {
       ozonProductByVendorCode.set(vendorCode, visual);
@@ -1747,6 +1848,31 @@ export default async function StocksPage({
 
     if (sku && !ozonProductBySku.has(sku)) {
       ozonProductBySku.set(sku, visual);
+    }
+
+    const abc = findStockAbc(ozonAbcMap, {
+      companyName,
+      articles: [sku, vendorCode, baseArticle],
+    });
+
+    if (abc) {
+      registerStockAbc(ozonAbcMap, {
+        companyName,
+        article: sku,
+        abc,
+      });
+
+      registerStockAbc(ozonAbcMap, {
+        companyName,
+        article: vendorCode,
+        abc,
+      });
+
+      registerStockAbc(ozonAbcMap, {
+        companyName,
+        article: baseArticle,
+        abc,
+      });
     }
   }
 
@@ -2122,6 +2248,23 @@ export default async function StocksPage({
       };
     }),
   ].filter((row) => row.qty > 0 || row.availableForSupplyQty > 0);
+
+  const fallbackStockAbcMap = buildFallbackStockAbcMap(allRows);
+
+  for (const row of allRows) {
+    if (row.abc || row.source === "OWN") continue;
+
+    row.abc = findStockAbc(fallbackStockAbcMap, {
+      companyName: row.companyName,
+      articles: [
+        getUnifiedMarketplaceArticle(row),
+        getMarketplaceBaseArticle(row.vendorCode),
+        row.vendorCode,
+        row.sku,
+        row.nmId,
+      ],
+    });
+  }
 
   const productOptionsMap = new Map<
     string,
