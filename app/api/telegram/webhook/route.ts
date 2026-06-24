@@ -325,10 +325,77 @@ function reportPeriodInlineKeyboard() {
       [
         {
           text: "🤖 Ответ ИИ",
-          callback_data: "report_ai:yesterday",
+          callback_data: "report_ai_menu",
         },
       ],
       [
+        {
+          text: "← Главное меню",
+          callback_data: "quick_menu",
+        },
+      ],
+    ],
+  };
+}
+
+function aiReportPeriodInlineKeyboard() {
+  return {
+    inline_keyboard: [
+      [
+        {
+          text: "🤖 Вчера",
+          callback_data: "report_ai:yesterday",
+        },
+        {
+          text: "🤖 Позавчера",
+          callback_data: "report_ai:day_before_yesterday",
+        },
+      ],
+      [
+        {
+          text: "🤖 3 дня",
+          callback_data: "report_ai:3d",
+        },
+        {
+          text: "🤖 Текущая неделя",
+          callback_data: "report_ai:current_week",
+        },
+      ],
+      [
+        {
+          text: "🤖 7 дней",
+          callback_data: "report_ai:7d",
+        },
+        {
+          text: "🤖 15 дней",
+          callback_data: "report_ai:15d",
+        },
+      ],
+      [
+        {
+          text: "🤖 Месяц",
+          callback_data: "report_ai:month",
+        },
+        {
+          text: "🤖 3 месяца",
+          callback_data: "report_ai:3m",
+        },
+      ],
+      [
+        {
+          text: "🤖 6 месяцев",
+          callback_data: "report_ai:6m",
+        },
+        {
+          text: "🤖 Год",
+          callback_data: "report_ai:year",
+        },
+      ],
+      [
+        {
+          text: "← К обычным отчётам",
+          callback_data: "report_menu",
+        },
         {
           text: "← Главное меню",
           callback_data: "quick_menu",
@@ -355,8 +422,23 @@ function getReportMenuMessage() {
     "• 6 месяцев — длинный период",
     "• Год — годовая картина",
     "",
-    "🤖 Ответ ИИ — отчёт за вчера с AI-анализом.",
-  ].join("\\n");
+    "🤖 Ответ ИИ — выбрать период и получить AI-анализ.",
+  ].join("\n");
+}
+
+function getAiReportMenuMessage() {
+  return [
+    "🤖 Ответ ИИ",
+    "",
+    "Выберите период для AI-анализа:",
+    "",
+    "ИИ возьмёт обычный отчёт за выбранный период и добавит краткий управленческий вывод:",
+    "• что произошло;",
+    "• главный риск;",
+    "• что проверить;",
+    "• что сделать сегодня;",
+    "• где возможна проблема в данных.",
+  ].join("\n");
 }
 
 function getVisualMenuMessage(chatId: string) {
@@ -457,7 +539,7 @@ function getHelpMessage(chatId: string) {
     "👤 Вывод собственника — личный вывод",
     "🏦 Кредит / займ — тело и проценты кредита",
     "📊 Отчёт собственника — сводка за нужный период",
-    "🤖 Ответ ИИ — отчёт за вчера с AI-анализом",
+    "🤖 Ответ ИИ — выбрать период и получить AI-анализ",
     "📋 Последние операции — последние операции из Telegram",
     "📅 Сегодня — операции за сегодня",
     "↩️ Отменить последнюю — удалить последнюю Telegram-операцию",
@@ -471,7 +553,7 @@ function getHelpMessage(chatId: string) {
     "/today — операции за сегодня",
     "/daily — сводка собственника за вчера",
     "/report — выбрать период отчёта",
-    "/report_ai — отчёт за вчера с AI-анализом",
+    "/report_ai — выбрать период для AI-анализа",
     "/report_yesterday — отчёт за вчера",
     "/report_day_before_yesterday — отчёт за позавчера",
     "/report_current_week — текущая неделя",
@@ -887,6 +969,14 @@ async function sendReportMenu(chatId: string) {
   await sendMessage(chatId, getReportMenuMessage(), reportPeriodInlineKeyboard());
 }
 
+async function sendAiReportMenu(chatId: string) {
+  await sendMessage(
+    chatId,
+    getAiReportMenuMessage(),
+    aiReportPeriodInlineKeyboard()
+  );
+}
+
 async function sendUndoLastOperationPrompt(chatId: string) {
   const sessions = await findTelegramImportSessionsForChat({
     chatId,
@@ -1106,8 +1196,11 @@ async function createDraftFromMessage(message: TelegramMessage) {
     normalizedCommandText.includes("ai-анализ") ||
     normalizedCommandText.includes("ai анализ")
   ) {
-    await sendMessage(chatId, "Готовлю отчёт с AI-анализом. Это может занять несколько секунд.");
-    await sendDailyOwnerReport(chatId, "yesterday", true);
+    await sendMessage(
+      chatId,
+      getAiReportMenuMessage(),
+      aiReportPeriodInlineKeyboard()
+    );
     return;
   }
 
@@ -2061,6 +2154,19 @@ async function handleCallbackQuery(callbackQuery: TelegramCallbackQuery) {
 
     if (chatId) {
       await sendReportMenu(chatId);
+    }
+
+    return;
+  }
+
+  if (data === "report_ai_menu") {
+    const message = callbackQuery.message;
+    const chatId = message?.chat.id ? String(message.chat.id) : null;
+
+    await answerCallbackQuery(callbackQuery.id);
+
+    if (chatId) {
+      await sendAiReportMenu(chatId);
     }
 
     return;

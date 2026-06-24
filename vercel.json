@@ -9,6 +9,10 @@
       "schedule": "20 3 * * *"
     },
     {
+      "path": "/api/cron/sync-wb-daily-sales",
+      "schedule": "55 3 * * *"
+    },
+    {
       "path": "/api/cron/historical-sync-wb-ads",
       "schedule": "5,15,25,35,45,55 3 * * *"
     },
@@ -18,7 +22,7 @@
     },
     {
       "path": "/api/telegram/daily-report",
-      "schedule": "0 4 * * *"
+      "schedule": "20 4 * * *"
     },
     {
       "path": "/api/cron/historical-sync",

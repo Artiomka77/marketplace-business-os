@@ -98,6 +98,22 @@ function isReturnSaleId(value: unknown) {
     .startsWith("R");
 }
 
+function sleep(ms: number) {
+  return new Promise<void>((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
+function isRetryableWbDailySalesStatus(status: number) {
+  return status === 429 || status >= 500;
+}
+
+function getRetryDelayMs(attempt: number) {
+  if (attempt <= 1) return 2000;
+  if (attempt === 2) return 5000;
+  return 8000;
+}
+
 async function getWbConnection(companyId: string) {
   const connection = await prisma.marketplaceApiConnection.findUnique({
     where: {
@@ -136,30 +152,62 @@ async function fetchWbDailySales(token: string, dateText: string) {
   url.searchParams.set("dateFrom", dateText);
   url.searchParams.set("flag", "1");
 
-  const response = await fetch(url.toString(), {
-    method: "GET",
-    headers: {
-      Authorization: token,
-    },
-    cache: "no-store",
-  });
+  const maxAttempts = 3;
+  let lastError: Error | null = null;
 
-  if (response.status === 204) {
-    return [];
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      const response = await fetch(url.toString(), {
+        method: "GET",
+        headers: {
+          Authorization: token,
+        },
+        cache: "no-store",
+      });
+
+      if (response.status === 204) {
+        return [];
+      }
+
+      if (!response.ok) {
+        const text = await response.text().catch(() => "");
+        const message = `WB Daily Sales API: ${response.status} ${text}`.trim();
+
+        if (
+          attempt < maxAttempts &&
+          isRetryableWbDailySalesStatus(response.status)
+        ) {
+          lastError = new Error(
+            `${message}. Повтор ${attempt + 1}/${maxAttempts}`
+          );
+          await sleep(getRetryDelayMs(attempt));
+          continue;
+        }
+
+        throw new Error(message);
+      }
+
+      const json = await response.json().catch(() => null);
+
+      if (!Array.isArray(json)) {
+        throw new Error("WB Daily Sales API вернул неожиданный формат ответа");
+      }
+
+      return json as WbDailySaleApiRow[];
+    } catch (error) {
+      lastError =
+        error instanceof Error ? error : new Error("Ошибка WB Daily Sales API");
+
+      if (attempt < maxAttempts) {
+        await sleep(getRetryDelayMs(attempt));
+        continue;
+      }
+
+      throw lastError;
+    }
   }
 
-  if (!response.ok) {
-    const text = await response.text().catch(() => "");
-    throw new Error(`WB Daily Sales API: ${response.status} ${text}`.trim());
-  }
-
-  const json = await response.json().catch(() => null);
-
-  if (!Array.isArray(json)) {
-    throw new Error("WB Daily Sales API вернул неожиданный формат ответа");
-  }
-
-  return json as WbDailySaleApiRow[];
+  throw lastError ?? new Error("WB Daily Sales API не ответил");
 }
 
 export async function syncWbDailySales(
