@@ -43,6 +43,10 @@ export async function GET() {
       lastAttemptAt: connection.lastAttemptAt,
       lastError: connection.lastError,
       retryCount: connection.retryCount,
+      // Остатки — оперативные данные для сайта и Telegram-отчёта.
+      // Их нельзя пропускать только из-за исторической загрузки WB.
+      // Rate limit/cooldown защита при этом остаётся включённой.
+      ignoreHistoricalSyncActive: true,
     });
 
     if (skipResult) {

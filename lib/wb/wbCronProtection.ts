@@ -71,28 +71,31 @@ export async function getWbCronSkipResult(params: {
   lastError: string | null;
   lastAttemptAt: Date | null;
   retryCount: number;
+  ignoreHistoricalSyncActive?: boolean;
 }): Promise<WbCronCompanyResult | null> {
-  const activeHistoricalJobs = await getActiveWbHistoricalJobsCount(
-    params.companyId
-  );
+  if (!params.ignoreHistoricalSyncActive) {
+    const activeHistoricalJobs = await getActiveWbHistoricalJobsCount(
+      params.companyId
+    );
 
-  if (activeHistoricalJobs > 0) {
-    return {
-      companyId: params.companyId,
-      ok: true,
-      skipped: true,
-      reason: "WB_HISTORICAL_SYNC_ACTIVE",
-      result: {
-        name: params.syncName,
-        rows: 0,
+    if (activeHistoricalJobs > 0) {
+      return {
+        companyId: params.companyId,
+        ok: true,
         skipped: true,
         reason: "WB_HISTORICAL_SYNC_ACTIVE",
-        message: `Ежедневная синхронизация ${params.syncName} пропущена: сейчас идёт историческая загрузка WB. Осталось задач: ${activeHistoricalJobs}.`,
-        retryCount: params.retryCount,
-      },
-      error: null,
-      isRateLimit: false,
-    };
+        result: {
+          name: params.syncName,
+          rows: 0,
+          skipped: true,
+          reason: "WB_HISTORICAL_SYNC_ACTIVE",
+          message: `Ежедневная синхронизация ${params.syncName} пропущена: сейчас идёт историческая загрузка WB. Осталось задач: ${activeHistoricalJobs}.`,
+          retryCount: params.retryCount,
+        },
+        error: null,
+        isRateLimit: false,
+      };
+    }
   }
 
   if (
