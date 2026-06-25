@@ -152,6 +152,39 @@ function getSupplyArticleCandidates(value: unknown) {
     .map((candidate) => normalizeSupplyArticle(candidate))
     .filter(Boolean);
 }
+function getOzonSupplyCoverageKey(params: {
+  companyName?: string | null;
+  article?: string | null;
+}) {
+  const companyKey = normalizeSearchValue(params.companyName);
+  const articleKey = normalizeSupplyArticle(params.article);
+
+  return companyKey && articleKey ? `${companyKey}::${articleKey}` : "";
+}
+
+function getInclusiveDateRangeDays(dateFrom: string, dateTo: string) {
+  const fromTime = new Date(`${dateFrom}T00:00:00.000Z`).getTime();
+  const toTime = new Date(`${dateTo}T00:00:00.000Z`).getTime();
+
+  if (!Number.isFinite(fromTime) || !Number.isFinite(toTime)) return 28;
+
+  const days = Math.floor((toTime - fromTime) / (24 * 60 * 60 * 1000)) + 1;
+
+  return Math.max(1, days);
+}
+
+function getOzonCalculatedTargetDays(abc: AbcCategory) {
+  if (abc === "A") return 28;
+  if (abc === "B") return 21;
+  return 14;
+}
+
+function formatDecimal(value: number) {
+  return value.toLocaleString("ru-RU", {
+    maximumFractionDigits: 2,
+  });
+}
+
 
 function inferSizeFromVendorCode(value: unknown) {
   const vendorCode = normalizeKey(value);
@@ -546,7 +579,7 @@ async function buildSupplyPlanRows(url: URL) {
     }
   }
 
-  const [rawWbStocks, ozonSupplyRecommendations, warehouseStocks] =
+  const [rawWbStocks, ozonStocks, ozonSupplyRecommendations, warehouseStocks] =
     await Promise.all([
       prisma.wbStock.findMany({
         where: {
@@ -568,6 +601,25 @@ async function buildSupplyPlanRows(url: URL) {
           warehouseName: true,
           warehouseQty: true,
           totalStock: true,
+        },
+      }),
+      prisma.ozonStock.findMany({
+        where: {
+          companyName: companyWhere,
+        },
+        orderBy: [
+          { companyName: "asc" },
+          { vendorCode: "asc" },
+          { warehouseName: "asc" },
+        ],
+        select: {
+          companyName: true,
+          vendorCode: true,
+          sku: true,
+          availableQty: true,
+          preparingQty: true,
+          supplyQty: true,
+          inTransitQty: true,
         },
       }),
       prisma.ozonSupplyRecommendation.findMany({
@@ -676,6 +728,7 @@ async function buildSupplyPlanRows(url: URL) {
   }
 
   const supplyPlanCandidates: SupplyPlanCandidate[] = [];
+  const officialOzonSupplyKeys = new Set<string>();
 
   for (const row of ozonSupplyRecommendations) {
     const vendorCode = normalizeKey(row.vendorCode);
@@ -683,7 +736,18 @@ async function buildSupplyPlanRows(url: URL) {
     const size = inferSizeFromVendorCode(vendorCode);
     const wantedQty = Math.max(0, toNumber(row.recommendedSupplyQty));
 
-    if (!vendorCode || wantedQty <= 0) continue;
+    if (!vendorCode) continue;
+
+    for (const article of [vendorCode, sku, getMarketplaceBaseArticle(vendorCode)]) {
+      const coverageKey = getOzonSupplyCoverageKey({
+        companyName: row.companyName,
+        article,
+      });
+
+      if (coverageKey) officialOzonSupplyKeys.add(coverageKey);
+    }
+
+    if (wantedQty <= 0) continue;
 
     const abc = findStockAbc(ozonAbcMap, {
       companyName: row.companyName,
@@ -747,6 +811,155 @@ async function buildSupplyPlanRows(url: URL) {
           ? `Без остатка: ${formatNumber(toNumber(row.daysWithoutStock28))} дн.`
           : "",
       ].filter(Boolean),
+    });
+  }
+
+  const ozonStockQtyByArticleKey = new Map<string, number>();
+
+  for (const stock of ozonStocks) {
+    const currentQty =
+      toNumber(stock.availableQty) +
+      toNumber(stock.preparingQty) +
+      toNumber(stock.supplyQty) +
+      toNumber(stock.inTransitQty);
+
+    if (currentQty <= 0) continue;
+
+    for (const article of [stock.vendorCode, stock.sku]) {
+      const stockKey = getOzonSupplyCoverageKey({
+        companyName: stock.companyName,
+        article,
+      });
+
+      if (!stockKey) continue;
+
+      ozonStockQtyByArticleKey.set(
+        stockKey,
+        (ozonStockQtyByArticleKey.get(stockKey) ?? 0) + currentQty
+      );
+    }
+  }
+
+  const ozonCalculatedGroups = new Map<
+    string,
+    {
+      companyName: string;
+      vendorCode: string;
+      netSalesQty: number;
+      revenue: number;
+    }
+  >();
+
+  for (const row of ozonProfitAnalytics.rows) {
+    const vendorCode = normalizeKey(row.vendorCode);
+    const rowCompany = rowCompanyName(row, companyName) ?? "Без компании";
+    const netSalesQty = Math.max(0, toNumber(row.netSalesQty));
+
+    if (!vendorCode || netSalesQty <= 0) continue;
+
+    const groupKey = `${normalizeSearchValue(rowCompany)}::${normalizeSupplyArticle(
+      vendorCode
+    )}`;
+    const currentGroup =
+      ozonCalculatedGroups.get(groupKey) ??
+      ({
+        companyName: rowCompany,
+        vendorCode,
+        netSalesQty: 0,
+        revenue: 0,
+      } satisfies {
+        companyName: string;
+        vendorCode: string;
+        netSalesQty: number;
+        revenue: number;
+      });
+
+    currentGroup.netSalesQty += netSalesQty;
+    currentGroup.revenue += toNumber(row.revenue);
+
+    ozonCalculatedGroups.set(groupKey, currentGroup);
+  }
+
+  const ozonSalesPeriodDays = getInclusiveDateRangeDays(dateFrom, dateTo);
+
+  for (const group of ozonCalculatedGroups.values()) {
+    const baseArticle = getMarketplaceBaseArticle(group.vendorCode);
+    const hasOfficialRecommendation = [group.vendorCode, baseArticle].some((article) => {
+      const coverageKey = getOzonSupplyCoverageKey({
+        companyName: group.companyName,
+        article,
+      });
+
+      return coverageKey ? officialOzonSupplyKeys.has(coverageKey) : false;
+    });
+
+    if (hasOfficialRecommendation) continue;
+
+    const abc = findStockAbc(ozonAbcMap, {
+      companyName: group.companyName,
+      articles: [baseArticle, group.vendorCode],
+    });
+    const abcByProfit = abc?.abcByProfit ?? "C";
+    const targetDays = getOzonCalculatedTargetDays(abcByProfit);
+    const avgDailySalesQty = group.netSalesQty / ozonSalesPeriodDays;
+    const targetQty = Math.ceil(avgDailySalesQty * targetDays);
+    const currentQty =
+      ozonStockQtyByArticleKey.get(
+        getOzonSupplyCoverageKey({
+          companyName: group.companyName,
+          article: group.vendorCode,
+        })
+      ) ?? 0;
+    const wantedQty = Math.max(0, targetQty - currentQty);
+
+    if (wantedQty <= 0) continue;
+
+    const size = inferSizeFromVendorCode(group.vendorCode);
+    const ownItem = findOwnSupplyItem({
+      companyName: group.companyName,
+      articles: [group.vendorCode, baseArticle],
+      size,
+    });
+    const ownInitialQty = ownItem?.availableQty ?? 0;
+    const priority = getSupplyPriority({
+      wantedQty,
+      ownAvailableQty: ownInitialQty,
+      currentQty,
+      abc,
+    });
+
+    supplyPlanCandidates.push({
+      key: `ozon-calculated-${normalizeSearchValue(group.companyName)}-${normalizeSupplyArticle(
+        group.vendorCode
+      )}`,
+      marketplace: "OZON",
+      priority,
+      companyName: group.companyName,
+      vendorCode: group.vendorCode,
+      sku: null,
+      size,
+      productName: ownItem?.productName ?? null,
+      targetName: "Ozon API / общий остаток",
+      currentQty,
+      ownItemKey: ownItem?.key ?? null,
+      wantedQty,
+      ownInitialQty,
+      avgDailySalesQty,
+      daysWithoutStock: currentQty <= 0 ? ozonSalesPeriodDays : null,
+      abc,
+      reason: `Расчётная рекомендация: продажи за ${formatNumber(
+        ozonSalesPeriodDays
+      )} дн. — ${formatNumber(group.netSalesQty)} шт., целевой запас для ABC ${abcByProfit} — ${formatNumber(
+        targetDays
+      )} дн.`,
+      details: [
+        "Источник: расчёт системы по Ozon API, не официальный файл Ozon из ЛК",
+        `Целевой запас: ${formatNumber(targetDays)} дн.`,
+        `Продажи за период: ${formatNumber(group.netSalesQty)} шт.`,
+        `Среднесуточные продажи: ${formatDecimal(avgDailySalesQty)} шт/день`,
+        `Текущий остаток Ozon: ${formatNumber(currentQty)} шт.`,
+        "Кластеры Ozon API не отдал — направление показано общим Ozon.",
+      ],
     });
   }
 
