@@ -3165,9 +3165,15 @@ export default async function StocksPage({
       articles: [getMarketplaceBaseArticle(vendorCode), vendorCode, sku],
     });
 
+    const baseArticle = getMarketplaceBaseArticle(vendorCode);
+    const mappedSupplierArticle = findSupplierArticleByWbArticle({
+      companyName: row.companyName,
+      wbArticle: baseArticle,
+      costs,
+    });
     const ownItem = findOwnSupplyItem({
       companyName: row.companyName,
-      articles: [vendorCode, sku, getMarketplaceBaseArticle(vendorCode)],
+      articles: [vendorCode, sku, baseArticle, mappedSupplierArticle],
       size,
     });
 
@@ -3342,9 +3348,14 @@ export default async function StocksPage({
     if (wantedQty <= 0) continue;
 
     const size = inferSizeFromVendorCode(group.vendorCode);
+    const mappedSupplierArticle = findSupplierArticleByWbArticle({
+      companyName: group.companyName,
+      wbArticle: baseArticle,
+      costs,
+    });
     const ownItem = findOwnSupplyItem({
       companyName: group.companyName,
-      articles: [group.vendorCode, baseArticle],
+      articles: [group.vendorCode, baseArticle, mappedSupplierArticle],
       size,
     });
     const visual = makeRowVisual({
@@ -3423,7 +3434,12 @@ export default async function StocksPage({
 
     const ownItem = findOwnSupplyItem({
       companyName: stock.companyName,
-      articles: [vendorCode, nmId, stock.barcode],
+      articles: [
+        vendorCode,
+        nmId,
+        getMarketplaceBaseArticle(vendorCode),
+        getSupplierArticleRoot(vendorCode),
+      ],
       size,
     });
 
@@ -3464,7 +3480,10 @@ export default async function StocksPage({
       daysWithoutStock: null,
       abc,
       reason: `На складе WB “${stock.warehouseName}” остаток ниже целевого уровня для ABC ${abcByProfit}.`,
-      details: ["WB: пока по складам, без географии заказов"],
+      details: [
+        "WB: сопоставление со своим складом идёт по WB nmId/артикулу, Ozon-артикулу на своём складе и размеру.",
+        "Штрихкод для этого шага не обязателен.",
+      ],
     });
   }
 

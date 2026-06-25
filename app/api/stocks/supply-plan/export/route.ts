@@ -666,6 +666,62 @@ async function buildSupplyPlanRows(url: URL) {
       }),
     ]);
 
+  const supplierArticleByCompanyAndWbArticle = new Map<string, string>();
+  const supplierArticleByWbArticle = new Map<string, string>();
+
+  function getCompanyArticleKey(companyName: unknown, article: unknown) {
+    const company = normalizeKey(companyName);
+    const normalizedArticle = normalizeKey(article);
+
+    return company && normalizedArticle ? `${company}::${normalizedArticle}` : "";
+  }
+
+  function registerWbSupplierArticleMapping(params: {
+    companyName?: string | null;
+    wbArticle?: string | null;
+    supplierArticle?: string | null;
+  }) {
+    const wbArticle = normalizeKey(params.wbArticle);
+    const supplierArticle = normalizeKey(params.supplierArticle);
+
+    if (!wbArticle || !supplierArticle) return;
+
+    const companyKey = getCompanyArticleKey(params.companyName, wbArticle);
+
+    if (companyKey && !supplierArticleByCompanyAndWbArticle.has(companyKey)) {
+      supplierArticleByCompanyAndWbArticle.set(companyKey, supplierArticle);
+    }
+
+    if (!supplierArticleByWbArticle.has(wbArticle)) {
+      supplierArticleByWbArticle.set(wbArticle, supplierArticle);
+    }
+  }
+
+  function findSupplierArticleByWbArticle(params: {
+    companyName?: string | null;
+    wbArticle?: string | null;
+  }) {
+    const wbArticle = normalizeKey(params.wbArticle);
+
+    if (!wbArticle) return null;
+
+    const companyKey = getCompanyArticleKey(params.companyName, wbArticle);
+
+    return (
+      (companyKey ? supplierArticleByCompanyAndWbArticle.get(companyKey) : undefined) ??
+      supplierArticleByWbArticle.get(wbArticle) ??
+      null
+    );
+  }
+
+  for (const stock of rawWbStocks) {
+    registerWbSupplierArticleMapping({
+      companyName: stock.companyName,
+      wbArticle: stock.nmId,
+      supplierArticle: stock.vendorCode,
+    });
+  }
+
   const ownSupplyItems: OwnSupplyItem[] = warehouseStocks
     .map((stock) => {
       const vendorCode = normalizeKey(stock.vendorCode);
@@ -676,7 +732,6 @@ async function buildSupplyPlanRows(url: URL) {
       for (const article of [
         vendorCode,
         sku,
-        stock.barcode,
         getMarketplaceBaseArticle(vendorCode),
         getSupplierArticleRoot(vendorCode),
       ]) {
@@ -722,9 +777,15 @@ async function buildSupplyPlanRows(url: URL) {
 
     if (sameCompanyItems.length === 0) return null;
 
-    const exactSize = sameCompanyItems.find((item) => item.sizeKey && item.sizeKey === sizeKey);
+    const exactSize = sizeKey
+      ? sameCompanyItems.find((item) => item.sizeKey && item.sizeKey === sizeKey)
+      : null;
 
-    return exactSize ?? sameCompanyItems[0] ?? null;
+    if (sizeKey) {
+      return exactSize ?? sameCompanyItems.find((item) => !item.sizeKey) ?? null;
+    }
+
+    return sameCompanyItems[0] ?? null;
   }
 
   const supplyPlanCandidates: SupplyPlanCandidate[] = [];
@@ -754,9 +815,14 @@ async function buildSupplyPlanRows(url: URL) {
       articles: [getMarketplaceBaseArticle(vendorCode), vendorCode, sku],
     });
 
+    const baseArticle = getMarketplaceBaseArticle(vendorCode);
+    const mappedSupplierArticle = findSupplierArticleByWbArticle({
+      companyName: row.companyName,
+      wbArticle: baseArticle,
+    });
     const ownItem = findOwnSupplyItem({
       companyName: row.companyName,
-      articles: [vendorCode, sku, getMarketplaceBaseArticle(vendorCode)],
+      articles: [vendorCode, sku, baseArticle, mappedSupplierArticle],
       size,
     });
 
@@ -915,9 +981,13 @@ async function buildSupplyPlanRows(url: URL) {
     if (wantedQty <= 0) continue;
 
     const size = inferSizeFromVendorCode(group.vendorCode);
+    const mappedSupplierArticle = findSupplierArticleByWbArticle({
+      companyName: group.companyName,
+      wbArticle: baseArticle,
+    });
     const ownItem = findOwnSupplyItem({
       companyName: group.companyName,
-      articles: [group.vendorCode, baseArticle],
+      articles: [group.vendorCode, baseArticle, mappedSupplierArticle],
       size,
     });
     const ownInitialQty = ownItem?.availableQty ?? 0;
@@ -986,7 +1056,12 @@ async function buildSupplyPlanRows(url: URL) {
 
     const ownItem = findOwnSupplyItem({
       companyName: stock.companyName,
-      articles: [vendorCode, nmId, stock.barcode],
+      articles: [
+        vendorCode,
+        nmId,
+        getMarketplaceBaseArticle(vendorCode),
+        getSupplierArticleRoot(vendorCode),
+      ],
       size,
     });
 
@@ -1016,7 +1091,10 @@ async function buildSupplyPlanRows(url: URL) {
       daysWithoutStock: null,
       abc,
       reason: `На складе WB “${stock.warehouseName}” остаток ниже целевого уровня для ABC ${abcByProfit}.`,
-      details: ["WB: пока по складам, без географии заказов"],
+      details: [
+        "WB: сопоставление со своим складом идёт по WB nmId/артикулу, Ozon-артикулу на своём складе и размеру.",
+        "Штрихкод для этого шага не обязателен.",
+      ],
     });
   }
 
