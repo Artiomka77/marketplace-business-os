@@ -1,11 +1,16 @@
 import Link from "next/link";
 
 import { prisma } from "@/lib/prisma";
+import { getProfitAnalytics } from "@/lib/analytics/profitAnalytics";
+import { getProfitAnalyticsOzon } from "@/lib/analytics/profitAnalyticsOzon";
 import {
   buildFinanceCategoryTreatmentIndex,
   calculateFinanceMetricsForRows,
   getFinanceTransactionTreatment,
 } from "@/lib/finance/financeMetrics";
+
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 function formatMoney(value: unknown) {
   return new Intl.NumberFormat("ru-RU", {
@@ -32,6 +37,14 @@ function startOfMonth(year: number, month: number) {
 
 function endOfMonth(year: number, month: number) {
   return new Date(year, month, 0, 23, 59, 59);
+}
+
+function formatDateInput(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
 }
 
 function previousMonth(year: number, month: number) {
@@ -202,15 +215,17 @@ function MarketplaceProfitCard({
   cogs,
   costs,
   ads,
+  taxes,
 }: {
   title: string;
   revenue: number;
   cogs: number;
   costs: number;
   ads: number;
+  taxes: number;
 }) {
-  const marginalProfit = revenue - cogs - costs - ads;
-  const margin = safePercent(marginalProfit, revenue);
+  const netProfit = revenue - cogs - costs - ads - taxes;
+  const margin = safePercent(netProfit, revenue);
 
   return (
     <div className="rounded-2xl bg-white p-5 shadow-sm">
@@ -218,10 +233,10 @@ function MarketplaceProfitCard({
 
       <div
         className={`mt-2 text-3xl font-bold ${
-          marginalProfit >= 0 ? "text-emerald-600" : "text-red-600"
+          netProfit >= 0 ? "text-emerald-600" : "text-red-600"
         }`}
       >
-        {formatMoney(marginalProfit)}
+        {formatMoney(netProfit)}
       </div>
 
       <div className="mt-4 space-y-2 border-t border-slate-100 pt-3 text-sm">
@@ -245,8 +260,13 @@ function MarketplaceProfitCard({
           <span className="font-bold">{formatMoney(ads)}</span>
         </div>
 
+        <div className="flex justify-between gap-3">
+          <span className="text-slate-500">Налоги</span>
+          <span className="font-bold">{formatMoney(taxes)}</span>
+        </div>
+
         <div className="flex justify-between gap-3 border-t border-slate-100 pt-2">
-          <span className="text-slate-500">Маржа</span>
+          <span className="text-slate-500">Чистая маржа</span>
           <span
             className={`font-bold ${
               margin >= 0 ? "text-emerald-600" : "text-red-600"
@@ -429,52 +449,21 @@ async function getPnlFact(params: {
 }) {
   const dateFrom = startOfMonth(params.year, params.month);
   const dateTo = endOfMonth(params.year, params.month);
-  const companyWhere =
-    params.company !== "ALL" ? { companyName: params.company } : {};
+  const dateFromText = formatDateInput(dateFrom);
+  const dateToText = formatDateInput(dateTo);
+  const companyName = params.company !== "ALL" ? params.company : null;
 
-  const [
-    rawWbSales,
-    wbAds,
-    ozonFinance,
-    ozonAds,
-    productCosts,
-    financeTransactions,
-    financeCategories,
-  ] = await Promise.all([
-    prisma.wbSale.findMany({
-      where: {
-        saleDate: { gte: dateFrom, lte: dateTo },
-        ...companyWhere,
-      },
+  const [wb, ozon, financeTransactions, financeCategories] = await Promise.all([
+    getProfitAnalytics({
+      dateFrom: dateFromText,
+      dateTo: dateToText,
+      companyName,
     }),
 
-    prisma.wbAds.findMany({
-      where: {
-        ...companyWhere,
-        OR: [
-          { dateFrom: { gte: dateFrom, lte: dateTo } },
-          { dateTo: { gte: dateFrom, lte: dateTo } },
-          { dateFrom: { lte: dateFrom }, dateTo: { gte: dateTo } },
-        ],
-      },
-    }),
-
-    prisma.ozonFinance.findMany({
-      where: {
-        accrualDate: { gte: dateFrom, lte: dateTo },
-        ...companyWhere,
-      },
-    }),
-
-    prisma.ozonAds.findMany({
-      where: {
-        reportDate: { gte: dateFrom, lte: dateTo },
-        ...companyWhere,
-      },
-    }),
-
-    prisma.productCost.findMany({
-      orderBy: [{ costDate: "desc" }, { createdAt: "desc" }],
+    getProfitAnalyticsOzon({
+      dateFrom: dateFromText,
+      dateTo: dateToText,
+      companyName,
     }),
 
     getFinanceTransactions(params),
@@ -490,121 +479,6 @@ async function getPnlFact(params: {
       ],
     }),
   ]);
-
-  const wbSales = dedupeWbSalesByLatestImport(rawWbSales);
-
-  const costByVendorCode = new Map<string, number>();
-
-  for (const cost of productCosts) {
-    const normalizedVendorCode = normalizeVendorCode(cost.vendorCode);
-
-    if (!costByVendorCode.has(normalizedVendorCode)) {
-      costByVendorCode.set(normalizedVendorCode, getAmount(cost.costPrice));
-    }
-  }
-
-  let wbRevenue = 0;
-  let wbReward = 0;
-  let wbLogistics = 0;
-  let wbStorage = 0;
-  let wbAcceptance = 0;
-  let wbDeductions = 0;
-  let wbPenalties = 0;
-  let wbPaymentService = 0;
-  let wbCogs = 0;
-  let wbQty = 0;
-  let wbRowsWithCost = 0;
-  let wbRowsWithoutCost = 0;
-
-  for (const row of wbSales) {
-    const sign = isReturn(row.paymentReason) ? -1 : 1;
-
-    const revenue =
-      getAmount(row.wbRealizedAmount) ||
-      getAmount(row.retailPrice) ||
-      getAmount(row.sellerPayout);
-
-    const rawQty = Math.abs(Number(row.quantity ?? 0));
-    const unitCost = row.vendorCode
-      ? costByVendorCode.get(normalizeVendorCode(row.vendorCode)) ?? 0
-      : 0;
-
-    wbRevenue += sign * revenue;
-
-    wbReward += expense(row.wbReward);
-    wbLogistics += expense(row.logisticsCost);
-    wbStorage += expense(row.storageCost);
-    wbAcceptance += expense(row.acceptanceCost);
-    wbDeductions += getAmount(row.deductions);
-    wbPenalties += getAmount(row.penaltiesAmount);
-    wbPaymentService += expense(row.paymentServiceCost);
-
-    if (revenue > 0 && rawQty > 0) {
-      wbQty += sign * rawQty;
-
-      if (unitCost > 0) {
-        wbRowsWithCost += 1;
-        wbCogs += sign * unitCost * rawQty;
-      } else {
-        wbRowsWithoutCost += 1;
-      }
-    }
-  }
-
-  const wbAdsSpend = wbAds.reduce((sum, row) => sum + expense(row.spend), 0);
-
-  const wbMarketplaceCosts =
-    wbReward +
-    wbLogistics +
-    wbStorage +
-    wbAcceptance +
-    wbPenalties +
-    wbPaymentService;
-
-  let ozonRevenue = 0;
-  let ozonCommission = 0;
-  let ozonLogistics = 0;
-  let ozonReverseLogistics = 0;
-  let ozonCogs = 0;
-  let ozonQty = 0;
-  let ozonRowsWithCost = 0;
-  let ozonRowsWithoutCost = 0;
-
-  for (const row of ozonFinance) {
-    const revenue = getAmount(row.salesAmount);
-    const rawQty = Math.abs(Number(row.quantity ?? 0));
-    const unitCost = row.vendorCode
-      ? costByVendorCode.get(normalizeVendorCode(row.vendorCode)) ?? 0
-      : 0;
-
-    ozonRevenue += revenue;
-
-    ozonCommission += expense(row.ozonCommission);
-    ozonLogistics += expense(row.logisticsCost);
-    ozonReverseLogistics += expense(row.reverseLogisticsCost);
-
-    if (revenue > 0 && rawQty > 0) {
-      ozonQty += rawQty;
-
-      if (unitCost > 0) {
-        ozonRowsWithCost += 1;
-        ozonCogs += unitCost * rawQty;
-      } else {
-        ozonRowsWithoutCost += 1;
-      }
-    }
-  }
-
-  const ozonAdsSpend = ozonAds.reduce((sum, row) => sum + expense(row.spend), 0);
-
-  const ozonMarketplaceCosts =
-    ozonCommission + ozonLogistics + ozonReverseLogistics;
-
-  const wbMarginalProfit =
-    wbRevenue - wbCogs - wbMarketplaceCosts - wbAdsSpend;
-
-  const ozonMarginalProfit =
-    ozonRevenue - ozonCogs - ozonMarketplaceCosts - ozonAdsSpend;
 
   const financeMetrics = calculateFinanceMetricsForRows({
     transactions: financeTransactions,
@@ -634,10 +508,36 @@ async function getPnlFact(params: {
     .filter((row) => isSalaryCategory(row.category))
     .reduce((sum, row) => sum + getAmount(row.amount), 0);
 
+  const wbRevenue = getAmount(wb.totals.revenue);
+  const wbCogs = getAmount(wb.totals.totalCost);
+  const wbAdsSpend = getAmount(wb.totals.adsCost);
+  const wbTaxes = getAmount(wb.totals.taxesAmount);
+  const wbMarketplaceCosts =
+    getAmount(wb.totals.wbCommission) +
+    getAmount(wb.totals.logisticsCost) +
+    getAmount(wb.totals.storageCost) +
+    getAmount(wb.totals.acceptanceCost) +
+    getAmount(wb.totals.penaltiesAmount) +
+    getAmount(wb.totals.deductions) +
+    getAmount(wb.totals.paymentServiceCost);
+  const wbMarginalProfit = getAmount(wb.totals.marginProfit);
+  const wbNetProfitAfterTax = getAmount(wb.totals.netProfitAfterTax);
+
+  const ozonRevenue = getAmount(ozon.totals.revenue);
+  const ozonSellerPayout = getAmount(ozon.totals.sellerPayout);
+  const ozonCogs = getAmount(ozon.totals.totalCost);
+  const ozonAdsSpend = getAmount(ozon.totals.adsCost);
+  const ozonTaxes = getAmount(ozon.totals.taxesAmount);
+  const ozonMarketplaceCosts = ozonRevenue - ozonSellerPayout;
+  const ozonMarginalProfit = getAmount(ozon.totals.marginProfit);
+  const ozonNetProfitAfterTax = getAmount(ozon.totals.netProfitAfterTax);
+
   const marketplaceRevenue = wbRevenue + ozonRevenue;
   const marketplaceAds = wbAdsSpend + ozonAdsSpend;
   const marketplaceCosts = wbMarketplaceCosts + ozonMarketplaceCosts;
   const cogs = wbCogs + ozonCogs;
+  const marketplaceTaxes = wbTaxes + ozonTaxes;
+  const totalTaxes = marketplaceTaxes + financeTax;
 
   const grossProfit = marketplaceRevenue - cogs;
   const contributionProfit = wbMarginalProfit + ozonMarginalProfit;
@@ -650,49 +550,66 @@ async function getPnlFact(params: {
       financeMetrics.creditInterest
   );
 
-  const operatingProfit =
-    contributionProfit + financeMetrics.netProfitIncome - financeMetrics.netProfitExpense;
+  // Единый стандарт проекта:
+  // операционная прибыль = прибыль WB/Ozon после себестоимости, рекламы, логистики и налогов;
+  // чистая прибыль = операционная прибыль + финансовые доходы − финансовые расходы,
+  // которые по роли статьи входят в P&L.
+  const operatingProfit = wbNetProfitAfterTax + ozonNetProfitAfterTax;
+  const netProfit =
+    operatingProfit +
+    financeMetrics.netProfitIncome -
+    financeMetrics.netProfitExpense;
 
   const cashFlow = financeMetrics.netCashFlow;
 
   return {
-    wbRows: wbSales.length,
-    wbRawRows: rawWbSales.length,
-    wbAdsRows: wbAds.length,
+    wbRows: wb.rows.length,
+    wbRawRows: wb.rows.length,
+    wbAdsRows: wb.totals.adsCost !== 0 ? 1 : 0,
     wbRevenue,
-    wbReward,
-    wbLogistics,
-    wbStorage,
-    wbAcceptance,
-    wbDeductions,
-    wbPenalties,
-    wbPaymentService,
+    wbReward: getAmount(wb.totals.wbCommission),
+    wbLogistics: getAmount(wb.totals.logisticsCost),
+    wbStorage: getAmount(wb.totals.storageCost),
+    wbAcceptance: getAmount(wb.totals.acceptanceCost),
+    wbDeductions: getAmount(wb.totals.deductions),
+    wbPenalties: getAmount(wb.totals.penaltiesAmount),
+    wbPaymentService: getAmount(wb.totals.paymentServiceCost),
     wbMarketplaceCosts,
     wbAdsSpend,
+    wbTaxes,
     wbCogs,
-    wbQty,
-    wbRowsWithCost,
-    wbRowsWithoutCost,
+    wbQty: getAmount(wb.totals.netSalesQty),
+    wbRowsWithCost: wb.rows.filter((row) => getAmount(row.costPrice) > 0).length,
+    wbRowsWithoutCost: wb.rows.filter(
+      (row) => getAmount(row.revenue) > 0 && getAmount(row.costPrice) <= 0
+    ).length,
     wbMarginalProfit,
+    wbNetProfitAfterTax,
 
-    ozonRows: ozonFinance.length,
-    ozonAdsRows: ozonAds.length,
+    ozonRows: ozon.rows.length,
+    ozonAdsRows: ozon.totals.adsCost !== 0 ? 1 : 0,
     ozonRevenue,
-    ozonCommission,
-    ozonLogistics,
-    ozonReverseLogistics,
+    ozonCommission: getAmount(ozon.totals.wbCommission),
+    ozonLogistics: getAmount(ozon.totals.logisticsCost),
+    ozonReverseLogistics: 0,
     ozonMarketplaceCosts,
     ozonAdsSpend,
+    ozonTaxes,
     ozonCogs,
-    ozonQty,
-    ozonRowsWithCost,
-    ozonRowsWithoutCost,
+    ozonQty: getAmount(ozon.totals.netSalesQty),
+    ozonRowsWithCost: ozon.rows.filter((row) => getAmount(row.costPrice) > 0).length,
+    ozonRowsWithoutCost: ozon.rows.filter(
+      (row) => getAmount(row.revenue) > 0 && getAmount(row.costPrice) <= 0
+    ).length,
     ozonMarginalProfit,
+    ozonNetProfitAfterTax,
 
     marketplaceRevenue,
     marketplaceAds,
     marketplaceCosts,
     cogs,
+    marketplaceTaxes,
+    totalTaxes,
 
     grossProfit,
     contributionProfit,
@@ -712,11 +629,12 @@ async function getPnlFact(params: {
     financeExpenseTotal: financeMetrics.cashOutflow,
 
     operatingProfit,
+    netProfit,
     cashFlow,
 
-    productCostCount: productCosts.length,
-    productCostSkuCount: costByVendorCode.size,
-    hasMarketplaceData: wbSales.length > 0 || ozonFinance.length > 0,
+    productCostCount: 0,
+    productCostSkuCount: 0,
+    hasMarketplaceData: wb.rows.length > 0 || ozon.rows.length > 0,
   };
 }
 
@@ -794,7 +712,7 @@ export default async function PlanFactPage({
   );
 
   const revenueExecution = getExecution(planRevenue, fact.marketplaceRevenue);
-  const profitExecution = getExecution(planProfit, fact.operatingProfit);
+  const profitExecution = getExecution(planProfit, fact.netProfit);
 
   const cogsShare = safePercent(fact.cogs, fact.marketplaceRevenue);
   const marketplaceCostsShare = safePercent(
@@ -813,11 +731,19 @@ export default async function PlanFactPage({
       isPnl: true,
     },
     {
-      title: "Операционная прибыль",
+      title: "Чистая прибыль",
       plan: planProfit,
-      fact: fact.operatingProfit,
+      fact: fact.netProfit,
       lowerIsBetter: false,
       source: "P&L",
+      isPnl: true,
+    },
+    {
+      title: "Операционная прибыль WB/Ozon",
+      plan: 0,
+      fact: fact.operatingProfit,
+      lowerIsBetter: false,
+      source: "WB/Ozon",
       isPnl: true,
     },
     {
@@ -847,9 +773,9 @@ export default async function PlanFactPage({
     {
       title: "Налоги",
       plan: planTax,
-      fact: fact.financeTax,
+      fact: fact.totalTaxes,
       lowerIsBetter: true,
-      source: "Финансы / P&L",
+      source: "WB/Ozon + Финансы",
       isPnl: true,
     },
     {
@@ -1016,20 +942,20 @@ export default async function PlanFactPage({
           <MetricCard title="План прибыли" value={formatMoney(planProfit)} />
 
           <MetricCard
-            title="Опер. прибыль"
-            value={formatMoney(fact.operatingProfit)}
+            title="Чистая прибыль"
+            value={formatMoney(fact.netProfit)}
             subValue={`${formatPercent(profitExecution)} · к прошлому: ${formatMoney(
-              fact.operatingProfit - prevFact.operatingProfit
+              fact.netProfit - prevFact.netProfit
             )}`}
             className={
-              fact.operatingProfit >= 0 ? "text-emerald-600" : "text-red-600"
+              fact.netProfit >= 0 ? "text-emerald-600" : "text-red-600"
             }
           />
 
           <MetricCard
             title="Отклонение прибыли"
-            value={formatMoney(fact.operatingProfit - planProfit)}
-            className={diffClass(fact.operatingProfit - planProfit)}
+            value={formatMoney(fact.netProfit - planProfit)}
+            className={diffClass(fact.netProfit - planProfit)}
           />
         </section>
 
@@ -1120,7 +1046,7 @@ export default async function PlanFactPage({
           />
         </section>
 
-        <section className="grid gap-4 md:grid-cols-3">
+        <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           <MetricCard
             title="Валовая прибыль"
             value={formatMoney(fact.grossProfit)}
@@ -1140,6 +1066,17 @@ export default async function PlanFactPage({
           />
 
           <MetricCard
+            title="Операционная прибыль"
+            value={formatMoney(fact.operatingProfit)}
+            subValue={`WB: ${formatMoney(fact.wbNetProfitAfterTax)} · Ozon: ${formatMoney(
+              fact.ozonNetProfitAfterTax
+            )}`}
+            className={
+              fact.operatingProfit >= 0 ? "text-emerald-600" : "text-red-600"
+            }
+          />
+
+          <MetricCard
             title="Денежный поток"
             value={formatMoney(fact.cashFlow)}
             subValue="По финансовым операциям / ДДС"
@@ -1149,26 +1086,31 @@ export default async function PlanFactPage({
 
         <section className="grid gap-4 md:grid-cols-2">
           <MarketplaceProfitCard
-            title="WB маржинальность"
+            title="WB прибыль после налогов"
             revenue={fact.wbRevenue}
             cogs={fact.wbCogs}
             costs={fact.wbMarketplaceCosts}
             ads={fact.wbAdsSpend}
+            taxes={fact.wbTaxes}
           />
 
           <MarketplaceProfitCard
-            title="Ozon маржинальность"
+            title="Ozon прибыль после налогов"
             revenue={fact.ozonRevenue}
             cogs={fact.ozonCogs}
             costs={fact.ozonMarketplaceCosts}
             ads={fact.ozonAdsSpend}
+            taxes={fact.ozonTaxes}
           />
         </section>
 
         <section className="grid gap-4 md:grid-cols-3 xl:grid-cols-6">
           <MetricCard
             title="Налоги"
-            value={formatMoney(fact.financeTax)}
+            value={formatMoney(fact.totalTaxes)}
+            subValue={`WB/Ozon: ${formatMoney(fact.marketplaceTaxes)} · фин.: ${formatMoney(
+              fact.financeTax
+            )}`}
             className="text-red-600"
           />
 
@@ -1341,12 +1283,12 @@ export default async function PlanFactPage({
           </h2>
 
           <p className="mt-3 text-slate-500">
-            Операционная прибыль = маржинальная прибыль WB/Ozon + доходы из
-            финансовых операций, которые входят в чистую прибыль − расходы из
-            финансовых операций, которые входят в чистую прибыль. Фулфилмент,
-            закупка, внутренняя реклама WB/Ozon, тело кредита и вывод
-            собственника не задваиваются в P&amp;L и показываются отдельно как
-            денежный поток.
+            Операционная прибыль = прибыль WB/Ozon после себестоимости,
+            комиссий, логистики, рекламы и налогов. Чистая прибыль = операционная
+            прибыль + доходы из финансовых операций, которые входят в P&amp;L −
+            расходы из финансовых операций, которые входят в P&amp;L. Фулфилмент,
+            закупка, тело кредита и вывод собственника не задваиваются в P&amp;L и
+            показываются отдельно как денежный поток.
           </p>
         </section>
       </div>
