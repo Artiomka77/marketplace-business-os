@@ -1,0 +1,994 @@
+import { NextResponse } from "next/server";
+import ExcelJS from "exceljs";
+
+import { prisma } from "@/lib/prisma";
+import { getProfitAnalytics } from "@/lib/analytics/profitAnalytics";
+import { getProfitAnalyticsOzon } from "@/lib/analytics/profitAnalyticsOzon";
+
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
+type AbcCategory = "A" | "B" | "C";
+type Marketplace = "WB" | "OZON";
+type Priority = "HIGH" | "MEDIUM" | "LOW";
+
+type StockAbcInfo = {
+  abcByRevenue: AbcCategory;
+  abcByProfit: AbcCategory;
+};
+
+type OwnSupplyItem = {
+  key: string;
+  companyName: string;
+  companyKey: string;
+  articleKeys: Set<string>;
+  sizeKey: string;
+  availableQty: number;
+  productName: string | null;
+};
+
+type SupplyPlanCandidate = {
+  key: string;
+  marketplace: Marketplace;
+  priority: Priority;
+  companyName: string;
+  vendorCode: string;
+  sku: string | null;
+  size: string | null;
+  productName: string | null;
+  targetName: string;
+  currentQty: number;
+  ownItemKey: string | null;
+  wantedQty: number;
+  ownInitialQty: number;
+  avgDailySalesQty: number | null;
+  daysWithoutStock: number | null;
+  abc: StockAbcInfo | null;
+  reason: string;
+  details: string[];
+};
+
+type SupplyPlanRow = SupplyPlanCandidate & {
+  ownAvailableQty: number;
+  recommendedQty: number;
+};
+
+function normalizeKey(value: unknown) {
+  return String(value ?? "").trim();
+}
+
+function normalizeSearchValue(value: unknown) {
+  return String(value ?? "")
+    .toLowerCase()
+    .replaceAll("ё", "е")
+    .replace(/[\s\-_/\\.]+/g, "")
+    .trim();
+}
+
+function normalizeArticleForMatch(value: unknown) {
+  return String(value ?? "")
+    .toLowerCase()
+    .replaceAll("ё", "е")
+    .replace(/[\s\-_/\\.]+/g, "")
+    .trim();
+}
+
+function normalizeSupplyArticle(value: unknown) {
+  return normalizeArticleForMatch(value);
+}
+
+function normalizeSupplySize(value: unknown) {
+  return normalizeSearchValue(value);
+}
+
+function toNumber(value: unknown) {
+  const number = Number(value ?? 0);
+  return Number.isFinite(number) ? number : 0;
+}
+
+function formatNumber(value: number) {
+  return Math.round(value).toLocaleString("ru-RU");
+}
+
+function addUtcDays(date: Date, days: number) {
+  const result = new Date(date);
+  result.setUTCDate(result.getUTCDate() + days);
+  return result;
+}
+
+function formatDateInput(date: Date) {
+  return date.toISOString().slice(0, 10);
+}
+
+function getDefaultPeriod() {
+  const now = new Date();
+  const dateTo = new Date(
+    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())
+  );
+
+  return {
+    dateFrom: formatDateInput(addUtcDays(dateTo, -30)),
+    dateTo: formatDateInput(dateTo),
+  };
+}
+
+function toAbcCategory(value: unknown): AbcCategory {
+  return value === "A" || value === "B" || value === "C" ? value : "C";
+}
+
+function getMarketplaceBaseArticle(value: unknown) {
+  const article = normalizeKey(value);
+
+  if (!article) return "";
+
+  const baseArticle = article.split("-")[0]?.trim() ?? article;
+
+  return /^\d+$/.test(baseArticle) ? baseArticle : "";
+}
+
+function getSupplierArticleRoot(value: unknown) {
+  const vendorCode = normalizeKey(value);
+
+  if (!vendorCode) return "";
+
+  return vendorCode.split("-")[0]?.trim() ?? vendorCode;
+}
+
+function getSupplyArticleCandidates(value: unknown) {
+  const vendorCode = normalizeKey(value);
+
+  if (!vendorCode) return [];
+
+  const candidates = new Set<string>();
+  candidates.add(vendorCode);
+
+  const baseArticle = getMarketplaceBaseArticle(vendorCode);
+  if (baseArticle) candidates.add(baseArticle);
+
+  const rootArticle = getSupplierArticleRoot(vendorCode);
+  if (rootArticle) candidates.add(rootArticle);
+
+  return Array.from(candidates)
+    .map((candidate) => normalizeSupplyArticle(candidate))
+    .filter(Boolean);
+}
+
+function inferSizeFromVendorCode(value: unknown) {
+  const vendorCode = normalizeKey(value);
+
+  if (!vendorCode || !vendorCode.includes("-")) return null;
+
+  const parts = vendorCode
+    .split("-")
+    .map((part) => part.trim())
+    .filter(Boolean);
+
+  const numericTail: string[] = [];
+
+  for (let index = parts.length - 1; index >= 0; index--) {
+    const part = parts[index];
+
+    if (!/^\d{2,3}$/.test(part)) break;
+
+    numericTail.unshift(part);
+
+    if (numericTail.length >= 2) break;
+  }
+
+  if (numericTail.length === 0) return null;
+
+  return numericTail.join(" / ");
+}
+
+function calculateAbcByPositiveValue<T>(
+  rows: T[],
+  getValue: (row: T) => number
+): Map<T, AbcCategory> {
+  const result = new Map<T, AbcCategory>();
+
+  const sorted = [...rows].sort(
+    (a, b) => Math.max(0, getValue(b)) - Math.max(0, getValue(a))
+  );
+
+  const total = sorted.reduce((sum, row) => sum + Math.max(0, getValue(row)), 0);
+
+  if (total <= 0) {
+    for (const row of rows) result.set(row, "C");
+    return result;
+  }
+
+  let cumulative = 0;
+
+  for (const row of sorted) {
+    const positive = Math.max(0, getValue(row));
+
+    if (positive <= 0) {
+      result.set(row, "C");
+      continue;
+    }
+
+    const shareBefore = cumulative / total;
+    cumulative += positive;
+
+    if (shareBefore < 0.8) {
+      result.set(row, "A");
+    } else if (shareBefore < 0.95) {
+      result.set(row, "B");
+    } else {
+      result.set(row, "C");
+    }
+  }
+
+  return result;
+}
+
+function getStockAbcMapKey(companyName: unknown, article: unknown) {
+  const company = normalizeKey(companyName);
+  const normalizedArticle = normalizeKey(article);
+
+  return company && normalizedArticle ? `${company}::${normalizedArticle}` : "";
+}
+
+function registerStockAbc(
+  map: Map<string, StockAbcInfo>,
+  params: {
+    companyName?: string | null;
+    article?: string | null;
+    abc: StockAbcInfo;
+  }
+) {
+  const article = normalizeKey(params.article);
+
+  if (!article) return;
+
+  const companyKey = getStockAbcMapKey(params.companyName, article);
+
+  if (companyKey && !map.has(companyKey)) {
+    map.set(companyKey, params.abc);
+  }
+
+  if (!map.has(article)) {
+    map.set(article, params.abc);
+  }
+}
+
+function findStockAbc(
+  map: Map<string, StockAbcInfo>,
+  params: {
+    companyName?: string | null;
+    articles: Array<string | null | undefined>;
+  }
+) {
+  for (const article of params.articles) {
+    const normalizedArticle = normalizeKey(article);
+
+    if (!normalizedArticle) continue;
+
+    const companyKey = getStockAbcMapKey(params.companyName, normalizedArticle);
+    const companyValue = companyKey ? map.get(companyKey) : null;
+
+    if (companyValue) return companyValue;
+
+    const globalValue = map.get(normalizedArticle);
+
+    if (globalValue) return globalValue;
+  }
+
+  return null;
+}
+
+function rowCompanyName(value: unknown, fallback: string | null) {
+  return normalizeKey((value as { companyName?: string | null })?.companyName) || fallback;
+}
+
+function supplyPriorityWeight(priority: Priority) {
+  if (priority === "HIGH") return 3;
+  if (priority === "MEDIUM") return 2;
+  return 1;
+}
+
+function getSupplyPriority(params: {
+  wantedQty: number;
+  ownAvailableQty: number;
+  currentQty: number;
+  abc: StockAbcInfo | null;
+  daysWithoutStock?: number | null;
+}): Priority {
+  if (params.wantedQty <= 0) return "LOW";
+
+  const abc = params.abc?.abcByProfit ?? "C";
+
+  if (params.ownAvailableQty <= 0) {
+    return abc === "A" && params.currentQty <= 2 ? "MEDIUM" : "LOW";
+  }
+
+  if (
+    abc === "A" ||
+    params.currentQty <= 2 ||
+    toNumber(params.daysWithoutStock) > 0
+  ) {
+    return "HIGH";
+  }
+
+  if (abc === "B") return "MEDIUM";
+
+  return "LOW";
+}
+
+function priorityLabel(priority: Priority) {
+  if (priority === "HIGH") return "Высокий";
+  if (priority === "MEDIUM") return "Средний";
+  return "Низкий";
+}
+
+function supplyPlanMatchesSearch(row: SupplyPlanRow, query: string) {
+  const normalizedQuery = normalizeSearchValue(query);
+
+  if (!normalizedQuery) return true;
+
+  const fields = [
+    row.companyName,
+    row.marketplace,
+    row.targetName,
+    row.vendorCode,
+    row.sku,
+    row.size,
+    row.productName,
+    row.reason,
+    row.abc?.abcByProfit,
+    priorityLabel(row.priority),
+  ];
+
+  const textHaystack = fields
+    .map((field) => String(field ?? "").toLowerCase().replaceAll("ё", "е"))
+    .join(" ");
+
+  const compactHaystack = normalizeSearchValue(fields.join(" "));
+
+  return (
+    textHaystack.includes(String(query).toLowerCase().replaceAll("ё", "е")) ||
+    compactHaystack.includes(normalizedQuery)
+  );
+}
+
+function getQueryValue(url: URL, name: string) {
+  return normalizeKey(url.searchParams.get(name));
+}
+
+function getMarketplaceFilter(value: string): "ALL" | Marketplace {
+  if (value === "WB" || value === "OZON") return value;
+  return "ALL";
+}
+
+function getPriorityFilter(value: string): "ALL" | Priority {
+  if (value === "HIGH" || value === "MEDIUM" || value === "LOW") return value;
+  return "ALL";
+}
+
+function getAbcFilter(value: string): "ALL" | AbcCategory {
+  if (value === "A" || value === "B" || value === "C") return value;
+  return "ALL";
+}
+
+function getRowsLimit(value: string, totalRows: number) {
+  if (value === "ALL") return totalRows;
+
+  const parsed = Number(value || 0);
+
+  return [20, 50, 100, 200].includes(parsed) ? parsed : totalRows;
+}
+
+function applyHeaderStyle(row: ExcelJS.Row) {
+  row.eachCell((cell) => {
+    cell.fill = {
+      type: "pattern",
+      pattern: "solid",
+      fgColor: { argb: "111827" },
+    };
+    cell.font = {
+      bold: true,
+      color: { argb: "FFFFFF" },
+    };
+    cell.alignment = {
+      vertical: "middle",
+      horizontal: "center",
+      wrapText: true,
+    };
+    cell.border = {
+      top: { style: "thin", color: { argb: "CBD5E1" } },
+      left: { style: "thin", color: { argb: "CBD5E1" } },
+      bottom: { style: "thin", color: { argb: "CBD5E1" } },
+      right: { style: "thin", color: { argb: "CBD5E1" } },
+    };
+  });
+}
+
+function applyBodyStyle(row: ExcelJS.Row) {
+  row.eachCell({ includeEmpty: true }, (cell) => {
+    cell.alignment = {
+      vertical: "middle",
+      wrapText: true,
+    };
+    cell.border = {
+      top: { style: "thin", color: { argb: "E2E8F0" } },
+      left: { style: "thin", color: { argb: "E2E8F0" } },
+      bottom: { style: "thin", color: { argb: "E2E8F0" } },
+      right: { style: "thin", color: { argb: "E2E8F0" } },
+    };
+  });
+}
+
+async function buildSupplyPlanRows(url: URL) {
+  const defaultPeriod = getDefaultPeriod();
+  const dateFrom = getQueryValue(url, "dateFrom") || defaultPeriod.dateFrom;
+  const dateTo = getQueryValue(url, "dateTo") || defaultPeriod.dateTo;
+  const selectedCompanyName = getQueryValue(url, "companyName");
+  const companyName =
+    selectedCompanyName && selectedCompanyName !== "ALL" ? selectedCompanyName : null;
+
+  const companyWhere = companyName ? companyName : undefined;
+
+  const [wbProfitAnalytics, ozonProfitAnalytics] = await Promise.all([
+    getProfitAnalytics({
+      dateFrom,
+      dateTo,
+      companyName: companyName ?? "ALL",
+    }),
+    getProfitAnalyticsOzon({
+      dateFrom,
+      dateTo,
+      usnRate: "1",
+      vatRate: "5",
+      companyName: companyName ?? "ALL",
+    }),
+  ]);
+
+  const wbAbcByRevenue = calculateAbcByPositiveValue(
+    wbProfitAnalytics.rows,
+    (row) => toNumber(row.revenue)
+  );
+  const wbAbcMap = new Map<string, StockAbcInfo>();
+
+  for (const row of wbProfitAnalytics.rows) {
+    const abc = {
+      abcByRevenue: wbAbcByRevenue.get(row) ?? "C",
+      abcByProfit: toAbcCategory(row.abcByProfit),
+    } satisfies StockAbcInfo;
+
+    const rowCompany = rowCompanyName(row, companyName);
+
+    registerStockAbc(wbAbcMap, {
+      companyName: rowCompany,
+      article: row.nmId,
+      abc,
+    });
+
+    registerStockAbc(wbAbcMap, {
+      companyName: rowCompany,
+      article: row.vendorCode,
+      abc,
+    });
+  }
+
+  const ozonGroupsForAbc = new Map<
+    string,
+    {
+      companyName: string | null;
+      baseArticle: string;
+      revenue: number;
+      netProfitAfterTax: number;
+      rows: typeof ozonProfitAnalytics.rows;
+    }
+  >();
+
+  for (const row of ozonProfitAnalytics.rows) {
+    const rowCompany = rowCompanyName(row, companyName);
+    const baseArticle = getMarketplaceBaseArticle(row.vendorCode) || row.vendorCode;
+    const key = `${rowCompany ?? ""}::${baseArticle}`;
+    const current =
+      ozonGroupsForAbc.get(key) ??
+      ({
+        companyName: rowCompany,
+        baseArticle,
+        revenue: 0,
+        netProfitAfterTax: 0,
+        rows: [],
+      } satisfies {
+        companyName: string | null;
+        baseArticle: string;
+        revenue: number;
+        netProfitAfterTax: number;
+        rows: typeof ozonProfitAnalytics.rows;
+      });
+
+    current.revenue += toNumber(row.revenue);
+    current.netProfitAfterTax += toNumber(row.netProfitAfterTax);
+    current.rows.push(row);
+
+    ozonGroupsForAbc.set(key, current);
+  }
+
+  const ozonGroupedRowsForAbc = Array.from(ozonGroupsForAbc.values());
+  const ozonGroupedAbcByRevenue = calculateAbcByPositiveValue(
+    ozonGroupedRowsForAbc,
+    (row) => row.revenue
+  );
+  const ozonGroupedAbcByProfit = calculateAbcByPositiveValue(
+    ozonGroupedRowsForAbc,
+    (row) => row.netProfitAfterTax
+  );
+  const ozonAbcMap = new Map<string, StockAbcInfo>();
+
+  for (const group of ozonGroupedRowsForAbc) {
+    const abc = {
+      abcByRevenue: ozonGroupedAbcByRevenue.get(group) ?? "C",
+      abcByProfit: ozonGroupedAbcByProfit.get(group) ?? "C",
+    } satisfies StockAbcInfo;
+
+    registerStockAbc(ozonAbcMap, {
+      companyName: group.companyName,
+      article: group.baseArticle,
+      abc,
+    });
+
+    for (const row of group.rows) {
+      registerStockAbc(ozonAbcMap, {
+        companyName: group.companyName,
+        article: row.vendorCode,
+        abc,
+      });
+
+      registerStockAbc(ozonAbcMap, {
+        companyName: group.companyName,
+        article: row.nmId,
+        abc,
+      });
+    }
+  }
+
+  const [rawWbStocks, ozonSupplyRecommendations, warehouseStocks] =
+    await Promise.all([
+      prisma.wbStock.findMany({
+        where: {
+          companyName: companyWhere,
+        },
+        orderBy: [
+          { companyName: "asc" },
+          { vendorCode: "asc" },
+          { size: "asc" },
+          { warehouseName: "asc" },
+        ],
+        select: {
+          id: true,
+          companyName: true,
+          vendorCode: true,
+          nmId: true,
+          barcode: true,
+          size: true,
+          warehouseName: true,
+          warehouseQty: true,
+          totalStock: true,
+        },
+      }),
+      prisma.ozonSupplyRecommendation.findMany({
+        where: {
+          companyName: companyWhere,
+        },
+        orderBy: [
+          { companyName: "asc" },
+          { clusterName: "asc" },
+          { vendorCode: "asc" },
+        ],
+        select: {
+          id: true,
+          companyName: true,
+          sku: true,
+          vendorCode: true,
+          productName: true,
+          recommendationPeriodDays: true,
+          recommendedSupplyQty: true,
+          recommendation: true,
+          clusterName: true,
+          daysWithoutStock28: true,
+          avgDailySalesQty28: true,
+          fboStockQty: true,
+          fbsStockQty: true,
+          inTransitToOzonQty: true,
+        },
+      }),
+      prisma.ozonWarehouseStock.findMany({
+        where: {
+          companyName: companyWhere,
+        },
+        orderBy: [{ companyName: "asc" }, { vendorCode: "asc" }, { size: "asc" }],
+        select: {
+          id: true,
+          companyName: true,
+          vendorCode: true,
+          sku: true,
+          productName: true,
+          size: true,
+          barcode: true,
+          availableForSupplyQty: true,
+        },
+      }),
+    ]);
+
+  const ownSupplyItems: OwnSupplyItem[] = warehouseStocks
+    .map((stock) => {
+      const vendorCode = normalizeKey(stock.vendorCode);
+      const sku = normalizeKey(stock.sku);
+      const size = normalizeKey(stock.size) || inferSizeFromVendorCode(vendorCode);
+      const articleKeys = new Set<string>();
+
+      for (const article of [
+        vendorCode,
+        sku,
+        stock.barcode,
+        getMarketplaceBaseArticle(vendorCode),
+        getSupplierArticleRoot(vendorCode),
+      ]) {
+        const normalizedArticle = normalizeSupplyArticle(article);
+        if (normalizedArticle) articleKeys.add(normalizedArticle);
+      }
+
+      return {
+        key: `own-${stock.id}`,
+        companyName: stock.companyName,
+        companyKey: normalizeKey(stock.companyName),
+        articleKeys,
+        sizeKey: normalizeSupplySize(size),
+        availableQty: toNumber(stock.availableForSupplyQty),
+        productName: stock.productName ?? null,
+      } satisfies OwnSupplyItem;
+    })
+    .filter((item) => item.availableQty > 0 && item.articleKeys.size > 0);
+
+  function findOwnSupplyItem(params: {
+    companyName?: string | null;
+    articles: Array<string | null | undefined>;
+    size?: string | null;
+  }) {
+    const companyKey = normalizeKey(params.companyName);
+    const articleKeys = new Set<string>();
+
+    for (const article of params.articles) {
+      for (const candidate of getSupplyArticleCandidates(article)) {
+        articleKeys.add(candidate);
+      }
+    }
+
+    const sizeKey = normalizeSupplySize(params.size);
+
+    if (!companyKey || articleKeys.size === 0) return null;
+
+    const sameCompanyItems = ownSupplyItems.filter(
+      (item) =>
+        item.companyKey === companyKey &&
+        [...articleKeys].some((articleKey) => item.articleKeys.has(articleKey))
+    );
+
+    if (sameCompanyItems.length === 0) return null;
+
+    const exactSize = sameCompanyItems.find((item) => item.sizeKey && item.sizeKey === sizeKey);
+
+    return exactSize ?? sameCompanyItems[0] ?? null;
+  }
+
+  const supplyPlanCandidates: SupplyPlanCandidate[] = [];
+
+  for (const row of ozonSupplyRecommendations) {
+    const vendorCode = normalizeKey(row.vendorCode);
+    const sku = normalizeKey(row.sku);
+    const size = inferSizeFromVendorCode(vendorCode);
+    const wantedQty = Math.max(0, toNumber(row.recommendedSupplyQty));
+
+    if (!vendorCode || wantedQty <= 0) continue;
+
+    const abc = findStockAbc(ozonAbcMap, {
+      companyName: row.companyName,
+      articles: [getMarketplaceBaseArticle(vendorCode), vendorCode, sku],
+    });
+
+    const ownItem = findOwnSupplyItem({
+      companyName: row.companyName,
+      articles: [vendorCode, sku, getMarketplaceBaseArticle(vendorCode)],
+      size,
+    });
+
+    const currentQty =
+      toNumber(row.fboStockQty) +
+      toNumber(row.fbsStockQty) +
+      toNumber(row.inTransitToOzonQty);
+
+    const ownInitialQty = ownItem?.availableQty ?? 0;
+    const priority = getSupplyPriority({
+      wantedQty,
+      ownAvailableQty: ownInitialQty,
+      currentQty,
+      abc,
+      daysWithoutStock: toNumber(row.daysWithoutStock28),
+    });
+
+    supplyPlanCandidates.push({
+      key: `ozon-supply-${row.id}`,
+      marketplace: "OZON",
+      priority,
+      companyName: row.companyName ?? "Без компании",
+      vendorCode,
+      sku: sku || null,
+      size,
+      productName: row.productName ?? ownItem?.productName ?? null,
+      targetName: row.clusterName ? `Кластер: ${row.clusterName}` : "Кластер Ozon",
+      currentQty,
+      ownItemKey: ownItem?.key ?? null,
+      wantedQty,
+      ownInitialQty,
+      avgDailySalesQty:
+        row.avgDailySalesQty28 === null || row.avgDailySalesQty28 === undefined
+          ? null
+          : toNumber(row.avgDailySalesQty28),
+      daysWithoutStock:
+        row.daysWithoutStock28 === null || row.daysWithoutStock28 === undefined
+          ? null
+          : toNumber(row.daysWithoutStock28),
+      abc,
+      reason:
+        normalizeKey(row.recommendation) ||
+        `Ozon рекомендует поставить ${formatNumber(wantedQty)} шт. в кластер.`,
+      details: [
+        row.recommendationPeriodDays
+          ? `Период: ${formatNumber(row.recommendationPeriodDays)} дн.`
+          : "",
+        row.avgDailySalesQty28 !== null && row.avgDailySalesQty28 !== undefined
+          ? `Продажи: ${formatNumber(toNumber(row.avgDailySalesQty28))} шт/день`
+          : "",
+        row.daysWithoutStock28 !== null && row.daysWithoutStock28 !== undefined
+          ? `Без остатка: ${formatNumber(toNumber(row.daysWithoutStock28))} дн.`
+          : "",
+      ].filter(Boolean),
+    });
+  }
+
+  for (const stock of rawWbStocks) {
+    if (!stock.warehouseName || stock.warehouseName === "__TOTAL__") continue;
+
+    const vendorCode = normalizeKey(stock.vendorCode);
+    const nmId = normalizeKey(stock.nmId);
+    const size = normalizeKey(stock.size) || inferSizeFromVendorCode(vendorCode);
+
+    if (!vendorCode && !nmId) continue;
+
+    const currentQty = toNumber(stock.warehouseQty) || toNumber(stock.totalStock);
+    const abc = findStockAbc(wbAbcMap, {
+      companyName: stock.companyName,
+      articles: [nmId, vendorCode],
+    });
+
+    const abcByProfit = abc?.abcByProfit ?? "C";
+    const targetQty = abcByProfit === "A" ? 18 : abcByProfit === "B" ? 10 : 0;
+    const wantedQty = Math.max(0, targetQty - currentQty);
+
+    if (wantedQty <= 0) continue;
+
+    const ownItem = findOwnSupplyItem({
+      companyName: stock.companyName,
+      articles: [vendorCode, nmId, stock.barcode],
+      size,
+    });
+
+    const ownInitialQty = ownItem?.availableQty ?? 0;
+    const priority = getSupplyPriority({
+      wantedQty,
+      ownAvailableQty: ownInitialQty,
+      currentQty,
+      abc,
+    });
+
+    supplyPlanCandidates.push({
+      key: `wb-supply-${stock.id}`,
+      marketplace: "WB",
+      priority,
+      companyName: stock.companyName ?? "Без компании",
+      vendorCode: vendorCode || nmId,
+      sku: null,
+      size,
+      productName: ownItem?.productName ?? null,
+      targetName: stock.warehouseName,
+      currentQty,
+      ownItemKey: ownItem?.key ?? null,
+      wantedQty,
+      ownInitialQty,
+      avgDailySalesQty: null,
+      daysWithoutStock: null,
+      abc,
+      reason: `На складе WB “${stock.warehouseName}” остаток ниже целевого уровня для ABC ${abcByProfit}.`,
+      details: ["WB: пока по складам, без географии заказов"],
+    });
+  }
+
+  const ownSupplyRemaining = new Map(
+    ownSupplyItems.map((item) => [item.key, item.availableQty])
+  );
+
+  const rows: SupplyPlanRow[] = supplyPlanCandidates
+    .sort((a, b) => {
+      const priorityDiff =
+        supplyPriorityWeight(b.priority) - supplyPriorityWeight(a.priority);
+
+      if (priorityDiff !== 0) return priorityDiff;
+
+      if (b.ownInitialQty !== a.ownInitialQty) {
+        return b.ownInitialQty - a.ownInitialQty;
+      }
+
+      return b.wantedQty - a.wantedQty;
+    })
+    .map((candidate) => {
+      const ownAvailableQty = candidate.ownItemKey
+        ? ownSupplyRemaining.get(candidate.ownItemKey) ?? 0
+        : 0;
+      const recommendedQty = Math.min(candidate.wantedQty, ownAvailableQty);
+
+      if (candidate.ownItemKey) {
+        ownSupplyRemaining.set(
+          candidate.ownItemKey,
+          Math.max(0, ownAvailableQty - recommendedQty)
+        );
+      }
+
+      return {
+        ...candidate,
+        ownAvailableQty,
+        recommendedQty,
+      };
+    })
+    .filter((row) => row.wantedQty > 0);
+
+  const marketplaceFilter = getMarketplaceFilter(getQueryValue(url, "supplyMarketplace"));
+  const priorityFilter = getPriorityFilter(getQueryValue(url, "supplyPriority"));
+  const abcFilter = getAbcFilter(getQueryValue(url, "supplyAbc"));
+  const targetFilter = getQueryValue(url, "supplyTarget");
+  const query = getQueryValue(url, "supplyQ");
+
+  const filteredRows = rows.filter((row) => {
+    if (marketplaceFilter !== "ALL" && row.marketplace !== marketplaceFilter) {
+      return false;
+    }
+
+    if (priorityFilter !== "ALL" && row.priority !== priorityFilter) {
+      return false;
+    }
+
+    if (abcFilter !== "ALL" && row.abc?.abcByProfit !== abcFilter) {
+      return false;
+    }
+
+    if (targetFilter && targetFilter !== "ALL" && row.targetName !== targetFilter) {
+      return false;
+    }
+
+    return supplyPlanMatchesSearch(row, query);
+  });
+
+  const rowsLimit = getRowsLimit(getQueryValue(url, "supplyRows"), filteredRows.length);
+
+  return filteredRows.slice(0, rowsLimit);
+}
+
+export async function GET(req: Request) {
+  try {
+    const url = new URL(req.url);
+    const rows = await buildSupplyPlanRows(url);
+
+    const workbook = new ExcelJS.Workbook();
+    workbook.creator = "Marketplace Business OS";
+    workbook.created = new Date();
+
+    const sheet = workbook.addWorksheet("План поставок", {
+      views: [{ state: "frozen", ySplit: 1 }],
+    });
+
+    sheet.columns = [
+      { header: "Компания", key: "companyName", width: 18 },
+      { header: "Маркетплейс", key: "marketplace", width: 14 },
+      { header: "Куда / склад / кластер", key: "targetName", width: 28 },
+      { header: "Артикул", key: "vendorCode", width: 24 },
+      { header: "SKU", key: "sku", width: 18 },
+      { header: "Размер", key: "size", width: 12 },
+      { header: "Название", key: "productName", width: 34 },
+      { header: "ABC", key: "abc", width: 10 },
+      { header: "Приоритет", key: "priority", width: 14 },
+      { header: "Остаток там", key: "currentQty", width: 14 },
+      { header: "Рекомендовано системой", key: "wantedQty", width: 22 },
+      { header: "Доступно на своём складе", key: "ownAvailableQty", width: 24 },
+      { header: "К отгрузке", key: "recommendedQty", width: 14 },
+      { header: "Средние продажи, шт/день", key: "avgDailySalesQty", width: 22 },
+      { header: "Дней без остатка", key: "daysWithoutStock", width: 18 },
+      { header: "Причина", key: "reason", width: 48 },
+      { header: "Детали", key: "details", width: 42 },
+    ];
+
+    applyHeaderStyle(sheet.getRow(1));
+    sheet.getRow(1).height = 34;
+
+    for (const row of rows) {
+      sheet.addRow({
+        companyName: row.companyName,
+        marketplace: row.marketplace === "OZON" ? "Ozon" : "WB",
+        targetName: row.targetName,
+        vendorCode: row.vendorCode,
+        sku: row.sku ?? "",
+        size: row.size ?? "",
+        productName: row.productName ?? "",
+        abc: row.abc?.abcByProfit ?? "C",
+        priority: priorityLabel(row.priority),
+        currentQty: row.currentQty,
+        wantedQty: row.wantedQty,
+        ownAvailableQty: row.ownAvailableQty,
+        recommendedQty: row.recommendedQty,
+        avgDailySalesQty: row.avgDailySalesQty ?? "",
+        daysWithoutStock: row.daysWithoutStock ?? "",
+        reason: row.reason,
+        details: row.details.join("; "),
+      });
+    }
+
+    for (let rowNumber = 2; rowNumber <= sheet.rowCount; rowNumber++) {
+      const row = sheet.getRow(rowNumber);
+      applyBodyStyle(row);
+
+      row.getCell(10).numFmt = "0";
+      row.getCell(11).numFmt = "0";
+      row.getCell(12).numFmt = "0";
+      row.getCell(13).numFmt = "0";
+      row.getCell(14).numFmt = "0.00";
+      row.getCell(15).numFmt = "0";
+    }
+
+    sheet.autoFilter = {
+      from: "A1",
+      to: "Q1",
+    };
+
+    if (rows.length === 0) {
+      const row = sheet.addRow({
+        companyName: "Нет строк по выбранным фильтрам",
+      });
+
+      sheet.mergeCells(`A${row.number}:Q${row.number}`);
+      row.getCell(1).alignment = { vertical: "middle", horizontal: "center" };
+      row.getCell(1).font = { bold: true, color: { argb: "64748B" } };
+    }
+
+    const now = new Date();
+    const fileStamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(
+      2,
+      "0"
+    )}-${String(now.getDate()).padStart(2, "0")}`;
+    const buffer = await workbook.xlsx.writeBuffer();
+
+    return new NextResponse(Buffer.from(buffer), {
+      status: 200,
+      headers: {
+        "Content-Type":
+          "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "Content-Disposition": `attachment; filename="supply-plan-${fileStamp}.xlsx"`,
+        "Cache-Control": "no-store",
+      },
+    });
+  } catch (error) {
+    console.error("SUPPLY_PLAN_EXPORT_ERROR", error);
+
+    return NextResponse.json(
+      {
+        success: false,
+        error:
+          error instanceof Error
+            ? error.message
+            : "Ошибка экспорта плана поставок",
+      },
+      { status: 500 }
+    );
+  }
+}

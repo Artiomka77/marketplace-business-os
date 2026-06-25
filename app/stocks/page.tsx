@@ -1624,6 +1624,50 @@ function SupplyPlanningBlock({
 
   const rowsLimit = getSupplyRowsLimit(params.supplyRows, filteredRows.length);
   const visibleRows = filteredRows.slice(0, rowsLimit);
+
+  const exportParams = new URLSearchParams();
+
+  if (params.companyName && params.companyName !== "ALL") {
+    exportParams.set("companyName", params.companyName);
+  }
+
+  if (marketplaceFilter !== "ALL") {
+    exportParams.set("supplyMarketplace", marketplaceFilter);
+  }
+
+  if (safeTargetFilter && safeTargetFilter !== "ALL") {
+    exportParams.set("supplyTarget", safeTargetFilter);
+  }
+
+  if (abcFilter !== "ALL") {
+    exportParams.set("supplyAbc", abcFilter);
+  }
+
+  if (priorityFilter !== "ALL") {
+    exportParams.set("supplyPriority", priorityFilter);
+  }
+
+  if (params.supplyRows && params.supplyRows !== "20") {
+    exportParams.set("supplyRows", params.supplyRows);
+  }
+
+  if (query) {
+    exportParams.set("supplyQ", query);
+  }
+
+  if (params.dateFrom) {
+    exportParams.set("dateFrom", params.dateFrom);
+  }
+
+  if (params.dateTo) {
+    exportParams.set("dateTo", params.dateTo);
+  }
+
+  const exportQuery = exportParams.toString();
+  const exportHref = exportQuery
+    ? `/api/stocks/supply-plan/export?${exportQuery}`
+    : "/api/stocks/supply-plan/export";
+
   const ozonRows = rows.filter((row) => row.marketplace === "OZON");
   const wbRows = rows.filter((row) => row.marketplace === "WB");
   const criticalRows = filteredRows.filter((row) => row.priority === "HIGH");
@@ -1846,18 +1890,17 @@ function SupplyPlanningBlock({
 
           <div className="mt-4 flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
             <div className="text-sm font-bold text-slate-500">
-              Показаны строки по текущим фильтрам. Количество в колонке “К отгрузке” можно скорректировать перед экспортом.
+              Excel выгружается по текущим фильтрам. Редактирование количества “К отгрузке” и черновики поставок добавим следующим этапом.
             </div>
 
             <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                disabled
-                className="inline-flex cursor-not-allowed items-center justify-center rounded-2xl border border-slate-200 bg-slate-100 px-4 py-2.5 text-sm font-black text-slate-400"
-                title="Следующий этап: отдельный API экспорта текущего отфильтрованного плана в Excel"
+              <Link
+                href={exportHref}
+                className="inline-flex items-center justify-center rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm font-black text-emerald-700 transition hover:bg-emerald-100"
+                title="Скачать Excel-файл по текущим фильтрам плана поставок"
               >
-                Экспорт Excel · следующий этап
-              </button>
+                Экспорт Excel
+              </Link>
 
               <button
                 type="button"
