@@ -1553,13 +1553,22 @@ function supplyPlanMatchesSearch(row: SupplyPlanRow, query: string) {
   );
 }
 
-function getSupplyTargetOptions(rows: SupplyPlanRow[]) {
-  return Array.from(new Set(rows.map((row) => row.targetName).filter(Boolean))).sort(
-    (a, b) =>
-      a.localeCompare(b, "ru", {
-        numeric: true,
-        sensitivity: "base",
-      })
+function getSupplyTargetOptions(
+  rows: SupplyPlanRow[],
+  marketplaceFilter: "ALL" | SupplyPlanMarketplace
+) {
+  const filteredRows =
+    marketplaceFilter === "ALL"
+      ? rows
+      : rows.filter((row) => row.marketplace === marketplaceFilter);
+
+  return Array.from(
+    new Set(filteredRows.map((row) => row.targetName).filter(Boolean))
+  ).sort((a, b) =>
+    a.localeCompare(b, "ru", {
+      numeric: true,
+      sensitivity: "base",
+    })
   );
 }
 
@@ -1583,7 +1592,11 @@ function SupplyPlanningBlock({
   const targetFilter = normalizeKey(params.supplyTarget);
   const query = normalizeKey(params.supplyQ);
 
-  const targetOptions = getSupplyTargetOptions(rows);
+  const targetOptions = getSupplyTargetOptions(rows, marketplaceFilter);
+  const safeTargetFilter =
+    targetFilter && targetFilter !== "ALL" && targetOptions.includes(targetFilter)
+      ? targetFilter
+      : "ALL";
 
   const filteredRows = rows.filter((row) => {
     if (marketplaceFilter !== "ALL" && row.marketplace !== marketplaceFilter) {
@@ -1598,7 +1611,11 @@ function SupplyPlanningBlock({
       return false;
     }
 
-    if (targetFilter && targetFilter !== "ALL" && row.targetName !== targetFilter) {
+    if (
+      safeTargetFilter &&
+      safeTargetFilter !== "ALL" &&
+      row.targetName !== safeTargetFilter
+    ) {
       return false;
     }
 
@@ -1633,11 +1650,7 @@ function SupplyPlanningBlock({
             <h2 className="mt-3 text-2xl font-black tracking-tight text-slate-950">
               Что отгрузить со своего склада
             </h2>
-            <p className="mt-2 max-w-4xl text-sm font-semibold leading-6 text-slate-500">
-              Сейчас “Куда” строится по складам WB и кластерам Ozon. После подключения
-              продаж по городам и кластерам этот фильтр станет динамическим по реальному
-              спросу: город / регион / кластер / склад, где не хватает товара.
-            </p>
+
           </div>
 
           <div className="grid grid-cols-2 gap-2 sm:min-w-[440px] sm:grid-cols-4">
@@ -1727,7 +1740,7 @@ function SupplyPlanningBlock({
                 </span>
                 <select
                   name="supplyTarget"
-                  defaultValue={targetFilter || "ALL"}
+                  defaultValue={safeTargetFilter || "ALL"}
                   className="h-11 w-full rounded-2xl border border-slate-200 bg-white px-3 text-sm font-bold text-slate-700 outline-none transition focus:border-violet-200 focus:ring-4 focus:ring-violet-50"
                 >
                   <option value="ALL">Все направления</option>
@@ -1833,7 +1846,7 @@ function SupplyPlanningBlock({
 
           <div className="mt-4 flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
             <div className="text-sm font-bold text-slate-500">
-              Таблица компактная: для тысяч SKU показываем лимит строк и фильтры, а не большие карточки.
+              Показаны строки по текущим фильтрам. Количество в колонке “К отгрузке” можно скорректировать перед экспортом.
             </div>
 
             <div className="flex flex-wrap gap-2">
@@ -1860,13 +1873,13 @@ function SupplyPlanningBlock({
           {visibleRows.length > 0 ? (
             <div className="mt-4 overflow-hidden rounded-[24px] border border-slate-200 bg-white">
               <div className="overflow-x-auto">
-                <table className="min-w-[1280px] w-full border-collapse text-left text-sm">
+                <table className="min-w-[1520px] w-full border-collapse text-left text-sm">
                   <thead className="bg-slate-50 text-[11px] font-black uppercase tracking-[0.08em] text-slate-400">
                     <tr>
-                      <th className="px-3 py-3">Товар</th>
-                      <th className="px-3 py-3">Компания / артикул</th>
-                      <th className="px-3 py-3">Размер</th>
-                      <th className="px-3 py-3">Куда</th>
+                      <th className="w-[380px] px-3 py-3">Товар</th>
+                      <th className="w-[190px] px-3 py-3">Компания / артикул</th>
+                      <th className="w-[90px] px-3 py-3">Размер</th>
+                      <th className="w-[260px] px-3 py-3">Куда</th>
                       <th className="px-3 py-3">Источник</th>
                       <th className="px-3 py-3">ABC</th>
                       <th className="px-3 py-3 text-right">Остаток там</th>
@@ -1879,17 +1892,23 @@ function SupplyPlanningBlock({
                   <tbody className="divide-y divide-slate-100">
                     {visibleRows.map((row) => (
                       <tr key={row.key} className="align-middle transition hover:bg-slate-50/70">
-                        <td className="max-w-[300px] px-3 py-3">
-                          <div className="flex items-center gap-3">
+                        <td className="w-[380px] min-w-[380px] px-3 py-3">
+                          <div className="flex items-start gap-3">
                             <ProductPhoto
                               imageUrl={row.imageUrl}
                               title={row.productName ?? row.vendorCode}
                             />
-                            <div className="min-w-0">
-                              <div className="line-clamp-2 font-black leading-5 text-slate-950">
+                            <div className="min-w-0 flex-1">
+                              <div
+                                className="whitespace-normal break-words text-sm font-black leading-5 text-slate-950"
+                                title={row.productName ?? "Название не загружено"}
+                              >
                                 {row.productName ?? "Название не загружено"}
                               </div>
-                              <div className="mt-1 line-clamp-1 text-xs font-bold text-slate-400">
+                              <div
+                                className="mt-1 whitespace-normal break-words text-xs font-bold leading-4 text-slate-500"
+                                title={row.reason}
+                              >
                                 {row.reason}
                               </div>
                             </div>
@@ -1909,10 +1928,12 @@ function SupplyPlanningBlock({
                         <td className="px-3 py-3 font-black text-slate-700">
                           {row.size || "—"}
                         </td>
-                        <td className="max-w-[220px] px-3 py-3">
-                          <div className="font-black text-slate-900">{row.targetName}</div>
+                        <td className="w-[260px] min-w-[260px] px-3 py-3">
+                          <div className="break-words font-black text-slate-900">
+                            {row.targetName}
+                          </div>
                           {row.details.length > 0 ? (
-                            <div className="mt-1 line-clamp-1 text-xs font-bold text-slate-400">
+                            <div className="mt-1 whitespace-normal break-words text-xs font-bold leading-4 text-slate-400">
                               {row.details.join(" · ")}
                             </div>
                           ) : null}
