@@ -105,7 +105,12 @@ function sleep(ms: number) {
 }
 
 function isRetryableWbDailySalesStatus(status: number) {
-  return status === 429 || status >= 500;
+  // 429 у WB часто означает глобальный лимитер продавца.
+  // Быстрые повторы через 2–8 секунд только усиливают лимит.
+  // Такие повторы должен делать внешний планировщик/ручной запуск после паузы.
+  if (status === 429) return false;
+
+  return status >= 500;
 }
 
 function getRetryDelayMs(attempt: number) {
