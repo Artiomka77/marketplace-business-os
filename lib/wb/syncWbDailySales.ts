@@ -335,29 +335,43 @@ export async function syncWbDailySales(
     data,
   });
 
-  await prisma.marketplaceApiConnection.update({
-    where: {
-      companyId_marketplace: {
-        companyId,
-        marketplace: "WB",
-      },
-    },
-    data: {
-      status: "CONNECTED",
-      lastSyncAt: new Date(),
-      lastError: null,
-      retryCount: 0,
-    },
-  });
+  // Данные уже сохранены. Служебные обновления статусов не должны превращать
+  // успешную загрузку в ошибку, если Supabase кратковременно оборвал соединение.
+  let statusUpdateError: string | null = null;
 
-  await prisma.importSession.update({
-    where: {
-      id: importSession.id,
-    },
-    data: {
-      rowsCount: data.length,
-    },
-  });
+  try {
+    await prisma.marketplaceApiConnection.update({
+      where: {
+        companyId_marketplace: {
+          companyId,
+          marketplace: "WB",
+        },
+      },
+      data: {
+        status: "CONNECTED",
+        lastSyncAt: new Date(),
+        lastError: null,
+        retryCount: 0,
+      },
+    });
+  } catch (error) {
+    statusUpdateError = getErrorMessage(error);
+    console.warn("WB Daily Sales status update skipped:", statusUpdateError);
+  }
+
+  try {
+    await prisma.importSession.update({
+      where: {
+        id: importSession.id,
+      },
+      data: {
+        rowsCount: data.length,
+      },
+    });
+  } catch (error) {
+    statusUpdateError = statusUpdateError ?? getErrorMessage(error);
+    console.warn("WB Daily Sales import session update skipped:", getErrorMessage(error));
+  }
 
   return {
     name: "WB Daily Sales",
@@ -365,6 +379,7 @@ export async function syncWbDailySales(
     date: dateText,
     reportNumber,
     salesRows: data.length,
+    statusUpdateError,
   };
 }
 
