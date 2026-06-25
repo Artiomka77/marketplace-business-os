@@ -1876,118 +1876,136 @@ function SupplyPlanningBlock({
                 <table className="w-full table-fixed border-collapse text-left text-xs xl:text-sm">
                   <thead className="bg-slate-50 text-[10px] font-black uppercase tracking-[0.08em] text-slate-400 xl:text-[11px]">
                     <tr>
-                      <th className="w-[28%] px-3 py-3">Товар</th>
-                      <th className="w-[20%] px-3 py-3">Куда</th>
+                      <th className="w-[23%] px-3 py-3">Товар</th>
+                      <th className="w-[5%] px-2 py-3">Размер</th>
+                      <th className="w-[24%] px-3 py-3">Куда</th>
                       <th className="w-[7%] px-2 py-3">Источник</th>
                       <th className="w-[5%] px-2 py-3">ABC</th>
-                      <th className="w-[8%] px-2 py-3 text-right">Остаток</th>
-                      <th className="w-[8%] px-2 py-3 text-right">Реком.</th>
-                      <th className="w-[8%] px-2 py-3 text-right">Доступно</th>
+                      <th className="w-[7%] px-2 py-3 text-right">Остаток</th>
+                      <th className="w-[7%] px-2 py-3 text-right">Реком.</th>
+                      <th className="w-[7%] px-2 py-3 text-right">Доступно</th>
                       <th className="w-[9%] px-2 py-3 text-right">К отгрузке</th>
-                      <th className="w-[7%] px-2 py-3">Приор.</th>
+                      <th className="w-[6%] px-2 py-3">Приор.</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {visibleRows.map((row) => (
-                      <tr key={row.key} className="align-middle transition hover:bg-slate-50/70">
-                        <td className="px-3 py-3">
-                          <div className="flex min-w-0 items-start gap-2.5">
-                            <div className="shrink-0 [&_img]:h-11 [&_img]:w-11 [&_div]:h-11 [&_div]:w-11">
-                              <ProductPhoto
-                                imageUrl={row.imageUrl}
-                                title={row.productName ?? row.vendorCode}
-                              />
-                            </div>
+                    {visibleRows.map((row) => {
+                      const targetTooltip = [
+                        row.targetName,
+                        `Цель: ${formatNumber(row.wantedQty)} шт.`,
+                        `Сейчас: ${formatNumber(row.currentQty)} шт.`,
+                        row.reason,
+                        ...row.details,
+                      ]
+                        .filter(Boolean)
+                        .join("\n");
 
-                            <div className="min-w-0 flex-1">
-                              <div
-                                className="line-clamp-2 text-sm font-black leading-5 text-slate-950"
-                                title={row.productName ?? "Название не загружено"}
-                              >
-                                {row.productName ?? "Название не загружено"}
-                              </div>
-
-                              <div className="mt-1 flex flex-wrap gap-x-2 gap-y-0.5 text-[11px] font-bold leading-4 text-slate-500">
-                                <span className="max-w-full truncate" title={row.companyName}>
-                                  {row.companyName}
-                                </span>
-                                <span className="break-all" title={row.vendorCode}>
-                                  {row.vendorCode}
-                                </span>
-                                {row.size ? <span>р-р {row.size}</span> : null}
-                                {row.sku ? <span className="truncate">SKU {row.sku}</span> : null}
-                              </div>
-
-                              <div
-                                className="mt-1 line-clamp-1 text-[11px] font-semibold leading-4 text-slate-400"
-                                title={row.reason}
-                              >
-                                {row.reason}
-                              </div>
-                            </div>
-                          </div>
-                        </td>
-
-                        <td className="px-3 py-3">
-                          <div className="line-clamp-1 font-black text-slate-900" title={row.targetName}>
-                            {row.targetName}
-                          </div>
-                          {row.details.length > 0 ? (
+                      return (
+                        <tr key={row.key} className="align-middle transition hover:bg-slate-50/70">
+                          <td className="px-3 py-3">
                             <div
-                              className="mt-1 line-clamp-2 text-[11px] font-bold leading-4 text-slate-400"
-                              title={row.details.join(" · ")}
+                              className="flex min-w-0 items-center gap-3"
+                              title={`Компания: ${row.companyName}
+Артикул: ${row.vendorCode}${
+                                row.sku ? `
+SKU: ${row.sku}` : ""
+                              }`}
                             >
-                              {row.details.join(" · ")}
+                              {row.imageUrl ? (
+                                <img
+                                  src={row.imageUrl}
+                                  alt="Фото товара"
+                                  className="h-11 w-11 shrink-0 rounded-2xl border border-slate-200 bg-slate-50 object-cover"
+                                />
+                              ) : (
+                                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-slate-200 bg-slate-50 text-[10px] font-black text-slate-400">
+                                  фото
+                                </div>
+                              )}
+
+                              <div className="min-w-0">
+                                <div className="line-clamp-1 text-sm font-black leading-5 text-slate-950">
+                                  {row.companyName}
+                                </div>
+
+                                <div className="mt-0.5 line-clamp-1 break-all text-xs font-black leading-4 text-slate-700">
+                                  {row.vendorCode}
+                                </div>
+
+                                {row.sku ? (
+                                  <div className="mt-0.5 line-clamp-1 break-all text-[10px] font-bold leading-4 text-slate-400">
+                                    SKU {row.sku}
+                                  </div>
+                                ) : null}
+                              </div>
                             </div>
-                          ) : null}
-                        </td>
+                          </td>
 
-                        <td className="px-2 py-3">
-                          <span
-                            className={`inline-flex rounded-full px-2 py-1 text-[10px] font-black ring-1 ${marketplaceSupplyClass(
-                              row.marketplace
-                            )}`}
-                          >
-                            {row.marketplace === "WB" ? "WB" : "Ozon"}
-                          </span>
-                        </td>
+                          <td className="px-2 py-3 font-black text-slate-700">
+                            {row.size ?? "—"}
+                          </td>
 
-                        <td className="px-2 py-3">
-                          {row.abc ? (
-                            <AbcBadge value={row.abc.abcByProfit} compact />
-                          ) : (
-                            <span className="text-xs font-bold text-slate-400">—</span>
-                          )}
-                        </td>
+                          <td className="px-3 py-3" title={targetTooltip}>
+                            <div className="line-clamp-1 font-black text-slate-900">
+                              {row.targetName}
+                            </div>
 
-                        <td className="px-2 py-3 text-right font-black text-slate-700">
-                          {formatNumber(row.currentQty)}
-                        </td>
-                        <td className="px-2 py-3 text-right font-black text-slate-700">
-                          {formatNumber(row.wantedQty)}
-                        </td>
-                        <td className="px-2 py-3 text-right font-black text-emerald-700">
-                          {formatNumber(row.ownAvailableQty)}
-                        </td>
-                        <td className="px-2 py-3 text-right">
-                          <input
-                            defaultValue={row.recommendedQty}
-                            inputMode="numeric"
-                            className="h-9 w-full min-w-14 rounded-xl border border-slate-200 bg-white px-2 text-right text-sm font-black text-slate-900 outline-none transition focus:border-violet-200 focus:ring-4 focus:ring-violet-50"
-                            aria-label={`К отгрузке ${row.vendorCode}`}
-                          />
-                        </td>
-                        <td className="px-2 py-3">
-                          <span
-                            className={`inline-flex rounded-full px-2 py-1 text-[10px] font-black ring-1 ${priorityBadgeClass(
-                              row.priority
-                            )}`}
-                          >
-                            {priorityLabel(row.priority)}
-                          </span>
-                        </td>
-                      </tr>
-                    ))}
+                            <div className="mt-1 text-[11px] font-black leading-4 text-slate-500">
+                              Цель: {formatNumber(row.wantedQty)} шт. · Сейчас: {formatNumber(row.currentQty)} шт.
+                            </div>
+
+                            <div className="mt-1 line-clamp-2 text-[11px] font-bold leading-4 text-slate-400">
+                              {row.reason}
+                            </div>
+                          </td>
+
+                          <td className="px-2 py-3">
+                            <span
+                              className={`inline-flex rounded-full px-2 py-1 text-[10px] font-black ring-1 ${marketplaceSupplyClass(
+                                row.marketplace
+                              )}`}
+                            >
+                              {row.marketplace === "WB" ? "WB" : "Ozon"}
+                            </span>
+                          </td>
+
+                          <td className="px-2 py-3">
+                            {row.abc ? (
+                              <AbcBadge value={row.abc.abcByProfit} compact />
+                            ) : (
+                              <span className="text-xs font-bold text-slate-400">—</span>
+                            )}
+                          </td>
+
+                          <td className="px-2 py-3 text-right font-black text-slate-700">
+                            {formatNumber(row.currentQty)}
+                          </td>
+                          <td className="px-2 py-3 text-right font-black text-slate-700">
+                            {formatNumber(row.wantedQty)}
+                          </td>
+                          <td className="px-2 py-3 text-right font-black text-emerald-700">
+                            {formatNumber(row.ownAvailableQty)}
+                          </td>
+                          <td className="px-2 py-3 text-right">
+                            <input
+                              defaultValue={row.recommendedQty}
+                              inputMode="numeric"
+                              className="h-9 w-full min-w-14 rounded-xl border border-slate-200 bg-white px-2 text-right text-sm font-black text-slate-900 outline-none transition focus:border-violet-200 focus:ring-4 focus:ring-violet-50"
+                              aria-label={`К отгрузке ${row.vendorCode}`}
+                            />
+                          </td>
+                          <td className="px-2 py-3">
+                            <span
+                              className={`inline-flex rounded-full px-2 py-1 text-[10px] font-black ring-1 ${priorityBadgeClass(
+                                row.priority
+                              )}`}
+                            >
+                              {priorityLabel(row.priority)}
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
