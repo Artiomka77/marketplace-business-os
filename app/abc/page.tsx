@@ -151,7 +151,7 @@ const rawRows = analyticsByCompany.flatMap(({ companyName, wb, ozon }) => [
     vendorCode: row.vendorCode,
     salesQty: row.netSalesQty,
     revenue: row.revenue,
-    profit: row.marginProfit,
+    profit: row.netProfitAfterTax,
     abc: row.abcByProfit,
   })),
   ...ozon.rows.map((row) => ({
@@ -161,7 +161,7 @@ const rawRows = analyticsByCompany.flatMap(({ companyName, wb, ozon }) => [
     vendorCode: row.vendorCode,
     salesQty: row.netSalesQty,
     revenue: row.revenue,
-    profit: row.marginProfit,
+    profit: row.netProfitAfterTax,
     abc: row.abcByProfit,
   })),
 ]);
@@ -249,7 +249,7 @@ const rawRows = analyticsByCompany.flatMap(({ companyName, wb, ozon }) => [
           <h1 className="text-4xl font-bold text-slate-900">ABC-анализ</h1>
 
           <p className="mt-3 text-slate-500">
-            Классификация товаров по маржинальной прибыли WB и Ozon.
+            Классификация товаров по чистой прибыли после налогов WB и Ozon.
           </p>
         </div>
 

@@ -142,7 +142,7 @@ function SkuTable({
               <th className="p-3 text-right">Продажи</th>
               <th className="p-3 text-right">Выручка</th>
               <th className="p-3 text-right">Прибыль</th>
-              <th className="p-3 text-right">Маржа</th>
+              <th className="p-3 text-right">Чистая маржа</th>
             </tr>
           </thead>
 
@@ -323,7 +323,7 @@ export default async function InsightsPage({
     ({ companyName, wb, ozon }) => [
       ...wb.rows.map((row) => {
         const revenue = getAmount(row.revenue);
-        const profit = getAmount(row.marginProfit);
+        const profit = getAmount(row.netProfitAfterTax);
 
         return {
           companyName,
@@ -339,7 +339,7 @@ export default async function InsightsPage({
 
       ...ozon.rows.map((row) => {
         const revenue = getAmount(row.revenue);
-        const profit = getAmount(row.marginProfit);
+        const profit = getAmount(row.netProfitAfterTax);
 
         return {
           companyName,
@@ -544,9 +544,9 @@ export default async function InsightsPage({
           />
 
           <MetricCard
-            title="Маржинальная прибыль"
+            title="Чистая прибыль"
             value={formatMoney(totalProfit)}
-            subtitle={`Маржа: ${formatPercent(
+            subtitle={`Чистая маржа: ${formatPercent(
               totalRevenue ? (totalProfit / totalRevenue) * 100 : 0
             )}`}
             className={totalProfit >= 0 ? "text-emerald-600" : "text-red-600"}
