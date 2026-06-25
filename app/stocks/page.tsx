@@ -3131,7 +3131,11 @@ export default async function StocksPage({
       ? sameCompanyItems.find((item) => item.sizeKey && item.sizeKey === sizeKey)
       : null;
 
-    return exactSizeItem ?? sameCompanyItems.find((item) => !item.sizeKey) ?? sameCompanyItems[0];
+    if (sizeKey) {
+      return exactSizeItem ?? sameCompanyItems.find((item) => !item.sizeKey) ?? null;
+    }
+
+    return sameCompanyItems[0] ?? null;
   }
 
   const supplyPlanCandidates: SupplyPlanCandidate[] = [];
