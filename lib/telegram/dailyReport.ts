@@ -42,6 +42,7 @@ type MarketplaceDailyMetrics = {
   drrByOrders: number;
   drrBySales: number;
   stockQty: number;
+  netProfitAfterTax: number;
 };
 
 type CompanyDailyReport = {
@@ -585,6 +586,275 @@ function calculateOzonFinanceAdSpend(
     .reduce((sum, row) => sum + Math.abs(toNumber(row.totalAmount)), 0);
 }
 
+function clampRate(value: unknown, allowedRates: number[], fallback: number) {
+  const rate = toNumber(value);
+  return allowedRates.includes(rate) ? rate : fallback;
+}
+
+function calculateVatTax(revenue: number, vatRate: number) {
+  if (vatRate <= 0) return 0;
+  return revenue * (vatRate / (100 + vatRate));
+}
+
+function calculateTaxesAmount(params: {
+  revenue: number;
+  usnRate: number;
+  vatRate: number;
+}) {
+  if (params.revenue <= 0) return 0;
+
+  return (
+    params.revenue * (params.usnRate / 100) +
+    calculateVatTax(params.revenue, params.vatRate)
+  );
+}
+
+function getCompanyTaxRates(company: {
+  usnRate: unknown;
+  vatRate: unknown;
+} | null) {
+  return {
+    usnRate: clampRate(company?.usnRate, [0, 1, 2, 3, 4, 5, 6], 1),
+    vatRate: clampRate(company?.vatRate, [0, 5, 7], 5),
+  };
+}
+
+type ProductCostForDailyProfit = {
+  vendorCode: string;
+  nmId: string | null;
+  costPrice: unknown;
+};
+
+type WbProductCardForDailyProfit = {
+  nmId: string;
+  vendorCode: string | null;
+};
+
+type OzonProductForDailyProfit = {
+  sku: string;
+  vendorCode: string;
+};
+
+function buildCostLookups(costs: ProductCostForDailyProfit[]) {
+  const costByVendorCode = new Map<string, number>();
+  const costByNmId = new Map<string, number>();
+
+  for (const cost of costs) {
+    const vendorCode = normalizeText(cost.vendorCode);
+    const nmId = normalizeText(cost.nmId);
+    const costPrice = toNumber(cost.costPrice);
+
+    if (vendorCode && !costByVendorCode.has(vendorCode)) {
+      costByVendorCode.set(vendorCode, costPrice);
+    }
+
+    if (nmId && !costByNmId.has(nmId)) {
+      costByNmId.set(nmId, costPrice);
+    }
+  }
+
+  return {
+    costByVendorCode,
+    costByNmId,
+  };
+}
+
+function buildWbSupplierArticleByNmId(cards: WbProductCardForDailyProfit[]) {
+  const supplierArticleByNmId = new Map<string, string>();
+
+  for (const card of cards) {
+    const nmId = normalizeText(card.nmId);
+    const vendorCode = normalizeText(card.vendorCode);
+
+    if (!nmId || !vendorCode || supplierArticleByNmId.has(nmId)) continue;
+
+    supplierArticleByNmId.set(nmId, vendorCode);
+  }
+
+  return supplierArticleByNmId;
+}
+
+function buildOzonVendorCodeBySku(products: OzonProductForDailyProfit[]) {
+  const vendorCodeBySku = new Map<string, string>();
+
+  for (const product of products) {
+    const sku = normalizeText(product.sku);
+    const vendorCode = normalizeText(product.vendorCode);
+
+    if (!sku || !vendorCode || vendorCodeBySku.has(sku)) continue;
+
+    vendorCodeBySku.set(sku, vendorCode);
+  }
+
+  return vendorCodeBySku;
+}
+
+function getOzonBaseArticle(value: unknown) {
+  const vendorCode = cleanText(value);
+  if (!vendorCode) return "";
+
+  return cleanText(vendorCode.split("-")[0]);
+}
+
+function getWbCostPrice(params: {
+  vendorCode: unknown;
+  costs: ProductCostForDailyProfit[];
+}) {
+  const { costByVendorCode } = buildCostLookups(params.costs);
+  const vendorCode = normalizeText(params.vendorCode);
+
+  return vendorCode ? costByVendorCode.get(vendorCode) ?? 0 : 0;
+}
+
+function createOzonCostResolver(params: {
+  costs: ProductCostForDailyProfit[];
+  wbProductCards: WbProductCardForDailyProfit[];
+  ozonProducts: OzonProductForDailyProfit[];
+}) {
+  const { costByVendorCode, costByNmId } = buildCostLookups(params.costs);
+  const wbSupplierArticleByNmId = buildWbSupplierArticleByNmId(
+    params.wbProductCards
+  );
+  const ozonVendorCodeBySku = buildOzonVendorCodeBySku(params.ozonProducts);
+
+  return function resolveOzonCostPrice(row: {
+    sku: string | null;
+    vendorCode: string | null;
+  }) {
+    const sku = normalizeText(row.sku);
+    const directVendorCode = normalizeText(row.vendorCode);
+    const mappedVendorCode = sku ? ozonVendorCodeBySku.get(sku) ?? "" : "";
+    const vendorCode = directVendorCode || mappedVendorCode || sku;
+
+    if (!vendorCode) return 0;
+
+    const directCost = costByVendorCode.get(vendorCode);
+    if (directCost !== undefined) return directCost;
+
+    const baseArticle = normalizeText(getOzonBaseArticle(vendorCode));
+    if (!baseArticle) return 0;
+
+    const costByBaseNmId = costByNmId.get(baseArticle);
+    if (costByBaseNmId !== undefined) return costByBaseNmId;
+
+    const directBaseCost = costByVendorCode.get(baseArticle);
+    if (directBaseCost !== undefined) return directBaseCost;
+
+    const wbSupplierArticle = wbSupplierArticleByNmId.get(baseArticle);
+    if (!wbSupplierArticle) return 0;
+
+    return costByVendorCode.get(wbSupplierArticle) ?? 0;
+  };
+}
+
+function calculateWbNetProfitAfterTax(params: {
+  rows: Array<{
+    paymentReason: string | null;
+    quantity: number | null;
+    wbRealizedAmount: unknown;
+    sellerPayout: unknown;
+    vendorCode: string | null;
+  }>;
+  costs: ProductCostForDailyProfit[];
+  adSpend: number;
+  usnRate: number;
+  vatRate: number;
+}) {
+  let revenue = 0;
+  let sellerPayout = 0;
+  let totalCost = 0;
+
+  for (const row of params.rows) {
+    const paymentReason = normalizeText(row.paymentReason);
+    const quantity = Math.abs(toNumber(row.quantity)) || 1;
+    const realizedAmount = Math.abs(toNumber(row.wbRealizedAmount));
+    const payout = Math.abs(toNumber(row.sellerPayout));
+    const costPrice = getWbCostPrice({
+      vendorCode: row.vendorCode,
+      costs: params.costs,
+    });
+
+    if (isWbSaleOperation(paymentReason)) {
+      revenue += realizedAmount;
+      sellerPayout += payout;
+      totalCost += costPrice * quantity;
+      continue;
+    }
+
+    if (isWbReturnOperation(paymentReason)) {
+      revenue -= realizedAmount;
+      sellerPayout -= payout;
+      totalCost -= costPrice * quantity;
+    }
+  }
+
+  const taxesAmount = calculateTaxesAmount({
+    revenue,
+    usnRate: params.usnRate,
+    vatRate: params.vatRate,
+  });
+
+  return sellerPayout - totalCost - params.adSpend - taxesAmount;
+}
+
+function calculateOzonNetProfitAfterTax(params: {
+  rows: Array<{
+    operationType: string | null;
+    sku: string | null;
+    vendorCode: string | null;
+    quantity: number | null;
+    salesAmount: unknown;
+    totalAmount: unknown;
+  }>;
+  costs: ProductCostForDailyProfit[];
+  wbProductCards: WbProductCardForDailyProfit[];
+  ozonProducts: OzonProductForDailyProfit[];
+  adSpend: number;
+  usnRate: number;
+  vatRate: number;
+}) {
+  const resolveCostPrice = createOzonCostResolver({
+    costs: params.costs,
+    wbProductCards: params.wbProductCards,
+    ozonProducts: params.ozonProducts,
+  });
+
+  let revenue = 0;
+  let sellerPayoutBeforeAds = 0;
+  let totalCost = 0;
+
+  for (const row of params.rows) {
+    if (isOzonFinanceAdOperation(row.operationType)) {
+      continue;
+    }
+
+    const salesAmount = toNumber(row.salesAmount);
+    const totalAmount = toNumber(row.totalAmount);
+    const quantity = Math.abs(toNumber(row.quantity));
+    const costPrice = resolveCostPrice(row);
+
+    revenue += salesAmount;
+    sellerPayoutBeforeAds += totalAmount;
+
+    if (salesAmount > 0 || quantity > 0) {
+      totalCost += costPrice * quantity;
+    }
+
+    if (salesAmount < 0 || totalAmount < 0) {
+      totalCost -= costPrice * quantity;
+    }
+  }
+
+  const taxesAmount = calculateTaxesAmount({
+    revenue,
+    usnRate: params.usnRate,
+    vatRate: params.vatRate,
+  });
+
+  return sellerPayoutBeforeAds - totalCost - params.adSpend - taxesAmount;
+}
+
+
 async function getFinanceMetricsForCompany(params: {
   companyName: string;
   range: DateRange;
@@ -716,73 +986,95 @@ function selectPreferredWbSaleRows<
 }
 
 async function getWbMetrics(companyName: string, range: DateRange) {
-  const [orderStats, salesRows, adsRowsRaw, stockQty] = await Promise.all([
-    getOrderStats({
-      companyName,
-      marketplace: "WB",
-      range,
-    }),
-    prisma.wbSale.findMany({
-      where: {
+  const [orderStats, salesRows, adsRowsRaw, stockQty, costs, companySettings] =
+    await Promise.all([
+      getOrderStats({
         companyName,
-        saleDate: {
-          gte: range.dateFrom,
-          lt: range.dateToExclusive,
+        marketplace: "WB",
+        range,
+      }),
+      prisma.wbSale.findMany({
+        where: {
+          companyName,
+          saleDate: {
+            gte: range.dateFrom,
+            lt: range.dateToExclusive,
+          },
         },
-      },
-      select: {
-        reportNumber: true,
-        saleDate: true,
-        paymentReason: true,
-        quantity: true,
-        wbRealizedAmount: true,
-      },
-    }),
-    prisma.wbAds.findMany({
-      where: {
-        companyName,
-        OR: [
-          {
-            dateFrom: {
-              gte: range.dateFrom,
-              lt: range.dateToExclusive,
-            },
-          },
-          {
-            dateTo: {
-              gte: range.dateFrom,
-              lt: range.dateToExclusive,
-            },
-          },
-          {
-            AND: [
-              {
-                dateFrom: {
-                  lte: range.dateFrom,
-                },
+        select: {
+          reportNumber: true,
+          saleDate: true,
+          paymentReason: true,
+          quantity: true,
+          wbRealizedAmount: true,
+          sellerPayout: true,
+          vendorCode: true,
+        },
+      }),
+      prisma.wbAds.findMany({
+        where: {
+          companyName,
+          OR: [
+            {
+              dateFrom: {
+                gte: range.dateFrom,
+                lt: range.dateToExclusive,
               },
-              {
-                dateTo: {
-                  gte: range.dateToExclusive,
-                },
+            },
+            {
+              dateTo: {
+                gte: range.dateFrom,
+                lt: range.dateToExclusive,
               },
-            ],
-          },
-        ],
-      },
-      select: {
-        dateFrom: true,
-        dateTo: true,
-        spend: true,
-        importSessionId: true,
-        createdAt: true,
-      },
-      orderBy: {
-        createdAt: "desc",
-      },
-    }),
-    getLatestWbStockQty(companyName),
-  ]);
+            },
+            {
+              AND: [
+                {
+                  dateFrom: {
+                    lte: range.dateFrom,
+                  },
+                },
+                {
+                  dateTo: {
+                    gte: range.dateToExclusive,
+                  },
+                },
+              ],
+            },
+          ],
+        },
+        select: {
+          dateFrom: true,
+          dateTo: true,
+          spend: true,
+          importSessionId: true,
+          createdAt: true,
+        },
+        orderBy: {
+          createdAt: "desc",
+        },
+      }),
+      getLatestWbStockQty(companyName),
+      prisma.productCost.findMany({
+        select: {
+          vendorCode: true,
+          nmId: true,
+          costPrice: true,
+        },
+        orderBy: {
+          costDate: "desc",
+        },
+      }),
+      prisma.company.findFirst({
+        where: {
+          name: companyName,
+        },
+        select: {
+          usnRate: true,
+          vatRate: true,
+        },
+      }),
+    ]);
 
   const effectiveSalesRows = selectPreferredWbSaleRows(salesRows);
 
@@ -818,6 +1110,14 @@ async function getWbMetrics(companyName: string, range: DateRange) {
 
   const adsRows = keepLatestWbAdsRowsPerDate(adsRowsRaw);
   const adSpend = adsRows.reduce((sum, row) => sum + toNumber(row.spend), 0);
+  const taxRates = getCompanyTaxRates(companySettings);
+  const netProfitAfterTax = calculateWbNetProfitAfterTax({
+    rows: effectiveSalesRows,
+    costs,
+    adSpend,
+    usnRate: taxRates.usnRate,
+    vatRate: taxRates.vatRate,
+  });
 
   return {
     marketplace: "WB" as const,
@@ -838,11 +1138,21 @@ async function getWbMetrics(companyName: string, range: DateRange) {
     drrByOrders: ordersDataMissing ? 0 : calculateDrr(adSpend, orderStats.ordersAmount),
     drrBySales: salesDataMissing ? 0 : calculateDrr(adSpend, salesAmount),
     stockQty,
+    netProfitAfterTax,
   };
 }
 
 async function getOzonMetrics(companyName: string, range: DateRange) {
-  const [orderStats, financeRows, adsRowsRaw, stockQty] = await Promise.all([
+  const [
+    orderStats,
+    financeRows,
+    adsRowsRaw,
+    stockQty,
+    costs,
+    wbProductCards,
+    ozonProducts,
+    companySettings,
+  ] = await Promise.all([
     getOrderStats({
       companyName,
       marketplace: "OZON",
@@ -861,6 +1171,8 @@ async function getOzonMetrics(companyName: string, range: DateRange) {
         quantity: true,
         salesAmount: true,
         totalAmount: true,
+        sku: true,
+        vendorCode: true,
       },
     }),
     prisma.ozonAds.findMany({
@@ -883,12 +1195,59 @@ async function getOzonMetrics(companyName: string, range: DateRange) {
       },
     }),
     getLatestOzonStockQty(companyName),
+    prisma.productCost.findMany({
+      select: {
+        vendorCode: true,
+        nmId: true,
+        costPrice: true,
+      },
+      orderBy: {
+        costDate: "desc",
+      },
+    }),
+    prisma.wbProductCard.findMany({
+      where: {
+        companyName,
+      },
+      select: {
+        nmId: true,
+        vendorCode: true,
+      },
+      orderBy: {
+        lastSyncedAt: "desc",
+      },
+    }),
+    prisma.ozonProduct.findMany({
+      where: {
+        companyName,
+      },
+      select: {
+        sku: true,
+        vendorCode: true,
+      },
+      orderBy: {
+        createdAt: "desc",
+      },
+    }),
+    prisma.company.findFirst({
+      where: {
+        name: companyName,
+      },
+      select: {
+        usnRate: true,
+        vatRate: true,
+      },
+    }),
   ]);
 
   let salesQty = 0;
   let salesAmount = 0;
 
   for (const row of financeRows) {
+    if (isOzonFinanceAdOperation(row.operationType)) {
+      continue;
+    }
+
     const amount = toNumber(row.salesAmount);
     const qty = Math.abs(Number(row.quantity ?? 0));
 
@@ -915,6 +1274,17 @@ async function getOzonMetrics(companyName: string, range: DateRange) {
     financeAdRowsCount > 0 ? financeAdSpend : performanceAdSpend;
   const adSpendSource =
     financeAdRowsCount > 0 ? "Ozon Finance Ads" : "Ozon Performance Ads";
+
+  const taxRates = getCompanyTaxRates(companySettings);
+  const netProfitAfterTax = calculateOzonNetProfitAfterTax({
+    rows: financeRows,
+    costs,
+    wbProductCards,
+    ozonProducts,
+    adSpend,
+    usnRate: taxRates.usnRate,
+    vatRate: taxRates.vatRate,
+  });
 
   const ordersDataMissing = orderStats.rowsCount === 0;
   const ordersDataMissingReason = ordersDataMissing
@@ -947,6 +1317,7 @@ async function getOzonMetrics(companyName: string, range: DateRange) {
     drrByOrders: ordersDataMissing ? 0 : calculateDrr(adSpend, orderStats.ordersAmount),
     drrBySales: calculateDrr(adSpend, salesAmount),
     stockQty,
+    netProfitAfterTax,
   };
 }
 
@@ -985,7 +1356,7 @@ function buildWarnings(report: DailyReport) {
 
   if (report.totals.netProfitImpact < 0) {
     warnings.push(
-      `отрицательное влияние на чистую прибыль: ${formatMoney(
+      `отрицательная чистая прибыль: ${formatMoney(
         report.totals.netProfitImpact
       )}`
     );
@@ -1080,11 +1451,19 @@ export async function buildDailyReport(params?: {
       }),
     ]);
 
+    const realNetProfit =
+      wb.netProfitAfterTax + ozon.netProfitAfterTax + finance.netProfitImpact;
+
+    const financeForReport = {
+      ...finance,
+      netProfitImpact: realNetProfit,
+    };
+
     report.companies.push({
       companyName: company.name,
       wb,
       ozon,
-      finance,
+      finance: financeForReport,
     });
 
     addMarketplaceTotals(report.totals, wb);
@@ -1093,7 +1472,7 @@ export async function buildDailyReport(params?: {
     report.totals.cashIncome += finance.cashIncome;
     report.totals.cashOutflow += finance.cashOutflow;
     report.totals.netCashFlow += finance.netCashFlow;
-    report.totals.netProfitImpact += finance.netProfitImpact;
+    report.totals.netProfitImpact += realNetProfit;
     report.totals.ownerWithdrawals += finance.ownerWithdrawals;
   }
 
@@ -1256,12 +1635,12 @@ function getProfitConclusion(report: DailyReport) {
   }
 
   if (report.totals.netProfitImpact > 0) {
-    return `По влиянию на прибыль день положительный: ${formatMoney(
+    return `Чистая прибыль за день положительная: ${formatMoney(
       report.totals.netProfitImpact
     )}.`;
   }
 
-  return "Влияние на прибыль около нуля.";
+  return "Чистая прибыль около нуля.";
 }
 
 function buildOwnerConclusion(report: DailyReport) {
