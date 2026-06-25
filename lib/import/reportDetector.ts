@@ -259,7 +259,7 @@ export function detectWorkbookReport(workbook: XLSX.WorkBook): DetectionResult {
     const matrix = XLSX.utils.sheet_to_json<unknown[]>(sheet, {
       header: 1,
       defval: "",
-      blankrows: false,
+      blankrows: true,
     });
 
     for (let rowIndex = 0; rowIndex < Math.min(matrix.length, 40); rowIndex++) {
