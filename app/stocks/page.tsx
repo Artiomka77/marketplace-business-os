@@ -30,6 +30,9 @@ type StockSearchParams = {
   productionOpen?: string;
   productionBufferDays?: string;
   productionRows?: string;
+  productionAbc?: string;
+  productionSelectionMode?: string;
+  productionSelected?: string | string[];
 };
 
 type StockSource = "ALL" | "WB" | "OZON" | "OWN";
@@ -1437,6 +1440,7 @@ function makeUrl(params: StockSearchParams, patch: Record<string, string | null 
     productionOpen: params.productionOpen,
     productionBufferDays: params.productionBufferDays,
     productionRows: params.productionRows,
+    productionAbc: params.productionAbc,
   };
 
   for (const [key, value] of Object.entries(patch)) {
@@ -1723,6 +1727,28 @@ function getProductionRowsLimit(value: string | undefined, totalRows: number) {
   return [8, 20, 50, 100, 200].includes(parsed) ? parsed : 8;
 }
 
+function getProductionAbcFilter(value?: string | string[] | null): "ALL" | AbcCategory {
+  const current = Array.isArray(value) ? value[0] : value;
+
+  if (current === "ALL" || current === "A" || current === "B" || current === "C") {
+    return current;
+  }
+
+  // По умолчанию оставляем самый безопасный режим: к пошиву попадают только ABC A.
+  return "A";
+}
+
+function getProductionSelectedKeys(value?: string | string[] | null) {
+  const rawValues = Array.isArray(value) ? value : value ? [value] : [];
+
+  return new Set(
+    rawValues
+      .flatMap((item) => String(item).split(","))
+      .map((item) => item.trim())
+      .filter(Boolean)
+  );
+}
+
 type ProductionPlanRow = {
   key: string;
   companyName: string;
@@ -1749,7 +1775,11 @@ function getProductionArticleKey(row: SupplyPlanRow) {
   return normalizeSupplyArticle(baseArticle || rootArticle || row.vendorCode || row.sku);
 }
 
-function getProductionPlanRows(rows: SupplyPlanRow[], bufferDays: number) {
+function getProductionPlanRows(
+  rows: SupplyPlanRow[],
+  bufferDays: number,
+  abcFilter: "ALL" | AbcCategory = "A"
+) {
   const groups = new Map<
     string,
     ProductionPlanRow & {
@@ -1761,9 +1791,9 @@ function getProductionPlanRows(rows: SupplyPlanRow[], bufferDays: number) {
   for (const row of rows) {
     const abcByProfit = row.abc?.abcByProfit ?? "C";
 
-    // План пошива делаем только по категории A: это товары, где отсутствие остатка
-    // быстрее всего превращается в потерю продаж и денег.
-    if (abcByProfit !== "A") continue;
+    // По умолчанию план пошива строится по ABC A.
+    // При необходимости пользователь может включить B, C или все категории.
+    if (abcFilter !== "ALL" && abcByProfit !== abcFilter) continue;
 
     const deficitQty = Math.max(0, row.wantedQty - row.recommendedQty);
 
@@ -1947,7 +1977,17 @@ function SupplyPlanningBlock({
   const criticalRows = filteredRows.filter((row) => row.priority === "HIGH");
   const productionOpen = params.productionOpen !== "0";
   const productionBufferDays = getProductionBufferDays(params.productionBufferDays);
-  const productionPlanRows = getProductionPlanRows(filteredRows, productionBufferDays);
+  const productionAbcFilter = getProductionAbcFilter(params.productionAbc);
+  const allProductionPlanRows = getProductionPlanRows(
+    filteredRows,
+    productionBufferDays,
+    productionAbcFilter
+  );
+  const hasCustomProductionSelection = params.productionSelectionMode === "custom";
+  const selectedProductionKeys = getProductionSelectedKeys(params.productionSelected);
+  const productionPlanRows = hasCustomProductionSelection
+    ? allProductionPlanRows.filter((row) => selectedProductionKeys.has(row.key))
+    : allProductionPlanRows;
   const productionRowsLimit = getProductionRowsLimit(
     params.productionRows,
     productionPlanRows.length
@@ -1959,6 +1999,15 @@ function SupplyPlanningBlock({
     const productionExportParams = new URLSearchParams(exportParams);
     productionExportParams.delete("supplyRows");
     productionExportParams.set("bufferDays", String(bufferDays));
+    productionExportParams.set("productionAbc", productionAbcFilter);
+
+    if (hasCustomProductionSelection) {
+      productionExportParams.set("productionSelectionMode", "custom");
+
+      for (const key of selectedProductionKeys) {
+        productionExportParams.append("productionSelected", key);
+      }
+    }
 
     const queryString = productionExportParams.toString();
 
@@ -2222,7 +2271,7 @@ function SupplyPlanningBlock({
                   Что нужно заказать в пошив
                 </h3>
                 <p className="mt-1 max-w-3xl text-xs font-bold leading-5 text-slate-500">
-                  Показываем товары ABC A, где есть спрос и рекомендация к поставке, но собственного остатка не хватает. Буфер можно менять: 15, 20, 30 или 60 дней до поступления партии на склад.
+                  Показываем товары выбранной ABC-категории, где есть спрос и рекомендация к поставке, но собственного остатка не хватает. Буфер можно менять: 15, 20, 30 или 60 дней до поступления партии на склад.
                 </p>
               </div>
 
@@ -2254,6 +2303,7 @@ function SupplyPlanningBlock({
             {productionOpen ? (
               <div>
                 <form
+                  id="production-plan-form"
                   action="/stocks"
                   method="GET"
                   className="flex flex-col gap-3 border-b border-amber-100 bg-white/40 p-4 xl:flex-row xl:items-end xl:justify-between"
@@ -2270,7 +2320,7 @@ function SupplyPlanningBlock({
                   {params.supplyRows ? <input type="hidden" name="supplyRows" value={params.supplyRows} /> : null}
                   {query ? <input type="hidden" name="supplyQ" value={query} /> : null}
 
-                  <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-[160px_160px_auto]">
+                  <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-[160px_150px_150px_auto]">
                     <label className="block">
                       <span className="mb-1 block text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">
                         Буфер пошива
@@ -2285,6 +2335,22 @@ function SupplyPlanningBlock({
                             {days} дней
                           </option>
                         ))}
+                      </select>
+                    </label>
+
+                    <label className="block">
+                      <span className="mb-1 block text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">
+                        ABC
+                      </span>
+                      <select
+                        name="productionAbc"
+                        defaultValue={productionAbcFilter}
+                        className="h-11 w-full rounded-2xl border border-amber-200 bg-white px-3 text-sm font-bold text-slate-700 outline-none transition focus:border-amber-300 focus:ring-4 focus:ring-amber-50"
+                      >
+                        <option value="A">A</option>
+                        <option value="B">B</option>
+                        <option value="C">C</option>
+                        <option value="ALL">Все</option>
                       </select>
                     </label>
 
@@ -2333,10 +2399,11 @@ function SupplyPlanningBlock({
                       <table className="w-full table-fixed border-collapse text-left text-xs">
                         <thead className="bg-white/70 text-[10px] font-black uppercase tracking-[0.08em] text-slate-400">
                           <tr>
-                            <th className="w-[30%] px-4 py-3">Товар</th>
+                            <th className="w-[5%] px-4 py-3">Выбор</th>
+                            <th className="w-[27%] px-3 py-3">Товар</th>
                             <th className="w-[8%] px-3 py-3">Размер</th>
-                            <th className="w-[14%] px-3 py-3">Каналы</th>
-                            <th className="w-[20%] px-3 py-3">Направления</th>
+                            <th className="w-[12%] px-3 py-3">Каналы</th>
+                            <th className="w-[18%] px-3 py-3">Направления</th>
                             <th className="w-[10%] px-3 py-3 text-right">Дефицит</th>
                             <th className="w-[10%] px-3 py-3 text-right">Буфер {productionBufferDays} дн.</th>
                             <th className="w-[8%] px-3 py-3 text-right">К пошиву</th>
@@ -2360,7 +2427,18 @@ function SupplyPlanningBlock({
 
                             return (
                               <tr key={row.key} className="align-middle hover:bg-white/70" title={tooltip}>
-                                <td className="px-4 py-3">
+                                <td className="px-4 py-3 text-center">
+                                  <input
+                                    form="production-plan-form"
+                                    type="checkbox"
+                                    name="productionSelected"
+                                    value={row.key}
+                                    defaultChecked={!hasCustomProductionSelection || selectedProductionKeys.has(row.key)}
+                                    className="h-4 w-4 rounded border-amber-300 text-amber-600 focus:ring-amber-500"
+                                    aria-label={`Выбрать в пошив ${row.vendorCode} ${row.size ?? ""}`}
+                                  />
+                                </td>
+                                <td className="px-3 py-3">
                                   <div className="flex min-w-0 items-center gap-3">
                                     {row.imageUrl ? (
                                       <img
@@ -2418,6 +2496,20 @@ function SupplyPlanningBlock({
                       </table>
                     </div>
 
+                    <div className="flex flex-col gap-2 border-t border-amber-100 bg-white/50 px-4 py-3 text-xs font-bold text-slate-500 sm:flex-row sm:items-center sm:justify-between">
+                      <div>
+                        Выбрано к пошиву: {formatNumber(productionPlanRows.length)} из {formatNumber(allProductionPlanRows.length)} позиций. По умолчанию все найденные позиции отмечены галками; лишние можно снять и нажать “Применить выбор”.
+                      </div>
+                      <button
+                        form="production-plan-form"
+                        name="productionSelectionMode"
+                        value="custom"
+                        className="inline-flex h-10 items-center justify-center rounded-2xl border border-amber-200 bg-white px-4 text-sm font-black text-amber-700 transition hover:bg-amber-50"
+                      >
+                        Применить выбор
+                      </button>
+                    </div>
+
                     {productionPlanRows.length > visibleProductionPlanRows.length ? (
                       <div className="border-t border-amber-100 bg-white/50 px-4 py-3 text-xs font-bold text-slate-500">
                         Показаны первые {formatNumber(visibleProductionPlanRows.length)} позиций из {formatNumber(productionPlanRows.length)}. Измените фильтр “Строк” в блоке пошива или скачайте Excel, чтобы получить полный список.
@@ -2430,7 +2522,7 @@ function SupplyPlanningBlock({
                       Заказывать в пошив пока нечего
                     </h3>
                     <p className="mt-1 max-w-4xl text-xs font-bold leading-5 text-slate-500">
-                      По текущим фильтрам система не нашла товары ABC A, где есть рекомендация к поставке и при этом не хватает собственного склада. Если нужно проверить дефицит сразу по WB и Ozon, выберите источник “WB + Ozon”, ABC “A” и все направления.
+                      По текущим фильтрам система не нашла товары выбранной ABC-категории, где есть рекомендация к поставке и при этом не хватает собственного склада. Если нужно проверить дефицит сразу по WB и Ozon, выберите источник “WB + Ozon”, ABC “A” и все направления.
                     </p>
                   </div>
                 )}
