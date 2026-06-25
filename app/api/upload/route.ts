@@ -143,19 +143,22 @@ export async function POST(req: Request) {
       defval: "",
     });
 
-    const marketplace = detection.reportType.startsWith("WB")
-      ? "WILDBERRIES"
-      : detection.reportType.startsWith("OZON")
-        ? "OZON"
-        : detection.reportType === "PRODUCT_COST"
-          ? "INTERNAL"
-          : detection.reportType === "FINANCE_TRANSACTIONS"
-            ? "FINANCE"
-            : detection.reportType === "FINANCE_CATEGORIES"
-              ? "FINANCE"
-              : detection.reportType === "LOANS"
+    const marketplace =
+      detection.reportType === "OZON_WAREHOUSE_STOCK"
+        ? "INTERNAL"
+        : detection.reportType.startsWith("WB")
+          ? "WILDBERRIES"
+          : detection.reportType.startsWith("OZON")
+            ? "OZON"
+            : detection.reportType === "PRODUCT_COST"
+              ? "INTERNAL"
+              : detection.reportType === "FINANCE_TRANSACTIONS"
                 ? "FINANCE"
-                : "UNKNOWN";
+                : detection.reportType === "FINANCE_CATEGORIES"
+                  ? "FINANCE"
+                  : detection.reportType === "LOANS"
+                    ? "FINANCE"
+                    : "UNKNOWN";
 
     const needsCompanyName =
       detection.reportType.startsWith("WB") ||

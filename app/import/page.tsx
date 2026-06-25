@@ -66,10 +66,10 @@ const supportedReports = [
     reportType: "OZON_SUPPLY_RECOMMENDATION",
   },
   {
-    title: "Ozon — Наш склад",
-    desc: "Остатки товаров на вашем складе для распределения поставок по кластерам.",
-    path: "Скачать шаблон → заполнить артикулы и остатки → загрузить файл",
-    tag: "Supply",
+    title: "Собственный склад",
+    desc: "Остатки товаров на вашем складе для планирования поставок на WB и Ozon.",
+    path: "Скачать шаблон → заполнить артикулы, размеры и остатки → загрузить файл",
+    tag: "Склад",
     reportType: "OZON_WAREHOUSE_STOCK",
     templateHref: "/api/templates/ozon-warehouse-stock",
   },
@@ -87,7 +87,7 @@ function getReportTypeLabel(reportType?: string) {
   if (reportType === "OZON_PRODUCT") return "Ozon товары";
   if (reportType === "OZON_SUPPLY_RECOMMENDATION")
     return "Ozon планирование поставок";
-  if (reportType === "OZON_WAREHOUSE_STOCK") return "Ozon наш склад";
+  if (reportType === "OZON_WAREHOUSE_STOCK") return "Собственный склад";
   if (reportType === "PRODUCT_COST") return "Себестоимость";
   return reportType ?? "—";
 }

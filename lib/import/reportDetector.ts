@@ -78,7 +78,11 @@ const reportSignatures: {
       "Артикул",
       "SKU Ozon",
       "Название товара",
+      "Размер",
+      "Штрихкод",
       "Количество на складе, шт",
+      "Остаток на складе, шт",
+      "Остаток, шт",
       "Резерв, шт",
       "Доступно к поставке, шт",
     ],
@@ -285,7 +289,13 @@ export function detectWorkbookReport(workbook: XLSX.WorkBook): DetectionResult {
       if (
         rowHas(row, "Компания") &&
         rowHas(row, "Артикул") &&
-        rowHas(row, "Количество на складе, шт")
+        rowHasAny(row, [
+          "Количество на складе, шт",
+          "Остаток на складе, шт",
+          "Остаток, шт",
+          "Остаток",
+          "Количество",
+        ])
       ) {
         return {
           reportType: "OZON_WAREHOUSE_STOCK",
@@ -294,7 +304,7 @@ export function detectWorkbookReport(workbook: XLSX.WorkBook): DetectionResult {
           matchedColumns: [
             "Компания",
             "Артикул",
-            "Количество на складе, шт",
+            "Количество на складе / остаток",
           ],
         };
       }
