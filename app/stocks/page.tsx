@@ -1811,7 +1811,7 @@ function SupplyPlanningBlock({
             </div>
 
             <h2 className="mt-3 text-2xl font-black tracking-tight text-slate-950">
-              Что отгрузить со своего склада
+              План поставок по спросу
             </h2>
 
           </div>
@@ -2021,8 +2021,8 @@ function SupplyPlanningBlock({
 
           <div className="mt-4 flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
             <div className="max-w-3xl text-sm font-bold leading-6 text-slate-500">
-              Официальный файл Ozon “Планирование поставок” можно загрузить здесь же. Если файл из личного кабинета Ozon загружен, он используется как приоритетный источник; если файла нет — показываем осторожный расчётный план.
-            </div>
+  Что и куда отгрузить со своего склада с учётом спроса, остатков маркетплейсов и доступного товара. Официальный файл Ozon “Планирование поставок” можно загрузить здесь же.
+</div>
 
             <div className="flex flex-wrap gap-2">
               <Link
