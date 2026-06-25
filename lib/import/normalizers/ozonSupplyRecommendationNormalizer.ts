@@ -35,6 +35,39 @@ function getByHeaderIncludes(row: Record<string, unknown>, expectedPart: string)
   return null;
 }
 
+function getByHeaderIncludesAny(
+  row: Record<string, unknown>,
+  expectedParts: string[]
+) {
+  for (const expectedPart of expectedParts) {
+    const value = getByHeaderIncludes(row, expectedPart);
+
+    if (value !== null && value !== undefined && String(value).trim() !== "") {
+      return value;
+    }
+  }
+
+  return null;
+}
+
+function getByHeaderStrictOrIncludes(
+  row: Record<string, unknown>,
+  exactCandidates: string[],
+  includeCandidates: string[]
+) {
+  const exactValue = getByHeader(row, exactCandidates);
+
+  if (
+    exactValue !== null &&
+    exactValue !== undefined &&
+    String(exactValue).trim() !== ""
+  ) {
+    return exactValue;
+  }
+
+  return getByHeaderIncludesAny(row, includeCandidates);
+}
+
 function getRecommendationPeriodDays(row: Record<string, unknown>) {
   const recommendationHeader = Object.keys(row).find((key) =>
     normalizeHeader(key).includes("рекомендуемая поставка")
@@ -90,7 +123,6 @@ function toNullableInt(value: unknown): number | null {
 
 function toText(value: unknown): string | null {
   const text = String(value ?? "").trim();
-
   return text ? text : null;
 }
 
@@ -107,6 +139,8 @@ function isServiceRow(row: {
     (!skuText && !vendorCodeText) ||
     skuText === "sku" ||
     vendorCodeText === "артикул" ||
+    vendorCodeText === "артикул товара" ||
+    vendorCodeText === "артикул продавца" ||
     clusterText === "кластер"
   );
 }
@@ -118,9 +152,19 @@ export async function normalizeOzonSupplyRecommendation(
 ) {
   const data = rows
     .map((row) => {
-      const sku = toText(getByHeader(row, ["SKU"]));
-      const vendorCode = toText(getByHeader(row, ["Артикул"]));
-      const clusterName = toText(getByHeader(row, ["Кластер"]));
+      const sku = toText(
+        getByHeaderStrictOrIncludes(row, ["SKU"], ["sku"])
+      );
+      const vendorCode = toText(
+        getByHeaderStrictOrIncludes(
+          row,
+          ["Артикул"],
+          ["артикул", "offer id", "offer_id"]
+        )
+      );
+      const clusterName = toText(
+        getByHeaderStrictOrIncludes(row, ["Кластер"], ["кластер"])
+      );
 
       const recommendedSupplyQty = toInt(
         getByHeaderIncludes(row, "Рекомендуемая поставка")
@@ -134,41 +178,89 @@ export async function normalizeOzonSupplyRecommendation(
         vendorCode: vendorCode ?? "",
 
         productName: toText(
-          getByHeader(row, ["Название товара", "Название товара или услуги"])
+          getByHeaderStrictOrIncludes(
+            row,
+            ["Название товара", "Название товара или услуги"],
+            ["название товара"]
+          )
         ),
 
         recommendationPeriodDays: getRecommendationPeriodDays(row),
         recommendedSupplyQty,
 
-        recommendation: toText(getByHeader(row, ["Рекомендация"])),
+        recommendation: toText(
+          getByHeaderStrictOrIncludes(row, ["Рекомендация"], ["рекомендация"])
+        ),
         clusterName: clusterName ?? "",
-        salesScheme: toText(getByHeader(row, ["Схема продаж"])),
+        salesScheme: toText(
+          getByHeaderStrictOrIncludes(row, ["Схема продаж"], ["схема продаж"])
+        ),
 
         daysWithoutStock28: toNullableInt(
-          getByHeader(row, ["Дней без остатка за 28 дней"])
+          getByHeaderStrictOrIncludes(
+            row,
+            ["Дней без остатка за 28 дней"],
+            ["дней без остатка"]
+          )
         ),
 
-        avgDeliveryHours: toNumber(getByHeader(row, ["Среднее время доставки, ч"])),
+        avgDeliveryHours: toNumber(
+          getByHeaderStrictOrIncludes(
+            row,
+            ["Среднее время доставки, ч"],
+            ["среднее время доставки"]
+          )
+        ),
         avgDailySalesRub28: toNumber(
-          getByHeader(row, ["Среднесуточные продажи, руб. за 28дн"])
+          getByHeaderStrictOrIncludes(
+            row,
+            ["Среднесуточные продажи, руб. за 28дн"],
+            ["среднесуточные продажи, руб"]
+          )
         ),
         avgDailySalesQty28: toNumber(
-          getByHeader(row, [
-            "Среднесуточные продажи, шт. за 28дн",
-            "Среднесуточные продажи, шт за 28дн",
-          ])
+          getByHeaderStrictOrIncludes(
+            row,
+            [
+              "Среднесуточные продажи, шт. за 28дн",
+              "Среднесуточные продажи, шт за 28дн",
+            ],
+            ["среднесуточные продажи, шт"]
+          )
         ),
 
-        productFlag: toText(getByHeader(row, ["Признак товара"])),
+        productFlag: toText(
+          getByHeaderStrictOrIncludes(row, ["Признак товара"], ["признак товара"])
+        ),
 
-        daysToStockEndFbo: toNumber(getByHeader(row, ["До конца остатка FBO, дн"])),
-        daysToStockEndFbs: toNumber(getByHeader(row, ["До конца остатка FBS, дн"])),
+        daysToStockEndFbo: toNumber(
+          getByHeaderStrictOrIncludes(
+            row,
+            ["До конца остатка FBO, дн"],
+            ["до конца остатка fbo"]
+          )
+        ),
+        daysToStockEndFbs: toNumber(
+          getByHeaderStrictOrIncludes(
+            row,
+            ["До конца остатка FBS, дн"],
+            ["до конца остатка fbs"]
+          )
+        ),
 
-        fboStockQty: toNullableInt(getByHeader(row, ["Остаток FBO, шт"])),
-        fbsStockQty: toNullableInt(getByHeader(row, ["Остаток FBS, шт"])),
+        fboStockQty: toNullableInt(
+          getByHeaderStrictOrIncludes(row, ["Остаток FBO, шт"], ["остаток fbo"])
+        ),
+        fbsStockQty: toNullableInt(
+          getByHeaderStrictOrIncludes(row, ["Остаток FBS, шт"], ["остаток fbs"])
+        ),
 
         inTransitToOzonQty: toNullableInt(
-          getByHeader(row, ["Товары в пути на склад Ozon, шт"])
+          getByHeaderStrictOrIncludes(
+            row,
+            ["Товары в пути на склад Ozon, шт"],
+            ["товары в пути"]
+          )
         ),
       };
     })

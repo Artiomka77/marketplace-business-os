@@ -143,22 +143,19 @@ export async function POST(req: Request) {
       defval: "",
     });
 
-    const marketplace =
-      detection.reportType === "OZON_WAREHOUSE_STOCK"
-        ? "INTERNAL"
-        : detection.reportType.startsWith("WB")
-          ? "WILDBERRIES"
-          : detection.reportType.startsWith("OZON")
-            ? "OZON"
-            : detection.reportType === "PRODUCT_COST"
-              ? "INTERNAL"
-              : detection.reportType === "FINANCE_TRANSACTIONS"
+    const marketplace = detection.reportType.startsWith("WB")
+      ? "WILDBERRIES"
+      : detection.reportType.startsWith("OZON")
+        ? "OZON"
+        : detection.reportType === "PRODUCT_COST"
+          ? "INTERNAL"
+          : detection.reportType === "FINANCE_TRANSACTIONS"
+            ? "FINANCE"
+            : detection.reportType === "FINANCE_CATEGORIES"
+              ? "FINANCE"
+              : detection.reportType === "LOANS"
                 ? "FINANCE"
-                : detection.reportType === "FINANCE_CATEGORIES"
-                  ? "FINANCE"
-                  : detection.reportType === "LOANS"
-                    ? "FINANCE"
-                    : "UNKNOWN";
+                : "UNKNOWN";
 
     const needsCompanyName =
       detection.reportType.startsWith("WB") ||
@@ -277,6 +274,35 @@ export async function POST(req: Request) {
         companyName
       );
       normalizedRows = result.savedRows;
+
+      if (normalizedRows === 0) {
+        await prisma.importSession.update({
+          where: {
+            id: importSession.id,
+          },
+          data: {
+            status: "ERROR",
+          },
+        });
+
+        return NextResponse.json(
+          {
+            success: false,
+            error:
+              "Файл распознан как Ozon — Планирование поставок, но не удалось сохранить строки. Проверьте заголовки: SKU, Артикул, Кластер, Рекомендуемая поставка.",
+            reportType: detection.reportType,
+            marketplace,
+            companyName,
+            sheet: detection.sheetName,
+            headerRowIndex: detection.headerRowIndex + 1,
+            matchedColumns: detection.matchedColumns,
+            rows: data.length,
+            normalizedRows,
+            preview: data.slice(0, 5),
+          },
+          { status: 422 }
+        );
+      }
     }
 
     if (detection.reportType === "OZON_WAREHOUSE_STOCK") {
