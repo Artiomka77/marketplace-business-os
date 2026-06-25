@@ -221,6 +221,46 @@ function getWbConservativeTargetQty(abc: AbcCategory) {
   return 0;
 }
 
+function getWbGeoTargetDays(abc: AbcCategory) {
+  if (abc === "A") return 14;
+  if (abc === "B") return 7;
+  return 0;
+}
+
+function getWbGeoConfidenceMultiplier(observedDays: number) {
+  if (observedDays >= 30) return 1;
+  if (observedDays >= 14) return 0.85;
+  if (observedDays >= 7) return 0.7;
+  return 0.5;
+}
+
+function getWbGeoSupplyKey(params: {
+  companyName?: string | null;
+  article?: string | null;
+  size?: string | null;
+  warehouseName?: string | null;
+}) {
+  const companyKey = normalizeSearchValue(params.companyName);
+  const articleKey = normalizeSupplyArticle(params.article);
+  const sizeKey = normalizeSupplySize(params.size);
+  const warehouseKey = normalizeSearchValue(params.warehouseName);
+
+  return companyKey && articleKey && warehouseKey
+    ? `${companyKey}::${articleKey}::${sizeKey}::${warehouseKey}`
+    : "";
+}
+
+function compactList(values: Iterable<string>, limit = 5) {
+  const list = Array.from(values).filter(Boolean);
+
+  if (list.length === 0) return "нет данных";
+
+  const shown = list.slice(0, limit).join(", ");
+  const hidden = list.length - limit;
+
+  return hidden > 0 ? `${shown} + ещё ${hidden}` : shown;
+}
+
 function formatDecimal(value: number) {
   return value.toLocaleString("ru-RU", {
     maximumFractionDigits: 2,
@@ -621,8 +661,16 @@ async function buildSupplyPlanRows(url: URL) {
     }
   }
 
-  const [rawWbStocks, ozonStocks, ozonSupplyRecommendations, warehouseStocks] =
-    await Promise.all([
+  const wbDailySaleDateFrom = new Date(`${dateFrom}T00:00:00.000Z`);
+  const wbDailySaleDateTo = new Date(`${dateTo}T23:59:59.999Z`);
+
+  const [
+    rawWbStocks,
+    ozonStocks,
+    ozonSupplyRecommendations,
+    wbDailySalesRows,
+    warehouseStocks,
+  ] = await Promise.all([
       prisma.wbStock.findMany({
         where: {
           companyName: companyWhere,
@@ -688,6 +736,33 @@ async function buildSupplyPlanRows(url: URL) {
           fboStockQty: true,
           fbsStockQty: true,
           inTransitToOzonQty: true,
+        },
+      }),
+      prisma.wbSale.findMany({
+        where: {
+          companyName: companyWhere,
+          reportNumber: {
+            startsWith: "WB_DAILY_STATISTICS_",
+          },
+          saleDate: {
+            gte: wbDailySaleDateFrom,
+            lte: wbDailySaleDateTo,
+          },
+        },
+        orderBy: [{ saleDate: "asc" }],
+        select: {
+          companyName: true,
+          vendorCode: true,
+          nmId: true,
+          barcode: true,
+          size: true,
+          warehouseName: true,
+          countryName: true,
+          oblastOkrugName: true,
+          regionName: true,
+          saleDate: true,
+          quantity: true,
+          wbRealizedAmount: true,
         },
       }),
       prisma.ozonWarehouseStock.findMany({
@@ -1112,44 +1187,110 @@ async function buildSupplyPlanRows(url: URL) {
     });
   }
 
-  const wbCalculatedGroups = new Map<
+  const wbStockQtyByWarehouseKey = new Map<string, number>();
+
+  function registerWbStockQty(params: {
+    companyName?: string | null;
+    article?: string | null;
+    size?: string | null;
+    warehouseName?: string | null;
+    qty: number;
+  }) {
+    const key = getWbGeoSupplyKey(params);
+
+    if (!key) return;
+
+    wbStockQtyByWarehouseKey.set(key, (wbStockQtyByWarehouseKey.get(key) ?? 0) + params.qty);
+  }
+
+  for (const stock of rawWbStocks) {
+    if (!stock.warehouseName || stock.warehouseName === "__TOTAL__") continue;
+
+    const stockCompanyName = normalizeKey(stock.companyName) || "Без компании";
+    const vendorCode = normalizeKey(stock.vendorCode);
+    const nmId = normalizeKey(stock.nmId);
+    const size = normalizeKey(stock.size) || inferSizeFromVendorCode(vendorCode);
+    const qty = toNumber(stock.warehouseQty);
+
+    for (const article of [nmId, vendorCode]) {
+      registerWbStockQty({
+        companyName: stockCompanyName,
+        article,
+        size,
+        warehouseName: stock.warehouseName,
+        qty,
+      });
+    }
+  }
+
+  const wbGeoDemandGroups = new Map<
     string,
     {
       companyName: string;
       vendorCode: string;
       nmId: string;
       size: string | null;
+      warehouseName: string;
+      countryNames: Set<string>;
+      oblastNames: Set<string>;
+      regionNames: Set<string>;
+      days: Set<string>;
+      grossSalesQty: number;
+      returnsQty: number;
+      netSalesQty: number;
+      salesAmount: number;
       currentQty: number;
-      warehouses: Set<string>;
       abc: StockAbcInfo | null;
     }
   >();
 
-  for (const stock of rawWbStocks) {
-    if (!stock.warehouseName || stock.warehouseName === "__TOTAL__") continue;
-
-    const vendorCode = normalizeKey(stock.vendorCode);
-    const nmId = normalizeKey(stock.nmId);
-    const size = normalizeKey(stock.size) || inferSizeFromVendorCode(vendorCode);
+  for (const sale of wbDailySalesRows) {
+    const companyName = normalizeKey(sale.companyName) || "Без компании";
+    const vendorCode = normalizeKey(sale.vendorCode);
+    const nmId = normalizeKey(sale.nmId);
     const articleKey = nmId || vendorCode;
-    const groupCompanyName = normalizeKey(stock.companyName) || "Без компании";
+    const size = normalizeKey(sale.size) || inferSizeFromVendorCode(vendorCode);
+    const warehouseName = normalizeKey(sale.warehouseName);
+    const quantity = toNumber(sale.quantity);
 
-    if (!articleKey) continue;
+    if (!articleKey || !warehouseName || quantity === 0) continue;
 
-    const groupKey = `${normalizeSearchValue(groupCompanyName)}::${normalizeSupplyArticle(
-      articleKey
-    )}::${normalizeSupplySize(size)}`;
+    const groupKey = getWbGeoSupplyKey({
+      companyName,
+      article: articleKey,
+      size,
+      warehouseName,
+    });
+
+    if (!groupKey) continue;
+
     const currentGroup =
-      wbCalculatedGroups.get(groupKey) ??
+      wbGeoDemandGroups.get(groupKey) ??
       ({
-        companyName: groupCompanyName,
+        companyName,
         vendorCode,
         nmId,
         size,
-        currentQty: 0,
-        warehouses: new Set<string>(),
+        warehouseName,
+        countryNames: new Set<string>(),
+        oblastNames: new Set<string>(),
+        regionNames: new Set<string>(),
+        days: new Set<string>(),
+        grossSalesQty: 0,
+        returnsQty: 0,
+        netSalesQty: 0,
+        salesAmount: 0,
+        currentQty:
+          wbStockQtyByWarehouseKey.get(
+            getWbGeoSupplyKey({
+              companyName,
+              article: articleKey,
+              size,
+              warehouseName,
+            })
+          ) ?? 0,
         abc: findStockAbc(wbAbcMap, {
-          companyName: groupCompanyName,
+          companyName,
           articles: [nmId, vendorCode],
         }),
       } satisfies {
@@ -1157,24 +1298,58 @@ async function buildSupplyPlanRows(url: URL) {
         vendorCode: string;
         nmId: string;
         size: string | null;
+        warehouseName: string;
+        countryNames: Set<string>;
+        oblastNames: Set<string>;
+        regionNames: Set<string>;
+        days: Set<string>;
+        grossSalesQty: number;
+        returnsQty: number;
+        netSalesQty: number;
+        salesAmount: number;
         currentQty: number;
-        warehouses: Set<string>;
         abc: StockAbcInfo | null;
       });
-
-    currentGroup.currentQty += toNumber(stock.warehouseQty);
-    currentGroup.warehouses.add(stock.warehouseName);
 
     if (!currentGroup.vendorCode && vendorCode) currentGroup.vendorCode = vendorCode;
     if (!currentGroup.nmId && nmId) currentGroup.nmId = nmId;
     if (!currentGroup.size && size) currentGroup.size = size;
 
-    wbCalculatedGroups.set(groupKey, currentGroup);
+    const countryName = normalizeKey(sale.countryName);
+    const oblastName = normalizeKey(sale.oblastOkrugName);
+    const regionName = normalizeKey(sale.regionName);
+
+    if (countryName) currentGroup.countryNames.add(countryName);
+    if (oblastName) currentGroup.oblastNames.add(oblastName);
+    if (regionName) currentGroup.regionNames.add(regionName);
+
+    if (sale.saleDate) {
+      currentGroup.days.add(formatDateInput(sale.saleDate));
+    }
+
+    if (quantity > 0) currentGroup.grossSalesQty += quantity;
+    if (quantity < 0) currentGroup.returnsQty += Math.abs(quantity);
+
+    currentGroup.netSalesQty += quantity;
+    currentGroup.salesAmount += toNumber(sale.wbRealizedAmount);
+
+    wbGeoDemandGroups.set(groupKey, currentGroup);
   }
 
-  for (const group of wbCalculatedGroups.values()) {
+  for (const group of wbGeoDemandGroups.values()) {
     const abcByProfit = group.abc?.abcByProfit ?? "C";
-    const targetQty = getWbConservativeTargetQty(abcByProfit);
+    const targetDays = getWbGeoTargetDays(abcByProfit);
+
+    if (targetDays <= 0) continue;
+
+    const observedDays = Math.max(1, group.days.size);
+    const demandQty = Math.max(0, group.netSalesQty);
+
+    if (demandQty <= 0) continue;
+
+    const avgDailySalesQty = demandQty / observedDays;
+    const confidenceMultiplier = getWbGeoConfidenceMultiplier(observedDays);
+    const targetQty = Math.ceil(avgDailySalesQty * targetDays * confidenceMultiplier);
     const rawWantedQty = Math.max(0, targetQty - group.currentQty);
 
     if (rawWantedQty <= 0) continue;
@@ -1207,9 +1382,9 @@ async function buildSupplyPlanRows(url: URL) {
     });
 
     supplyPlanCandidates.push({
-      key: `wb-calculated-${normalizeSearchValue(group.companyName)}-${normalizeSupplyArticle(
+      key: `wb-geo-${normalizeSearchValue(group.companyName)}-${normalizeSupplyArticle(
         group.nmId || group.vendorCode
-      )}-${normalizeSupplySize(group.size)}`,
+      )}-${normalizeSupplySize(group.size)}-${normalizeSearchValue(group.warehouseName)}`,
       marketplace: "WB",
       priority,
       companyName: group.companyName,
@@ -1217,21 +1392,26 @@ async function buildSupplyPlanRows(url: URL) {
       sku: null,
       size: group.size,
       productName: ownItem?.productName ?? null,
-      targetName: "WB / общий запас",
+      targetName: `WB / ${group.warehouseName}`,
       currentQty: group.currentQty,
       ownItemKey: ownItem?.key ?? null,
       wantedQty,
       ownInitialQty,
-      avgDailySalesQty: null,
-      daysWithoutStock: null,
+      avgDailySalesQty,
+      daysWithoutStock: group.currentQty <= 0 ? observedDays : null,
       abc: group.abc,
-      reason: `Осторожная рекомендация WB: общий остаток по WB ниже безопасного минимума для ABC ${abcByProfit}.`,
+      reason: `WB география спроса: за ${formatNumber(observedDays)} дн. чистые продажи ${formatNumber(
+        demandQty
+      )} шт., текущий остаток на складе ${formatNumber(group.currentQty)} шт.`,
       details: [
-        "WB: это не распределение по городам/кластерам. Пока нет географии заказов, система не раскидывает товар по каждому складу WB.",
-        `Безопасный минимум: ${formatNumber(targetQty)} шт. на артикул/размер по всем складам WB.`,
-        `Текущий общий остаток WB: ${formatNumber(group.currentQty)} шт.`,
-        `Склады с остатками/строками: ${Array.from(group.warehouses).slice(0, 8).join(", ")}`,
-        "Сопоставление со своим складом: Ozon-артикул в колонке “Артикул” + размер.",
+        `Направление: склад WB “${group.warehouseName}”.`,
+        `Регионы спроса: ${compactList(group.regionNames.size > 0 ? group.regionNames : group.oblastNames)}.`,
+        `Страны: ${compactList(group.countryNames, 3)}.`,
+        `Продажи: ${formatNumber(group.grossSalesQty)} шт.; возвраты: ${formatNumber(group.returnsQty)} шт.; чистый спрос: ${formatNumber(demandQty)} шт.`,
+        `Среднесуточный спрос: ${formatDecimal(avgDailySalesQty)} шт/день.`,
+        `Целевой запас для ABC ${abcByProfit}: ${formatNumber(targetDays)} дн.`,
+        `Коэффициент осторожности по периоду ${formatNumber(observedDays)} дн.: ${formatDecimal(confidenceMultiplier)}.`,
+        "Если по направлению нет продаж/выкупов, рекомендация WB не создаётся.",
       ],
     });
   }
