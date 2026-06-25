@@ -1695,6 +1695,135 @@ function supplyWantedQty(rows: SupplyPlanRow[]) {
   return rows.reduce((sum, row) => sum + Math.max(0, row.wantedQty), 0);
 }
 
+const PRODUCTION_LEAD_TIME_DAYS = 15;
+
+type ProductionPlanRow = {
+  key: string;
+  companyName: string;
+  vendorCode: string;
+  sku: string | null;
+  size: string | null;
+  productName: string | null;
+  imageUrl: string | null;
+  marketplaces: SupplyPlanMarketplace[];
+  targets: string[];
+  abc: StockAbcInfo | null;
+  wantedQty: number;
+  recommendedQty: number;
+  deficitQty: number;
+  leadTimeBufferQty: number;
+  productionQty: number;
+  avgDailySalesQty: number;
+};
+
+function getProductionArticleKey(row: SupplyPlanRow) {
+  const baseArticle = getMarketplaceBaseArticle(row.vendorCode);
+  const rootArticle = getSupplierArticleRoot(row.vendorCode);
+
+  return normalizeSupplyArticle(baseArticle || rootArticle || row.vendorCode || row.sku);
+}
+
+function getProductionPlanRows(rows: SupplyPlanRow[]) {
+  const groups = new Map<
+    string,
+    ProductionPlanRow & {
+      marketplaceSet: Set<SupplyPlanMarketplace>;
+      targetSet: Set<string>;
+    }
+  >();
+
+  for (const row of rows) {
+    const abcByProfit = row.abc?.abcByProfit ?? "C";
+
+    // План пошива делаем только по категории A: это товары, где отсутствие остатка
+    // быстрее всего превращается в потерю продаж и денег.
+    if (abcByProfit !== "A") continue;
+
+    const deficitQty = Math.max(0, row.wantedQty - row.recommendedQty);
+
+    if (deficitQty <= 0) continue;
+
+    const articleKey = getProductionArticleKey(row);
+    const sizeKey = normalizeSupplySize(row.size);
+
+    if (!articleKey) continue;
+
+    const groupKey = `${normalizeSearchValue(row.companyName)}::${articleKey}::${sizeKey}`;
+    const avgDailySalesQty = Math.max(0, row.avgDailySalesQty ?? 0);
+    const leadTimeBufferQty = Math.ceil(avgDailySalesQty * PRODUCTION_LEAD_TIME_DAYS);
+    const productionQty = deficitQty + leadTimeBufferQty;
+    const current =
+      groups.get(groupKey) ??
+      ({
+        key: groupKey,
+        companyName: row.companyName,
+        vendorCode: row.vendorCode,
+        sku: row.sku,
+        size: row.size,
+        productName: row.productName,
+        imageUrl: row.imageUrl,
+        marketplaces: [],
+        targets: [],
+        abc: row.abc,
+        wantedQty: 0,
+        recommendedQty: 0,
+        deficitQty: 0,
+        leadTimeBufferQty: 0,
+        productionQty: 0,
+        avgDailySalesQty: 0,
+        marketplaceSet: new Set<SupplyPlanMarketplace>(),
+        targetSet: new Set<string>(),
+      } satisfies ProductionPlanRow & {
+        marketplaceSet: Set<SupplyPlanMarketplace>;
+        targetSet: Set<string>;
+      });
+
+    current.marketplaceSet.add(row.marketplace);
+    current.targetSet.add(row.targetName);
+    current.wantedQty += Math.max(0, row.wantedQty);
+    current.recommendedQty += Math.max(0, row.recommendedQty);
+    current.deficitQty += deficitQty;
+    current.leadTimeBufferQty += leadTimeBufferQty;
+    current.productionQty += productionQty;
+    current.avgDailySalesQty += avgDailySalesQty;
+
+    if (!current.productName && row.productName) current.productName = row.productName;
+    if (!current.imageUrl && row.imageUrl) current.imageUrl = row.imageUrl;
+    if (!current.sku && row.sku) current.sku = row.sku;
+    if (!current.size && row.size) current.size = row.size;
+
+    groups.set(groupKey, current);
+  }
+
+  return Array.from(groups.values())
+    .map((row) => ({
+      ...row,
+      marketplaces: Array.from(row.marketplaceSet).sort(),
+      targets: Array.from(row.targetSet).sort((a, b) =>
+        a.localeCompare(b, "ru", {
+          numeric: true,
+          sensitivity: "base",
+        })
+      ),
+    }))
+    .sort((a, b) => {
+      const bothDiff =
+        Number(b.marketplaces.length > 1) - Number(a.marketplaces.length > 1);
+
+      if (bothDiff !== 0) return bothDiff;
+
+      if (b.productionQty !== a.productionQty) {
+        return b.productionQty - a.productionQty;
+      }
+
+      return b.deficitQty - a.deficitQty;
+    });
+}
+
+function productionPlanSummaryQty(rows: ProductionPlanRow[]) {
+  return rows.reduce((sum, row) => sum + Math.max(0, row.productionQty), 0);
+}
+
 function SupplyPlanningBlock({
   rows,
   params,
@@ -1790,6 +1919,9 @@ function SupplyPlanningBlock({
   const ozonRows = rows.filter((row) => row.marketplace === "OZON");
   const wbRows = rows.filter((row) => row.marketplace === "WB");
   const criticalRows = filteredRows.filter((row) => row.priority === "HIGH");
+  const productionPlanRows = getProductionPlanRows(filteredRows);
+  const visibleProductionPlanRows = productionPlanRows.slice(0, 8);
+  const productionPlanQty = productionPlanSummaryQty(productionPlanRows);
 
   return (
     <section className="overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-sm">
@@ -2019,10 +2151,147 @@ function SupplyPlanningBlock({
             </div>
           </form>
 
+          {productionPlanRows.length > 0 ? (
+            <div className="mt-4 overflow-hidden rounded-[24px] border border-amber-200 bg-amber-50/70 ring-1 ring-amber-100">
+              <div className="flex flex-col gap-3 border-b border-amber-100 p-4 lg:flex-row lg:items-start lg:justify-between">
+                <div>
+                  <div className="inline-flex rounded-full bg-white px-3 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-amber-700 ring-1 ring-amber-200">
+                    План пошива
+                  </div>
+                  <h3 className="mt-2 text-lg font-black text-slate-950">
+                    Что нужно заказать в пошив
+                  </h3>
+                  <p className="mt-1 max-w-3xl text-xs font-bold leading-5 text-slate-500">
+                    Показываем товары ABC A, где есть спрос и рекомендация к поставке, но собственного остатка не хватает. Расчёт учитывает дефицит к отгрузке и буфер на {PRODUCTION_LEAD_TIME_DAYS} дней до поступления партии на склад.
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-3 gap-2 text-center sm:min-w-[360px]">
+                  <div className="rounded-2xl bg-white p-3 ring-1 ring-amber-100">
+                    <div className="text-[10px] font-black uppercase text-slate-400">К пошиву</div>
+                    <div className="mt-1 text-xl font-black text-slate-950">
+                      {formatNumber(productionPlanQty)}
+                    </div>
+                    <div className="text-[11px] font-bold text-slate-500">шт.</div>
+                  </div>
+                  <div className="rounded-2xl bg-white p-3 ring-1 ring-amber-100">
+                    <div className="text-[10px] font-black uppercase text-slate-400">Позиций</div>
+                    <div className="mt-1 text-xl font-black text-slate-950">
+                      {formatNumber(productionPlanRows.length)}
+                    </div>
+                    <div className="text-[11px] font-bold text-slate-500">товар/размер</div>
+                  </div>
+                  <div className="rounded-2xl bg-white p-3 ring-1 ring-amber-100">
+                    <div className="text-[10px] font-black uppercase text-slate-400">Срок</div>
+                    <div className="mt-1 text-xl font-black text-slate-950">
+                      {formatNumber(PRODUCTION_LEAD_TIME_DAYS)}
+                    </div>
+                    <div className="text-[11px] font-bold text-slate-500">дней</div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full table-fixed border-collapse text-left text-xs">
+                  <thead className="bg-white/70 text-[10px] font-black uppercase tracking-[0.08em] text-slate-400">
+                    <tr>
+                      <th className="w-[30%] px-4 py-3">Товар</th>
+                      <th className="w-[8%] px-3 py-3">Размер</th>
+                      <th className="w-[14%] px-3 py-3">Каналы</th>
+                      <th className="w-[20%] px-3 py-3">Направления</th>
+                      <th className="w-[10%] px-3 py-3 text-right">Дефицит</th>
+                      <th className="w-[10%] px-3 py-3 text-right">Буфер 15 дн.</th>
+                      <th className="w-[8%] px-3 py-3 text-right">К пошиву</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-amber-100 bg-white/40">
+                    {visibleProductionPlanRows.map((row) => {
+                      const tooltip = [
+                        `Компания: ${row.companyName}`,
+                        `Артикул: ${row.vendorCode}`,
+                        row.sku ? `SKU: ${row.sku}` : null,
+                        `Размер: ${row.size ?? "—"}`,
+                        `Каналы: ${row.marketplaces.join(" + ")}`,
+                        `Дефицит к отгрузке: ${formatNumber(row.deficitQty)} шт.`,
+                        `Среднесуточный спрос: ${formatDecimal(row.avgDailySalesQty)} шт/день`,
+                        `Буфер на ${formatNumber(PRODUCTION_LEAD_TIME_DAYS)} дней: ${formatNumber(row.leadTimeBufferQty)} шт.`,
+                        `Рекомендация к пошиву: ${formatNumber(row.productionQty)} шт.`,
+                      ]
+                        .filter(Boolean)
+                        .join("\n");
+
+                      return (
+                        <tr key={row.key} className="align-middle hover:bg-white/70" title={tooltip}>
+                          <td className="px-4 py-3">
+                            <div className="flex min-w-0 items-center gap-3">
+                              {row.imageUrl ? (
+                                <img
+                                  src={row.imageUrl}
+                                  alt="Фото товара"
+                                  className="h-10 w-10 shrink-0 rounded-2xl border border-amber-100 bg-white object-cover"
+                                />
+                              ) : (
+                                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-amber-100 bg-white text-[10px] font-black text-slate-300">
+                                  фото
+                                </div>
+                              )}
+                              <div className="min-w-0">
+                                <div className="line-clamp-1 font-black text-slate-950">
+                                  {row.companyName}
+                                </div>
+                                <div className="line-clamp-1 break-all text-xs font-black text-slate-600">
+                                  {row.vendorCode}
+                                </div>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="px-3 py-3 font-black text-slate-700">{row.size ?? "—"}</td>
+                          <td className="px-3 py-3">
+                            <div className="flex flex-wrap gap-1">
+                              {row.marketplaces.map((marketplace) => (
+                                <span
+                                  key={marketplace}
+                                  className={`inline-flex rounded-full px-2 py-1 text-[10px] font-black ring-1 ${marketplaceSupplyClass(marketplace)}`}
+                                >
+                                  {marketplace === "OZON" ? "Ozon" : "WB"}
+                                </span>
+                              ))}
+                            </div>
+                          </td>
+                          <td className="px-3 py-3">
+                            <div className="line-clamp-2 text-xs font-bold leading-4 text-slate-600">
+                              {row.targets.slice(0, 3).join(", ")}
+                              {row.targets.length > 3 ? ` +${row.targets.length - 3}` : ""}
+                            </div>
+                          </td>
+                          <td className="px-3 py-3 text-right font-black text-slate-800">
+                            {formatNumber(row.deficitQty)}
+                          </td>
+                          <td className="px-3 py-3 text-right font-black text-slate-800">
+                            {formatNumber(row.leadTimeBufferQty)}
+                          </td>
+                          <td className="px-3 py-3 text-right text-base font-black text-amber-700">
+                            {formatNumber(row.productionQty)}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              {productionPlanRows.length > visibleProductionPlanRows.length ? (
+                <div className="border-t border-amber-100 bg-white/50 px-4 py-3 text-xs font-bold text-slate-500">
+                  Показаны первые {formatNumber(visibleProductionPlanRows.length)} позиций из {formatNumber(productionPlanRows.length)}. Для полного списка отфильтруйте план поставок по ABC A или увеличьте количество строк.
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+
           <div className="mt-4 flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
             <div className="max-w-3xl text-sm font-bold leading-6 text-slate-500">
-  Что и куда отгрузить со своего склада с учётом спроса, остатков маркетплейсов и доступного товара. Официальный файл Ozon “Планирование поставок” можно загрузить здесь же.
-</div>
+              Что и куда отгрузить со своего склада с учётом спроса, остатков маркетплейсов и доступного товара. Официальный файл Ozon “Планирование поставок” можно загрузить здесь же.
+            </div>
 
             <div className="flex flex-wrap gap-2">
               <Link
