@@ -126,6 +126,42 @@ function getMarketplaceBaseArticle(value: unknown) {
   return /^\d+$/.test(baseArticle) ? baseArticle : "";
 }
 
+function registerUniqueArticleCompany(
+  map: Map<string, string | null>,
+  article: unknown,
+  companyName: unknown
+) {
+  const company = normalizeKey(companyName);
+
+  if (!company) return;
+
+  for (const articleKey of getSupplyArticleCandidates(article)) {
+    const existingCompany = map.get(articleKey);
+
+    if (existingCompany === undefined) {
+      map.set(articleKey, company);
+      continue;
+    }
+
+    if (existingCompany !== company) {
+      map.set(articleKey, null);
+    }
+  }
+}
+
+function findUniqueCompanyByArticle(
+  map: Map<string, string | null>,
+  article: unknown
+) {
+  for (const articleKey of getSupplyArticleCandidates(article)) {
+    const company = map.get(articleKey);
+
+    if (company) return company;
+  }
+
+  return null;
+}
+
 function getSupplierArticleRoot(value: unknown) {
   const vendorCode = normalizeKey(value);
 
@@ -174,9 +210,15 @@ function getInclusiveDateRangeDays(dateFrom: string, dateTo: string) {
 }
 
 function getOzonCalculatedTargetDays(abc: AbcCategory) {
-  if (abc === "A") return 28;
-  if (abc === "B") return 21;
-  return 14;
+  if (abc === "A") return 21;
+  if (abc === "B") return 14;
+  return 7;
+}
+
+function getWbConservativeTargetQty(abc: AbcCategory) {
+  if (abc === "A") return 36;
+  if (abc === "B") return 20;
+  return 0;
 }
 
 function formatDecimal(value: number) {
@@ -880,6 +922,34 @@ async function buildSupplyPlanRows(url: URL) {
     });
   }
 
+  const ozonArticleCompanyByArticleKey = new Map<string, string | null>();
+
+  for (const stock of ozonStocks) {
+    registerUniqueArticleCompany(
+      ozonArticleCompanyByArticleKey,
+      stock.vendorCode,
+      stock.companyName
+    );
+    registerUniqueArticleCompany(
+      ozonArticleCompanyByArticleKey,
+      stock.sku,
+      stock.companyName
+    );
+  }
+
+  for (const stock of warehouseStocks) {
+    registerUniqueArticleCompany(
+      ozonArticleCompanyByArticleKey,
+      stock.vendorCode,
+      stock.companyName
+    );
+    registerUniqueArticleCompany(
+      ozonArticleCompanyByArticleKey,
+      stock.sku,
+      stock.companyName
+    );
+  }
+
   const ozonStockQtyByArticleKey = new Map<string, number>();
 
   for (const stock of ozonStocks) {
@@ -918,7 +988,16 @@ async function buildSupplyPlanRows(url: URL) {
 
   for (const row of ozonProfitAnalytics.rows) {
     const vendorCode = normalizeKey(row.vendorCode);
-    const rowCompany = rowCompanyName(row, companyName) ?? "Без компании";
+    const inferredCompanyName =
+      findUniqueCompanyByArticle(ozonArticleCompanyByArticleKey, vendorCode) ??
+      findUniqueCompanyByArticle(
+        ozonArticleCompanyByArticleKey,
+        getMarketplaceBaseArticle(vendorCode)
+      );
+    const rowCompany =
+      rowCompanyName(row, companyName) ??
+      inferredCompanyName ??
+      "Без компании";
     const netSalesQty = Math.max(0, toNumber(row.netSalesQty));
 
     if (!vendorCode || netSalesQty <= 0) continue;
@@ -1033,67 +1112,126 @@ async function buildSupplyPlanRows(url: URL) {
     });
   }
 
+  const wbCalculatedGroups = new Map<
+    string,
+    {
+      companyName: string;
+      vendorCode: string;
+      nmId: string;
+      size: string | null;
+      currentQty: number;
+      warehouses: Set<string>;
+      abc: StockAbcInfo | null;
+    }
+  >();
+
   for (const stock of rawWbStocks) {
     if (!stock.warehouseName || stock.warehouseName === "__TOTAL__") continue;
 
     const vendorCode = normalizeKey(stock.vendorCode);
     const nmId = normalizeKey(stock.nmId);
     const size = normalizeKey(stock.size) || inferSizeFromVendorCode(vendorCode);
+    const articleKey = nmId || vendorCode;
+    const groupCompanyName = normalizeKey(stock.companyName) || "Без компании";
 
-    if (!vendorCode && !nmId) continue;
+    if (!articleKey) continue;
 
-    const currentQty = toNumber(stock.warehouseQty) || toNumber(stock.totalStock);
-    const abc = findStockAbc(wbAbcMap, {
-      companyName: stock.companyName,
-      articles: [nmId, vendorCode],
-    });
-
-    const abcByProfit = abc?.abcByProfit ?? "C";
-    const targetQty = abcByProfit === "A" ? 18 : abcByProfit === "B" ? 10 : 0;
-    const wantedQty = Math.max(0, targetQty - currentQty);
-
-    if (wantedQty <= 0) continue;
-
-    const ownItem = findOwnSupplyItem({
-      companyName: stock.companyName,
-      articles: [
+    const groupKey = `${normalizeSearchValue(groupCompanyName)}::${normalizeSupplyArticle(
+      articleKey
+    )}::${normalizeSupplySize(size)}`;
+    const currentGroup =
+      wbCalculatedGroups.get(groupKey) ??
+      ({
+        companyName: groupCompanyName,
         vendorCode,
         nmId,
-        getMarketplaceBaseArticle(vendorCode),
-        getSupplierArticleRoot(vendorCode),
-      ],
-      size,
-    });
+        size,
+        currentQty: 0,
+        warehouses: new Set<string>(),
+        abc: findStockAbc(wbAbcMap, {
+          companyName: groupCompanyName,
+          articles: [nmId, vendorCode],
+        }),
+      } satisfies {
+        companyName: string;
+        vendorCode: string;
+        nmId: string;
+        size: string | null;
+        currentQty: number;
+        warehouses: Set<string>;
+        abc: StockAbcInfo | null;
+      });
 
+    currentGroup.currentQty += toNumber(stock.warehouseQty);
+    currentGroup.warehouses.add(stock.warehouseName);
+
+    if (!currentGroup.vendorCode && vendorCode) currentGroup.vendorCode = vendorCode;
+    if (!currentGroup.nmId && nmId) currentGroup.nmId = nmId;
+    if (!currentGroup.size && size) currentGroup.size = size;
+
+    wbCalculatedGroups.set(groupKey, currentGroup);
+  }
+
+  for (const group of wbCalculatedGroups.values()) {
+    const abcByProfit = group.abc?.abcByProfit ?? "C";
+    const targetQty = getWbConservativeTargetQty(abcByProfit);
+    const rawWantedQty = Math.max(0, targetQty - group.currentQty);
+
+    if (rawWantedQty <= 0) continue;
+
+    const mappedSupplierArticle = findSupplierArticleByWbArticle({
+      companyName: group.companyName,
+      wbArticle: group.nmId || group.vendorCode,
+    });
+    const ownItem = findOwnSupplyItem({
+      companyName: group.companyName,
+      articles: [
+        group.vendorCode,
+        group.nmId,
+        mappedSupplierArticle,
+        getMarketplaceBaseArticle(mappedSupplierArticle ?? group.vendorCode),
+        getSupplierArticleRoot(mappedSupplierArticle ?? group.vendorCode),
+      ],
+      size: group.size,
+    });
     const ownInitialQty = ownItem?.availableQty ?? 0;
+
+    if (ownInitialQty <= 0) continue;
+
+    const wantedQty = Math.min(rawWantedQty, ownInitialQty);
     const priority = getSupplyPriority({
       wantedQty,
       ownAvailableQty: ownInitialQty,
-      currentQty,
-      abc,
+      currentQty: group.currentQty,
+      abc: group.abc,
     });
 
     supplyPlanCandidates.push({
-      key: `wb-supply-${stock.id}`,
+      key: `wb-calculated-${normalizeSearchValue(group.companyName)}-${normalizeSupplyArticle(
+        group.nmId || group.vendorCode
+      )}-${normalizeSupplySize(group.size)}`,
       marketplace: "WB",
       priority,
-      companyName: stock.companyName ?? "Без компании",
-      vendorCode: vendorCode || nmId,
+      companyName: group.companyName,
+      vendorCode: group.vendorCode || group.nmId,
       sku: null,
-      size,
+      size: group.size,
       productName: ownItem?.productName ?? null,
-      targetName: stock.warehouseName,
-      currentQty,
+      targetName: "WB / общий запас",
+      currentQty: group.currentQty,
       ownItemKey: ownItem?.key ?? null,
       wantedQty,
       ownInitialQty,
       avgDailySalesQty: null,
       daysWithoutStock: null,
-      abc,
-      reason: `На складе WB “${stock.warehouseName}” остаток ниже целевого уровня для ABC ${abcByProfit}.`,
+      abc: group.abc,
+      reason: `Осторожная рекомендация WB: общий остаток по WB ниже безопасного минимума для ABC ${abcByProfit}.`,
       details: [
-        "WB: сопоставление со своим складом идёт по WB nmId/артикулу, Ozon-артикулу на своём складе и размеру.",
-        "Штрихкод для этого шага не обязателен.",
+        "WB: это не распределение по городам/кластерам. Пока нет географии заказов, система не раскидывает товар по каждому складу WB.",
+        `Безопасный минимум: ${formatNumber(targetQty)} шт. на артикул/размер по всем складам WB.`,
+        `Текущий общий остаток WB: ${formatNumber(group.currentQty)} шт.`,
+        `Склады с остатками/строками: ${Array.from(group.warehouses).slice(0, 8).join(", ")}`,
+        "Сопоставление со своим складом: Ozon-артикул в колонке “Артикул” + размер.",
       ],
     });
   }
