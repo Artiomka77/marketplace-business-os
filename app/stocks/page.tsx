@@ -20,6 +20,13 @@ type StockSearchParams = {
   sizeOpen?: string;
   dateFrom?: string;
   dateTo?: string;
+  supplyOpen?: string;
+  supplyMarketplace?: string;
+  supplyTarget?: string;
+  supplyAbc?: string;
+  supplyPriority?: string;
+  supplyRows?: string;
+  supplyQ?: string;
 };
 
 type StockSource = "ALL" | "WB" | "OZON" | "OWN";
@@ -1302,6 +1309,13 @@ function makeUrl(params: StockSearchParams, patch: Record<string, string | null 
     sizeOpen: params.sizeOpen,
     dateFrom: params.dateFrom,
     dateTo: params.dateTo,
+    supplyOpen: params.supplyOpen,
+    supplyMarketplace: params.supplyMarketplace,
+    supplyTarget: params.supplyTarget,
+    supplyAbc: params.supplyAbc,
+    supplyPriority: params.supplyPriority,
+    supplyRows: params.supplyRows,
+    supplyQ: params.supplyQ,
   };
 
   for (const [key, value] of Object.entries(patch)) {
@@ -1485,153 +1499,486 @@ function CompactAttention({
   );
 }
 
-function SupplyPlanCard({ row }: { row: SupplyPlanRow }) {
+function getSupplyMarketplaceFilter(value?: string): "ALL" | SupplyPlanMarketplace {
+  if (value === "WB" || value === "OZON") return value;
+  return "ALL";
+}
+
+function getSupplyPriorityFilter(value?: string): "ALL" | SupplyPlanPriority {
+  if (value === "HIGH" || value === "MEDIUM" || value === "LOW") return value;
+  return "ALL";
+}
+
+function getSupplyAbcFilter(value?: string): "ALL" | AbcCategory {
+  if (value === "A" || value === "B" || value === "C") return value;
+  return "ALL";
+}
+
+function getSupplyRowsLimit(value: string | undefined, totalRows: number) {
+  if (value === "ALL") return totalRows;
+
+  const parsed = Number(value ?? 20);
+
+  return [20, 50, 100, 200].includes(parsed) ? parsed : 20;
+}
+
+function supplyPlanMatchesSearch(row: SupplyPlanRow, query: string) {
+  const normalizedQuery = normalizeSearchValue(query);
+
+  if (!normalizedQuery) return true;
+
+  const fields = [
+    row.productName,
+    row.vendorCode,
+    row.sku,
+    row.size,
+    row.companyName,
+    row.targetName,
+    row.marketplace,
+    row.priority,
+    row.abc?.abcByProfit,
+    row.reason,
+    ...row.details,
+  ];
+
+  const textHaystack = fields
+    .map((field) => String(field ?? "").toLowerCase().replaceAll("ё", "е"))
+    .join(" ");
+
+  const compactHaystack = normalizeSearchValue(fields.join(" "));
+
   return (
-    <article className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm">
-      <div className="flex items-start gap-3">
-        <ProductPhoto imageUrl={row.imageUrl} title={row.productName ?? row.vendorCode} />
-
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <span
-              className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-black ring-1 ${marketplaceSupplyClass(
-                row.marketplace
-              )}`}
-            >
-              {row.marketplace === "WB" ? "WB" : "Ozon"}
-            </span>
-
-            <span
-              className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-black ring-1 ${priorityBadgeClass(
-                row.priority
-              )}`}
-            >
-              {priorityLabel(row.priority)}
-            </span>
-
-            {row.abc ? <AbcBadge value={row.abc.abcByProfit} compact /> : null}
-          </div>
-
-          <div className="mt-2 line-clamp-2 text-sm font-black leading-5 text-slate-950">
-            {row.productName ?? "Название не загружено"}
-          </div>
-
-          <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] font-black text-slate-500">
-            <span className="break-all">Артикул: {row.vendorCode}</span>
-            {row.sku ? <span>SKU: {row.sku}</span> : null}
-            <span>{row.companyName}</span>
-          </div>
-        </div>
-      </div>
-
-      <div className="mt-3 grid gap-2 sm:grid-cols-3">
-        <div className="rounded-2xl bg-slate-50 p-3 ring-1 ring-slate-100">
-          <div className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">
-            Куда
-          </div>
-          <div className="mt-1 text-sm font-black text-slate-950">
-            {row.targetName}
-          </div>
-          {row.size ? (
-            <div className="mt-1 text-xs font-bold text-slate-500">Размер: {row.size}</div>
-          ) : null}
-        </div>
-
-        <div className="rounded-2xl bg-blue-50 p-3 ring-1 ring-blue-100">
-          <div className="text-[10px] font-black uppercase tracking-[0.12em] text-blue-500">
-            Остаток МП
-          </div>
-          <div className="mt-1 text-sm font-black text-slate-950">
-            {formatNumber(row.currentQty)} шт
-          </div>
-          <div className="mt-1 text-xs font-bold text-slate-500">
-            Нужно: {formatNumber(row.wantedQty)} шт
-          </div>
-        </div>
-
-        <div className="rounded-2xl bg-emerald-50 p-3 ring-1 ring-emerald-100">
-          <div className="text-[10px] font-black uppercase tracking-[0.12em] text-emerald-600">
-            Поставить
-          </div>
-          <div className="mt-1 text-sm font-black text-slate-950">
-            {formatNumber(row.recommendedQty)} шт
-          </div>
-          <div className="mt-1 text-xs font-bold text-slate-500">
-            Было доступно: {formatNumber(row.ownAvailableQty)} шт
-          </div>
-        </div>
-      </div>
-
-      <div className="mt-3 rounded-2xl bg-slate-50 px-3 py-2 text-xs font-bold leading-5 text-slate-600 ring-1 ring-slate-100">
-        {row.reason}
-      </div>
-
-      {row.details.length > 0 ? (
-        <div className="mt-2 flex flex-wrap gap-1.5">
-          {row.details.map((detail) => (
-            <span
-              key={detail}
-              className="inline-flex rounded-full bg-white px-2.5 py-1 text-[11px] font-black text-slate-500 ring-1 ring-slate-200"
-            >
-              {detail}
-            </span>
-          ))}
-        </div>
-      ) : null}
-    </article>
+    textHaystack.includes(String(query).toLowerCase().replaceAll("ё", "е")) ||
+    compactHaystack.includes(normalizedQuery)
   );
 }
 
-function SupplyPlanningBlock({ rows }: { rows: SupplyPlanRow[] }) {
+function getSupplyTargetOptions(rows: SupplyPlanRow[]) {
+  return Array.from(new Set(rows.map((row) => row.targetName).filter(Boolean))).sort(
+    (a, b) =>
+      a.localeCompare(b, "ru", {
+        numeric: true,
+        sensitivity: "base",
+      })
+  );
+}
+
+function supplySummaryQty(rows: SupplyPlanRow[]) {
+  return rows.reduce((sum, row) => sum + Math.max(0, row.recommendedQty), 0);
+}
+
+function SupplyPlanningBlock({
+  rows,
+  params,
+  companyNames,
+}: {
+  rows: SupplyPlanRow[];
+  params: StockSearchParams;
+  companyNames: string[];
+}) {
+  const isOpen = params.supplyOpen === "1";
+  const marketplaceFilter = getSupplyMarketplaceFilter(params.supplyMarketplace);
+  const priorityFilter = getSupplyPriorityFilter(params.supplyPriority);
+  const abcFilter = getSupplyAbcFilter(params.supplyAbc);
+  const targetFilter = normalizeKey(params.supplyTarget);
+  const query = normalizeKey(params.supplyQ);
+
+  const targetOptions = getSupplyTargetOptions(rows);
+
+  const filteredRows = rows.filter((row) => {
+    if (marketplaceFilter !== "ALL" && row.marketplace !== marketplaceFilter) {
+      return false;
+    }
+
+    if (priorityFilter !== "ALL" && row.priority !== priorityFilter) {
+      return false;
+    }
+
+    if (abcFilter !== "ALL" && row.abc?.abcByProfit !== abcFilter) {
+      return false;
+    }
+
+    if (targetFilter && targetFilter !== "ALL" && row.targetName !== targetFilter) {
+      return false;
+    }
+
+    return supplyPlanMatchesSearch(row, query);
+  });
+
+  const rowsLimit = getSupplyRowsLimit(params.supplyRows, filteredRows.length);
+  const visibleRows = filteredRows.slice(0, rowsLimit);
   const ozonRows = rows.filter((row) => row.marketplace === "OZON");
   const wbRows = rows.filter((row) => row.marketplace === "WB");
+  const criticalRows = filteredRows.filter((row) => row.priority === "HIGH");
 
   return (
-    <section className="rounded-[28px] border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
-      <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
-        <div>
-          <div className="inline-flex rounded-full bg-emerald-50 px-3 py-1 text-xs font-black uppercase tracking-[0.12em] text-emerald-700 ring-1 ring-emerald-100">
-            План поставок
-          </div>
-          <h2 className="mt-3 text-2xl font-black tracking-tight text-slate-950">
-            Что отгрузить со своего склада
-          </h2>
-          <p className="mt-2 max-w-4xl text-sm font-semibold leading-6 text-slate-500">
-            Ozon считается по кластерам из файла “Планирование поставок”. WB сейчас считается по остаткам на складах WB. Региональный спрос по городам подключим отдельным шагом, когда появится источник географии заказов.
-          </p>
-        </div>
+    <section className="overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-sm">
+      <div className="p-4 sm:p-5">
+        <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <Link
+                href={makeUrl(params, { supplyOpen: isOpen ? null : "1" })}
+                className="inline-flex items-center gap-2 rounded-full bg-emerald-50 px-3 py-1 text-xs font-black uppercase tracking-[0.12em] text-emerald-700 ring-1 ring-emerald-100 transition hover:bg-emerald-100"
+              >
+                <span>План поставок</span>
+                <span className="text-sm">{isOpen ? "▲" : "▼"}</span>
+              </Link>
 
-        <div className="grid grid-cols-2 gap-2 sm:min-w-[280px]">
-          <div className="rounded-2xl bg-blue-50 p-3 text-center ring-1 ring-blue-100">
-            <div className="text-xs font-black uppercase text-blue-600">Ozon</div>
-            <div className="mt-1 text-xl font-black text-slate-950">
-              {formatNumber(ozonRows.length)}
+              <span className="rounded-full bg-slate-50 px-3 py-1 text-xs font-black text-slate-500 ring-1 ring-slate-200">
+                {isOpen ? "развернут" : "свернут"}
+              </span>
             </div>
+
+            <h2 className="mt-3 text-2xl font-black tracking-tight text-slate-950">
+              Что отгрузить со своего склада
+            </h2>
+            <p className="mt-2 max-w-4xl text-sm font-semibold leading-6 text-slate-500">
+              Сейчас “Куда” строится по складам WB и кластерам Ozon. После подключения
+              продаж по городам и кластерам этот фильтр станет динамическим по реальному
+              спросу: город / регион / кластер / склад, где не хватает товара.
+            </p>
           </div>
-          <div className="rounded-2xl bg-violet-50 p-3 text-center ring-1 ring-violet-100">
-            <div className="text-xs font-black uppercase text-violet-600">WB</div>
-            <div className="mt-1 text-xl font-black text-slate-950">
-              {formatNumber(wbRows.length)}
+
+          <div className="grid grid-cols-2 gap-2 sm:min-w-[440px] sm:grid-cols-4">
+            <div className="rounded-2xl bg-blue-50 p-3 text-center ring-1 ring-blue-100">
+              <div className="text-xs font-black uppercase text-blue-600">Ozon</div>
+              <div className="mt-1 text-xl font-black text-slate-950">
+                {formatNumber(supplySummaryQty(ozonRows))}
+              </div>
+              <div className="text-[11px] font-bold text-slate-500">шт. к поставке</div>
+            </div>
+            <div className="rounded-2xl bg-violet-50 p-3 text-center ring-1 ring-violet-100">
+              <div className="text-xs font-black uppercase text-violet-600">WB</div>
+              <div className="mt-1 text-xl font-black text-slate-950">
+                {formatNumber(supplySummaryQty(wbRows))}
+              </div>
+              <div className="text-[11px] font-bold text-slate-500">шт. к поставке</div>
+            </div>
+            <div className="rounded-2xl bg-emerald-50 p-3 text-center ring-1 ring-emerald-100">
+              <div className="text-xs font-black uppercase text-emerald-700">Всего</div>
+              <div className="mt-1 text-xl font-black text-slate-950">
+                {formatNumber(supplySummaryQty(rows))}
+              </div>
+              <div className="text-[11px] font-bold text-slate-500">шт.</div>
+            </div>
+            <div className="rounded-2xl bg-red-50 p-3 text-center ring-1 ring-red-100">
+              <div className="text-xs font-black uppercase text-red-600">Критично</div>
+              <div className="mt-1 text-xl font-black text-slate-950">
+                {formatNumber(rows.filter((row) => row.priority === "HIGH").length)}
+              </div>
+              <div className="text-[11px] font-bold text-slate-500">строк</div>
             </div>
           </div>
         </div>
       </div>
 
-      {rows.length > 0 ? (
-        <div className="mt-4 grid gap-3 xl:grid-cols-2">
-          {rows.slice(0, 12).map((row) => (
-            <SupplyPlanCard key={row.key} row={row} />
-          ))}
-        </div>
-      ) : (
-        <div className="mt-4 rounded-2xl border border-dashed border-slate-300 p-6 text-center text-sm font-bold text-slate-500">
-          Рекомендаций пока нет. Загрузите собственный склад и файл Ozon “Планирование поставок”; для WB нужны остатки по складам.
-        </div>
-      )}
+      {isOpen ? (
+        <div className="border-t border-slate-100 p-4 sm:p-5">
+          <form
+            action="/stocks"
+            method="GET"
+            className="rounded-[24px] border border-slate-200 bg-slate-50/70 p-3 ring-1 ring-white"
+          >
+            <input type="hidden" name="supplyOpen" value="1" />
+            {params.dateFrom ? <input type="hidden" name="dateFrom" value={params.dateFrom} /> : null}
+            {params.dateTo ? <input type="hidden" name="dateTo" value={params.dateTo} /> : null}
+            {params.sizeOpen ? <input type="hidden" name="sizeOpen" value={params.sizeOpen} /> : null}
+            {params.sizeRows ? <input type="hidden" name="sizeRows" value={params.sizeRows} /> : null}
+            {params.sizeSort ? <input type="hidden" name="sizeSort" value={params.sizeSort} /> : null}
 
-      {rows.length > 12 ? (
-        <div className="mt-3 rounded-2xl bg-slate-50 px-4 py-3 text-sm font-bold text-slate-500 ring-1 ring-slate-200">
-          Показано 12 из {formatNumber(rows.length)} рекомендаций. Сначала идут позиции с высоким приоритетом и доступным остатком на своём складе.
+            <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-[1.1fr_1fr_1.3fr_0.8fr_0.9fr_0.8fr_1.5fr_auto]">
+              <label className="block">
+                <span className="mb-1 block text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">
+                  Компания
+                </span>
+                <select
+                  name="companyName"
+                  defaultValue={params.companyName ?? "ALL"}
+                  className="h-11 w-full rounded-2xl border border-slate-200 bg-white px-3 text-sm font-bold text-slate-700 outline-none transition focus:border-violet-200 focus:ring-4 focus:ring-violet-50"
+                >
+                  <option value="ALL">Все компании</option>
+                  {companyNames.map((companyName) => (
+                    <option key={companyName} value={companyName}>
+                      {companyName}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="block">
+                <span className="mb-1 block text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">
+                  Источник
+                </span>
+                <select
+                  name="supplyMarketplace"
+                  defaultValue={marketplaceFilter}
+                  className="h-11 w-full rounded-2xl border border-slate-200 bg-white px-3 text-sm font-bold text-slate-700 outline-none transition focus:border-violet-200 focus:ring-4 focus:ring-violet-50"
+                >
+                  <option value="ALL">WB + Ozon</option>
+                  <option value="WB">WB</option>
+                  <option value="OZON">Ozon</option>
+                </select>
+              </label>
+
+              <label className="block">
+                <span className="mb-1 block text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">
+                  Куда
+                </span>
+                <select
+                  name="supplyTarget"
+                  defaultValue={targetFilter || "ALL"}
+                  className="h-11 w-full rounded-2xl border border-slate-200 bg-white px-3 text-sm font-bold text-slate-700 outline-none transition focus:border-violet-200 focus:ring-4 focus:ring-violet-50"
+                >
+                  <option value="ALL">Все направления</option>
+                  {targetOptions.map((target) => (
+                    <option key={target} value={target}>
+                      {target}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="block">
+                <span className="mb-1 block text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">
+                  ABC
+                </span>
+                <select
+                  name="supplyAbc"
+                  defaultValue={abcFilter}
+                  className="h-11 w-full rounded-2xl border border-slate-200 bg-white px-3 text-sm font-bold text-slate-700 outline-none transition focus:border-violet-200 focus:ring-4 focus:ring-violet-50"
+                >
+                  <option value="ALL">Все</option>
+                  <option value="A">A</option>
+                  <option value="B">B</option>
+                  <option value="C">C</option>
+                </select>
+              </label>
+
+              <label className="block">
+                <span className="mb-1 block text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">
+                  Приоритет
+                </span>
+                <select
+                  name="supplyPriority"
+                  defaultValue={priorityFilter}
+                  className="h-11 w-full rounded-2xl border border-slate-200 bg-white px-3 text-sm font-bold text-slate-700 outline-none transition focus:border-violet-200 focus:ring-4 focus:ring-violet-50"
+                >
+                  <option value="ALL">Все</option>
+                  <option value="HIGH">Высокий</option>
+                  <option value="MEDIUM">Средний</option>
+                  <option value="LOW">Низкий</option>
+                </select>
+              </label>
+
+              <label className="block">
+                <span className="mb-1 block text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">
+                  Строк
+                </span>
+                <select
+                  name="supplyRows"
+                  defaultValue={params.supplyRows ?? "20"}
+                  className="h-11 w-full rounded-2xl border border-slate-200 bg-white px-3 text-sm font-bold text-slate-700 outline-none transition focus:border-violet-200 focus:ring-4 focus:ring-violet-50"
+                >
+                  <option value="20">20</option>
+                  <option value="50">50</option>
+                  <option value="100">100</option>
+                  <option value="200">200</option>
+                  <option value="ALL">Все</option>
+                </select>
+              </label>
+
+              <label className="block">
+                <span className="mb-1 block text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">
+                  Поиск
+                </span>
+                <input
+                  name="supplyQ"
+                  defaultValue={params.supplyQ ?? ""}
+                  placeholder="Артикул, SKU, товар, размер"
+                  className="h-11 w-full rounded-2xl border border-slate-200 bg-white px-3 text-sm font-bold text-slate-700 outline-none transition placeholder:text-slate-300 focus:border-violet-200 focus:ring-4 focus:ring-violet-50"
+                />
+              </label>
+
+              <div className="flex items-end">
+                <button className="h-11 w-full rounded-2xl bg-slate-950 px-5 text-sm font-black text-white shadow-sm transition hover:bg-slate-800">
+                  Применить
+                </button>
+              </div>
+            </div>
+
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs font-bold text-slate-500">
+              <div>
+                Найдено {formatNumber(filteredRows.length)} строк · к отгрузке {formatNumber(supplySummaryQty(filteredRows))} шт. · критичных {formatNumber(criticalRows.length)}
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Link
+                  href={makeUrl(params, {
+                    supplyOpen: "1",
+                    supplyMarketplace: null,
+                    supplyTarget: null,
+                    supplyAbc: null,
+                    supplyPriority: null,
+                    supplyRows: null,
+                    supplyQ: null,
+                    companyName: null,
+                  })}
+                  className="inline-flex rounded-full bg-white px-3 py-1.5 font-black text-slate-600 ring-1 ring-slate-200 transition hover:bg-slate-100"
+                >
+                  Сбросить фильтры
+                </Link>
+              </div>
+            </div>
+          </form>
+
+          <div className="mt-4 flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+            <div className="text-sm font-bold text-slate-500">
+              Таблица компактная: для тысяч SKU показываем лимит строк и фильтры, а не большие карточки.
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                disabled
+                className="inline-flex cursor-not-allowed items-center justify-center rounded-2xl border border-slate-200 bg-slate-100 px-4 py-2.5 text-sm font-black text-slate-400"
+                title="Следующий этап: отдельный API экспорта текущего отфильтрованного плана в Excel"
+              >
+                Экспорт Excel · следующий этап
+              </button>
+
+              <button
+                type="button"
+                disabled
+                className="inline-flex cursor-not-allowed items-center justify-center rounded-2xl border border-slate-200 bg-slate-100 px-4 py-2.5 text-sm font-black text-slate-400"
+                title="После Excel добавим сохранение черновика поставки внутри системы"
+              >
+                Запланировать поставку · позже
+              </button>
+            </div>
+          </div>
+
+          {visibleRows.length > 0 ? (
+            <div className="mt-4 overflow-hidden rounded-[24px] border border-slate-200 bg-white">
+              <div className="overflow-x-auto">
+                <table className="min-w-[1280px] w-full border-collapse text-left text-sm">
+                  <thead className="bg-slate-50 text-[11px] font-black uppercase tracking-[0.08em] text-slate-400">
+                    <tr>
+                      <th className="px-3 py-3">Товар</th>
+                      <th className="px-3 py-3">Компания / артикул</th>
+                      <th className="px-3 py-3">Размер</th>
+                      <th className="px-3 py-3">Куда</th>
+                      <th className="px-3 py-3">Источник</th>
+                      <th className="px-3 py-3">ABC</th>
+                      <th className="px-3 py-3 text-right">Остаток там</th>
+                      <th className="px-3 py-3 text-right">Реком.</th>
+                      <th className="px-3 py-3 text-right">Доступно</th>
+                      <th className="px-3 py-3 text-right">К отгрузке</th>
+                      <th className="px-3 py-3">Приоритет</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {visibleRows.map((row) => (
+                      <tr key={row.key} className="align-middle transition hover:bg-slate-50/70">
+                        <td className="max-w-[300px] px-3 py-3">
+                          <div className="flex items-center gap-3">
+                            <ProductPhoto
+                              imageUrl={row.imageUrl}
+                              title={row.productName ?? row.vendorCode}
+                            />
+                            <div className="min-w-0">
+                              <div className="line-clamp-2 font-black leading-5 text-slate-950">
+                                {row.productName ?? "Название не загружено"}
+                              </div>
+                              <div className="mt-1 line-clamp-1 text-xs font-bold text-slate-400">
+                                {row.reason}
+                              </div>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-3 py-3">
+                          <div className="font-black text-slate-800">{row.companyName}</div>
+                          <div className="mt-1 break-all text-xs font-bold text-slate-500">
+                            {row.vendorCode}
+                          </div>
+                          {row.sku ? (
+                            <div className="mt-0.5 text-xs font-bold text-slate-400">
+                              SKU: {row.sku}
+                            </div>
+                          ) : null}
+                        </td>
+                        <td className="px-3 py-3 font-black text-slate-700">
+                          {row.size || "—"}
+                        </td>
+                        <td className="max-w-[220px] px-3 py-3">
+                          <div className="font-black text-slate-900">{row.targetName}</div>
+                          {row.details.length > 0 ? (
+                            <div className="mt-1 line-clamp-1 text-xs font-bold text-slate-400">
+                              {row.details.join(" · ")}
+                            </div>
+                          ) : null}
+                        </td>
+                        <td className="px-3 py-3">
+                          <span
+                            className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-black ring-1 ${marketplaceSupplyClass(
+                              row.marketplace
+                            )}`}
+                          >
+                            {row.marketplace === "WB" ? "WB" : "Ozon"}
+                          </span>
+                        </td>
+                        <td className="px-3 py-3">
+                          {row.abc ? (
+                            <AbcBadge value={row.abc.abcByProfit} compact />
+                          ) : (
+                            <span className="text-xs font-bold text-slate-400">—</span>
+                          )}
+                        </td>
+                        <td className="px-3 py-3 text-right font-black text-slate-700">
+                          {formatNumber(row.currentQty)} шт.
+                        </td>
+                        <td className="px-3 py-3 text-right font-black text-slate-700">
+                          {formatNumber(row.wantedQty)} шт.
+                        </td>
+                        <td className="px-3 py-3 text-right font-black text-emerald-700">
+                          {formatNumber(row.ownAvailableQty)} шт.
+                        </td>
+                        <td className="px-3 py-3 text-right">
+                          <input
+                            defaultValue={row.recommendedQty}
+                            inputMode="numeric"
+                            className="h-10 w-20 rounded-xl border border-slate-200 bg-white px-3 text-right text-sm font-black text-slate-900 outline-none transition focus:border-violet-200 focus:ring-4 focus:ring-violet-50"
+                            aria-label={`К отгрузке ${row.vendorCode}`}
+                          />
+                        </td>
+                        <td className="px-3 py-3">
+                          <span
+                            className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-black ring-1 ${priorityBadgeClass(
+                              row.priority
+                            )}`}
+                          >
+                            {priorityLabel(row.priority)}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="flex flex-col gap-2 border-t border-slate-100 bg-slate-50 px-4 py-3 text-sm font-bold text-slate-500 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  Показано {formatNumber(visibleRows.length)} из {formatNumber(filteredRows.length)} строк.
+                </div>
+                <div>
+                  Отредактированные значения “К отгрузке” пока не сохраняются. Сохранение черновика — следующий этап.
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="mt-4 rounded-2xl border border-dashed border-slate-300 p-6 text-center text-sm font-bold text-slate-500">
+              По выбранным фильтрам рекомендаций нет. Проверьте собственный склад, Ozon “Планирование поставок” и остатки WB по складам.
+            </div>
+          )}
         </div>
       ) : null}
     </section>
@@ -3209,7 +3556,7 @@ export default async function StocksPage({
             </section>
           ) : null}
 
-          <SupplyPlanningBlock rows={supplyPlanRows} />
+          <SupplyPlanningBlock rows={supplyPlanRows} params={params} companyNames={companyNames} />
 
           <section className="rounded-[30px] border border-slate-200 bg-white p-5 shadow-sm">
             <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
