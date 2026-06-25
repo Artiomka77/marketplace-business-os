@@ -1980,11 +1980,19 @@ function SupplyPlanningBlock({
           </form>
 
           <div className="mt-4 flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-            <div className="text-sm font-bold text-slate-500">
-              Excel выгружается по текущим фильтрам. Редактирование количества “К отгрузке” и черновики поставок добавим следующим этапом.
+            <div className="max-w-3xl text-sm font-bold leading-6 text-slate-500">
+              Официальный файл Ozon “Планирование поставок” можно загрузить здесь же. Если файл из личного кабинета Ozon загружен, он используется как приоритетный источник; если файла нет — показываем осторожный расчётный план.
             </div>
 
             <div className="flex flex-wrap gap-2">
+              <Link
+                href="/import?reportType=OZON_SUPPLY_RECOMMENDATION"
+                className="inline-flex items-center justify-center rounded-2xl border border-blue-200 bg-blue-50 px-4 py-2.5 text-sm font-black text-blue-700 transition hover:bg-blue-100"
+                title="Загрузить Excel-файл Ozon из личного кабинета: FBO → Планирование поставок → Доступность товаров"
+              >
+                Загрузить рекомендации Ozon
+              </Link>
+
               <Link
                 href={exportHref}
                 className="inline-flex items-center justify-center rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm font-black text-emerald-700 transition hover:bg-emerald-100"
