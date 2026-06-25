@@ -126,6 +126,13 @@ model WbSale {
   vendorCode String?
   barcode    String?
 
+  // География WB Daily Sales API.
+  // Нужна для безопасной модели рекомендаций поставок по регионам/складам.
+  warehouseName   String?
+  countryName     String?
+  oblastOkrugName String?
+  regionName      String?
+
   paymentReason String?
   documentType  String?
 
@@ -165,6 +172,10 @@ model WbSale {
   @@index([saleDate])
   @@index([paymentReason])
   @@index([companyName])
+  @@index([warehouseName])
+  @@index([countryName])
+  @@index([oblastOkrugName])
+  @@index([regionName])
 }
 
 model WbFinance {

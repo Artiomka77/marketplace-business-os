@@ -287,6 +287,13 @@ export async function syncWbDailySales(
       vendorCode: row.supplierArticle ?? null,
       barcode: row.barcode ?? null,
 
+      // География WB Statistics API.
+      // Эти поля нужны для будущей безопасной модели поставок по регионам/складам.
+      warehouseName: row.warehouseName ?? null,
+      countryName: row.countryName ?? null,
+      oblastOkrugName: row.oblastOkrugName ?? null,
+      regionName: row.regionName ?? null,
+
       paymentReason: isReturn ? "Возврат" : "Продажа",
       documentType: isReturn ? "Возврат" : "Продажа",
 
