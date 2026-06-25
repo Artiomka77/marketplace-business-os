@@ -2029,8 +2029,12 @@ SKU: ${row.sku}` : ""
               </div>
             </div>
           ) : (
-            <div className="mt-4 rounded-2xl border border-dashed border-slate-300 p-6 text-center text-sm font-bold text-slate-500">
-              По выбранным фильтрам рекомендаций нет. Проверьте собственный склад, Ozon “Планирование поставок” и остатки WB по складам.
+            <div className="mt-4 rounded-2xl border border-dashed border-slate-300 p-6 text-center text-sm font-bold leading-6 text-slate-500">
+              {marketplaceFilter === "OZON"
+                ? "По Ozon рекомендаций не найдено. Проверьте, что загружен файл “Ozon — Планирование поставок”, в нём есть рекомендуемое количество к поставке, и фильтры не ограничивают выборку."
+                : marketplaceFilter === "WB"
+                  ? "По WB рекомендаций не найдено. Проверьте остатки WB по складам, собственный склад и выбранные фильтры."
+                  : "По выбранным фильтрам рекомендаций нет. Проверьте собственный склад, Ozon “Планирование поставок”, остатки WB по складам и фильтры."}
             </div>
           )}
         </div>
@@ -3229,8 +3233,7 @@ export default async function StocksPage({
         recommendedQty,
       };
     })
-    .filter((row) => row.wantedQty > 0)
-    .slice(0, 50);
+    .filter((row) => row.wantedQty > 0);
 
   const productOptionsMap = new Map<
     string,
