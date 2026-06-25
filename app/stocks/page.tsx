@@ -1890,12 +1890,21 @@ function SupplyPlanningBlock({
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                     {visibleRows.map((row) => {
+                      const tooltipDetails = row.details.filter((detail) => {
+                        const normalizedDetail = String(detail).trim().toLowerCase();
+
+                        return (
+                          !normalizedDetail.startsWith("цель:") &&
+                          !normalizedDetail.startsWith("сейчас:")
+                        );
+                      });
+
                       const targetTooltip = [
                         row.targetName,
                         `Цель: ${formatNumber(row.wantedQty)} шт.`,
                         `Сейчас: ${formatNumber(row.currentQty)} шт.`,
                         row.reason,
-                        ...row.details,
+                        ...tooltipDetails,
                       ]
                         .filter(Boolean)
                         .join("\n");
@@ -3180,11 +3189,7 @@ export default async function StocksPage({
       daysWithoutStock: null,
       abc,
       reason: `На складе WB “${stock.warehouseName}” остаток ниже целевого уровня для ABC ${abcByProfit}.`,
-      details: [
-        `Цель: ${formatNumber(targetQty)} шт.`,
-        `Сейчас: ${formatNumber(currentQty)} шт.`,
-        "WB: пока по складам, без географии заказов",
-      ],
+      details: ["WB: пока по складам, без географии заказов"],
     });
   }
 
