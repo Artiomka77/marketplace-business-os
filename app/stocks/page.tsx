@@ -129,6 +129,47 @@ type ProductSizeSummary = {
   missingSizeCount: number;
 };
 
+type SupplyPlanMarketplace = "WB" | "OZON";
+type SupplyPlanPriority = "HIGH" | "MEDIUM" | "LOW";
+
+type OwnSupplyItem = {
+  key: string;
+  companyName: string;
+  companyKey: string;
+  articleKeys: Set<string>;
+  sizeKey: string;
+  availableQty: number;
+  productName: string | null;
+  imageUrl: string | null;
+};
+
+type SupplyPlanCandidate = {
+  key: string;
+  marketplace: SupplyPlanMarketplace;
+  priority: SupplyPlanPriority;
+  companyName: string;
+  vendorCode: string;
+  sku: string | null;
+  size: string | null;
+  productName: string | null;
+  imageUrl: string | null;
+  targetName: string;
+  currentQty: number;
+  ownItemKey: string | null;
+  wantedQty: number;
+  ownInitialQty: number;
+  avgDailySalesQty: number | null;
+  daysWithoutStock: number | null;
+  abc: StockAbcInfo | null;
+  reason: string;
+  details: string[];
+};
+
+type SupplyPlanRow = SupplyPlanCandidate & {
+  ownAvailableQty: number;
+  recommendedQty: number;
+};
+
 type SizeSummarySortKey =
   | "totalDesc"
   | "totalAsc"
@@ -539,6 +580,87 @@ function rowMatchesSearch(row: UnifiedStockRow, query: string) {
     textHaystack.includes(String(query).toLowerCase().replaceAll("ё", "е")) ||
     compactHaystack.includes(normalizedQuery)
   );
+}
+
+function normalizeSupplyArticle(value: unknown) {
+  return normalizeArticleForMatch(value);
+}
+
+function normalizeSupplySize(value: unknown) {
+  return normalizeSearchValue(value);
+}
+
+function getSupplyArticleCandidates(value: unknown) {
+  const vendorCode = normalizeKey(value);
+
+  if (!vendorCode) return [];
+
+  const candidates = new Set<string>();
+  candidates.add(vendorCode);
+
+  const baseArticle = getMarketplaceBaseArticle(vendorCode);
+  if (baseArticle) candidates.add(baseArticle);
+
+  const rootArticle = getSupplierArticleRoot(vendorCode);
+  if (rootArticle) candidates.add(rootArticle);
+
+  return Array.from(candidates)
+    .map((candidate) => normalizeSupplyArticle(candidate))
+    .filter(Boolean);
+}
+
+function supplyPriorityWeight(priority: SupplyPlanPriority) {
+  if (priority === "HIGH") return 3;
+  if (priority === "MEDIUM") return 2;
+  return 1;
+}
+
+function getSupplyPriority(params: {
+  wantedQty: number;
+  ownAvailableQty: number;
+  currentQty: number;
+  abc: StockAbcInfo | null;
+  daysWithoutStock?: number | null;
+}) {
+  if (params.wantedQty <= 0) return "LOW";
+
+  const abc = params.abc?.abcByProfit ?? "C";
+
+  if (params.ownAvailableQty <= 0) {
+    return abc === "A" && params.currentQty <= 2 ? "MEDIUM" : "LOW";
+  }
+
+  if (
+    abc === "A" ||
+    params.currentQty <= 2 ||
+    toNumber(params.daysWithoutStock) > 0
+  ) {
+    return "HIGH";
+  }
+
+  if (abc === "B") return "MEDIUM";
+
+  return "LOW";
+}
+
+function priorityBadgeClass(priority: SupplyPlanPriority) {
+  if (priority === "HIGH") return "bg-red-50 text-red-700 ring-red-100";
+  if (priority === "MEDIUM") return "bg-amber-50 text-amber-700 ring-amber-100";
+
+  return "bg-slate-50 text-slate-600 ring-slate-200";
+}
+
+function priorityLabel(priority: SupplyPlanPriority) {
+  if (priority === "HIGH") return "Высокий";
+  if (priority === "MEDIUM") return "Средний";
+
+  return "Низкий";
+}
+
+function marketplaceSupplyClass(marketplace: SupplyPlanMarketplace) {
+  if (marketplace === "WB") return "bg-violet-50 text-violet-700 ring-violet-100";
+
+  return "bg-blue-50 text-blue-700 ring-blue-100";
 }
 
 function getSelectedProduct(value?: string) {
@@ -1363,6 +1485,159 @@ function CompactAttention({
   );
 }
 
+function SupplyPlanCard({ row }: { row: SupplyPlanRow }) {
+  return (
+    <article className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm">
+      <div className="flex items-start gap-3">
+        <ProductPhoto imageUrl={row.imageUrl} title={row.productName ?? row.vendorCode} />
+
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <span
+              className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-black ring-1 ${marketplaceSupplyClass(
+                row.marketplace
+              )}`}
+            >
+              {row.marketplace === "WB" ? "WB" : "Ozon"}
+            </span>
+
+            <span
+              className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-black ring-1 ${priorityBadgeClass(
+                row.priority
+              )}`}
+            >
+              {priorityLabel(row.priority)}
+            </span>
+
+            {row.abc ? <AbcBadge value={row.abc.abcByProfit} compact /> : null}
+          </div>
+
+          <div className="mt-2 line-clamp-2 text-sm font-black leading-5 text-slate-950">
+            {row.productName ?? "Название не загружено"}
+          </div>
+
+          <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] font-black text-slate-500">
+            <span className="break-all">Артикул: {row.vendorCode}</span>
+            {row.sku ? <span>SKU: {row.sku}</span> : null}
+            <span>{row.companyName}</span>
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-3 grid gap-2 sm:grid-cols-3">
+        <div className="rounded-2xl bg-slate-50 p-3 ring-1 ring-slate-100">
+          <div className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">
+            Куда
+          </div>
+          <div className="mt-1 text-sm font-black text-slate-950">
+            {row.targetName}
+          </div>
+          {row.size ? (
+            <div className="mt-1 text-xs font-bold text-slate-500">Размер: {row.size}</div>
+          ) : null}
+        </div>
+
+        <div className="rounded-2xl bg-blue-50 p-3 ring-1 ring-blue-100">
+          <div className="text-[10px] font-black uppercase tracking-[0.12em] text-blue-500">
+            Остаток МП
+          </div>
+          <div className="mt-1 text-sm font-black text-slate-950">
+            {formatNumber(row.currentQty)} шт
+          </div>
+          <div className="mt-1 text-xs font-bold text-slate-500">
+            Нужно: {formatNumber(row.wantedQty)} шт
+          </div>
+        </div>
+
+        <div className="rounded-2xl bg-emerald-50 p-3 ring-1 ring-emerald-100">
+          <div className="text-[10px] font-black uppercase tracking-[0.12em] text-emerald-600">
+            Поставить
+          </div>
+          <div className="mt-1 text-sm font-black text-slate-950">
+            {formatNumber(row.recommendedQty)} шт
+          </div>
+          <div className="mt-1 text-xs font-bold text-slate-500">
+            Было доступно: {formatNumber(row.ownAvailableQty)} шт
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-3 rounded-2xl bg-slate-50 px-3 py-2 text-xs font-bold leading-5 text-slate-600 ring-1 ring-slate-100">
+        {row.reason}
+      </div>
+
+      {row.details.length > 0 ? (
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          {row.details.map((detail) => (
+            <span
+              key={detail}
+              className="inline-flex rounded-full bg-white px-2.5 py-1 text-[11px] font-black text-slate-500 ring-1 ring-slate-200"
+            >
+              {detail}
+            </span>
+          ))}
+        </div>
+      ) : null}
+    </article>
+  );
+}
+
+function SupplyPlanningBlock({ rows }: { rows: SupplyPlanRow[] }) {
+  const ozonRows = rows.filter((row) => row.marketplace === "OZON");
+  const wbRows = rows.filter((row) => row.marketplace === "WB");
+
+  return (
+    <section className="rounded-[28px] border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+      <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
+        <div>
+          <div className="inline-flex rounded-full bg-emerald-50 px-3 py-1 text-xs font-black uppercase tracking-[0.12em] text-emerald-700 ring-1 ring-emerald-100">
+            План поставок
+          </div>
+          <h2 className="mt-3 text-2xl font-black tracking-tight text-slate-950">
+            Что отгрузить со своего склада
+          </h2>
+          <p className="mt-2 max-w-4xl text-sm font-semibold leading-6 text-slate-500">
+            Ozon считается по кластерам из файла “Планирование поставок”. WB сейчас считается по остаткам на складах WB. Региональный спрос по городам подключим отдельным шагом, когда появится источник географии заказов.
+          </p>
+        </div>
+
+        <div className="grid grid-cols-2 gap-2 sm:min-w-[280px]">
+          <div className="rounded-2xl bg-blue-50 p-3 text-center ring-1 ring-blue-100">
+            <div className="text-xs font-black uppercase text-blue-600">Ozon</div>
+            <div className="mt-1 text-xl font-black text-slate-950">
+              {formatNumber(ozonRows.length)}
+            </div>
+          </div>
+          <div className="rounded-2xl bg-violet-50 p-3 text-center ring-1 ring-violet-100">
+            <div className="text-xs font-black uppercase text-violet-600">WB</div>
+            <div className="mt-1 text-xl font-black text-slate-950">
+              {formatNumber(wbRows.length)}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {rows.length > 0 ? (
+        <div className="mt-4 grid gap-3 xl:grid-cols-2">
+          {rows.slice(0, 12).map((row) => (
+            <SupplyPlanCard key={row.key} row={row} />
+          ))}
+        </div>
+      ) : (
+        <div className="mt-4 rounded-2xl border border-dashed border-slate-300 p-6 text-center text-sm font-bold text-slate-500">
+          Рекомендаций пока нет. Загрузите собственный склад и файл Ozon “Планирование поставок”; для WB нужны остатки по складам.
+        </div>
+      )}
+
+      {rows.length > 12 ? (
+        <div className="mt-3 rounded-2xl bg-slate-50 px-4 py-3 text-sm font-bold text-slate-500 ring-1 ring-slate-200">
+          Показано 12 из {formatNumber(rows.length)} рекомендаций. Сначала идут позиции с высоким приоритетом и доступным остатком на своём складе.
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
 export default async function StocksPage({
   searchParams,
 }: {
@@ -1526,8 +1801,14 @@ export default async function StocksPage({
     }
   }
 
-  const [rawWbStocks, ozonStocks, warehouseStocks, stockImports, productCosts] =
-    await Promise.all([
+  const [
+    rawWbStocks,
+    ozonStocks,
+    warehouseStocks,
+    ozonSupplyRecommendations,
+    stockImports,
+    productCosts,
+  ] = await Promise.all([
       prisma.wbStock.findMany({
         where: {
           companyName: companyWhere,
@@ -1554,6 +1835,16 @@ export default async function StocksPage({
           companyName: companyWhere,
         },
         orderBy: [{ companyName: "asc" }, { vendorCode: "asc" }, { size: "asc" }],
+      }),
+      prisma.ozonSupplyRecommendation.findMany({
+        where: {
+          companyName: companyWhere,
+        },
+        orderBy: [
+          { companyName: "asc" },
+          { clusterName: "asc" },
+          { vendorCode: "asc" },
+        ],
       }),
       prisma.importSession.findMany({
         where: {
@@ -1615,6 +1906,7 @@ export default async function StocksPage({
         ...wbStocks.map((stock) => stock.vendorCode),
         ...ozonStocks.map((stock) => stock.vendorCode),
         ...warehouseStocks.map((stock) => stock.vendorCode),
+        ...ozonSupplyRecommendations.map((row) => row.vendorCode),
       ]
         .map((value) => normalizeKey(value))
         .filter(Boolean)
@@ -1623,7 +1915,11 @@ export default async function StocksPage({
 
   const skus = Array.from(
     new Set(
-      [...ozonStocks.map((stock) => stock.sku), ...warehouseStocks.map((stock) => stock.sku)]
+      [
+        ...ozonStocks.map((stock) => stock.sku),
+        ...warehouseStocks.map((stock) => stock.sku),
+        ...ozonSupplyRecommendations.map((row) => row.sku),
+      ]
         .map((value) => normalizeKey(value))
         .filter(Boolean)
     )
@@ -2268,6 +2564,277 @@ export default async function StocksPage({
     });
   }
 
+  const ownSupplyItems: OwnSupplyItem[] = warehouseStocks
+    .map((stock) => {
+      const vendorCode = normalizeKey(stock.vendorCode);
+      const sku = normalizeKey(stock.sku);
+      const size = normalizeKey(stock.size) || inferSizeFromVendorCode(vendorCode);
+      const visual = makeRowVisual({
+        vendorCode,
+        sku,
+        nmId: null,
+      });
+
+      const articleKeys = new Set<string>();
+
+      for (const article of [
+        vendorCode,
+        sku,
+        getMarketplaceBaseArticle(vendorCode),
+        getSupplierArticleRoot(vendorCode),
+      ]) {
+        const normalizedArticle = normalizeSupplyArticle(article);
+        if (normalizedArticle) articleKeys.add(normalizedArticle);
+      }
+
+      return {
+        key: `own-${stock.id}`,
+        companyName: stock.companyName,
+        companyKey: normalizeKey(stock.companyName),
+        articleKeys,
+        sizeKey: normalizeSupplySize(size),
+        availableQty: toNumber(stock.availableForSupplyQty),
+        productName:
+          stock.productName ??
+          visual.name ??
+          costNameByVendorCode.get(normalizeKey(vendorCode)) ??
+          null,
+        imageUrl: visual.imageUrl,
+      } satisfies OwnSupplyItem;
+    })
+    .filter((item) => item.availableQty > 0 && item.articleKeys.size > 0);
+
+  function findOwnSupplyItem(params: {
+    companyName?: string | null;
+    articles: Array<string | null | undefined>;
+    size?: string | null;
+  }) {
+    const companyKey = normalizeKey(params.companyName);
+    const articleKeys = new Set<string>();
+
+    for (const article of params.articles) {
+      for (const candidate of getSupplyArticleCandidates(article)) {
+        articleKeys.add(candidate);
+      }
+    }
+
+    const sizeKey = normalizeSupplySize(params.size);
+
+    if (!companyKey || articleKeys.size === 0) return null;
+
+    const sameCompanyItems = ownSupplyItems.filter(
+      (item) =>
+        item.companyKey === companyKey &&
+        [...articleKeys].some((articleKey) => item.articleKeys.has(articleKey))
+    );
+
+    if (sameCompanyItems.length === 0) return null;
+
+    const exactSizeItem = sizeKey
+      ? sameCompanyItems.find((item) => item.sizeKey && item.sizeKey === sizeKey)
+      : null;
+
+    return exactSizeItem ?? sameCompanyItems.find((item) => !item.sizeKey) ?? sameCompanyItems[0];
+  }
+
+  const supplyPlanCandidates: SupplyPlanCandidate[] = [];
+
+  for (const row of ozonSupplyRecommendations) {
+    const vendorCode = normalizeKey(row.vendorCode);
+    const sku = normalizeKey(row.sku);
+    const size = inferSizeFromVendorCode(vendorCode);
+    const wantedQty = Math.max(0, toNumber(row.recommendedSupplyQty));
+
+    if (!vendorCode || wantedQty <= 0) continue;
+
+    const abc = findStockAbc(ozonAbcMap, {
+      companyName: row.companyName,
+      articles: [getMarketplaceBaseArticle(vendorCode), vendorCode, sku],
+    });
+
+    const ownItem = findOwnSupplyItem({
+      companyName: row.companyName,
+      articles: [vendorCode, sku, getMarketplaceBaseArticle(vendorCode)],
+      size,
+    });
+
+    const currentQty =
+      toNumber(row.fboStockQty) +
+      toNumber(row.fbsStockQty) +
+      toNumber(row.inTransitToOzonQty);
+
+    const visual = makeRowVisual({
+      vendorCode,
+      sku,
+      nmId: null,
+    });
+
+    const ownInitialQty = ownItem?.availableQty ?? 0;
+    const priority = getSupplyPriority({
+      wantedQty,
+      ownAvailableQty: ownInitialQty,
+      currentQty,
+      abc,
+      daysWithoutStock: toNumber(row.daysWithoutStock28),
+    });
+
+    supplyPlanCandidates.push({
+      key: `ozon-supply-${row.id}`,
+      marketplace: "OZON",
+      priority,
+      companyName: row.companyName ?? "Без компании",
+      vendorCode,
+      sku: sku || null,
+      size,
+      productName:
+        row.productName ??
+        visual.name ??
+        ownItem?.productName ??
+        costNameByVendorCode.get(vendorCode) ??
+        null,
+      imageUrl: visual.imageUrl ?? ownItem?.imageUrl ?? null,
+      targetName: row.clusterName ? `Кластер: ${row.clusterName}` : "Кластер Ozon",
+      currentQty,
+      ownItemKey: ownItem?.key ?? null,
+      wantedQty,
+      ownInitialQty,
+      avgDailySalesQty:
+        row.avgDailySalesQty28 === null || row.avgDailySalesQty28 === undefined
+          ? null
+          : toNumber(row.avgDailySalesQty28),
+      daysWithoutStock:
+        row.daysWithoutStock28 === null || row.daysWithoutStock28 === undefined
+          ? null
+          : toNumber(row.daysWithoutStock28),
+      abc,
+      reason:
+        normalizeKey(row.recommendation) ||
+        `Ozon рекомендует поставить ${formatNumber(wantedQty)} шт. в кластер.`,
+      details: [
+        row.recommendationPeriodDays
+          ? `Период: ${formatNumber(row.recommendationPeriodDays)} дн.`
+          : "",
+        row.avgDailySalesQty28 !== null && row.avgDailySalesQty28 !== undefined
+          ? `Продажи: ${formatNumber(toNumber(row.avgDailySalesQty28))} шт/день`
+          : "",
+        row.daysWithoutStock28 !== null && row.daysWithoutStock28 !== undefined
+          ? `Без остатка: ${formatNumber(toNumber(row.daysWithoutStock28))} дн.`
+          : "",
+      ].filter(Boolean),
+    });
+  }
+
+  for (const stock of rawWbStocks) {
+    if (!stock.warehouseName || stock.warehouseName === "__TOTAL__") continue;
+
+    const vendorCode = normalizeKey(stock.vendorCode);
+    const nmId = normalizeKey(stock.nmId);
+    const size = normalizeKey(stock.size) || inferSizeFromVendorCode(vendorCode);
+
+    if (!vendorCode && !nmId) continue;
+
+    const currentQty = toNumber(stock.warehouseQty) || toNumber(stock.totalStock);
+    const abc = findStockAbc(wbAbcMap, {
+      companyName: stock.companyName,
+      articles: [nmId, vendorCode],
+    });
+
+    const abcByProfit = abc?.abcByProfit ?? "C";
+    const targetQty = abcByProfit === "A" ? 18 : abcByProfit === "B" ? 10 : 0;
+    const wantedQty = Math.max(0, targetQty - currentQty);
+
+    if (wantedQty <= 0) continue;
+
+    const ownItem = findOwnSupplyItem({
+      companyName: stock.companyName,
+      articles: [vendorCode, nmId, stock.barcode],
+      size,
+    });
+
+    const visual = makeRowVisual({
+      vendorCode: vendorCode || nmId,
+      sku: null,
+      nmId,
+    });
+
+    const ownInitialQty = ownItem?.availableQty ?? 0;
+    const priority = getSupplyPriority({
+      wantedQty,
+      ownAvailableQty: ownInitialQty,
+      currentQty,
+      abc,
+    });
+
+    supplyPlanCandidates.push({
+      key: `wb-supply-${stock.id}`,
+      marketplace: "WB",
+      priority,
+      companyName: stock.companyName ?? "Без компании",
+      vendorCode: vendorCode || nmId,
+      sku: null,
+      size,
+      productName:
+        visual.name ??
+        ownItem?.productName ??
+        costNameByVendorCode.get(vendorCode) ??
+        null,
+      imageUrl: visual.imageUrl ?? ownItem?.imageUrl ?? null,
+      targetName: stock.warehouseName,
+      currentQty,
+      ownItemKey: ownItem?.key ?? null,
+      wantedQty,
+      ownInitialQty,
+      avgDailySalesQty: null,
+      daysWithoutStock: null,
+      abc,
+      reason: `На складе WB “${stock.warehouseName}” остаток ниже целевого уровня для ABC ${abcByProfit}.`,
+      details: [
+        `Цель: ${formatNumber(targetQty)} шт.`,
+        `Сейчас: ${formatNumber(currentQty)} шт.`,
+        "WB: пока по складам, без географии заказов",
+      ],
+    });
+  }
+
+  const ownSupplyRemaining = new Map(
+    ownSupplyItems.map((item) => [item.key, item.availableQty])
+  );
+
+  const supplyPlanRows: SupplyPlanRow[] = supplyPlanCandidates
+    .sort((a, b) => {
+      const priorityDiff =
+        supplyPriorityWeight(b.priority) - supplyPriorityWeight(a.priority);
+
+      if (priorityDiff !== 0) return priorityDiff;
+
+      if (b.ownInitialQty !== a.ownInitialQty) {
+        return b.ownInitialQty - a.ownInitialQty;
+      }
+
+      return b.wantedQty - a.wantedQty;
+    })
+    .map((candidate) => {
+      const ownAvailableQty = candidate.ownItemKey
+        ? ownSupplyRemaining.get(candidate.ownItemKey) ?? 0
+        : 0;
+      const recommendedQty = Math.min(candidate.wantedQty, ownAvailableQty);
+
+      if (candidate.ownItemKey) {
+        ownSupplyRemaining.set(
+          candidate.ownItemKey,
+          Math.max(0, ownAvailableQty - recommendedQty)
+        );
+      }
+
+      return {
+        ...candidate,
+        ownAvailableQty,
+        recommendedQty,
+      };
+    })
+    .filter((row) => row.wantedQty > 0)
+    .slice(0, 50);
+
   const productOptionsMap = new Map<
     string,
     {
@@ -2641,6 +3208,8 @@ export default async function StocksPage({
               </div>
             </section>
           ) : null}
+
+          <SupplyPlanningBlock rows={supplyPlanRows} />
 
           <section className="rounded-[30px] border border-slate-200 bg-white p-5 shadow-sm">
             <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
