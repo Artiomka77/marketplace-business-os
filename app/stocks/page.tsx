@@ -1609,6 +1609,10 @@ function supplySummaryQty(rows: SupplyPlanRow[]) {
   return rows.reduce((sum, row) => sum + Math.max(0, row.recommendedQty), 0);
 }
 
+function supplyWantedQty(rows: SupplyPlanRow[]) {
+  return rows.reduce((sum, row) => sum + Math.max(0, row.wantedQty), 0);
+}
+
 function SupplyPlanningBlock({
   rows,
   params,
@@ -1730,27 +1734,36 @@ function SupplyPlanningBlock({
 
           </div>
 
-          <div className="grid grid-cols-2 gap-2 sm:min-w-[440px] sm:grid-cols-4">
+          <div className="grid grid-cols-2 gap-2 sm:min-w-[520px] sm:grid-cols-4">
             <div className="rounded-2xl bg-blue-50 p-3 text-center ring-1 ring-blue-100">
               <div className="text-xs font-black uppercase text-blue-600">Ozon</div>
               <div className="mt-1 text-xl font-black text-slate-950">
-                {formatNumber(supplySummaryQty(ozonRows))}
+                {formatNumber(supplyWantedQty(ozonRows))}
               </div>
-              <div className="text-[11px] font-bold text-slate-500">шт. к поставке</div>
+              <div className="text-[11px] font-bold text-slate-500">реком. системой</div>
+              <div className="mt-1 text-[11px] font-black text-blue-700">
+                к отгрузке: {formatNumber(supplySummaryQty(ozonRows))} шт.
+              </div>
             </div>
             <div className="rounded-2xl bg-violet-50 p-3 text-center ring-1 ring-violet-100">
               <div className="text-xs font-black uppercase text-violet-600">WB</div>
               <div className="mt-1 text-xl font-black text-slate-950">
-                {formatNumber(supplySummaryQty(wbRows))}
+                {formatNumber(supplyWantedQty(wbRows))}
               </div>
-              <div className="text-[11px] font-bold text-slate-500">шт. к поставке</div>
+              <div className="text-[11px] font-bold text-slate-500">реком. системой</div>
+              <div className="mt-1 text-[11px] font-black text-violet-700">
+                к отгрузке: {formatNumber(supplySummaryQty(wbRows))} шт.
+              </div>
             </div>
             <div className="rounded-2xl bg-emerald-50 p-3 text-center ring-1 ring-emerald-100">
               <div className="text-xs font-black uppercase text-emerald-700">Всего</div>
               <div className="mt-1 text-xl font-black text-slate-950">
-                {formatNumber(supplySummaryQty(rows))}
+                {formatNumber(supplyWantedQty(rows))}
               </div>
-              <div className="text-[11px] font-bold text-slate-500">шт.</div>
+              <div className="text-[11px] font-bold text-slate-500">реком. системой</div>
+              <div className="mt-1 text-[11px] font-black text-emerald-700">
+                к отгрузке: {formatNumber(supplySummaryQty(rows))} шт.
+              </div>
             </div>
             <div className="rounded-2xl bg-red-50 p-3 text-center ring-1 ring-red-100">
               <div className="text-xs font-black uppercase text-red-600">Критично</div>
@@ -1758,6 +1771,9 @@ function SupplyPlanningBlock({
                 {formatNumber(rows.filter((row) => row.priority === "HIGH").length)}
               </div>
               <div className="text-[11px] font-bold text-slate-500">строк</div>
+              <div className="mt-1 text-[11px] font-black text-red-700">
+                реком.: {formatNumber(supplyWantedQty(rows.filter((row) => row.priority === "HIGH")))} шт.
+              </div>
             </div>
           </div>
         </div>
@@ -1899,7 +1915,7 @@ function SupplyPlanningBlock({
 
             <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs font-bold text-slate-500">
               <div>
-                Найдено {formatNumber(filteredRows.length)} строк · к отгрузке {formatNumber(supplySummaryQty(filteredRows))} шт. · критичных {formatNumber(criticalRows.length)}
+                Найдено {formatNumber(filteredRows.length)} строк · реком. {formatNumber(supplyWantedQty(filteredRows))} шт. · к отгрузке {formatNumber(supplySummaryQty(filteredRows))} шт. · критичных {formatNumber(criticalRows.length)}
               </div>
               <div className="flex flex-wrap gap-2">
                 <Link
