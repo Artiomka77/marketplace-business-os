@@ -27,6 +27,7 @@ type StockSearchParams = {
   supplyPriority?: string;
   supplyRows?: string;
   supplyQ?: string;
+  supplyWbDays?: string;
   supplySelectionMode?: string;
   supplySelected?: string | string[];
   productionOpen?: string;
@@ -165,6 +166,7 @@ type SupplyPlanCandidate = {
   companyName: string;
   vendorCode: string;
   sku: string | null;
+  barcode: string | null;
   size: string | null;
   productName: string | null;
   imageUrl: string | null;
@@ -703,6 +705,46 @@ function getWbGeoConfidenceMultiplier(observedDays: number) {
   if (observedDays >= 14) return 0.85;
   if (observedDays >= 7) return 0.7;
   return 0.5;
+}
+
+function getWbRecommendationDays(value?: string) {
+  const parsed = Number(value ?? 14);
+
+  return [14, 21, 28, 56].includes(parsed) ? parsed : 14;
+}
+
+function getWbRecommendationQty(
+  row: {
+    recommendedQty14?: number | null;
+    recommendedQty21?: number | null;
+    recommendedQty28?: number | null;
+    recommendedQty56?: number | null;
+  },
+  days: number
+) {
+  if (days === 21) return toNumber(row.recommendedQty21);
+  if (days === 28) return toNumber(row.recommendedQty28);
+  if (days === 56) return toNumber(row.recommendedQty56);
+
+  return toNumber(row.recommendedQty14);
+}
+
+function isAllRegionsName(value: unknown) {
+  const text = normalizeSearchValue(value);
+
+  return text === normalizeSearchValue("Все регионы");
+}
+
+function getWbOfficialCoverageKey(params: {
+  companyName?: string | null;
+  article?: string | null;
+  size?: string | null;
+}) {
+  const companyKey = normalizeSearchValue(params.companyName);
+  const articleKey = normalizeSupplyArticle(params.article);
+  const sizeKey = normalizeSupplySize(params.size);
+
+  return companyKey && articleKey ? `${companyKey}::${articleKey}::${sizeKey}` : "";
 }
 
 function getWbGeoSupplyKey(params: {
@@ -1439,6 +1481,7 @@ function makeUrl(params: StockSearchParams, patch: Record<string, string | null 
     supplyPriority: params.supplyPriority,
     supplyRows: params.supplyRows,
     supplyQ: params.supplyQ,
+    supplyWbDays: params.supplyWbDays,
     supplySelectionMode: params.supplySelectionMode,
     supplySelected: Array.isArray(params.supplySelected)
       ? params.supplySelected.join(",")
@@ -1677,6 +1720,7 @@ function supplyPlanMatchesSearch(row: SupplyPlanRow, query: string) {
     row.productName,
     row.vendorCode,
     row.sku,
+    row.barcode,
     row.size,
     row.companyName,
     row.targetName,
@@ -1919,6 +1963,7 @@ function SupplyPlanningBlock({
   const abcFilter = getSupplyAbcFilter(params.supplyAbc);
   const targetFilter = normalizeKey(params.supplyTarget);
   const query = normalizeKey(params.supplyQ);
+  const wbRecommendationDays = getWbRecommendationDays(params.supplyWbDays);
 
   const targetOptions = getSupplyTargetOptions(rows, marketplaceFilter);
   const safeTargetFilter =
@@ -1995,6 +2040,10 @@ function SupplyPlanningBlock({
     exportParams.set("supplyQ", query);
   }
 
+  if (params.supplyWbDays) {
+    exportParams.set("supplyWbDays", params.supplyWbDays);
+  }
+
   if (params.dateFrom) {
     exportParams.set("dateFrom", params.dateFrom);
   }
@@ -2011,11 +2060,18 @@ function SupplyPlanningBlock({
     }
   }
 
-  function makeSupplyExportHref(exportMarketplace: "ALL" | SupplyPlanMarketplace) {
+  function makeSupplyExportHref(
+    exportMarketplace: "ALL" | SupplyPlanMarketplace,
+    exportMode?: "uploadZip"
+  ) {
     const supplyExportParams = new URLSearchParams(exportParams);
 
     if (exportMarketplace !== "ALL") {
       supplyExportParams.set("exportMarketplace", exportMarketplace);
+    }
+
+    if (exportMode) {
+      supplyExportParams.set("exportMode", exportMode);
     }
 
     const queryString = supplyExportParams.toString();
@@ -2028,6 +2084,8 @@ function SupplyPlanningBlock({
   const exportHref = makeSupplyExportHref("ALL");
   const exportWbHref = makeSupplyExportHref("WB");
   const exportOzonHref = makeSupplyExportHref("OZON");
+  const exportWbUploadZipHref = makeSupplyExportHref("WB", "uploadZip");
+  const exportOzonUploadZipHref = makeSupplyExportHref("OZON", "uploadZip");
 
   const ozonRows = rows.filter((row) => row.marketplace === "OZON");
   const wbRows = rows.filter((row) => row.marketplace === "WB");
@@ -2129,7 +2187,7 @@ function SupplyPlanningBlock({
             {params.sizeRows ? <input type="hidden" name="sizeRows" value={params.sizeRows} /> : null}
             {params.sizeSort ? <input type="hidden" name="sizeSort" value={params.sizeSort} /> : null}
 
-            <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-[1.1fr_1fr_1.3fr_0.8fr_0.9fr_0.8fr_1.5fr_auto]">
+            <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-[1.1fr_1fr_0.9fr_1.3fr_0.8fr_0.9fr_0.8fr_1.5fr_auto]">
               <label className="block">
                 <span className="mb-1 block text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">
                   Компания
@@ -2160,6 +2218,22 @@ function SupplyPlanningBlock({
                   <option value="ALL">WB + Ozon</option>
                   <option value="WB">WB</option>
                   <option value="OZON">Ozon</option>
+                </select>
+              </label>
+
+              <label className="block">
+                <span className="mb-1 block text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">
+                  WB запас
+                </span>
+                <select
+                  name="supplyWbDays"
+                  defaultValue={String(wbRecommendationDays)}
+                  className="h-11 w-full rounded-2xl border border-slate-200 bg-white px-3 text-sm font-bold text-slate-700 outline-none transition focus:border-violet-200 focus:ring-4 focus:ring-violet-50"
+                >
+                  <option value="14">14 дней</option>
+                  <option value="21">21 день</option>
+                  <option value="28">28 дней</option>
+                  <option value="56">56 дней</option>
                 </select>
               </label>
 
@@ -2263,6 +2337,7 @@ function SupplyPlanningBlock({
                     supplyPriority: null,
                     supplyRows: null,
                     supplyQ: null,
+                    supplyWbDays: null,
                     companyName: null,
                   })}
                   className="inline-flex rounded-full bg-white px-3 py-1.5 font-black text-slate-600 ring-1 ring-slate-200 transition hover:bg-slate-100"
@@ -2278,10 +2353,18 @@ function SupplyPlanningBlock({
           <div className="mt-3 rounded-[22px] border border-slate-200 bg-slate-50/70 px-3 py-2.5">
             <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
               <div className="min-w-0 text-xs font-bold leading-5 text-slate-500">
-                Что и куда отгрузить с учётом спроса, остатков и доступного товара. Ozon-план из ЛК можно загрузить здесь.
+                Что и куда отгрузить с учётом спроса, остатков и доступного товара. WB/Ozon-файлы из личных кабинетов можно загрузить здесь.
               </div>
 
               <div className="flex shrink-0 flex-wrap gap-2">
+                <Link
+                  href="/import?reportType=WB_SUPPLY_RECOMMENDATION"
+                  className="inline-flex h-9 items-center justify-center rounded-2xl border border-violet-200 bg-violet-50 px-3 text-xs font-black text-violet-700 transition hover:bg-violet-100"
+                  title="Загрузить Excel-файл WB: рекомендации по поставке из личного кабинета"
+                >
+                  Загрузить WB
+                </Link>
+
                 <Link
                   href="/import?reportType=OZON_SUPPLY_RECOMMENDATION"
                   className="inline-flex h-9 items-center justify-center rounded-2xl border border-blue-200 bg-blue-50 px-3 text-xs font-black text-blue-700 transition hover:bg-blue-100"
@@ -2299,19 +2382,35 @@ function SupplyPlanningBlock({
                 </Link>
 
                 <Link
+                  href={exportWbUploadZipHref}
+                  className="inline-flex h-9 items-center justify-center rounded-2xl border border-violet-200 bg-violet-600 px-3 text-xs font-black text-white transition hover:bg-violet-700"
+                  title="Скачать ZIP с отдельными Excel-файлами WB по каждому направлению. Формат файла: Баркод / Количество."
+                >
+                  WB ZIP для ЛК
+                </Link>
+
+                <Link
+                  href={exportOzonUploadZipHref}
+                  className="inline-flex h-9 items-center justify-center rounded-2xl border border-blue-200 bg-blue-600 px-3 text-xs font-black text-white transition hover:bg-blue-700"
+                  title="Скачать ZIP с отдельными Excel-файлами Ozon по каждому кластеру/городу. Формат файла: артикул / имя / количество."
+                >
+                  Ozon ZIP для ЛК
+                </Link>
+
+                <Link
                   href={exportWbHref}
                   className="inline-flex h-9 items-center justify-center rounded-2xl border border-violet-200 bg-violet-50 px-3 text-xs font-black text-violet-700 transition hover:bg-violet-100"
-                  title="Скачать Excel-план поставок только для WB по текущим фильтрам и выбранным строкам"
+                  title="Скачать проверочный Excel-план поставок только для WB по текущим фильтрам и выбранным строкам"
                 >
-                  Excel WB
+                  WB проверка
                 </Link>
 
                 <Link
                   href={exportOzonHref}
                   className="inline-flex h-9 items-center justify-center rounded-2xl border border-blue-200 bg-blue-50 px-3 text-xs font-black text-blue-700 transition hover:bg-blue-100"
-                  title="Скачать Excel-план поставок только для Ozon по текущим фильтрам и выбранным строкам"
+                  title="Скачать проверочный Excel-план поставок только для Ozon по текущим фильтрам и выбранным строкам"
                 >
-                  Excel Ozon
+                  Ozon проверка
                 </Link>
 
                 <button
@@ -2354,6 +2453,7 @@ function SupplyPlanningBlock({
               {priorityFilter !== "ALL" ? <input type="hidden" name="supplyPriority" value={priorityFilter} /> : null}
               {params.supplyRows ? <input type="hidden" name="supplyRows" value={params.supplyRows} /> : null}
               {query ? <input type="hidden" name="supplyQ" value={query} /> : null}
+              {params.supplyWbDays ? <input type="hidden" name="supplyWbDays" value={params.supplyWbDays} /> : null}
               {params.dateFrom ? <input type="hidden" name="dateFrom" value={params.dateFrom} /> : null}
               {params.dateTo ? <input type="hidden" name="dateTo" value={params.dateTo} /> : null}
               {params.sizeOpen ? <input type="hidden" name="sizeOpen" value={params.sizeOpen} /> : null}
@@ -3102,6 +3202,7 @@ export default async function StocksPage({
     ozonStocks,
     warehouseStocks,
     ozonSupplyRecommendations,
+    wbSupplyRecommendations,
     wbDailySalesRows,
     stockImports,
     productCosts,
@@ -3141,6 +3242,17 @@ export default async function StocksPage({
           { companyName: "asc" },
           { clusterName: "asc" },
           { vendorCode: "asc" },
+        ],
+      }),
+      prisma.wbSupplyRecommendation.findMany({
+        where: {
+          companyName: companyWhere,
+        },
+        orderBy: [
+          { companyName: "asc" },
+          { regionName: "asc" },
+          { vendorCode: "asc" },
+          { size: "asc" },
         ],
       }),
       prisma.wbSale.findMany({
@@ -3231,6 +3343,7 @@ export default async function StocksPage({
         ...ozonStocks.map((stock) => stock.vendorCode),
         ...warehouseStocks.map((stock) => stock.vendorCode),
         ...ozonSupplyRecommendations.map((row) => row.vendorCode),
+        ...wbSupplyRecommendations.map((row) => row.vendorCode),
       ]
         .map((value) => normalizeKey(value))
         .filter(Boolean)
@@ -3251,8 +3364,10 @@ export default async function StocksPage({
 
   const nmIds = Array.from(
     new Set(
-      wbStocks
-        .map((stock) => stock.nmId)
+      [
+        ...wbStocks.map((stock) => stock.nmId),
+        ...wbSupplyRecommendations.map((row) => row.nmId),
+      ]
         .map((value) => normalizeKey(value))
         .filter(Boolean)
     )
@@ -3904,6 +4019,7 @@ export default async function StocksPage({
       for (const article of [
         vendorCode,
         sku,
+        stock.barcode,
         getMarketplaceBaseArticle(vendorCode),
         getSupplierArticleRoot(vendorCode),
       ]) {
@@ -4031,6 +4147,7 @@ export default async function StocksPage({
       companyName: row.companyName ?? "Без компании",
       vendorCode,
       sku: sku || null,
+      barcode: null,
       size,
       productName:
         row.productName ??
@@ -4065,6 +4182,129 @@ export default async function StocksPage({
           : "",
         row.daysWithoutStock28 !== null && row.daysWithoutStock28 !== undefined
           ? `Без остатка: ${formatNumber(toNumber(row.daysWithoutStock28))} дн.`
+          : "",
+      ].filter(Boolean),
+    });
+  }
+
+  const wbRecommendationDays = getWbRecommendationDays(params.supplyWbDays);
+  const officialWbSupplyKeys = new Set<string>();
+
+  for (const row of wbSupplyRecommendations) {
+    const company = normalizeKey(row.companyName) || "Без компании";
+    const vendorCode = normalizeKey(row.vendorCode);
+    const nmId = normalizeKey(row.nmId);
+    const barcode = normalizeKey(row.barcode);
+    const size = normalizeKey(row.size) || inferSizeFromVendorCode(vendorCode);
+
+    for (const article of [vendorCode, nmId, barcode]) {
+      const coverageKey = getWbOfficialCoverageKey({
+        companyName: company,
+        article,
+        size,
+      });
+
+      if (coverageKey) officialWbSupplyKeys.add(coverageKey);
+    }
+
+    if (row.isAllRegions || isAllRegionsName(row.regionName)) {
+      continue;
+    }
+
+    const wantedQty = Math.max(0, getWbRecommendationQty(row, wbRecommendationDays));
+
+    if (!vendorCode && !nmId && !barcode) continue;
+    if (wantedQty <= 0) continue;
+
+    const mappedSupplierArticle = findSupplierArticleByWbArticle({
+      companyName: company,
+      wbArticle: nmId,
+      costs,
+    });
+    const ownItem = findOwnSupplyItem({
+      companyName: company,
+      articles: [vendorCode, nmId, barcode, mappedSupplierArticle],
+      size,
+    });
+    const abc = findStockAbc(wbAbcMap, {
+      companyName: company,
+      articles: [nmId, vendorCode, mappedSupplierArticle],
+    });
+    const visual = makeRowVisual({
+      vendorCode,
+      sku: null,
+      nmId,
+    });
+    const currentQty = toNumber(row.regionStockQty) + toNumber(row.plannedSupplyQty);
+    const ownInitialQty = ownItem?.availableQty ?? 0;
+    const stockLevel = normalizeKey(row.stockLevel);
+    const recommendation = normalizeKey(row.recommendation);
+    const isCritical =
+      normalizeSearchValue(stockLevel).includes("критич") ||
+      normalizeSearchValue(stockLevel).includes("мало") ||
+      normalizeSearchValue(recommendation).includes("срочно");
+    const priority = isCritical
+      ? "HIGH"
+      : getSupplyPriority({
+          wantedQty,
+          ownAvailableQty: ownInitialQty,
+          currentQty,
+          abc,
+          daysWithoutStock: currentQty <= 0 ? 1 : null,
+        });
+
+    supplyPlanCandidates.push({
+      key: `wb-official-${row.id}`,
+      marketplace: "WB",
+      priority,
+      companyName: company,
+      vendorCode: vendorCode || nmId || barcode,
+      sku: nmId || null,
+      barcode: barcode || null,
+      size,
+      productName:
+        row.productName ??
+        visual.name ??
+        ownItem?.productName ??
+        costNameByVendorCode.get(vendorCode) ??
+        null,
+      imageUrl: visual.imageUrl ?? ownItem?.imageUrl ?? null,
+      targetName: row.regionName ? `WB / ${row.regionName}` : "WB / регион",
+      currentQty,
+      ownItemKey: ownItem?.key ?? null,
+      wantedQty,
+      ownInitialQty,
+      avgDailySalesQty:
+        row.forecastOrdersPerDay === null || row.forecastOrdersPerDay === undefined
+          ? row.avgOrdersPerDay === null || row.avgOrdersPerDay === undefined
+            ? null
+            : toNumber(row.avgOrdersPerDay)
+          : toNumber(row.forecastOrdersPerDay),
+      daysWithoutStock:
+        row.stockDays === null || row.stockDays === undefined
+          ? null
+          : toNumber(row.stockDays),
+      abc,
+      reason:
+        recommendation ||
+        `WB рекомендует отгрузить ${formatNumber(wantedQty)} шт. на ${formatNumber(
+          wbRecommendationDays
+        )} дн.`,
+      details: [
+        "Источник: официальный файл WB “Рекомендации по поставке” из личного кабинета.",
+        `Период рекомендации: ${formatNumber(wbRecommendationDays)} дн.`,
+        row.warehousesText ? `Склады в регионе: ${row.warehousesText}` : "",
+        stockLevel ? `Уровень остатка: ${stockLevel}` : "",
+        row.stockDays !== null && row.stockDays !== undefined
+          ? `Остатков хватит на ${formatDecimal(toNumber(row.stockDays))} дн.`
+          : "",
+        row.forecastOrdersPerDay !== null && row.forecastOrdersPerDay !== undefined
+          ? `Прогноз заказов: ${formatDecimal(toNumber(row.forecastOrdersPerDay))} шт/день`
+          : "",
+        row.potentialLostRevenue28 !== null && row.potentialLostRevenue28 !== undefined
+          ? `Потенциальная потеря выручки за 28 дн.: ${formatDecimal(
+              toNumber(row.potentialLostRevenue28)
+            )} ₽`
           : "",
       ].filter(Boolean),
     });
@@ -4244,6 +4484,7 @@ export default async function StocksPage({
       companyName: group.companyName,
       vendorCode: group.vendorCode,
       sku: null,
+      barcode: null,
       size,
       productName:
         visual.name ??
@@ -4317,6 +4558,7 @@ export default async function StocksPage({
       companyName: string;
       vendorCode: string;
       nmId: string;
+      barcode: string;
       size: string | null;
       warehouseName: string;
       countryNames: Set<string>;
@@ -4358,6 +4600,7 @@ export default async function StocksPage({
         companyName,
         vendorCode,
         nmId,
+        barcode: normalizeKey(sale.barcode),
         size,
         warehouseName,
         countryNames: new Set<string>(),
@@ -4385,6 +4628,7 @@ export default async function StocksPage({
         companyName: string;
         vendorCode: string;
         nmId: string;
+        barcode: string;
         size: string | null;
         warehouseName: string;
         countryNames: Set<string>;
@@ -4401,6 +4645,7 @@ export default async function StocksPage({
 
     if (!currentGroup.vendorCode && vendorCode) currentGroup.vendorCode = vendorCode;
     if (!currentGroup.nmId && nmId) currentGroup.nmId = nmId;
+    if (!currentGroup.barcode && sale.barcode) currentGroup.barcode = normalizeKey(sale.barcode);
     if (!currentGroup.size && size) currentGroup.size = size;
 
     const countryName = normalizeKey(sale.countryName);
@@ -4425,6 +4670,18 @@ export default async function StocksPage({
   }
 
   for (const group of wbGeoDemandGroups.values()) {
+    const hasOfficialWbRecommendation = [group.vendorCode, group.nmId, group.barcode].some((article) => {
+      const coverageKey = getWbOfficialCoverageKey({
+        companyName: group.companyName,
+        article,
+        size: group.size,
+      });
+
+      return coverageKey ? officialWbSupplyKeys.has(coverageKey) : false;
+    });
+
+    if (hasOfficialWbRecommendation) continue;
+
     const abcByProfit = group.abc?.abcByProfit ?? "C";
     const targetDays = getWbGeoTargetDays(abcByProfit);
 
@@ -4452,6 +4709,7 @@ export default async function StocksPage({
       articles: [
         group.vendorCode,
         group.nmId,
+        group.barcode,
         mappedSupplierArticle,
         getMarketplaceBaseArticle(mappedSupplierArticle ?? group.vendorCode),
         getSupplierArticleRoot(mappedSupplierArticle ?? group.vendorCode),
@@ -4482,8 +4740,9 @@ export default async function StocksPage({
       marketplace: "WB",
       priority,
       companyName: group.companyName,
-      vendorCode: group.vendorCode || group.nmId,
-      sku: null,
+      vendorCode: group.vendorCode || group.nmId || group.barcode,
+      sku: group.nmId || null,
+      barcode: group.barcode || null,
       size: group.size,
       productName:
         visual.name ??

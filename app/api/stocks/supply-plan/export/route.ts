@@ -34,6 +34,7 @@ type SupplyPlanCandidate = {
   companyName: string;
   vendorCode: string;
   sku: string | null;
+  barcode: string | null;
   size: string | null;
   productName: string | null;
   targetName: string;
@@ -232,6 +233,46 @@ function getWbGeoConfidenceMultiplier(observedDays: number) {
   if (observedDays >= 14) return 0.85;
   if (observedDays >= 7) return 0.7;
   return 0.5;
+}
+
+function getWbRecommendationDays(value: string) {
+  const parsed = Number(value || 14);
+
+  return [14, 21, 28, 56].includes(parsed) ? parsed : 14;
+}
+
+function getWbRecommendationQty(
+  row: {
+    recommendedQty14?: number | null;
+    recommendedQty21?: number | null;
+    recommendedQty28?: number | null;
+    recommendedQty56?: number | null;
+  },
+  days: number
+) {
+  if (days === 21) return toNumber(row.recommendedQty21);
+  if (days === 28) return toNumber(row.recommendedQty28);
+  if (days === 56) return toNumber(row.recommendedQty56);
+
+  return toNumber(row.recommendedQty14);
+}
+
+function isAllRegionsName(value: unknown) {
+  const text = normalizeSearchValue(value);
+
+  return text === normalizeSearchValue("Все регионы");
+}
+
+function getWbOfficialCoverageKey(params: {
+  companyName?: string | null;
+  article?: string | null;
+  size?: string | null;
+}) {
+  const companyKey = normalizeSearchValue(params.companyName);
+  const articleKey = normalizeSupplyArticle(params.article);
+  const sizeKey = normalizeSupplySize(params.size);
+
+  return companyKey && articleKey ? `${companyKey}::${articleKey}::${sizeKey}` : "";
 }
 
 function getWbGeoSupplyKey(params: {
@@ -447,6 +488,7 @@ function supplyPlanMatchesSearch(row: SupplyPlanRow, query: string) {
     row.targetName,
     row.vendorCode,
     row.sku,
+    row.barcode,
     row.size,
     row.productName,
     row.reason,
@@ -506,6 +548,11 @@ function getSelectedKeys(url: URL, name: string) {
 function getExportMarketplace(value: string): "ALL" | Marketplace {
   if (value === "WB" || value === "OZON") return value;
   return "ALL";
+}
+
+
+function getExportMode(value: string): "management" | "uploadZip" {
+  return value === "uploadZip" ? "uploadZip" : "management";
 }
 
 function applyHeaderStyle(row: ExcelJS.Row) {
@@ -683,6 +730,7 @@ async function buildSupplyPlanRows(url: URL) {
     rawWbStocks,
     ozonStocks,
     ozonSupplyRecommendations,
+    wbSupplyRecommendations,
     wbDailySalesRows,
     warehouseStocks,
   ] = await Promise.all([
@@ -751,6 +799,42 @@ async function buildSupplyPlanRows(url: URL) {
           fboStockQty: true,
           fbsStockQty: true,
           inTransitToOzonQty: true,
+        },
+      }),
+      prisma.wbSupplyRecommendation.findMany({
+        where: {
+          companyName: companyWhere,
+        },
+        orderBy: [
+          { companyName: "asc" },
+          { regionName: "asc" },
+          { vendorCode: "asc" },
+          { size: "asc" },
+        ],
+        select: {
+          id: true,
+          companyName: true,
+          recommendationDate: true,
+          regionName: true,
+          warehousesText: true,
+          vendorCode: true,
+          size: true,
+          productName: true,
+          nmId: true,
+          barcode: true,
+          regionStockQty: true,
+          avgOrdersPerDay: true,
+          forecastOrdersPerDay: true,
+          stockDays: true,
+          stockLevel: true,
+          recommendation: true,
+          potentialLostRevenue28: true,
+          plannedSupplyQty: true,
+          recommendedQty14: true,
+          recommendedQty21: true,
+          recommendedQty28: true,
+          recommendedQty56: true,
+          isAllRegions: true,
         },
       }),
       prisma.wbSale.findMany({
@@ -864,6 +948,7 @@ async function buildSupplyPlanRows(url: URL) {
       for (const article of [
         vendorCode,
         sku,
+        stock.barcode,
         getMarketplaceBaseArticle(vendorCode),
         getSupplierArticleRoot(vendorCode),
       ]) {
@@ -979,6 +1064,7 @@ async function buildSupplyPlanRows(url: URL) {
       companyName: row.companyName ?? "Без компании",
       vendorCode,
       sku: sku || null,
+      barcode: null,
       size,
       productName: row.productName ?? ownItem?.productName ?? null,
       targetName: row.clusterName ? `Кластер: ${row.clusterName}` : "Кластер Ozon",
@@ -1007,6 +1093,117 @@ async function buildSupplyPlanRows(url: URL) {
           : "",
         row.daysWithoutStock28 !== null && row.daysWithoutStock28 !== undefined
           ? `Без остатка: ${formatNumber(toNumber(row.daysWithoutStock28))} дн.`
+          : "",
+      ].filter(Boolean),
+    });
+  }
+
+  const wbRecommendationDays = getWbRecommendationDays(getQueryValue(url, "supplyWbDays"));
+  const officialWbSupplyKeys = new Set<string>();
+
+  for (const row of wbSupplyRecommendations) {
+    const company = normalizeKey(row.companyName) || "Без компании";
+    const vendorCode = normalizeKey(row.vendorCode);
+    const nmId = normalizeKey(row.nmId);
+    const barcode = normalizeKey(row.barcode);
+    const size = normalizeKey(row.size) || inferSizeFromVendorCode(vendorCode);
+
+    for (const article of [vendorCode, nmId, barcode]) {
+      const coverageKey = getWbOfficialCoverageKey({
+        companyName: company,
+        article,
+        size,
+      });
+
+      if (coverageKey) officialWbSupplyKeys.add(coverageKey);
+    }
+
+    if (row.isAllRegions || isAllRegionsName(row.regionName)) {
+      continue;
+    }
+
+    const wantedQty = Math.max(0, getWbRecommendationQty(row, wbRecommendationDays));
+
+    if (!vendorCode && !nmId && !barcode) continue;
+    if (wantedQty <= 0) continue;
+
+    const mappedSupplierArticle = findSupplierArticleByWbArticle({
+      companyName: company,
+      wbArticle: nmId,
+    });
+    const ownItem = findOwnSupplyItem({
+      companyName: company,
+      articles: [vendorCode, nmId, barcode, mappedSupplierArticle],
+      size,
+    });
+    const abc = findStockAbc(wbAbcMap, {
+      companyName: company,
+      articles: [nmId, vendorCode, mappedSupplierArticle],
+    });
+    const currentQty = toNumber(row.regionStockQty) + toNumber(row.plannedSupplyQty);
+    const ownInitialQty = ownItem?.availableQty ?? 0;
+    const stockLevel = normalizeKey(row.stockLevel);
+    const recommendation = normalizeKey(row.recommendation);
+    const isCritical =
+      normalizeSearchValue(stockLevel).includes("критич") ||
+      normalizeSearchValue(stockLevel).includes("мало") ||
+      normalizeSearchValue(recommendation).includes("срочно");
+    const priority = isCritical
+      ? "HIGH"
+      : getSupplyPriority({
+          wantedQty,
+          ownAvailableQty: ownInitialQty,
+          currentQty,
+          abc,
+          daysWithoutStock: currentQty <= 0 ? 1 : null,
+        });
+
+    supplyPlanCandidates.push({
+      key: `wb-official-${row.id}`,
+      marketplace: "WB",
+      priority,
+      companyName: company,
+      vendorCode: vendorCode || nmId || barcode,
+      sku: nmId || null,
+      barcode: barcode || null,
+      size,
+      productName: row.productName ?? ownItem?.productName ?? null,
+      targetName: row.regionName ? `WB / ${row.regionName}` : "WB / регион",
+      currentQty,
+      ownItemKey: ownItem?.key ?? null,
+      wantedQty,
+      ownInitialQty,
+      avgDailySalesQty:
+        row.forecastOrdersPerDay === null || row.forecastOrdersPerDay === undefined
+          ? row.avgOrdersPerDay === null || row.avgOrdersPerDay === undefined
+            ? null
+            : toNumber(row.avgOrdersPerDay)
+          : toNumber(row.forecastOrdersPerDay),
+      daysWithoutStock:
+        row.stockDays === null || row.stockDays === undefined
+          ? null
+          : toNumber(row.stockDays),
+      abc,
+      reason:
+        recommendation ||
+        `WB рекомендует отгрузить ${formatNumber(wantedQty)} шт. на ${formatNumber(
+          wbRecommendationDays
+        )} дн.`,
+      details: [
+        "Источник: официальный файл WB “Рекомендации по поставке” из личного кабинета.",
+        `Период рекомендации: ${formatNumber(wbRecommendationDays)} дн.`,
+        row.warehousesText ? `Склады в регионе: ${row.warehousesText}` : "",
+        stockLevel ? `Уровень остатка: ${stockLevel}` : "",
+        row.stockDays !== null && row.stockDays !== undefined
+          ? `Остатков хватит на ${formatDecimal(toNumber(row.stockDays))} дн.`
+          : "",
+        row.forecastOrdersPerDay !== null && row.forecastOrdersPerDay !== undefined
+          ? `Прогноз заказов: ${formatDecimal(toNumber(row.forecastOrdersPerDay))} шт/день`
+          : "",
+        row.potentialLostRevenue28 !== null && row.potentialLostRevenue28 !== undefined
+          ? `Потенциальная потеря выручки за 28 дн.: ${formatDecimal(
+              toNumber(row.potentialLostRevenue28)
+            )} ₽`
           : "",
       ].filter(Boolean),
     });
@@ -1176,6 +1373,7 @@ async function buildSupplyPlanRows(url: URL) {
       companyName: group.companyName,
       vendorCode: group.vendorCode,
       sku: null,
+      barcode: null,
       size,
       productName: ownItem?.productName ?? null,
       targetName: "Ozon API / общий остаток",
@@ -1244,6 +1442,7 @@ async function buildSupplyPlanRows(url: URL) {
       companyName: string;
       vendorCode: string;
       nmId: string;
+      barcode: string;
       size: string | null;
       warehouseName: string;
       countryNames: Set<string>;
@@ -1285,6 +1484,7 @@ async function buildSupplyPlanRows(url: URL) {
         companyName,
         vendorCode,
         nmId,
+        barcode: normalizeKey(sale.barcode),
         size,
         warehouseName,
         countryNames: new Set<string>(),
@@ -1312,6 +1512,7 @@ async function buildSupplyPlanRows(url: URL) {
         companyName: string;
         vendorCode: string;
         nmId: string;
+        barcode: string;
         size: string | null;
         warehouseName: string;
         countryNames: Set<string>;
@@ -1328,6 +1529,7 @@ async function buildSupplyPlanRows(url: URL) {
 
     if (!currentGroup.vendorCode && vendorCode) currentGroup.vendorCode = vendorCode;
     if (!currentGroup.nmId && nmId) currentGroup.nmId = nmId;
+    if (!currentGroup.barcode && sale.barcode) currentGroup.barcode = normalizeKey(sale.barcode);
     if (!currentGroup.size && size) currentGroup.size = size;
 
     const countryName = normalizeKey(sale.countryName);
@@ -1352,6 +1554,18 @@ async function buildSupplyPlanRows(url: URL) {
   }
 
   for (const group of wbGeoDemandGroups.values()) {
+    const hasOfficialWbRecommendation = [group.vendorCode, group.nmId, group.barcode].some((article) => {
+      const coverageKey = getWbOfficialCoverageKey({
+        companyName: group.companyName,
+        article,
+        size: group.size,
+      });
+
+      return coverageKey ? officialWbSupplyKeys.has(coverageKey) : false;
+    });
+
+    if (hasOfficialWbRecommendation) continue;
+
     const abcByProfit = group.abc?.abcByProfit ?? "C";
     const targetDays = getWbGeoTargetDays(abcByProfit);
 
@@ -1378,6 +1592,7 @@ async function buildSupplyPlanRows(url: URL) {
       articles: [
         group.vendorCode,
         group.nmId,
+        group.barcode,
         mappedSupplierArticle,
         getMarketplaceBaseArticle(mappedSupplierArticle ?? group.vendorCode),
         getSupplierArticleRoot(mappedSupplierArticle ?? group.vendorCode),
@@ -1403,8 +1618,9 @@ async function buildSupplyPlanRows(url: URL) {
       marketplace: "WB",
       priority,
       companyName: group.companyName,
-      vendorCode: group.vendorCode || group.nmId,
-      sku: null,
+      vendorCode: group.vendorCode || group.nmId || group.barcode,
+      sku: group.nmId || null,
+      barcode: group.barcode || null,
       size: group.size,
       productName: ownItem?.productName ?? null,
       targetName: `WB / ${group.warehouseName}`,
@@ -1507,6 +1723,12 @@ async function buildSupplyPlanRows(url: URL) {
     ? marketplaceRows.filter((row) => selectedKeys.has(row.key))
     : marketplaceRows;
 
+  const shouldApplyRowsLimit = getExportMode(getQueryValue(url, "exportMode")) !== "uploadZip";
+
+  if (!shouldApplyRowsLimit) {
+    return selectedRows;
+  }
+
   const rowsLimit = getRowsLimit(getQueryValue(url, "supplyRows"), selectedRows.length);
 
   return selectedRows.slice(0, rowsLimit);
@@ -1523,7 +1745,8 @@ function addGeneralSupplySheet(workbook: ExcelJS.Workbook, rows: SupplyPlanRow[]
     { header: "Маркетплейс", key: "marketplace", width: 14 },
     { header: "Куда / склад / кластер", key: "targetName", width: 28 },
     { header: "Артикул", key: "vendorCode", width: 24 },
-    { header: "SKU", key: "sku", width: 18 },
+    { header: "SKU / nmId", key: "sku", width: 18 },
+    { header: "Баркод", key: "barcode", width: 22 },
     { header: "Размер", key: "size", width: 12 },
     { header: "Название", key: "productName", width: 34 },
     { header: "ABC", key: "abc", width: 10 },
@@ -1548,6 +1771,7 @@ function addGeneralSupplySheet(workbook: ExcelJS.Workbook, rows: SupplyPlanRow[]
       targetName: row.targetName,
       vendorCode: row.vendorCode,
       sku: row.sku ?? "",
+      barcode: row.barcode ?? "",
       size: row.size ?? "",
       productName: row.productName ?? "",
       abc: row.abc?.abcByProfit ?? "C",
@@ -1567,17 +1791,17 @@ function addGeneralSupplySheet(workbook: ExcelJS.Workbook, rows: SupplyPlanRow[]
     const row = sheet.getRow(rowNumber);
     applyBodyStyle(row);
 
-    row.getCell(10).numFmt = "0";
     row.getCell(11).numFmt = "0";
     row.getCell(12).numFmt = "0";
     row.getCell(13).numFmt = "0";
-    row.getCell(14).numFmt = "0.00";
-    row.getCell(15).numFmt = "0";
+    row.getCell(14).numFmt = "0";
+    row.getCell(15).numFmt = "0.00";
+    row.getCell(16).numFmt = "0";
   }
 
   sheet.autoFilter = {
     from: "A1",
-    to: "Q1",
+    to: "R1",
   };
 
   if (rows.length === 0) {
@@ -1585,7 +1809,7 @@ function addGeneralSupplySheet(workbook: ExcelJS.Workbook, rows: SupplyPlanRow[]
       companyName: "Нет строк по выбранным фильтрам",
     });
 
-    sheet.mergeCells(`A${row.number}:Q${row.number}`);
+    sheet.mergeCells(`A${row.number}:R${row.number}`);
     row.getCell(1).alignment = { vertical: "middle", horizontal: "center" };
     row.getCell(1).font = { bold: true, color: { argb: "64748B" } };
   }
@@ -1602,6 +1826,7 @@ function addMarketplaceUploadSheet(workbook: ExcelJS.Workbook, rows: SupplyPlanR
     { header: "Склад / кластер / направление", key: "targetName", width: 34 },
     { header: "Артикул продавца", key: "vendorCode", width: 24 },
     { header: "SKU / nmId", key: "sku", width: 18 },
+    { header: "Баркод", key: "barcode", width: 22 },
     { header: "Размер", key: "size", width: 12 },
     { header: "Количество к поставке", key: "recommendedQty", width: 22 },
     { header: "Название товара", key: "productName", width: 34 },
@@ -1618,6 +1843,7 @@ function addMarketplaceUploadSheet(workbook: ExcelJS.Workbook, rows: SupplyPlanR
       targetName: row.targetName,
       vendorCode: row.vendorCode,
       sku: row.sku ?? "",
+      barcode: row.barcode ?? "",
       size: row.size ?? "",
       recommendedQty: row.recommendedQty,
       productName: row.productName ?? "",
@@ -1628,12 +1854,12 @@ function addMarketplaceUploadSheet(workbook: ExcelJS.Workbook, rows: SupplyPlanR
   for (let rowNumber = 2; rowNumber <= sheet.rowCount; rowNumber++) {
     const row = sheet.getRow(rowNumber);
     applyBodyStyle(row);
-    row.getCell(7).numFmt = "0";
+    row.getCell(8).numFmt = "0";
   }
 
   sheet.autoFilter = {
     from: "A1",
-    to: "I1",
+    to: "J1",
   };
 
   if (rows.length === 0) {
@@ -1641,16 +1867,311 @@ function addMarketplaceUploadSheet(workbook: ExcelJS.Workbook, rows: SupplyPlanR
       companyName: "Нет строк по выбранным фильтрам",
     });
 
-    sheet.mergeCells(`A${row.number}:I${row.number}`);
+    sheet.mergeCells(`A${row.number}:J${row.number}`);
     row.getCell(1).alignment = { vertical: "middle", horizontal: "center" };
     row.getCell(1).font = { bold: true, color: { argb: "64748B" } };
   }
+}
+
+
+function safeFileNamePart(value: unknown) {
+  const text = normalizeKey(value) || "без-названия";
+
+  return text
+    .replace(/[<>:"/\\|?*\x00-\x1F]+/g, "-")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 80) || "без-названия";
+}
+
+function cleanTargetName(row: SupplyPlanRow) {
+  const target = normalizeKey(row.targetName)
+    .replace(/^Кластер:\s*/i, "")
+    .replace(/^WB\s*\/\s*/i, "")
+    .replace(/^Ozon\s*\/\s*/i, "")
+    .replace(/^OZON\s*\/\s*/i, "")
+    .trim();
+
+  return target || "Общее направление";
+}
+
+function groupRowsForUpload(rows: SupplyPlanRow[], marketplace: Marketplace) {
+  const groups = new Map<string, { companyName: string; targetName: string; rows: SupplyPlanRow[] }>();
+
+  for (const row of rows) {
+    if (row.marketplace !== marketplace) continue;
+    if (row.recommendedQty <= 0) continue;
+
+    const companyName = normalizeKey(row.companyName) || "Без компании";
+    const targetName = cleanTargetName(row);
+    const key = `${companyName}::${targetName}`;
+    const current = groups.get(key) ?? { companyName, targetName, rows: [] };
+
+    current.rows.push(row);
+    groups.set(key, current);
+  }
+
+  return Array.from(groups.values()).sort((a, b) => {
+    const companyCompare = a.companyName.localeCompare(b.companyName, "ru");
+    return companyCompare !== 0
+      ? companyCompare
+      : a.targetName.localeCompare(b.targetName, "ru");
+  });
+}
+
+async function createWbUploadWorkbook(rows: SupplyPlanRow[]) {
+  const workbook = new ExcelJS.Workbook();
+  workbook.creator = "Marketplace Business OS";
+  workbook.created = new Date();
+
+  const sheet = workbook.addWorksheet("Sheet1", {
+    views: [{ state: "frozen", ySplit: 1 }],
+  });
+
+  sheet.columns = [
+    { header: "Баркод", key: "barcode", width: 22 },
+    { header: "Количество", key: "qty", width: 14 },
+  ];
+
+  sheet.getRow(1).font = { bold: true };
+
+  const groupedByBarcode = new Map<string, number>();
+
+  for (const row of rows) {
+    const barcode = normalizeKey(row.barcode);
+    if (!barcode) continue;
+
+    groupedByBarcode.set(
+      barcode,
+      (groupedByBarcode.get(barcode) ?? 0) + Math.max(0, Math.trunc(row.recommendedQty))
+    );
+  }
+
+  for (const [barcode, qty] of groupedByBarcode.entries()) {
+    if (qty <= 0) continue;
+    sheet.addRow({ barcode, qty });
+  }
+
+  for (let rowNumber = 2; rowNumber <= sheet.rowCount; rowNumber++) {
+    sheet.getRow(rowNumber).getCell(2).numFmt = "0";
+  }
+
+  return Buffer.from(await workbook.xlsx.writeBuffer());
+}
+
+async function createOzonUploadWorkbook(rows: SupplyPlanRow[]) {
+  const workbook = new ExcelJS.Workbook();
+  workbook.creator = "Marketplace Business OS";
+  workbook.created = new Date();
+
+  const sheet = workbook.addWorksheet("Sheet1", {
+    views: [{ state: "frozen", ySplit: 1 }],
+  });
+
+  sheet.columns = [
+    { header: "артикул", key: "vendorCode", width: 24 },
+    { header: "имя (необязательно)", key: "productName", width: 38 },
+    { header: "количество", key: "qty", width: 14 },
+  ];
+
+  sheet.getRow(1).font = { bold: true };
+
+  const groupedByArticle = new Map<string, { productName: string; qty: number }>();
+
+  for (const row of rows) {
+    const vendorCode = normalizeKey(row.vendorCode);
+    if (!vendorCode) continue;
+
+    const current = groupedByArticle.get(vendorCode) ?? {
+      productName: normalizeKey(row.productName) || "",
+      qty: 0,
+    };
+
+    if (!current.productName && row.productName) current.productName = row.productName;
+    current.qty += Math.max(0, Math.trunc(row.recommendedQty));
+    groupedByArticle.set(vendorCode, current);
+  }
+
+  for (const [vendorCode, item] of groupedByArticle.entries()) {
+    if (item.qty <= 0) continue;
+    sheet.addRow({ vendorCode, productName: item.productName, qty: item.qty });
+  }
+
+  for (let rowNumber = 2; rowNumber <= sheet.rowCount; rowNumber++) {
+    sheet.getRow(rowNumber).getCell(3).numFmt = "0";
+  }
+
+  return Buffer.from(await workbook.xlsx.writeBuffer());
+}
+
+const crcTable = (() => {
+  const table: number[] = [];
+
+  for (let n = 0; n < 256; n++) {
+    let c = n;
+
+    for (let k = 0; k < 8; k++) {
+      c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+    }
+
+    table[n] = c >>> 0;
+  }
+
+  return table;
+})();
+
+function crc32(buffer: Buffer) {
+  let crc = 0xffffffff;
+
+  for (const byte of buffer) {
+    crc = crcTable[(crc ^ byte) & 0xff] ^ (crc >>> 8);
+  }
+
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
+function getDosDateTime(date: Date) {
+  const year = Math.max(1980, date.getFullYear());
+  const dosTime =
+    (date.getHours() << 11) | (date.getMinutes() << 5) | Math.floor(date.getSeconds() / 2);
+  const dosDate = ((year - 1980) << 9) | ((date.getMonth() + 1) << 5) | date.getDate();
+
+  return { dosTime, dosDate };
+}
+
+function createZipArchive(files: Array<{ name: string; buffer: Buffer }>) {
+  const now = new Date();
+  const { dosTime, dosDate } = getDosDateTime(now);
+  const localParts: Buffer[] = [];
+  const centralParts: Buffer[] = [];
+  let offset = 0;
+
+  for (const file of files) {
+    const nameBuffer = Buffer.from(file.name, "utf8");
+    const checksum = crc32(file.buffer);
+    const localHeader = Buffer.alloc(30);
+
+    localHeader.writeUInt32LE(0x04034b50, 0);
+    localHeader.writeUInt16LE(20, 4);
+    localHeader.writeUInt16LE(0x0800, 6);
+    localHeader.writeUInt16LE(0, 8);
+    localHeader.writeUInt16LE(dosTime, 10);
+    localHeader.writeUInt16LE(dosDate, 12);
+    localHeader.writeUInt32LE(checksum, 14);
+    localHeader.writeUInt32LE(file.buffer.length, 18);
+    localHeader.writeUInt32LE(file.buffer.length, 22);
+    localHeader.writeUInt16LE(nameBuffer.length, 26);
+    localHeader.writeUInt16LE(0, 28);
+
+    localParts.push(localHeader, nameBuffer, file.buffer);
+
+    const centralHeader = Buffer.alloc(46);
+    centralHeader.writeUInt32LE(0x02014b50, 0);
+    centralHeader.writeUInt16LE(20, 4);
+    centralHeader.writeUInt16LE(20, 6);
+    centralHeader.writeUInt16LE(0x0800, 8);
+    centralHeader.writeUInt16LE(0, 10);
+    centralHeader.writeUInt16LE(dosTime, 12);
+    centralHeader.writeUInt16LE(dosDate, 14);
+    centralHeader.writeUInt32LE(checksum, 16);
+    centralHeader.writeUInt32LE(file.buffer.length, 20);
+    centralHeader.writeUInt32LE(file.buffer.length, 24);
+    centralHeader.writeUInt16LE(nameBuffer.length, 28);
+    centralHeader.writeUInt16LE(0, 30);
+    centralHeader.writeUInt16LE(0, 32);
+    centralHeader.writeUInt16LE(0, 34);
+    centralHeader.writeUInt16LE(0, 36);
+    centralHeader.writeUInt32LE(0, 38);
+    centralHeader.writeUInt32LE(offset, 42);
+
+    centralParts.push(centralHeader, nameBuffer);
+    offset += localHeader.length + nameBuffer.length + file.buffer.length;
+  }
+
+  const centralDirectory = Buffer.concat(centralParts);
+  const end = Buffer.alloc(22);
+  end.writeUInt32LE(0x06054b50, 0);
+  end.writeUInt16LE(0, 4);
+  end.writeUInt16LE(0, 6);
+  end.writeUInt16LE(files.length, 8);
+  end.writeUInt16LE(files.length, 10);
+  end.writeUInt32LE(centralDirectory.length, 12);
+  end.writeUInt32LE(offset, 16);
+  end.writeUInt16LE(0, 20);
+
+  return Buffer.concat([...localParts, centralDirectory, end]);
+}
+
+async function createMarketplaceUploadZip(rows: SupplyPlanRow[], marketplace: Marketplace) {
+  const groups = groupRowsForUpload(rows, marketplace);
+  const files: Array<{ name: string; buffer: Buffer }> = [];
+
+  for (const group of groups) {
+    const buffer =
+      marketplace === "WB"
+        ? await createWbUploadWorkbook(group.rows)
+        : await createOzonUploadWorkbook(group.rows);
+    const hasRows = group.rows.some((row) => {
+      if (marketplace === "WB") return Boolean(normalizeKey(row.barcode)) && row.recommendedQty > 0;
+      return Boolean(normalizeKey(row.vendorCode)) && row.recommendedQty > 0;
+    });
+
+    if (!hasRows) continue;
+
+    files.push({
+      name: `${marketplace}/${safeFileNamePart(group.companyName)}/${safeFileNamePart(
+        group.targetName
+      )}.xlsx`,
+      buffer,
+    });
+  }
+
+  if (files.length === 0) {
+    const workbook = new ExcelJS.Workbook();
+    const sheet = workbook.addWorksheet("Нет данных");
+    sheet.getCell("A1").value =
+      marketplace === "WB"
+        ? "Нет строк WB с баркодом и количеством к отгрузке по выбранным фильтрам."
+        : "Нет строк Ozon с артикулом и количеством к отгрузке по выбранным фильтрам.";
+    sheet.getCell("A1").font = { bold: true };
+    sheet.getColumn(1).width = 90;
+    files.push({
+      name: `${marketplace}/нет-данных.xlsx`,
+      buffer: Buffer.from(await workbook.xlsx.writeBuffer()),
+    });
+  }
+
+  return createZipArchive(files);
 }
 
 export async function GET(req: Request) {
   try {
     const url = new URL(req.url);
     const rows = await buildSupplyPlanRows(url);
+
+    const now = new Date();
+    const fileStamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(
+      2,
+      "0"
+    )}-${String(now.getDate()).padStart(2, "0")}`;
+    const exportMarketplace = getExportMarketplace(getQueryValue(url, "exportMarketplace"));
+    const exportMode = getExportMode(getQueryValue(url, "exportMode"));
+    const marketplaceSuffix =
+      exportMarketplace === "ALL" ? "all" : exportMarketplace.toLowerCase();
+
+    if (exportMode === "uploadZip") {
+      const zipMarketplace = exportMarketplace === "ALL" ? "WB" : exportMarketplace;
+      const zipBuffer = await createMarketplaceUploadZip(rows, zipMarketplace);
+
+      return new NextResponse(zipBuffer, {
+        status: 200,
+        headers: {
+          "Content-Type": "application/zip",
+          "Content-Disposition": `attachment; filename="supply-upload-${zipMarketplace.toLowerCase()}-${fileStamp}.zip"`,
+          "Cache-Control": "no-store",
+        },
+      });
+    }
 
     const workbook = new ExcelJS.Workbook();
     workbook.creator = "Marketplace Business OS";
@@ -1659,14 +2180,6 @@ export async function GET(req: Request) {
     addGeneralSupplySheet(workbook, rows);
     addMarketplaceUploadSheet(workbook, rows);
 
-    const now = new Date();
-    const fileStamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(
-      2,
-      "0"
-    )}-${String(now.getDate()).padStart(2, "0")}`;
-    const exportMarketplace = getExportMarketplace(getQueryValue(url, "exportMarketplace"));
-    const marketplaceSuffix =
-      exportMarketplace === "ALL" ? "all" : exportMarketplace.toLowerCase();
     const buffer = await workbook.xlsx.writeBuffer();
 
     return new NextResponse(Buffer.from(buffer), {
