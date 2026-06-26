@@ -1890,6 +1890,8 @@ function SupplyPlanningBlock({
   companyNames: string[];
 }) {
   const isOpen = params.supplyOpen === "1";
+  const selectedCompanyName =
+    params.companyName && params.companyName !== "ALL" ? params.companyName : null;
   const marketplaceFilter = getSupplyMarketplaceFilter(params.supplyMarketplace);
   const priorityFilter = getSupplyPriorityFilter(params.supplyPriority);
   const abcFilter = getSupplyAbcFilter(params.supplyAbc);
@@ -1903,6 +1905,10 @@ function SupplyPlanningBlock({
       : "ALL";
 
   const filteredRows = rows.filter((row) => {
+    if (selectedCompanyName && row.companyName !== selectedCompanyName) {
+      return false;
+    }
+
     if (marketplaceFilter !== "ALL" && row.marketplace !== marketplaceFilter) {
       return false;
     }
@@ -1925,6 +1931,10 @@ function SupplyPlanningBlock({
 
     return supplyPlanMatchesSearch(row, query);
   });
+
+  const productionBaseRows = selectedCompanyName
+    ? rows.filter((row) => row.companyName === selectedCompanyName)
+    : rows;
 
   const rowsLimit = getSupplyRowsLimit(params.supplyRows, filteredRows.length);
   const visibleRows = filteredRows.slice(0, rowsLimit);
@@ -1979,7 +1989,7 @@ function SupplyPlanningBlock({
   const productionBufferDays = getProductionBufferDays(params.productionBufferDays);
   const productionAbcFilter = getProductionAbcFilter(params.productionAbc);
   const allProductionPlanRows = getProductionPlanRows(
-    filteredRows,
+    productionBaseRows,
     productionBufferDays,
     productionAbcFilter
   );
@@ -2017,7 +2027,7 @@ function SupplyPlanningBlock({
   }
 
   return (
-    <section className="h-full overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-sm">
+    <section className="overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-sm">
       <div className="p-4 sm:p-5">
         <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
           <div className="min-w-0">
@@ -2249,36 +2259,38 @@ function SupplyPlanningBlock({
 
 
 
-          <div className="mt-4 flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-            <div className="max-w-3xl text-sm font-bold leading-6 text-slate-500">
-              Что и куда отгрузить со своего склада с учётом спроса, остатков маркетплейсов и доступного товара. Официальный файл Ozon “Планирование поставок” можно загрузить здесь же.
-            </div>
+          <div className="mt-3 rounded-[22px] border border-slate-200 bg-slate-50/70 px-3 py-2.5">
+            <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+              <div className="min-w-0 text-xs font-bold leading-5 text-slate-500">
+                Что и куда отгрузить с учётом спроса, остатков и доступного товара. Ozon-план из ЛК можно загрузить здесь.
+              </div>
 
-            <div className="flex flex-wrap gap-2">
-              <Link
-                href="/import?reportType=OZON_SUPPLY_RECOMMENDATION"
-                className="inline-flex items-center justify-center rounded-2xl border border-blue-200 bg-blue-50 px-4 py-2.5 text-sm font-black text-blue-700 transition hover:bg-blue-100"
-                title="Загрузить Excel-файл Ozon из личного кабинета: FBO → Планирование поставок → Доступность товаров"
-              >
-                Загрузить рекомендации Ozon
-              </Link>
+              <div className="flex shrink-0 flex-wrap gap-2">
+                <Link
+                  href="/import?reportType=OZON_SUPPLY_RECOMMENDATION"
+                  className="inline-flex h-9 items-center justify-center rounded-2xl border border-blue-200 bg-blue-50 px-3 text-xs font-black text-blue-700 transition hover:bg-blue-100"
+                  title="Загрузить Excel-файл Ozon из личного кабинета: FBO → Планирование поставок → Доступность товаров"
+                >
+                  Загрузить Ozon
+                </Link>
 
-              <Link
-                href={exportHref}
-                className="inline-flex items-center justify-center rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm font-black text-emerald-700 transition hover:bg-emerald-100"
-                title="Скачать Excel-файл по текущим фильтрам плана поставок"
-              >
-                Экспорт Excel
-              </Link>
+                <Link
+                  href={exportHref}
+                  className="inline-flex h-9 items-center justify-center rounded-2xl border border-emerald-200 bg-emerald-50 px-3 text-xs font-black text-emerald-700 transition hover:bg-emerald-100"
+                  title="Скачать Excel-файл по текущим фильтрам плана поставок"
+                >
+                  Экспорт Excel
+                </Link>
 
-              <button
-                type="button"
-                disabled
-                className="inline-flex cursor-not-allowed items-center justify-center rounded-2xl border border-slate-200 bg-slate-100 px-4 py-2.5 text-sm font-black text-slate-400"
-                title="После Excel добавим сохранение черновика поставки внутри системы"
-              >
-                Запланировать поставку · позже
-              </button>
+                <button
+                  type="button"
+                  disabled
+                  className="inline-flex h-9 cursor-not-allowed items-center justify-center rounded-2xl border border-slate-200 bg-white px-3 text-xs font-black text-slate-400"
+                  title="После Excel добавим сохранение черновика поставки внутри системы"
+                >
+                  Запланировать · позже
+                </button>
+              </div>
             </div>
           </div>
 
@@ -2462,66 +2474,22 @@ function ProductionPlanningBlock({
   rows: SupplyPlanRow[];
   params: StockSearchParams;
 }) {
-  const marketplaceFilter = getSupplyMarketplaceFilter(params.supplyMarketplace);
-  const priorityFilter = getSupplyPriorityFilter(params.supplyPriority);
-  const abcFilter = getSupplyAbcFilter(params.supplyAbc);
-  const targetFilter = normalizeKey(params.supplyTarget);
-  const query = normalizeKey(params.supplyQ);
+  const selectedCompanyName =
+    params.companyName && params.companyName !== "ALL" ? params.companyName : null;
 
-  const targetOptions = getSupplyTargetOptions(rows, marketplaceFilter);
-  const safeTargetFilter =
-    targetFilter && targetFilter !== "ALL" && targetOptions.includes(targetFilter)
-      ? targetFilter
-      : "ALL";
-
-  const filteredRows = rows.filter((row) => {
-    if (marketplaceFilter !== "ALL" && row.marketplace !== marketplaceFilter) {
-      return false;
-    }
-
-    if (priorityFilter !== "ALL" && row.priority !== priorityFilter) {
-      return false;
-    }
-
-    if (abcFilter !== "ALL" && row.abc?.abcByProfit !== abcFilter) {
-      return false;
-    }
-
-    if (
-      safeTargetFilter &&
-      safeTargetFilter !== "ALL" &&
-      row.targetName !== safeTargetFilter
-    ) {
-      return false;
-    }
-
-    return supplyPlanMatchesSearch(row, query);
-  });
+  // План пошива должен зависеть от выбранной компании, а не от фильтров блока поставок
+  // по маркетплейсу, направлению, приоритету или поиску.
+  // Все компании → считаем по всем компаниям.
+  // ИП Петров → считаем только по ИП Петров.
+  // ИП Лебедева → считаем только по ИП Лебедева.
+  const productionBaseRows = selectedCompanyName
+    ? rows.filter((row) => row.companyName === selectedCompanyName)
+    : rows;
 
   const exportParams = new URLSearchParams();
 
-  if (params.companyName && params.companyName !== "ALL") {
-    exportParams.set("companyName", params.companyName);
-  }
-
-  if (marketplaceFilter !== "ALL") {
-    exportParams.set("supplyMarketplace", marketplaceFilter);
-  }
-
-  if (safeTargetFilter && safeTargetFilter !== "ALL") {
-    exportParams.set("supplyTarget", safeTargetFilter);
-  }
-
-  if (abcFilter !== "ALL") {
-    exportParams.set("supplyAbc", abcFilter);
-  }
-
-  if (priorityFilter !== "ALL") {
-    exportParams.set("supplyPriority", priorityFilter);
-  }
-
-  if (query) {
-    exportParams.set("supplyQ", query);
+  if (selectedCompanyName) {
+    exportParams.set("companyName", selectedCompanyName);
   }
 
   if (params.dateFrom) {
@@ -2536,12 +2504,18 @@ function ProductionPlanningBlock({
   const productionBufferDays = getProductionBufferDays(params.productionBufferDays);
   const productionAbcFilter = getProductionAbcFilter(params.productionAbc);
   const allProductionPlanRows = getProductionPlanRows(
-    filteredRows,
+    productionBaseRows,
     productionBufferDays,
     productionAbcFilter
   );
-  const hasCustomProductionSelection = params.productionSelectionMode === "custom";
-  const selectedProductionKeys = getProductionSelectedKeys(params.productionSelected);
+  const rawSelectedProductionKeys = getProductionSelectedKeys(params.productionSelected);
+  const currentProductionKeys = new Set(allProductionPlanRows.map((row) => row.key));
+  const hasCustomProductionSelection =
+    params.productionSelectionMode === "custom" &&
+    Array.from(rawSelectedProductionKeys).some((key) => currentProductionKeys.has(key));
+  const selectedProductionKeys = hasCustomProductionSelection
+    ? rawSelectedProductionKeys
+    : new Set<string>();
   const selectedProductionPlanRows =
     hasCustomProductionSelection && selectedProductionKeys.size > 0
       ? allProductionPlanRows.filter((row) => selectedProductionKeys.has(row.key))
@@ -2576,7 +2550,7 @@ function ProductionPlanningBlock({
   }
 
   return (
-<section id="production-plan" className="h-full overflow-hidden rounded-[28px] border border-amber-200 bg-amber-50/70 shadow-sm ring-1 ring-amber-100">
+<section id="production-plan" className="overflow-hidden rounded-[28px] border border-amber-200 bg-amber-50/70 shadow-sm ring-1 ring-amber-100">
             <div className="flex flex-col gap-3 border-b border-amber-100 p-4 lg:flex-row lg:items-start lg:justify-between">
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
@@ -2642,13 +2616,6 @@ function ProductionPlanningBlock({
                   {params.companyName ? <input type="hidden" name="companyName" value={params.companyName} /> : null}
                   {params.dateFrom ? <input type="hidden" name="dateFrom" value={params.dateFrom} /> : null}
                   {params.dateTo ? <input type="hidden" name="dateTo" value={params.dateTo} /> : null}
-                  {marketplaceFilter !== "ALL" ? <input type="hidden" name="supplyMarketplace" value={marketplaceFilter} /> : null}
-                  {safeTargetFilter ? <input type="hidden" name="supplyTarget" value={safeTargetFilter} /> : null}
-                  {abcFilter !== "ALL" ? <input type="hidden" name="supplyAbc" value={abcFilter} /> : null}
-                  {priorityFilter !== "ALL" ? <input type="hidden" name="supplyPriority" value={priorityFilter} /> : null}
-                  {params.supplyRows ? <input type="hidden" name="supplyRows" value={params.supplyRows} /> : null}
-                  {query ? <input type="hidden" name="supplyQ" value={query} /> : null}
-
                   <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-[160px_150px_150px_auto]">
                     <label className="block">
                       <span className="mb-1 block text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">
@@ -4554,10 +4521,13 @@ export default async function StocksPage({
     ? summaries.find((summary) => summary.companyName === selectedCompanyName)
     : null;
 
-  const dashboardProductionRows = getProductionPlanRows(supplyPlanRows, 20, "ALL");
+  const dashboardPlanningRows = selectedCompanyName
+    ? supplyPlanRows.filter((row) => row.companyName === selectedCompanyName)
+    : supplyPlanRows;
+  const dashboardProductionRows = getProductionPlanRows(dashboardPlanningRows, 20, "ALL");
   const dashboardProductionQty = productionPlanSummaryQty(dashboardProductionRows);
-  const dashboardSupplyQty = supplySummaryQty(supplyPlanRows);
-  const dashboardCriticalRows = supplyPlanRows.filter(
+  const dashboardSupplyQty = supplySummaryQty(dashboardPlanningRows);
+  const dashboardCriticalRows = dashboardPlanningRows.filter(
     (row) => row.priority === "HIGH"
   );
   const dashboardCriticalQty = supplyWantedQty(dashboardCriticalRows);
@@ -4885,18 +4855,18 @@ export default async function StocksPage({
             </section>
           ) : null}
 
-          <section id="supply-plan" className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_280px] xl:items-stretch">
-            <div className="min-w-0 space-y-4 xl:flex xl:h-full xl:flex-col">
-              <div className="xl:flex-1">
+          <section id="supply-plan" className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_280px] xl:items-start">
+            <div className="min-w-0 space-y-4">
+              <div>
                 <SupplyPlanningBlock rows={supplyPlanRows} params={params} companyNames={companyNames} />
               </div>
-              <div className="xl:flex-1">
+              <div>
                 <ProductionPlanningBlock rows={supplyPlanRows} params={params} />
               </div>
             </div>
 
-            <aside className="space-y-3 xl:h-full">
-              <div className="h-full rounded-[26px] border border-slate-200 bg-white p-4 shadow-sm">
+            <aside className="space-y-3 xl:self-start">
+              <div className="rounded-[26px] border border-slate-200 bg-white p-4 shadow-sm">
                 <div className="text-xs font-black uppercase tracking-[0.12em] text-blue-600">
                   Быстрые рекомендации
                 </div>
