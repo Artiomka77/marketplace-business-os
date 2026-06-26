@@ -416,7 +416,7 @@ function FilterHelpLabel({
         <span className="inline-flex h-3.5 w-3.5 cursor-help items-center justify-center rounded-full bg-slate-100 text-[9px] font-black text-slate-400 ring-1 ring-slate-200 transition group-hover:bg-violet-50 group-hover:text-violet-600 group-hover:ring-violet-100">
           ?
         </span>
-        <span className="pointer-events-none absolute left-0 top-full z-30 mt-2 hidden w-64 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-[11px] font-semibold normal-case tracking-normal text-slate-600 shadow-xl group-hover:block group-focus-within:block">
+        <span className="pointer-events-none absolute left-0 top-full z-50 mt-2 hidden w-72 whitespace-normal rounded-2xl border border-slate-200 bg-white px-3 py-2 text-left text-[11px] font-semibold leading-4 normal-case tracking-normal text-slate-600 shadow-xl group-hover:block group-focus-within:block">
           {tooltip}
         </span>
       </span>
@@ -438,7 +438,7 @@ function HelpIcon({
         ?
       </span>
       <span
-        className={`pointer-events-none absolute top-full z-30 mt-2 hidden w-72 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-[11px] font-semibold normal-case tracking-normal text-slate-600 shadow-xl group-hover:block group-focus-within:block ${
+        className={`pointer-events-none absolute top-full z-50 mt-2 hidden w-72 whitespace-normal rounded-2xl border border-slate-200 bg-white px-3 py-2 text-left text-[11px] font-semibold leading-4 normal-case tracking-normal text-slate-600 shadow-xl group-hover:block group-focus-within:block ${
           align === "right" ? "right-0" : "left-0"
         }`}
       >
