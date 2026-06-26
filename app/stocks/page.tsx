@@ -1880,6 +1880,427 @@ function productionPlanSummaryQty(rows: ProductionPlanRow[]) {
   return rows.reduce((sum, row) => sum + Math.max(0, row.productionQty), 0);
 }
 
+function ProductionPlanningBlock({
+  rows,
+  params,
+  companyNames,
+}: {
+  rows: SupplyPlanRow[];
+  params: StockSearchParams;
+  companyNames: string[];
+}) {
+  const productionOpen = params.productionOpen === "1";
+  const marketplaceFilter = getSupplyMarketplaceFilter(params.supplyMarketplace);
+  const priorityFilter = getSupplyPriorityFilter(params.supplyPriority);
+  const supplyAbcFilter = getSupplyAbcFilter(params.supplyAbc);
+  const targetFilter = normalizeKey(params.supplyTarget);
+  const query = normalizeKey(params.supplyQ);
+
+  const targetOptions = getSupplyTargetOptions(rows, marketplaceFilter);
+  const safeTargetFilter =
+    targetFilter && targetFilter !== "ALL" && targetOptions.includes(targetFilter)
+      ? targetFilter
+      : "ALL";
+
+  const filteredRows = rows.filter((row) => {
+    if (marketplaceFilter !== "ALL" && row.marketplace !== marketplaceFilter) {
+      return false;
+    }
+
+    if (priorityFilter !== "ALL" && row.priority !== priorityFilter) {
+      return false;
+    }
+
+    if (supplyAbcFilter !== "ALL" && row.abc?.abcByProfit !== supplyAbcFilter) {
+      return false;
+    }
+
+    if (
+      safeTargetFilter &&
+      safeTargetFilter !== "ALL" &&
+      row.targetName !== safeTargetFilter
+    ) {
+      return false;
+    }
+
+    return supplyPlanMatchesSearch(row, query);
+  });
+
+  const productionBufferDays = getProductionBufferDays(params.productionBufferDays);
+  const productionAbcFilter = getProductionAbcFilter(params.productionAbc);
+  const allProductionPlanRows = getProductionPlanRows(
+    filteredRows,
+    productionBufferDays,
+    productionAbcFilter
+  );
+  const hasCustomProductionSelection = params.productionSelectionMode === "custom";
+  const selectedProductionKeys = getProductionSelectedKeys(params.productionSelected);
+  const productionPlanRows = hasCustomProductionSelection
+    ? allProductionPlanRows.filter((row) => selectedProductionKeys.has(row.key))
+    : allProductionPlanRows;
+  const productionRowsLimit = getProductionRowsLimit(
+    params.productionRows,
+    productionPlanRows.length
+  );
+  const visibleProductionPlanRows = productionPlanRows.slice(0, productionRowsLimit);
+  const productionPlanQty = productionPlanSummaryQty(productionPlanRows);
+  const topDeficitQty = productionPlanRows
+    .slice(0, 10)
+    .reduce((sum, row) => sum + Math.max(0, row.productionQty), 0);
+  const riskQty = productionPlanRows
+    .filter((row) => row.leadTimeBufferQty > 0 && row.leadTimeBufferQty <= row.deficitQty)
+    .reduce((sum, row) => sum + Math.max(0, row.productionQty), 0);
+
+  const exportParams = new URLSearchParams();
+
+  if (params.companyName && params.companyName !== "ALL") {
+    exportParams.set("companyName", params.companyName);
+  }
+
+  if (marketplaceFilter !== "ALL") {
+    exportParams.set("supplyMarketplace", marketplaceFilter);
+  }
+
+  if (safeTargetFilter && safeTargetFilter !== "ALL") {
+    exportParams.set("supplyTarget", safeTargetFilter);
+  }
+
+  if (supplyAbcFilter !== "ALL") {
+    exportParams.set("supplyAbc", supplyAbcFilter);
+  }
+
+  if (priorityFilter !== "ALL") {
+    exportParams.set("supplyPriority", priorityFilter);
+  }
+
+  if (query) {
+    exportParams.set("supplyQ", query);
+  }
+
+  if (params.dateFrom) {
+    exportParams.set("dateFrom", params.dateFrom);
+  }
+
+  if (params.dateTo) {
+    exportParams.set("dateTo", params.dateTo);
+  }
+
+  function makeProductionExportHref(bufferDays: number) {
+    const productionExportParams = new URLSearchParams(exportParams);
+    productionExportParams.set("bufferDays", String(bufferDays));
+    productionExportParams.set("productionAbc", productionAbcFilter);
+
+    if (hasCustomProductionSelection) {
+      productionExportParams.set("productionSelectionMode", "custom");
+
+      for (const key of selectedProductionKeys) {
+        productionExportParams.append("productionSelected", key);
+      }
+    }
+
+    const queryString = productionExportParams.toString();
+
+    return queryString
+      ? `/api/stocks/production-plan/export?${queryString}`
+      : `/api/stocks/production-plan/export?bufferDays=${bufferDays}`;
+  }
+
+  return (
+    <section
+      id="production-plan"
+      className="overflow-hidden rounded-[28px] border border-amber-200 bg-white shadow-sm ring-1 ring-amber-50"
+    >
+      <div className="p-4 sm:p-5">
+        <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <Link
+                href={makeUrl(params, { productionOpen: productionOpen ? "0" : "1" })}
+                className="inline-flex items-center gap-2 rounded-full bg-amber-50 px-3 py-1 text-xs font-black uppercase tracking-[0.12em] text-amber-700 ring-1 ring-amber-100 transition hover:bg-amber-100"
+              >
+                <span>Пошив</span>
+                <span className="text-sm">{productionOpen ? "▲" : "▼"}</span>
+              </Link>
+
+              <span className="rounded-full bg-slate-50 px-3 py-1 text-xs font-black text-slate-500 ring-1 ring-slate-200">
+                {productionOpen ? "развернут" : "свернут"}
+              </span>
+            </div>
+
+            <h2 className="mt-3 text-2xl font-black tracking-tight text-slate-950">
+              Что нужно заказать в пошив
+            </h2>
+            <p className="mt-2 max-w-3xl text-sm font-bold leading-6 text-slate-500">
+              Рекомендация по дефициту с учётом срока пошива. Буфер можно менять: 15, 20, 30 или 60 дней.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-3 gap-2 sm:min-w-[520px]">
+            <div className="rounded-2xl bg-violet-50 p-3 text-center ring-1 ring-violet-100">
+              <div className="text-xs font-black uppercase text-violet-600">К пошиву</div>
+              <div className="mt-1 text-xl font-black text-slate-950">
+                {formatNumber(productionPlanQty)}
+              </div>
+              <div className="text-[11px] font-bold text-slate-500">шт.</div>
+            </div>
+            <div className="rounded-2xl bg-blue-50 p-3 text-center ring-1 ring-blue-100">
+              <div className="text-xs font-black uppercase text-blue-600">Позиций</div>
+              <div className="mt-1 text-xl font-black text-slate-950">
+                {formatNumber(productionPlanRows.length)}
+              </div>
+              <div className="text-[11px] font-bold text-slate-500">товар/размер</div>
+            </div>
+            <div className="rounded-2xl bg-emerald-50 p-3 text-center ring-1 ring-emerald-100">
+              <div className="text-xs font-black uppercase text-emerald-700">Буфер</div>
+              <div className="mt-1 text-xl font-black text-slate-950">
+                {formatNumber(productionBufferDays)}
+              </div>
+              <div className="text-[11px] font-bold text-slate-500">дней</div>
+            </div>
+          </div>
+        </div>
+
+        {!productionOpen ? (
+          <div className="mt-4 grid gap-2 md:grid-cols-3">
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-bold text-slate-600">
+              Топ-10 дефицитных: <b className="text-slate-950">{formatNumber(topDeficitQty)} шт.</b>
+            </div>
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-bold text-slate-600">
+              Под риском: <b className="text-slate-950">{formatNumber(riskQty)} шт.</b>
+            </div>
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-bold text-slate-600">
+              В норме: <b className="text-slate-950">{formatNumber(Math.max(0, productionPlanQty - topDeficitQty))} шт.</b>
+            </div>
+          </div>
+        ) : null}
+      </div>
+
+      {productionOpen ? (
+        <div className="border-t border-amber-100 bg-amber-50/60">
+          <form
+            id="production-plan-form"
+            action="/stocks"
+            method="GET"
+            className="grid gap-3 border-b border-amber-100 p-4 md:grid-cols-2 xl:grid-cols-[1fr_1fr_1fr_1fr_auto_auto] xl:items-end"
+          >
+            <input type="hidden" name="productionOpen" value="1" />
+            <input type="hidden" name="supplyOpen" value={params.supplyOpen ?? "0"} />
+            {params.companyName ? <input type="hidden" name="companyName" value={params.companyName} /> : null}
+            {params.supplyMarketplace ? <input type="hidden" name="supplyMarketplace" value={params.supplyMarketplace} /> : null}
+            {params.supplyTarget ? <input type="hidden" name="supplyTarget" value={params.supplyTarget} /> : null}
+            {params.supplyPriority ? <input type="hidden" name="supplyPriority" value={params.supplyPriority} /> : null}
+            {params.supplyQ ? <input type="hidden" name="supplyQ" value={params.supplyQ} /> : null}
+            {params.dateFrom ? <input type="hidden" name="dateFrom" value={params.dateFrom} /> : null}
+            {params.dateTo ? <input type="hidden" name="dateTo" value={params.dateTo} /> : null}
+
+            <label className="block">
+              <span className="mb-1 block text-[10px] font-black uppercase tracking-[0.12em] text-amber-500">
+                Буфер пошива
+              </span>
+              <select
+                name="productionBufferDays"
+                defaultValue={String(productionBufferDays)}
+                className="h-11 w-full rounded-2xl border border-amber-200 bg-white px-3 text-sm font-bold text-slate-700 outline-none transition focus:border-amber-300 focus:ring-4 focus:ring-amber-50"
+              >
+                {PRODUCTION_BUFFER_DAY_OPTIONS.map((days) => (
+                  <option key={days} value={days}>
+                    {days} дней
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="block">
+              <span className="mb-1 block text-[10px] font-black uppercase tracking-[0.12em] text-amber-500">
+                ABC
+              </span>
+              <select
+                name="productionAbc"
+                defaultValue={productionAbcFilter}
+                className="h-11 w-full rounded-2xl border border-amber-200 bg-white px-3 text-sm font-bold text-slate-700 outline-none transition focus:border-amber-300 focus:ring-4 focus:ring-amber-50"
+              >
+                <option value="A">ABC A</option>
+                <option value="B">ABC B</option>
+                <option value="C">ABC C</option>
+                <option value="ALL">Все ABC</option>
+              </select>
+            </label>
+
+            <label className="block">
+              <span className="mb-1 block text-[10px] font-black uppercase tracking-[0.12em] text-amber-500">
+                Строк
+              </span>
+              <select
+                name="productionRows"
+                defaultValue={params.productionRows ?? "8"}
+                className="h-11 w-full rounded-2xl border border-amber-200 bg-white px-3 text-sm font-bold text-slate-700 outline-none transition focus:border-amber-300 focus:ring-4 focus:ring-amber-50"
+              >
+                <option value="8">8 строк</option>
+                <option value="20">20 строк</option>
+                <option value="50">50 строк</option>
+                <option value="100">100 строк</option>
+                <option value="200">200 строк</option>
+                <option value="ALL">Все</option>
+              </select>
+            </label>
+
+            <button className="h-11 rounded-2xl bg-amber-600 px-5 text-sm font-black text-white shadow-lg shadow-amber-100 transition hover:bg-amber-700">
+              Применить
+            </button>
+
+            <div className="flex flex-wrap gap-2 xl:col-span-2 xl:justify-end">
+              {PRODUCTION_BUFFER_DAY_OPTIONS.map((days) => (
+                <Link
+                  key={days}
+                  href={makeProductionExportHref(days)}
+                  className="inline-flex h-11 items-center justify-center rounded-2xl border border-amber-200 bg-white px-4 text-sm font-black text-amber-700 transition hover:bg-amber-50"
+                  title={`Скачать Excel-план пошива с фото и буфером ${days} дней`}
+                >
+                  Excel {days} дн.
+                </Link>
+              ))}
+            </div>
+          </form>
+
+          {productionPlanRows.length > 0 ? (
+            <>
+              <div className="overflow-x-auto">
+                <table className="w-full table-fixed border-collapse text-left text-xs">
+                  <thead className="bg-white/70 text-[10px] font-black uppercase tracking-[0.08em] text-slate-400">
+                    <tr>
+                      <th className="w-[5%] px-4 py-3">Выбор</th>
+                      <th className="w-[27%] px-3 py-3">Товар</th>
+                      <th className="w-[8%] px-3 py-3">Размер</th>
+                      <th className="w-[12%] px-3 py-3">Каналы</th>
+                      <th className="w-[18%] px-3 py-3">Направления</th>
+                      <th className="w-[10%] px-3 py-3 text-right">Дефицит</th>
+                      <th className="w-[10%] px-3 py-3 text-right">Буфер {productionBufferDays} дн.</th>
+                      <th className="w-[8%] px-3 py-3 text-right">К пошиву</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-amber-100 bg-white/40">
+                    {visibleProductionPlanRows.map((row) => {
+                      const tooltip = [
+                        `Компания: ${row.companyName}`,
+                        `Артикул: ${row.vendorCode}`,
+                        row.sku ? `SKU: ${row.sku}` : null,
+                        `Размер: ${row.size ?? "—"}`,
+                        `Каналы: ${row.marketplaces.join(" + ")}`,
+                        `Дефицит к отгрузке: ${formatNumber(row.deficitQty)} шт.`,
+                        `Среднесуточный спрос: ${formatDecimal(row.avgDailySalesQty)} шт/день`,
+                        `Буфер на ${formatNumber(productionBufferDays)} дней: ${formatNumber(row.leadTimeBufferQty)} шт.`,
+                        `Рекомендация к пошиву: ${formatNumber(row.productionQty)} шт.`,
+                      ]
+                        .filter(Boolean)
+                        .join("\n");
+
+                      return (
+                        <tr key={row.key} className="align-middle hover:bg-white/70" title={tooltip}>
+                          <td className="px-4 py-3 text-center">
+                            <input
+                              form="production-plan-form"
+                              type="checkbox"
+                              name="productionSelected"
+                              value={row.key}
+                              defaultChecked={!hasCustomProductionSelection || selectedProductionKeys.has(row.key)}
+                              className="h-4 w-4 rounded border-amber-300 text-amber-600 focus:ring-amber-500"
+                              aria-label={`Выбрать в пошив ${row.vendorCode} ${row.size ?? ""}`}
+                            />
+                          </td>
+                          <td className="px-3 py-3">
+                            <div className="flex min-w-0 items-center gap-3">
+                              {row.imageUrl ? (
+                                <img
+                                  src={row.imageUrl}
+                                  alt="Фото товара"
+                                  className="h-10 w-10 shrink-0 rounded-2xl border border-amber-100 bg-white object-cover"
+                                />
+                              ) : (
+                                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-amber-100 bg-white text-[10px] font-black text-slate-300">
+                                  фото
+                                </div>
+                              )}
+                              <div className="min-w-0">
+                                <div className="line-clamp-1 font-black text-slate-950">
+                                  {row.companyName}
+                                </div>
+                                <div className="line-clamp-1 break-all text-xs font-black text-slate-600">
+                                  {row.vendorCode}
+                                </div>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="px-3 py-3 font-black text-slate-700">{row.size ?? "—"}</td>
+                          <td className="px-3 py-3">
+                            <div className="flex flex-wrap gap-1">
+                              {row.marketplaces.map((marketplace) => (
+                                <span
+                                  key={marketplace}
+                                  className={`inline-flex rounded-full px-2 py-1 text-[10px] font-black ring-1 ${marketplaceSupplyClass(marketplace)}`}
+                                >
+                                  {marketplace === "OZON" ? "Ozon" : "WB"}
+                                </span>
+                              ))}
+                            </div>
+                          </td>
+                          <td className="px-3 py-3">
+                            <div className="line-clamp-2 text-xs font-bold leading-4 text-slate-600">
+                              {row.targets.slice(0, 3).join(", ")}
+                              {row.targets.length > 3 ? ` +${row.targets.length - 3}` : ""}
+                            </div>
+                          </td>
+                          <td className="px-3 py-3 text-right font-black text-slate-800">
+                            {formatNumber(row.deficitQty)}
+                          </td>
+                          <td className="px-3 py-3 text-right font-black text-slate-800">
+                            {formatNumber(row.leadTimeBufferQty)}
+                          </td>
+                          <td className="px-3 py-3 text-right text-base font-black text-amber-700">
+                            {formatNumber(row.productionQty)}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="flex flex-col gap-2 border-t border-amber-100 bg-white/50 px-4 py-3 text-xs font-bold text-slate-500 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  Выбрано к пошиву: {formatNumber(productionPlanRows.length)} из {formatNumber(allProductionPlanRows.length)} позиций. По умолчанию все найденные позиции отмечены галками; лишние можно снять и нажать “Применить выбор”.
+                </div>
+                <button
+                  form="production-plan-form"
+                  name="productionSelectionMode"
+                  value="custom"
+                  className="inline-flex h-10 items-center justify-center rounded-2xl border border-amber-200 bg-white px-4 text-sm font-black text-amber-700 transition hover:bg-amber-50"
+                >
+                  Применить выбор
+                </button>
+              </div>
+
+              {productionPlanRows.length > visibleProductionPlanRows.length ? (
+                <div className="border-t border-amber-100 bg-white/50 px-4 py-3 text-xs font-bold text-slate-500">
+                  Показаны первые {formatNumber(visibleProductionPlanRows.length)} позиций из {formatNumber(productionPlanRows.length)}. Измените фильтр “Строк” в блоке пошива или скачайте Excel, чтобы получить полный список.
+                </div>
+              ) : null}
+            </>
+          ) : (
+            <div className="p-4">
+              <h3 className="text-lg font-black text-slate-950">
+                Заказывать в пошив пока нечего
+              </h3>
+              <p className="mt-1 max-w-4xl text-xs font-bold leading-5 text-slate-500">
+                По текущим фильтрам система не нашла товары выбранной ABC-категории, где есть рекомендация к поставке и при этом не хватает собственного склада. Если нужно проверить дефицит сразу по WB и Ozon, выберите источник “WB + Ozon”, ABC “A” и все направления.
+              </p>
+            </div>
+          )}
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
 function SupplyPlanningBlock({
   rows,
   params,
@@ -2246,289 +2667,6 @@ function SupplyPlanningBlock({
               </div>
             </div>
           </form>
-
-          <div id="production-plan" className="mt-4 overflow-hidden rounded-[24px] border border-amber-200 bg-amber-50/70 ring-1 ring-amber-100">
-            <div className="flex flex-col gap-3 border-b border-amber-100 p-4 lg:flex-row lg:items-start lg:justify-between">
-              <div className="min-w-0">
-                <div className="flex flex-wrap items-center gap-2">
-                  <Link
-                    href={makeUrl(params, {
-                      supplyOpen: "1",
-                      productionOpen: productionOpen ? "0" : "1",
-                    })}
-                    className="inline-flex items-center gap-2 rounded-full bg-white px-3 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-amber-700 ring-1 ring-amber-200 transition hover:bg-amber-50"
-                  >
-                    <span>План пошива</span>
-                    <span className="text-sm">{productionOpen ? "▲" : "▼"}</span>
-                  </Link>
-
-                  <span className="rounded-full bg-white/70 px-3 py-1 text-xs font-black text-slate-500 ring-1 ring-amber-100">
-                    {productionOpen ? "развернут" : "свернут"}
-                  </span>
-                </div>
-
-                <h3 className="mt-2 text-lg font-black text-slate-950">
-                  Что нужно заказать в пошив
-                </h3>
-                <p className="mt-1 max-w-3xl text-xs font-bold leading-5 text-slate-500">
-                  Показываем товары выбранной ABC-категории, где есть спрос и рекомендация к поставке, но собственного остатка не хватает. Буфер можно менять: 15, 20, 30 или 60 дней до поступления партии на склад.
-                </p>
-              </div>
-
-              <div className="grid grid-cols-3 gap-2 text-center sm:min-w-[360px]">
-                <div className="rounded-2xl bg-white p-3 ring-1 ring-amber-100">
-                  <div className="text-[10px] font-black uppercase text-slate-400">К пошиву</div>
-                  <div className="mt-1 text-xl font-black text-slate-950">
-                    {formatNumber(productionPlanQty)}
-                  </div>
-                  <div className="text-[11px] font-bold text-slate-500">шт.</div>
-                </div>
-                <div className="rounded-2xl bg-white p-3 ring-1 ring-amber-100">
-                  <div className="text-[10px] font-black uppercase text-slate-400">Позиций</div>
-                  <div className="mt-1 text-xl font-black text-slate-950">
-                    {formatNumber(productionPlanRows.length)}
-                  </div>
-                  <div className="text-[11px] font-bold text-slate-500">товар/размер</div>
-                </div>
-                <div className="rounded-2xl bg-white p-3 ring-1 ring-amber-100">
-                  <div className="text-[10px] font-black uppercase text-slate-400">Буфер</div>
-                  <div className="mt-1 text-xl font-black text-slate-950">
-                    {formatNumber(productionBufferDays)}
-                  </div>
-                  <div className="text-[11px] font-bold text-slate-500">дней</div>
-                </div>
-              </div>
-            </div>
-
-            {productionOpen ? (
-              <div>
-                <form
-                  id="production-plan-form"
-                  action="/stocks"
-                  method="GET"
-                  className="flex flex-col gap-3 border-b border-amber-100 bg-white/40 p-4 xl:flex-row xl:items-end xl:justify-between"
-                >
-                  <input type="hidden" name="supplyOpen" value="1" />
-                  <input type="hidden" name="productionOpen" value="1" />
-                  {params.companyName ? <input type="hidden" name="companyName" value={params.companyName} /> : null}
-                  {params.dateFrom ? <input type="hidden" name="dateFrom" value={params.dateFrom} /> : null}
-                  {params.dateTo ? <input type="hidden" name="dateTo" value={params.dateTo} /> : null}
-                  {marketplaceFilter !== "ALL" ? <input type="hidden" name="supplyMarketplace" value={marketplaceFilter} /> : null}
-                  {safeTargetFilter ? <input type="hidden" name="supplyTarget" value={safeTargetFilter} /> : null}
-                  {abcFilter !== "ALL" ? <input type="hidden" name="supplyAbc" value={abcFilter} /> : null}
-                  {priorityFilter !== "ALL" ? <input type="hidden" name="supplyPriority" value={priorityFilter} /> : null}
-                  {params.supplyRows ? <input type="hidden" name="supplyRows" value={params.supplyRows} /> : null}
-                  {query ? <input type="hidden" name="supplyQ" value={query} /> : null}
-
-                  <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-[160px_150px_150px_auto]">
-                    <label className="block">
-                      <span className="mb-1 block text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">
-                        Буфер пошива
-                      </span>
-                      <select
-                        name="productionBufferDays"
-                        defaultValue={String(productionBufferDays)}
-                        className="h-11 w-full rounded-2xl border border-amber-200 bg-white px-3 text-sm font-bold text-slate-700 outline-none transition focus:border-amber-300 focus:ring-4 focus:ring-amber-50"
-                      >
-                        {PRODUCTION_BUFFER_DAY_OPTIONS.map((days) => (
-                          <option key={days} value={String(days)}>
-                            {days} дней
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-
-                    <label className="block">
-                      <span className="mb-1 block text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">
-                        ABC
-                      </span>
-                      <select
-                        name="productionAbc"
-                        defaultValue={productionAbcFilter}
-                        className="h-11 w-full rounded-2xl border border-amber-200 bg-white px-3 text-sm font-bold text-slate-700 outline-none transition focus:border-amber-300 focus:ring-4 focus:ring-amber-50"
-                      >
-                        <option value="A">A</option>
-                        <option value="B">B</option>
-                        <option value="C">C</option>
-                        <option value="ALL">Все</option>
-                      </select>
-                    </label>
-
-                    <label className="block">
-                      <span className="mb-1 block text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">
-                        Строк
-                      </span>
-                      <select
-                        name="productionRows"
-                        defaultValue={params.productionRows ?? "8"}
-                        className="h-11 w-full rounded-2xl border border-amber-200 bg-white px-3 text-sm font-bold text-slate-700 outline-none transition focus:border-amber-300 focus:ring-4 focus:ring-amber-50"
-                      >
-                        <option value="8">8</option>
-                        <option value="20">20</option>
-                        <option value="50">50</option>
-                        <option value="100">100</option>
-                        <option value="200">200</option>
-                        <option value="ALL">Все</option>
-                      </select>
-                    </label>
-
-                    <div className="flex items-end">
-                      <button className="h-11 rounded-2xl bg-amber-600 px-5 text-sm font-black text-white shadow-sm transition hover:bg-amber-700">
-                        Применить
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="flex flex-wrap gap-2 xl:justify-end">
-                    {PRODUCTION_BUFFER_DAY_OPTIONS.map((days) => (
-                      <Link
-                        key={days}
-                        href={makeProductionExportHref(days)}
-                        className="inline-flex h-11 items-center justify-center rounded-2xl border border-amber-200 bg-white px-4 text-sm font-black text-amber-700 transition hover:bg-amber-50"
-                        title={`Скачать Excel-план пошива с фото и буфером ${days} дней`}
-                      >
-                        Excel {days} дн.
-                      </Link>
-                    ))}
-                  </div>
-                </form>
-
-                {productionPlanRows.length > 0 ? (
-                  <>
-                    <div className="overflow-x-auto">
-                      <table className="w-full table-fixed border-collapse text-left text-xs">
-                        <thead className="bg-white/70 text-[10px] font-black uppercase tracking-[0.08em] text-slate-400">
-                          <tr>
-                            <th className="w-[5%] px-4 py-3">Выбор</th>
-                            <th className="w-[27%] px-3 py-3">Товар</th>
-                            <th className="w-[8%] px-3 py-3">Размер</th>
-                            <th className="w-[12%] px-3 py-3">Каналы</th>
-                            <th className="w-[18%] px-3 py-3">Направления</th>
-                            <th className="w-[10%] px-3 py-3 text-right">Дефицит</th>
-                            <th className="w-[10%] px-3 py-3 text-right">Буфер {productionBufferDays} дн.</th>
-                            <th className="w-[8%] px-3 py-3 text-right">К пошиву</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-amber-100 bg-white/40">
-                          {visibleProductionPlanRows.map((row) => {
-                            const tooltip = [
-                              `Компания: ${row.companyName}`,
-                              `Артикул: ${row.vendorCode}`,
-                              row.sku ? `SKU: ${row.sku}` : null,
-                              `Размер: ${row.size ?? "—"}`,
-                              `Каналы: ${row.marketplaces.join(" + ")}`,
-                              `Дефицит к отгрузке: ${formatNumber(row.deficitQty)} шт.`,
-                              `Среднесуточный спрос: ${formatDecimal(row.avgDailySalesQty)} шт/день`,
-                              `Буфер на ${formatNumber(productionBufferDays)} дней: ${formatNumber(row.leadTimeBufferQty)} шт.`,
-                              `Рекомендация к пошиву: ${formatNumber(row.productionQty)} шт.`,
-                            ]
-                              .filter(Boolean)
-                              .join("\n");
-
-                            return (
-                              <tr key={row.key} className="align-middle hover:bg-white/70" title={tooltip}>
-                                <td className="px-4 py-3 text-center">
-                                  <input
-                                    form="production-plan-form"
-                                    type="checkbox"
-                                    name="productionSelected"
-                                    value={row.key}
-                                    defaultChecked={!hasCustomProductionSelection || selectedProductionKeys.has(row.key)}
-                                    className="h-4 w-4 rounded border-amber-300 text-amber-600 focus:ring-amber-500"
-                                    aria-label={`Выбрать в пошив ${row.vendorCode} ${row.size ?? ""}`}
-                                  />
-                                </td>
-                                <td className="px-3 py-3">
-                                  <div className="flex min-w-0 items-center gap-3">
-                                    {row.imageUrl ? (
-                                      <img
-                                        src={row.imageUrl}
-                                        alt="Фото товара"
-                                        className="h-10 w-10 shrink-0 rounded-2xl border border-amber-100 bg-white object-cover"
-                                      />
-                                    ) : (
-                                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-amber-100 bg-white text-[10px] font-black text-slate-300">
-                                        фото
-                                      </div>
-                                    )}
-                                    <div className="min-w-0">
-                                      <div className="line-clamp-1 font-black text-slate-950">
-                                        {row.companyName}
-                                      </div>
-                                      <div className="line-clamp-1 break-all text-xs font-black text-slate-600">
-                                        {row.vendorCode}
-                                      </div>
-                                    </div>
-                                  </div>
-                                </td>
-                                <td className="px-3 py-3 font-black text-slate-700">{row.size ?? "—"}</td>
-                                <td className="px-3 py-3">
-                                  <div className="flex flex-wrap gap-1">
-                                    {row.marketplaces.map((marketplace) => (
-                                      <span
-                                        key={marketplace}
-                                        className={`inline-flex rounded-full px-2 py-1 text-[10px] font-black ring-1 ${marketplaceSupplyClass(marketplace)}`}
-                                      >
-                                        {marketplace === "OZON" ? "Ozon" : "WB"}
-                                      </span>
-                                    ))}
-                                  </div>
-                                </td>
-                                <td className="px-3 py-3">
-                                  <div className="line-clamp-2 text-xs font-bold leading-4 text-slate-600">
-                                    {row.targets.slice(0, 3).join(", ")}
-                                    {row.targets.length > 3 ? ` +${row.targets.length - 3}` : ""}
-                                  </div>
-                                </td>
-                                <td className="px-3 py-3 text-right font-black text-slate-800">
-                                  {formatNumber(row.deficitQty)}
-                                </td>
-                                <td className="px-3 py-3 text-right font-black text-slate-800">
-                                  {formatNumber(row.leadTimeBufferQty)}
-                                </td>
-                                <td className="px-3 py-3 text-right text-base font-black text-amber-700">
-                                  {formatNumber(row.productionQty)}
-                                </td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-                    </div>
-
-                    <div className="flex flex-col gap-2 border-t border-amber-100 bg-white/50 px-4 py-3 text-xs font-bold text-slate-500 sm:flex-row sm:items-center sm:justify-between">
-                      <div>
-                        Выбрано к пошиву: {formatNumber(productionPlanRows.length)} из {formatNumber(allProductionPlanRows.length)} позиций. По умолчанию все найденные позиции отмечены галками; лишние можно снять и нажать “Применить выбор”.
-                      </div>
-                      <button
-                        form="production-plan-form"
-                        name="productionSelectionMode"
-                        value="custom"
-                        className="inline-flex h-10 items-center justify-center rounded-2xl border border-amber-200 bg-white px-4 text-sm font-black text-amber-700 transition hover:bg-amber-50"
-                      >
-                        Применить выбор
-                      </button>
-                    </div>
-
-                    {productionPlanRows.length > visibleProductionPlanRows.length ? (
-                      <div className="border-t border-amber-100 bg-white/50 px-4 py-3 text-xs font-bold text-slate-500">
-                        Показаны первые {formatNumber(visibleProductionPlanRows.length)} позиций из {formatNumber(productionPlanRows.length)}. Измените фильтр “Строк” в блоке пошива или скачайте Excel, чтобы получить полный список.
-                      </div>
-                    ) : null}
-                  </>
-                ) : (
-                  <div className="p-4">
-                    <h3 className="text-lg font-black text-slate-950">
-                      Заказывать в пошив пока нечего
-                    </h3>
-                    <p className="mt-1 max-w-4xl text-xs font-bold leading-5 text-slate-500">
-                      По текущим фильтрам система не нашла товары выбранной ABC-категории, где есть рекомендация к поставке и при этом не хватает собственного склада. Если нужно проверить дефицит сразу по WB и Ozon, выберите источник “WB + Ozon”, ABC “A” и все направления.
-                    </p>
-                  </div>
-                )}
-              </div>
-            ) : null}
-          </div>
 
           <div className="mt-4 flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
             <div className="max-w-3xl text-sm font-bold leading-6 text-slate-500">
@@ -4591,42 +4729,84 @@ export default async function StocksPage({
           <section id="sizes" className="rounded-[26px] border border-slate-200 bg-white p-4 shadow-sm">
             <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
               <div>
-                <h2 className="text-lg font-black tracking-tight text-slate-950">
-                  Быстрый разбор по размерам
+                <h2 className="text-xl font-black tracking-tight text-slate-950">
+                  Остатки по компаниям
                 </h2>
-                <p className="mt-1 text-sm font-semibold text-slate-500">
-                  Ключевые товары по размерам и направлениям. Полная детализация ниже.
+                <p className="mt-1 text-sm font-semibold leading-6 text-slate-500">
+                  Консолидированная картина остатков по компаниям и каналам: WB, Ozon и собственный склад.
                 </p>
               </div>
-              <Link
-                href={makeUrl(params, { sizeOpen: "1" })}
+              <a
+                href="#details"
                 className="inline-flex items-center justify-center rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-black text-slate-700 transition hover:bg-slate-50"
               >
-                Открыть разбор →
-              </Link>
+                Открыть детально →
+              </a>
             </div>
 
-            {quickSizePreviewRows.length > 0 ? (
-              <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-4">
-                {quickSizePreviewRows.map((group) => (
-                  <div
-                    key={group.groupKey}
-                    className="rounded-2xl border border-slate-200 bg-slate-50/70 p-3"
+            {summaries.length > 0 ? (
+              <div className="mt-4 space-y-2">
+                {summaries.map((summary) => (
+                  <article
+                    key={summary.companyName}
+                    className="grid gap-3 rounded-[22px] border border-slate-200 bg-white p-3 shadow-sm xl:grid-cols-[1.25fr_0.85fr_0.85fr_1fr_0.8fr_0.9fr_auto] xl:items-center"
                   >
-                    <div className="line-clamp-1 text-sm font-black text-slate-950">
-                      {group.marketplaceArticle || group.vendorCode}
+                    <div className="min-w-0">
+                      <div className="text-lg font-black text-slate-950">
+                        {summary.companyName}
+                      </div>
+                      <div className="mt-0.5 text-xs font-bold text-slate-400">
+                        Обновление: {summary.lastUpdate}
+                      </div>
                     </div>
-                    <div className="mt-2 grid grid-cols-3 gap-2 text-[11px] font-bold text-slate-500">
-                      <span>WB: <b className="text-slate-900">{formatNumber(group.wb.totalQty)}</b></span>
-                      <span>Ozon: <b className="text-slate-900">{formatNumber(group.ozon.totalQty)}</b></span>
-                      <span>Склад: <b className="text-slate-900">{formatNumber(group.own.totalQty)}</b></span>
+
+                    <div className="rounded-2xl bg-violet-50 px-4 py-3 ring-1 ring-violet-100">
+                      <div className="text-xs font-black uppercase text-violet-600">WB</div>
+                      <div className="mt-1 text-base font-black text-slate-950">
+                        {formatNumber(summary.wb.totalQty)} шт
+                      </div>
                     </div>
-                  </div>
+
+                    <div className="rounded-2xl bg-blue-50 px-4 py-3 ring-1 ring-blue-100">
+                      <div className="text-xs font-black uppercase text-blue-600">Ozon</div>
+                      <div className="mt-1 text-base font-black text-slate-950">
+                        {formatNumber(summary.ozon.totalQty)} шт
+                      </div>
+                    </div>
+
+                    <div className="rounded-2xl bg-emerald-50 px-4 py-3 ring-1 ring-emerald-100">
+                      <div className="text-xs font-black uppercase text-emerald-700">Собственный склад</div>
+                      <div className="mt-1 text-base font-black text-slate-950">
+                        {formatNumber(summary.warehouse.warehouseQty)} шт
+                      </div>
+                    </div>
+
+                    <div>
+                      <div className="text-xs font-bold text-slate-400">Всего</div>
+                      <div className="mt-1 text-lg font-black text-slate-950">
+                        {formatNumber(summary.totalQty)} шт
+                      </div>
+                    </div>
+
+                    <div>
+                      <div className="text-xs font-bold text-slate-400">Стоимость</div>
+                      <div className="mt-1 text-lg font-black text-slate-950">
+                        {formatMoney(summary.totalCost)}
+                      </div>
+                    </div>
+
+                    <Link
+                      href={`/stocks?companyName=${encodeURIComponent(summary.companyName)}`}
+                      className="inline-flex h-11 items-center justify-center rounded-2xl border border-slate-200 bg-white px-4 text-sm font-black text-slate-700 transition hover:bg-slate-50"
+                    >
+                      →
+                    </Link>
+                  </article>
                 ))}
               </div>
             ) : (
-              <div className="mt-3 rounded-2xl border border-dashed border-slate-200 p-4 text-sm font-bold text-slate-500">
-                Для быстрого разбора пока нет строк по текущим фильтрам.
+              <div className="mt-4 rounded-2xl border border-dashed border-slate-200 p-4 text-sm font-bold text-slate-500">
+                Остатки по компаниям пока не найдены.
               </div>
             )}
           </section>
@@ -4841,8 +5021,9 @@ export default async function StocksPage({
           ) : null}
 
           <section id="supply-plan" className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_280px]">
-            <div className="min-w-0">
+            <div className="min-w-0 space-y-4">
               <SupplyPlanningBlock rows={supplyPlanRows} params={params} companyNames={companyNames} />
+              <ProductionPlanningBlock rows={supplyPlanRows} params={params} companyNames={companyNames} />
             </div>
 
             <aside className="space-y-3">
