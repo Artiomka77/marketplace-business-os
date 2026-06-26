@@ -2082,8 +2082,6 @@ function SupplyPlanningBlock({
   }
 
   const exportHref = makeSupplyExportHref("ALL");
-  const exportWbHref = makeSupplyExportHref("WB");
-  const exportOzonHref = makeSupplyExportHref("OZON");
   const exportWbUploadZipHref = makeSupplyExportHref("WB", "uploadZip");
   const exportOzonUploadZipHref = makeSupplyExportHref("OZON", "uploadZip");
 
@@ -2353,24 +2351,24 @@ function SupplyPlanningBlock({
           <div className="mt-3 rounded-[22px] border border-slate-200 bg-slate-50/70 px-3 py-2.5">
             <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
               <div className="min-w-0 text-xs font-bold leading-5 text-slate-500">
-                Что и куда отгрузить с учётом спроса, остатков и доступного товара. WB/Ozon-файлы из личных кабинетов можно загрузить здесь.
+                Что и куда отгрузить с учётом спроса, остатков и доступного товара. Сначала загрузите рекомендации WB/Ozon, затем скачайте файлы поставок для личных кабинетов.
               </div>
 
               <div className="flex shrink-0 flex-wrap gap-2">
                 <Link
                   href="/import?reportType=WB_SUPPLY_RECOMMENDATION"
                   className="inline-flex h-9 items-center justify-center rounded-2xl border border-violet-200 bg-violet-50 px-3 text-xs font-black text-violet-700 transition hover:bg-violet-100"
-                  title="Загрузить Excel-файл WB: рекомендации по поставке из личного кабинета"
+                  title="Загрузить файл WB с рекомендациями по поставке из личного кабинета"
                 >
-                  Загрузить WB
+                  Рекомендации WB
                 </Link>
 
                 <Link
                   href="/import?reportType=OZON_SUPPLY_RECOMMENDATION"
                   className="inline-flex h-9 items-center justify-center rounded-2xl border border-blue-200 bg-blue-50 px-3 text-xs font-black text-blue-700 transition hover:bg-blue-100"
-                  title="Загрузить Excel-файл Ozon из личного кабинета: FBO → Планирование поставок → Доступность товаров"
+                  title="Загрузить файл Ozon с рекомендациями по поставке: FBO → Планирование поставок → Доступность товаров"
                 >
-                  Загрузить Ozon
+                  Рекомендации Ozon
                 </Link>
 
                 <Link
@@ -2384,33 +2382,17 @@ function SupplyPlanningBlock({
                 <Link
                   href={exportWbUploadZipHref}
                   className="inline-flex h-9 items-center justify-center rounded-2xl border border-violet-200 bg-violet-600 px-3 text-xs font-black text-white transition hover:bg-violet-700"
-                  title="Скачать ZIP с отдельными Excel-файлами WB по каждому направлению. Формат файла: Баркод / Количество."
+                  title="Скачать ZIP для загрузки поставок WB: отдельный Excel-файл по каждому направлению. Формат: Баркод / Количество."
                 >
-                  WB ZIP для ЛК
+                  Поставка WB
                 </Link>
 
                 <Link
                   href={exportOzonUploadZipHref}
                   className="inline-flex h-9 items-center justify-center rounded-2xl border border-blue-200 bg-blue-600 px-3 text-xs font-black text-white transition hover:bg-blue-700"
-                  title="Скачать ZIP с отдельными Excel-файлами Ozon по каждому кластеру/городу. Формат файла: артикул / имя / количество."
+                  title="Скачать ZIP для загрузки поставок Ozon: отдельный Excel-файл по каждому кластеру/городу. Формат: артикул / имя / количество."
                 >
-                  Ozon ZIP для ЛК
-                </Link>
-
-                <Link
-                  href={exportWbHref}
-                  className="inline-flex h-9 items-center justify-center rounded-2xl border border-violet-200 bg-violet-50 px-3 text-xs font-black text-violet-700 transition hover:bg-violet-100"
-                  title="Скачать проверочный Excel-план поставок только для WB по текущим фильтрам и выбранным строкам"
-                >
-                  WB проверка
-                </Link>
-
-                <Link
-                  href={exportOzonHref}
-                  className="inline-flex h-9 items-center justify-center rounded-2xl border border-blue-200 bg-blue-50 px-3 text-xs font-black text-blue-700 transition hover:bg-blue-100"
-                  title="Скачать проверочный Excel-план поставок только для Ozon по текущим фильтрам и выбранным строкам"
-                >
-                  Ozon проверка
+                  Поставка Ozon
                 </Link>
 
                 <button
