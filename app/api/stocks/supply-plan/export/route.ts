@@ -241,6 +241,28 @@ function getWbRecommendationDays(value: string) {
   return [14, 21, 28, 56].includes(parsed) ? parsed : 14;
 }
 
+function getOzonRecommendationDays(value: string) {
+  const parsed = Number(value || 14);
+
+  return [14, 21, 28, 56].includes(parsed) ? parsed : 14;
+}
+
+function getOzonRecommendationQty(
+  row: {
+    recommendationPeriodDays?: number | null;
+    recommendedSupplyQty?: number | null;
+  },
+  targetDays: number
+) {
+  const baseQty = Math.max(0, toNumber(row.recommendedSupplyQty));
+  const sourceDays = getOzonRecommendationDays(String(row.recommendationPeriodDays ?? 14));
+
+  if (baseQty <= 0) return 0;
+  if (sourceDays === targetDays) return baseQty;
+
+  return Math.ceil((baseQty / sourceDays) * targetDays);
+}
+
 function getWbRecommendationQty(
   row: {
     recommendedQty14?: number | null;
@@ -1006,13 +1028,14 @@ async function buildSupplyPlanRows(url: URL) {
   }
 
   const supplyPlanCandidates: SupplyPlanCandidate[] = [];
+  const ozonRecommendationDays = getOzonRecommendationDays(getQueryValue(url, "supplyOzonDays"));
   const officialOzonSupplyKeys = new Set<string>();
 
   for (const row of ozonSupplyRecommendations) {
     const vendorCode = normalizeKey(row.vendorCode);
     const sku = normalizeKey(row.sku);
     const size = inferSizeFromVendorCode(vendorCode);
-    const wantedQty = Math.max(0, toNumber(row.recommendedSupplyQty));
+    const wantedQty = Math.max(0, getOzonRecommendationQty(row, ozonRecommendationDays));
 
     if (!vendorCode) continue;
 
@@ -1083,11 +1106,12 @@ async function buildSupplyPlanRows(url: URL) {
       abc,
       reason:
         normalizeKey(row.recommendation) ||
-        `Ozon рекомендует поставить ${formatNumber(wantedQty)} шт. в кластер.`,
+        `Ozon рекомендует поставить ${formatNumber(wantedQty)} шт. в кластер на ${formatNumber(ozonRecommendationDays)} дн.`,
       details: [
+        `Период выгрузки: ${formatNumber(ozonRecommendationDays)} дн.`,
         row.recommendationPeriodDays
-          ? `Период: ${formatNumber(row.recommendationPeriodDays)} дн.`
-          : "",
+          ? `Исходная рекомендация Ozon: ${formatNumber(row.recommendationPeriodDays)} дн.`
+          : "Исходная рекомендация Ozon: 14 дн. по умолчанию",
         row.avgDailySalesQty28 !== null && row.avgDailySalesQty28 !== undefined
           ? `Продажи: ${formatNumber(toNumber(row.avgDailySalesQty28))} шт/день`
           : "",

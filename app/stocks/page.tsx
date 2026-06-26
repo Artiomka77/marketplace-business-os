@@ -28,6 +28,7 @@ type StockSearchParams = {
   supplyRows?: string;
   supplyQ?: string;
   supplyWbDays?: string;
+  supplyOzonDays?: string;
   supplySelectionMode?: string;
   supplySelected?: string | string[];
   productionOpen?: string;
@@ -711,6 +712,28 @@ function getWbRecommendationDays(value?: string) {
   const parsed = Number(value ?? 14);
 
   return [14, 21, 28, 56].includes(parsed) ? parsed : 14;
+}
+
+function getOzonRecommendationDays(value?: string) {
+  const parsed = Number(value ?? 14);
+
+  return [14, 21, 28, 56].includes(parsed) ? parsed : 14;
+}
+
+function getOzonRecommendationQty(
+  row: {
+    recommendationPeriodDays?: number | null;
+    recommendedSupplyQty?: number | null;
+  },
+  targetDays: number
+) {
+  const baseQty = Math.max(0, toNumber(row.recommendedSupplyQty));
+  const sourceDays = getOzonRecommendationDays(String(row.recommendationPeriodDays ?? 14));
+
+  if (baseQty <= 0) return 0;
+  if (sourceDays === targetDays) return baseQty;
+
+  return Math.ceil((baseQty / sourceDays) * targetDays);
 }
 
 function getWbRecommendationQty(
@@ -1482,6 +1505,7 @@ function makeUrl(params: StockSearchParams, patch: Record<string, string | null 
     supplyRows: params.supplyRows,
     supplyQ: params.supplyQ,
     supplyWbDays: params.supplyWbDays,
+    supplyOzonDays: params.supplyOzonDays,
     supplySelectionMode: params.supplySelectionMode,
     supplySelected: Array.isArray(params.supplySelected)
       ? params.supplySelected.join(",")
@@ -1964,6 +1988,7 @@ function SupplyPlanningBlock({
   const targetFilter = normalizeKey(params.supplyTarget);
   const query = normalizeKey(params.supplyQ);
   const wbRecommendationDays = getWbRecommendationDays(params.supplyWbDays);
+  const ozonRecommendationDays = getOzonRecommendationDays(params.supplyOzonDays);
 
   const targetOptions = getSupplyTargetOptions(rows, marketplaceFilter);
   const safeTargetFilter =
@@ -2042,6 +2067,10 @@ function SupplyPlanningBlock({
 
   if (params.supplyWbDays) {
     exportParams.set("supplyWbDays", params.supplyWbDays);
+  }
+
+  if (params.supplyOzonDays) {
+    exportParams.set("supplyOzonDays", params.supplyOzonDays);
   }
 
   if (params.dateFrom) {
@@ -2237,6 +2266,22 @@ function SupplyPlanningBlock({
 
               <label className="block">
                 <span className="mb-1 block text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">
+                  Ozon запас
+                </span>
+                <select
+                  name="supplyOzonDays"
+                  defaultValue={String(ozonRecommendationDays)}
+                  className="h-11 w-full rounded-2xl border border-slate-200 bg-white px-3 text-sm font-bold text-slate-700 outline-none transition focus:border-violet-200 focus:ring-4 focus:ring-violet-50"
+                >
+                  <option value="14">14 дней</option>
+                  <option value="21">21 день</option>
+                  <option value="28">28 дней</option>
+                  <option value="56">56 дней</option>
+                </select>
+              </label>
+
+              <label className="block">
+                <span className="mb-1 block text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">
                   Куда
                 </span>
                 <select
@@ -2336,6 +2381,7 @@ function SupplyPlanningBlock({
                     supplyRows: null,
                     supplyQ: null,
                     supplyWbDays: null,
+                    supplyOzonDays: null,
                     companyName: null,
                   })}
                   className="inline-flex rounded-full bg-white px-3 py-1.5 font-black text-slate-600 ring-1 ring-slate-200 transition hover:bg-slate-100"
@@ -2436,6 +2482,7 @@ function SupplyPlanningBlock({
               {params.supplyRows ? <input type="hidden" name="supplyRows" value={params.supplyRows} /> : null}
               {query ? <input type="hidden" name="supplyQ" value={query} /> : null}
               {params.supplyWbDays ? <input type="hidden" name="supplyWbDays" value={params.supplyWbDays} /> : null}
+              {params.supplyOzonDays ? <input type="hidden" name="supplyOzonDays" value={params.supplyOzonDays} /> : null}
               {params.dateFrom ? <input type="hidden" name="dateFrom" value={params.dateFrom} /> : null}
               {params.dateTo ? <input type="hidden" name="dateTo" value={params.dateTo} /> : null}
               {params.sizeOpen ? <input type="hidden" name="sizeOpen" value={params.sizeOpen} /> : null}
@@ -4064,13 +4111,14 @@ export default async function StocksPage({
   }
 
   const supplyPlanCandidates: SupplyPlanCandidate[] = [];
+  const ozonRecommendationDays = getOzonRecommendationDays(params.supplyOzonDays);
   const officialOzonSupplyKeys = new Set<string>();
 
   for (const row of ozonSupplyRecommendations) {
     const vendorCode = normalizeKey(row.vendorCode);
     const sku = normalizeKey(row.sku);
     const size = inferSizeFromVendorCode(vendorCode);
-    const wantedQty = Math.max(0, toNumber(row.recommendedSupplyQty));
+    const wantedQty = Math.max(0, getOzonRecommendationQty(row, ozonRecommendationDays));
 
     if (!vendorCode) continue;
 
@@ -4154,11 +4202,12 @@ export default async function StocksPage({
       abc,
       reason:
         normalizeKey(row.recommendation) ||
-        `Ozon рекомендует поставить ${formatNumber(wantedQty)} шт. в кластер.`,
+        `Ozon рекомендует поставить ${formatNumber(wantedQty)} шт. в кластер на ${formatNumber(ozonRecommendationDays)} дн.`,
       details: [
+        `Период выгрузки: ${formatNumber(ozonRecommendationDays)} дн.`,
         row.recommendationPeriodDays
-          ? `Период: ${formatNumber(row.recommendationPeriodDays)} дн.`
-          : "",
+          ? `Исходная рекомендация Ozon: ${formatNumber(row.recommendationPeriodDays)} дн.`
+          : "Исходная рекомендация Ozon: 14 дн. по умолчанию",
         row.avgDailySalesQty28 !== null && row.avgDailySalesQty28 !== undefined
           ? `Продажи: ${formatNumber(toNumber(row.avgDailySalesQty28))} шт/день`
           : "",
