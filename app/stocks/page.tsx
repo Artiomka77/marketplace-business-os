@@ -399,6 +399,55 @@ function rowCompanyName(value: unknown, fallback: string | null) {
 
 
 
+
+function FilterHelpLabel({
+  label,
+  tooltip,
+}: {
+  label: string;
+  tooltip: string;
+}) {
+  return (
+    <div className="mb-1 flex items-center gap-1">
+      <span className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">
+        {label}
+      </span>
+      <span className="group relative inline-flex">
+        <span className="inline-flex h-4 w-4 cursor-help items-center justify-center rounded-full bg-violet-50 text-[10px] font-black text-violet-700 ring-1 ring-violet-100">
+          ?
+        </span>
+        <span className="pointer-events-none absolute left-0 top-full z-30 mt-2 hidden w-64 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-[11px] font-semibold normal-case tracking-normal text-slate-600 shadow-xl group-hover:block group-focus-within:block">
+          {tooltip}
+        </span>
+      </span>
+    </div>
+  );
+}
+
+
+function HelpIcon({
+  tooltip,
+  align = "left",
+}: {
+  tooltip: string;
+  align?: "left" | "right";
+}) {
+  return (
+    <span className="group relative inline-flex align-middle">
+      <span className="inline-flex h-4 w-4 cursor-help items-center justify-center rounded-full bg-violet-50 text-[10px] font-black text-violet-700 ring-1 ring-violet-100">
+        ?
+      </span>
+      <span
+        className={`pointer-events-none absolute top-full z-30 mt-2 hidden w-72 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-[11px] font-semibold normal-case tracking-normal text-slate-600 shadow-xl group-hover:block group-focus-within:block ${
+          align === "right" ? "right-0" : "left-0"
+        }`}
+      >
+        {tooltip}
+      </span>
+    </span>
+  );
+}
+
 function normalizeKey(value: unknown) {
   return String(value ?? "").trim();
 }
@@ -2292,9 +2341,10 @@ function SupplyPlanningBlock({
 
             <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-[1.05fr_0.9fr_0.85fr_0.85fr_1.35fr_0.85fr_0.85fr_0.75fr_1.25fr_auto]">
               <label className="block">
-                <span className="mb-1 block text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">
-                  Компания
-                </span>
+                <FilterHelpLabel
+                  label="Компания"
+                  tooltip="Показывает рекомендации поставок только по выбранной компании или сразу по всем компаниям."
+                />
                 <select
                   name="companyName"
                   defaultValue={params.companyName ?? "ALL"}
@@ -2310,9 +2360,10 @@ function SupplyPlanningBlock({
               </label>
 
               <label className="block">
-                <span className="mb-1 block text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">
-                  Источник
-                </span>
+                <FilterHelpLabel
+                  label="Источник"
+                  tooltip="Выбирает маркетплейс, по которому строится план поставок: только WB, только Ozon или общий список WB + Ozon."
+                />
                 <select
                   name="supplyMarketplace"
                   defaultValue={marketplaceFilter}
@@ -2325,9 +2376,10 @@ function SupplyPlanningBlock({
               </label>
 
               <label className="block">
-                <span className="mb-1 block text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">
-                  WB запас
-                </span>
+                <FilterHelpLabel
+                  label="WB запас"
+                  tooltip="Определяет, на сколько дней запаса считать рекомендацию WB: 14, 21, 28 или 56 дней."
+                />
                 <select
                   name="supplyWbDays"
                   defaultValue={String(wbRecommendationDays)}
@@ -2341,9 +2393,10 @@ function SupplyPlanningBlock({
               </label>
 
               <label className="block">
-                <span className="mb-1 block text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">
-                  Ozon запас
-                </span>
+                <FilterHelpLabel
+                  label="Ozon запас"
+                  tooltip="Определяет, на сколько дней запаса считать рекомендацию Ozon. Если исходный файл загружен на 14 дней, остальные значения рассчитываются автоматически."
+                />
                 <select
                   name="supplyOzonDays"
                   defaultValue={String(ozonRecommendationDays)}
@@ -2357,9 +2410,10 @@ function SupplyPlanningBlock({
               </label>
 
               <label className="block">
-                <span className="mb-1 block text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">
-                  Резерв
-                </span>
+                <FilterHelpLabel
+                  label="Резерв"
+                  tooltip="Задаёт порядок распределения доступного собственного склада между Ozon и WB, а также режимы отменённой поставки или работы только с одним маркетплейсом."
+                />
                 <select
                   name="supplyReservationMode"
                   defaultValue={reservationMode}
@@ -2376,9 +2430,10 @@ function SupplyPlanningBlock({
               </label>
 
               <label className="block">
-                <span className="mb-1 block text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">
-                  Куда
-                </span>
+                <FilterHelpLabel
+                  label="Куда"
+                  tooltip="Фильтр по направлению поставки: региону WB, кластеру или городу Ozon. Помогает смотреть план по конкретному направлению."
+                />
                 <select
                   name="supplyTarget"
                   defaultValue={safeTargetFilter || "ALL"}
@@ -2394,9 +2449,10 @@ function SupplyPlanningBlock({
               </label>
 
               <label className="block">
-                <span className="mb-1 block text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">
-                  ABC
-                </span>
+                <FilterHelpLabel
+                  label="ABC"
+                  tooltip="Фильтр по ABC-категории товара. A — самые важные позиции, B — средние, C — менее приоритетные."
+                />
                 <select
                   name="supplyAbc"
                   defaultValue={abcFilter}
@@ -2410,9 +2466,10 @@ function SupplyPlanningBlock({
               </label>
 
               <label className="block">
-                <span className="mb-1 block text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">
-                  Приоритет
-                </span>
+                <FilterHelpLabel
+                  label="Приоритет"
+                  tooltip="Показывает только критичные, средние или низкие по важности строки плана поставок."
+                />
                 <select
                   name="supplyPriority"
                   defaultValue={priorityFilter}
@@ -2426,9 +2483,10 @@ function SupplyPlanningBlock({
               </label>
 
               <label className="block">
-                <span className="mb-1 block text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">
-                  Строк
-                </span>
+                <FilterHelpLabel
+                  label="Строк"
+                  tooltip="Ограничивает количество строк, которые показываются на экране. На экспорт выгружаются строки по логике выбранной кнопки."
+                />
                 <select
                   name="supplyRows"
                   defaultValue={params.supplyRows ?? "20"}
@@ -2443,9 +2501,10 @@ function SupplyPlanningBlock({
               </label>
 
               <label className="block">
-                <span className="mb-1 block text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">
-                  Поиск
-                </span>
+                <FilterHelpLabel
+                  label="Поиск"
+                  tooltip="Ищет нужные строки плана по артикулу, SKU, названию товара или размеру."
+                />
                 <input
                   name="supplyQ"
                   defaultValue={params.supplyQ ?? ""}
@@ -2884,8 +2943,9 @@ function ProductionPlanningBlock({
                   </span>
                 </div>
 
-                <h3 className="mt-2 text-lg font-black text-slate-950">
-                  Что нужно заказать в пошив
+                <h3 className="mt-2 flex items-center gap-2 text-lg font-black text-slate-950">
+                  <span>Что нужно заказать в пошив</span>
+                  <HelpIcon tooltip="Блок показывает, каких товаро-размеров не хватает для выполнения плана поставок. Помогает заранее заказать пошив с учётом спроса, дефицита и выбранного буфера." />
                 </h3>
                 <p className="mt-1 max-w-3xl text-xs font-bold leading-5 text-slate-500">
                   Показываем товары выбранной ABC-категории, где есть спрос и рекомендация к поставке, но собственного остатка не хватает. Буфер можно менять: 15, 20, 30 или 60 дней до поступления партии на склад.
@@ -2947,9 +3007,10 @@ function ProductionPlanningBlock({
                   {params.dateTo ? <input type="hidden" name="dateTo" value={params.dateTo} /> : null}
                   <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-[160px_150px_150px_auto]">
                     <label className="block">
-                      <span className="mb-1 block text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">
-                        Буфер пошива
-                      </span>
+                      <FilterHelpLabel
+                        label="Буфер пошива"
+                        tooltip="Количество дней запаса, которое нужно заложить до поступления новой партии пошива на собственный склад."
+                      />
                       <select
                         name="productionBufferDays"
                         defaultValue={String(productionBufferDays)}
@@ -2964,9 +3025,10 @@ function ProductionPlanningBlock({
                     </label>
 
                     <label className="block">
-                      <span className="mb-1 block text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">
-                        ABC
-                      </span>
+                      <FilterHelpLabel
+                        label="ABC"
+                        tooltip="Фильтр по важности товаров для пошива. A — самые важные позиции, B — средние, C — менее приоритетные, Все — без ограничения."
+                      />
                       <select
                         name="productionAbc"
                         defaultValue={productionAbcFilter}
@@ -2980,9 +3042,10 @@ function ProductionPlanningBlock({
                     </label>
 
                     <label className="block">
-                      <span className="mb-1 block text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">
-                        Строк
-                      </span>
+                      <FilterHelpLabel
+                        label="Строк"
+                        tooltip="Сколько строк показывать в детальной таблице пошива. Excel выгружается с учётом выбранного буфера и выбранных строк."
+                      />
                       <select
                         name="productionRows"
                         defaultValue={params.productionRows ?? "8"}
@@ -5192,8 +5255,9 @@ export default async function StocksPage({
           <section id="companies" className="rounded-[30px] border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
             <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
               <div>
-                <h2 className="text-xl font-black tracking-tight text-slate-950">
-                  Остатки по компаниям
+                <h2 className="flex items-center gap-2 text-xl font-black tracking-tight text-slate-950">
+                  <span>Остатки по компаниям</span>
+                  <HelpIcon tooltip="Сводный блок по компаниям: показывает остатки на WB, Ozon, собственном складе, общее количество и себестоимость остатков." />
                 </h2>
                 <p className="mt-1 text-sm font-semibold text-slate-500">
                   Консолидированная картина остатков по компаниям и каналам: WB, Ozon и собственный склад.
@@ -5224,35 +5288,50 @@ export default async function StocksPage({
                   </div>
 
                   <div className="rounded-2xl bg-violet-50 px-4 py-3 ring-1 ring-violet-100">
-                    <div className="text-[11px] font-black uppercase text-violet-600">WB</div>
+                    <div className="flex items-center gap-1 text-[11px] font-black uppercase text-violet-600">
+                      <span>WB</span>
+                      <HelpIcon tooltip="Остаток компании на складах Wildberries по загруженным данным WB." />
+                    </div>
                     <div className="mt-1 text-base font-black text-slate-950">
                       {formatNumber(summary.wb.totalQty)} шт
                     </div>
                   </div>
 
                   <div className="rounded-2xl bg-blue-50 px-4 py-3 ring-1 ring-blue-100">
-                    <div className="text-[11px] font-black uppercase text-blue-600">Ozon</div>
+                    <div className="flex items-center gap-1 text-[11px] font-black uppercase text-blue-600">
+                      <span>Ozon</span>
+                      <HelpIcon tooltip="Остаток компании на складах Ozon по загруженным данным Ozon." />
+                    </div>
                     <div className="mt-1 text-base font-black text-slate-950">
                       {formatNumber(summary.ozon.totalQty)} шт
                     </div>
                   </div>
 
                   <div className="rounded-2xl bg-emerald-50 px-4 py-3 ring-1 ring-emerald-100">
-                    <div className="text-[11px] font-black uppercase text-emerald-700">Собственный склад</div>
+                    <div className="flex items-center gap-1 text-[11px] font-black uppercase text-emerald-700">
+                      <span>Собственный склад</span>
+                      <HelpIcon tooltip="Остаток на собственном складе. Этот запас используется для расчёта доступного количества к поставке на WB и Ozon." />
+                    </div>
                     <div className="mt-1 text-base font-black text-slate-950">
                       {formatNumber(summary.warehouse.warehouseQty)} шт
                     </div>
                   </div>
 
                   <div>
-                    <div className="text-xs font-black uppercase text-slate-400">Всего</div>
+                    <div className="flex items-center gap-1 text-xs font-black uppercase text-slate-400">
+                      <span>Всего</span>
+                      <HelpIcon tooltip="Суммарный остаток компании по WB, Ozon и собственному складу." />
+                    </div>
                     <div className="mt-1 text-base font-black text-slate-950">
                       {formatNumber(summary.totalQty)} шт
                     </div>
                   </div>
 
                   <div>
-                    <div className="text-xs font-black uppercase text-slate-400">Стоимость</div>
+                    <div className="flex items-center gap-1 text-xs font-black uppercase text-slate-400">
+                      <span>Стоимость</span>
+                      <HelpIcon tooltip="Оценочная себестоимость всех остатков компании по загруженным себестоимостям." />
+                    </div>
                     <div className="mt-1 text-base font-black text-slate-950">
                       {formatMoney(summary.totalCost)}
                     </div>
@@ -5498,8 +5577,9 @@ export default async function StocksPage({
           <section id="details" className="rounded-[30px] border border-slate-200 bg-white p-5 shadow-sm">
             <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
               <div>
-                <h2 className="text-2xl font-black tracking-tight text-slate-950">
-                  Детализация по товарам
+                <h2 className="flex items-center gap-2 text-2xl font-black tracking-tight text-slate-950">
+                  <span>Детализация по товарам</span>
+                  <HelpIcon tooltip="Подробная таблица по каждому товару, размеру, маркетплейсу и складу. Здесь удобно искать артикулы и проверять, где именно лежит товар." />
                 </h2>
                 <p className="mt-1 max-w-3xl text-sm font-semibold leading-6 text-slate-500">
                   Выберите товар, чтобы увидеть все размеры и остатки по
@@ -5517,7 +5597,7 @@ export default async function StocksPage({
               </div>
             </div>
 
-            <form className="mt-5 grid gap-3 xl:grid-cols-[minmax(240px,1fr)_220px_170px_160px_140px]">
+            <form className="mt-5 grid gap-3 xl:grid-cols-[minmax(240px,1fr)_220px_170px_160px_140px] xl:items-end">
               <input
                 type="hidden"
                 name="companyName"
@@ -5526,53 +5606,79 @@ export default async function StocksPage({
               <input type="hidden" name="dateFrom" value={abcDateFrom} />
               <input type="hidden" name="dateTo" value={abcDateTo} />
 
-              <input
-                name="q"
-                defaultValue={params.q ?? ""}
-                placeholder="Поиск по названию, артикулу, SKU"
-                className="rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-bold text-slate-700 outline-none transition focus:border-violet-200 focus:ring-4 focus:ring-violet-50"
-              />
+              <label className="block">
+                <FilterHelpLabel
+                  label="Поиск"
+                  tooltip="Ищет товар в детализации по названию, артикулу, SKU, размеру, складу или маркетплейсу."
+                />
+                <input
+                  name="q"
+                  defaultValue={params.q ?? ""}
+                  placeholder="Поиск по названию, артикулу, SKU"
+                  className="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-bold text-slate-700 outline-none transition focus:border-violet-200 focus:ring-4 focus:ring-violet-50"
+                />
+              </label>
 
-              <select
-                name="product"
-                defaultValue={selectedProduct || "ALL"}
-                className="rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-bold text-slate-700 outline-none"
-              >
-                <option value="ALL">Товар: все</option>
-                {productOptions.map((product) => (
-                  <option key={product.vendorCode} value={product.vendorCode}>
-                    {product.label.length > 34
-                      ? `${product.label.slice(0, 34)}...`
-                      : product.label}
-                  </option>
-                ))}
-              </select>
+              <label className="block">
+                <FilterHelpLabel
+                  label="Товар"
+                  tooltip="Оставляет в таблице только один выбранный товар или показывает все товары."
+                />
+                <select
+                  name="product"
+                  defaultValue={selectedProduct || "ALL"}
+                  className="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-bold text-slate-700 outline-none"
+                >
+                  <option value="ALL">Товар: все</option>
+                  {productOptions.map((product) => (
+                    <option key={product.vendorCode} value={product.vendorCode}>
+                      {product.label.length > 34
+                        ? `${product.label.slice(0, 34)}...`
+                        : product.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
 
-              <select
-                name="source"
-                defaultValue={selectedSource}
-                className="rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-bold text-slate-700 outline-none"
-              >
-                <option value="ALL">Источник: все</option>
-                <option value="WB">WB</option>
-                <option value="OZON">Ozon</option>
-                <option value="OWN">Свой склад</option>
-              </select>
+              <label className="block">
+                <FilterHelpLabel
+                  label="Источник"
+                  tooltip="Фильтрует строки по месту остатка: WB, Ozon, собственный склад или все источники сразу."
+                />
+                <select
+                  name="source"
+                  defaultValue={selectedSource}
+                  className="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-bold text-slate-700 outline-none"
+                >
+                  <option value="ALL">Источник: все</option>
+                  <option value="WB">WB</option>
+                  <option value="OZON">Ozon</option>
+                  <option value="OWN">Свой склад</option>
+                </select>
+              </label>
 
-              <select
-                name="rows"
-                defaultValue={String(rowsLimit)}
-                className="rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-bold text-slate-700 outline-none"
-              >
-                <option value="20">Показывать: 20</option>
-                <option value="50">Показывать: 50</option>
-                <option value="100">Показывать: 100</option>
-                <option value="200">Показывать: 200</option>
-              </select>
+              <label className="block">
+                <FilterHelpLabel
+                  label="Строк"
+                  tooltip="Сколько строк детальной таблицы показывать на экране."
+                />
+                <select
+                  name="rows"
+                  defaultValue={String(rowsLimit)}
+                  className="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-bold text-slate-700 outline-none"
+                >
+                  <option value="20">Показывать: 20</option>
+                  <option value="50">Показывать: 50</option>
+                  <option value="100">Показывать: 100</option>
+                  <option value="200">Показывать: 200</option>
+                </select>
+              </label>
 
-              <button className="rounded-2xl bg-slate-950 px-4 py-2.5 text-sm font-black text-white shadow-lg shadow-slate-300 transition hover:bg-slate-800">
-                Применить
-              </button>
+              <div className="flex items-end">
+                <button className="w-full rounded-2xl bg-slate-950 px-4 py-2.5 text-sm font-black text-white shadow-lg shadow-slate-300 transition hover:bg-slate-800">
+                  Применить
+                </button>
+              </div>
             </form>
 
             <div className="mt-3">
@@ -5596,8 +5702,9 @@ export default async function StocksPage({
                 <summary className="cursor-pointer list-none outline-none">
                   <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                     <div>
-                      <h3 className="text-lg font-black tracking-tight text-slate-950">
-                        Быстрый разбор по размерам
+                      <h3 className="flex items-center gap-2 text-lg font-black tracking-tight text-slate-950">
+                        <span>Быстрый разбор по размерам</span>
+                        <HelpIcon tooltip="Показывает распределение остатков одного товара по размерам на WB, Ozon и собственном складе. Помогает быстро найти проблемные размеры." />
                       </h3>
                       <p className="mt-1 max-w-4xl text-sm font-semibold leading-6 text-slate-500">
                         WB, Ozon и склад разделены по размерам. ABC считается по свежим данным продаж.
@@ -5612,18 +5719,24 @@ export default async function StocksPage({
                 </summary>
 
                 <form className="mt-4 grid gap-2 rounded-[22px] border border-slate-200 bg-white p-3 md:grid-cols-[minmax(0,1fr)_190px_220px_180px_130px]">
-                  <select
-                    name="companyName"
-                    defaultValue={selectedCompanyName ?? "ALL"}
-                    className="rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-bold text-slate-700 outline-none"
-                  >
-                    <option value="ALL">Все компании</option>
-                    {companyNames.map((companyName) => (
-                      <option key={companyName} value={companyName}>
-                        {companyName}
-                      </option>
-                    ))}
-                  </select>
+                  <label className="block">
+                    <FilterHelpLabel
+                      label="Компания"
+                      tooltip="Показывает размерный разбор по одной компании или по всем компаниям."
+                    />
+                    <select
+                      name="companyName"
+                      defaultValue={selectedCompanyName ?? "ALL"}
+                      className="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-bold text-slate-700 outline-none"
+                    >
+                      <option value="ALL">Все компании</option>
+                      {companyNames.map((companyName) => (
+                        <option key={companyName} value={companyName}>
+                          {companyName}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
                   {selectedSource !== "ALL" ? (
                     <input type="hidden" name="source" value={selectedSource} />
                   ) : null}
@@ -5638,40 +5751,57 @@ export default async function StocksPage({
                   <input type="hidden" name="dateFrom" value={abcDateFrom} />
                   <input type="hidden" name="dateTo" value={abcDateTo} />
 
-                  <div className="flex items-center rounded-2xl bg-slate-50 px-3 py-2.5 text-sm font-black text-slate-600 ring-1 ring-slate-200">
-                    Группировка
+                  <div className="flex items-end">
+                    <div className="flex w-full items-center justify-between gap-2 rounded-2xl bg-slate-50 px-3 py-2.5 text-sm font-black text-slate-600 ring-1 ring-slate-200">
+                      <span>Группировка</span>
+                      <HelpIcon tooltip="Группирует остатки одного товара по размерам и источникам: WB, Ozon и собственный склад." align="right" />
+                    </div>
                   </div>
 
-                  <select
-                    name="sizeSort"
-                    defaultValue={sizeSummarySort}
-                    className="rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-bold text-slate-700 outline-none"
-                  >
-                    <option value="totalDesc">Сначала больше всего</option>
-                    <option value="totalAsc">Сначала меньше всего</option>
-                    <option value="wbDesc">Больше всего на WB</option>
-                    <option value="ozonDesc">Больше всего на Ozon</option>
-                    <option value="ownDesc">Больше всего на складе</option>
-                    <option value="lowDesc">Сначала проблемные размеры</option>
-                    <option value="nameAsc">По названию А–Я</option>
-                  </select>
+                  <label className="block">
+                    <FilterHelpLabel
+                      label="Сортировка"
+                      tooltip="Выбирает порядок карточек размерного разбора: по общему остатку, по WB, Ozon, складу или сначала проблемные размеры."
+                    />
+                    <select
+                      name="sizeSort"
+                      defaultValue={sizeSummarySort}
+                      className="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-bold text-slate-700 outline-none"
+                    >
+                      <option value="totalDesc">Сначала больше всего</option>
+                      <option value="totalAsc">Сначала меньше всего</option>
+                      <option value="wbDesc">Больше всего на WB</option>
+                      <option value="ozonDesc">Больше всего на Ozon</option>
+                      <option value="ownDesc">Больше всего на складе</option>
+                      <option value="lowDesc">Сначала проблемные размеры</option>
+                      <option value="nameAsc">По названию А–Я</option>
+                    </select>
+                  </label>
 
-                  <select
-                    name="sizeRows"
-                    defaultValue={params.sizeRows ?? "20"}
-                    className="rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-bold text-slate-700 outline-none"
-                  >
-                    <option value="8">Показать 8</option>
-                    <option value="20">Показать 20</option>
-                    <option value="50">Показать 50</option>
-                    <option value="100">Показать 100</option>
-                    <option value="200">Показать 200</option>
-                    <option value="ALL">Показать все</option>
-                  </select>
+                  <label className="block">
+                    <FilterHelpLabel
+                      label="Строк"
+                      tooltip="Сколько карточек размерного разбора показывать на экране."
+                    />
+                    <select
+                      name="sizeRows"
+                      defaultValue={params.sizeRows ?? "20"}
+                      className="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-bold text-slate-700 outline-none"
+                    >
+                      <option value="8">Показать 8</option>
+                      <option value="20">Показать 20</option>
+                      <option value="50">Показать 50</option>
+                      <option value="100">Показать 100</option>
+                      <option value="200">Показать 200</option>
+                      <option value="ALL">Показать все</option>
+                    </select>
+                  </label>
 
-                  <button className="rounded-2xl bg-slate-950 px-4 py-2.5 text-sm font-black text-white shadow-lg shadow-slate-300 transition hover:bg-slate-800">
-                    Применить
-                  </button>
+                  <div className="flex items-end">
+                    <button className="w-full rounded-2xl bg-slate-950 px-4 py-2.5 text-sm font-black text-white shadow-lg shadow-slate-300 transition hover:bg-slate-800">
+                      Применить
+                    </button>
+                  </div>
                 </form>
 
                 <div className="mt-4 grid gap-3">
@@ -5700,7 +5830,12 @@ export default async function StocksPage({
                           Артикул / SKU / размер
                         </SortHeader>
                       </th>
-                      <th className="w-[190px] px-3 py-4">Источник / склад</th>
+                      <th className="w-[190px] px-3 py-4">
+                        <span className="inline-flex items-center gap-1">
+                          <span>Источник / склад</span>
+                          <HelpIcon tooltip="Показывает, где лежит остаток: WB, Ozon, собственный склад, конкретный склад или кластер." />
+                        </span>
+                      </th>
                       <th className="w-[110px] px-3 py-4 text-right">
                         <SortHeader params={params} sortKey="qty" align="right">
                           Остаток
