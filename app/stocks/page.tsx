@@ -29,6 +29,7 @@ type StockSearchParams = {
   supplyQ?: string;
   supplyWbDays?: string;
   supplyOzonDays?: string;
+  supplyReservationMode?: string;
   supplySelectionMode?: string;
   supplySelected?: string | string[];
   productionOpen?: string;
@@ -148,6 +149,13 @@ type ProductSizeSummary = {
 
 type SupplyPlanMarketplace = "WB" | "OZON";
 type SupplyPlanPriority = "HIGH" | "MEDIUM" | "LOW";
+type SupplyReservationMode =
+  | "OZON_FIRST"
+  | "WB_FIRST"
+  | "OZON_ONLY"
+  | "WB_ONLY"
+  | "OZON_CANCELLED_TO_WB"
+  | "WB_CANCELLED_TO_OZON";
 
 type OwnSupplyItem = {
   key: string;
@@ -720,6 +728,45 @@ function getOzonRecommendationDays(value?: string) {
   return [14, 21, 28, 56].includes(parsed) ? parsed : 14;
 }
 
+function getSupplyReservationMode(value?: string): SupplyReservationMode {
+  if (
+    value === "OZON_FIRST" ||
+    value === "WB_FIRST" ||
+    value === "OZON_ONLY" ||
+    value === "WB_ONLY" ||
+    value === "OZON_CANCELLED_TO_WB" ||
+    value === "WB_CANCELLED_TO_OZON"
+  ) {
+    return value;
+  }
+
+  return "OZON_FIRST";
+}
+
+function supplyReservationModeLabel(value: SupplyReservationMode) {
+  if (value === "OZON_FIRST") return "Сначала Ozon, потом WB";
+  if (value === "WB_FIRST") return "Сначала WB, потом Ozon";
+  if (value === "OZON_ONLY") return "Только Ozon";
+  if (value === "WB_ONLY") return "Только WB";
+  if (value === "OZON_CANCELLED_TO_WB") return "Ozon отменён → отдать WB";
+  return "WB отменён → отдать Ozon";
+}
+
+function shouldReserveMarketplace(
+  marketplace: SupplyPlanMarketplace,
+  mode: SupplyReservationMode
+) {
+  if (mode === "OZON_ONLY" || mode === "WB_CANCELLED_TO_OZON") {
+    return marketplace === "OZON";
+  }
+
+  if (mode === "WB_ONLY" || mode === "OZON_CANCELLED_TO_WB") {
+    return marketplace === "WB";
+  }
+
+  return true;
+}
+
 function getOzonRecommendationQty(
   row: {
     recommendationPeriodDays?: number | null;
@@ -808,6 +855,21 @@ function supplyPriorityWeight(priority: SupplyPlanPriority) {
   if (priority === "HIGH") return 3;
   if (priority === "MEDIUM") return 2;
   return 1;
+}
+
+function supplyMarketplaceAllocationWeight(
+  marketplace: SupplyPlanMarketplace,
+  mode: SupplyReservationMode
+) {
+  if (
+    mode === "WB_FIRST" ||
+    mode === "WB_ONLY" ||
+    mode === "OZON_CANCELLED_TO_WB"
+  ) {
+    return marketplace === "WB" ? 2 : 1;
+  }
+
+  return marketplace === "OZON" ? 2 : 1;
 }
 
 function getSupplyPriority(params: {
@@ -1506,6 +1568,7 @@ function makeUrl(params: StockSearchParams, patch: Record<string, string | null 
     supplyQ: params.supplyQ,
     supplyWbDays: params.supplyWbDays,
     supplyOzonDays: params.supplyOzonDays,
+    supplyReservationMode: params.supplyReservationMode,
     supplySelectionMode: params.supplySelectionMode,
     supplySelected: Array.isArray(params.supplySelected)
       ? params.supplySelected.join(",")
@@ -1989,6 +2052,7 @@ function SupplyPlanningBlock({
   const query = normalizeKey(params.supplyQ);
   const wbRecommendationDays = getWbRecommendationDays(params.supplyWbDays);
   const ozonRecommendationDays = getOzonRecommendationDays(params.supplyOzonDays);
+  const reservationMode = getSupplyReservationMode(params.supplyReservationMode);
 
   const targetOptions = getSupplyTargetOptions(rows, marketplaceFilter);
   const safeTargetFilter =
@@ -2073,6 +2137,10 @@ function SupplyPlanningBlock({
     exportParams.set("supplyOzonDays", params.supplyOzonDays);
   }
 
+  if (params.supplyReservationMode) {
+    exportParams.set("supplyReservationMode", params.supplyReservationMode);
+  }
+
   if (params.dateFrom) {
     exportParams.set("dateFrom", params.dateFrom);
   }
@@ -2097,6 +2165,14 @@ function SupplyPlanningBlock({
 
     if (exportMarketplace !== "ALL") {
       supplyExportParams.set("exportMarketplace", exportMarketplace);
+
+      // Кнопки “Поставка WB/Ozon” должны скачивать файл именно выбранного
+      // маркетплейса, даже если в фильтре источника сейчас выбран другой маркетплейс.
+      supplyExportParams.set("supplyMarketplace", exportMarketplace);
+
+      if (marketplaceFilter !== exportMarketplace) {
+        supplyExportParams.delete("supplyTarget");
+      }
     }
 
     if (exportMode) {
@@ -2214,7 +2290,7 @@ function SupplyPlanningBlock({
             {params.sizeRows ? <input type="hidden" name="sizeRows" value={params.sizeRows} /> : null}
             {params.sizeSort ? <input type="hidden" name="sizeSort" value={params.sizeSort} /> : null}
 
-            <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-[1.1fr_1fr_0.9fr_1.3fr_0.8fr_0.9fr_0.8fr_1.5fr_auto]">
+            <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-[1.05fr_0.9fr_0.85fr_0.85fr_1.35fr_0.85fr_0.85fr_0.75fr_1.25fr_auto]">
               <label className="block">
                 <span className="mb-1 block text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">
                   Компания
@@ -2277,6 +2353,25 @@ function SupplyPlanningBlock({
                   <option value="21">21 день</option>
                   <option value="28">28 дней</option>
                   <option value="56">56 дней</option>
+                </select>
+              </label>
+
+              <label className="block">
+                <span className="mb-1 block text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">
+                  Резерв
+                </span>
+                <select
+                  name="supplyReservationMode"
+                  defaultValue={reservationMode}
+                  title="Выберите порядок резерва. Если поставка одного маркетплейса отменена, выберите режим отмены, чтобы товар снова стал доступен второму маркетплейсу."
+                  className="h-11 w-full rounded-2xl border border-slate-200 bg-white px-3 text-sm font-bold text-slate-700 outline-none transition focus:border-violet-200 focus:ring-4 focus:ring-violet-50"
+                >
+                  <option value="OZON_FIRST">Ozon → WB</option>
+                  <option value="WB_FIRST">WB → Ozon</option>
+                  <option value="OZON_ONLY">Только Ozon</option>
+                  <option value="WB_ONLY">Только WB</option>
+                  <option value="OZON_CANCELLED_TO_WB">Ozon отменён → WB</option>
+                  <option value="WB_CANCELLED_TO_OZON">WB отменён → Ozon</option>
                 </select>
               </label>
 
@@ -2368,7 +2463,7 @@ function SupplyPlanningBlock({
 
             <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs font-bold text-slate-500">
               <div>
-                Найдено {formatNumber(filteredRows.length)} строк · реком. {formatNumber(supplyWantedQty(filteredRows))} шт. · к отгрузке {formatNumber(supplySummaryQty(filteredRows))} шт. · критичных {formatNumber(criticalRows.length)}
+                Найдено {formatNumber(filteredRows.length)} строк · реком. {formatNumber(supplyWantedQty(filteredRows))} шт. · к отгрузке {formatNumber(supplySummaryQty(filteredRows))} шт. · критичных {formatNumber(criticalRows.length)} · резерв: {supplyReservationModeLabel(reservationMode)}
               </div>
               <div className="flex flex-wrap gap-2">
                 <Link
@@ -2382,6 +2477,7 @@ function SupplyPlanningBlock({
                     supplyQ: null,
                     supplyWbDays: null,
                     supplyOzonDays: null,
+                    supplyReservationMode: null,
                     companyName: null,
                   })}
                   className="inline-flex rounded-full bg-white px-3 py-1.5 font-black text-slate-600 ring-1 ring-slate-200 transition hover:bg-slate-100"
@@ -2483,6 +2579,7 @@ function SupplyPlanningBlock({
               {query ? <input type="hidden" name="supplyQ" value={query} /> : null}
               {params.supplyWbDays ? <input type="hidden" name="supplyWbDays" value={params.supplyWbDays} /> : null}
               {params.supplyOzonDays ? <input type="hidden" name="supplyOzonDays" value={params.supplyOzonDays} /> : null}
+              {params.supplyReservationMode ? <input type="hidden" name="supplyReservationMode" value={params.supplyReservationMode} /> : null}
               {params.dateFrom ? <input type="hidden" name="dateFrom" value={params.dateFrom} /> : null}
               {params.dateTo ? <input type="hidden" name="dateTo" value={params.dateTo} /> : null}
               {params.sizeOpen ? <input type="hidden" name="sizeOpen" value={params.sizeOpen} /> : null}
@@ -4112,6 +4209,7 @@ export default async function StocksPage({
 
   const supplyPlanCandidates: SupplyPlanCandidate[] = [];
   const ozonRecommendationDays = getOzonRecommendationDays(params.supplyOzonDays);
+  const supplyReservationMode = getSupplyReservationMode(params.supplyReservationMode);
   const officialOzonSupplyKeys = new Set<string>();
 
   for (const row of ozonSupplyRecommendations) {
@@ -4811,6 +4909,15 @@ export default async function StocksPage({
 
   const supplyPlanRows: SupplyPlanRow[] = supplyPlanCandidates
     .sort((a, b) => {
+      // Важно: распределяем один и тот же собственный склад единым планом.
+      // По умолчанию резервируем сначала Ozon, потом WB. Режимы отмены
+      // исключают отменённый маркетплейс из резерва и отдают остаток второму.
+      const marketplaceDiff =
+        supplyMarketplaceAllocationWeight(b.marketplace, supplyReservationMode) -
+        supplyMarketplaceAllocationWeight(a.marketplace, supplyReservationMode);
+
+      if (marketplaceDiff !== 0) return marketplaceDiff;
+
       const priorityDiff =
         supplyPriorityWeight(b.priority) - supplyPriorityWeight(a.priority);
 
@@ -4826,9 +4933,15 @@ export default async function StocksPage({
       const ownAvailableQty = candidate.ownItemKey
         ? ownSupplyRemaining.get(candidate.ownItemKey) ?? 0
         : 0;
-      const recommendedQty = Math.min(candidate.wantedQty, ownAvailableQty);
+      const shouldReserve = shouldReserveMarketplace(
+        candidate.marketplace,
+        supplyReservationMode
+      );
+      const recommendedQty = shouldReserve
+        ? Math.min(candidate.wantedQty, ownAvailableQty)
+        : 0;
 
-      if (candidate.ownItemKey) {
+      if (candidate.ownItemKey && shouldReserve) {
         ownSupplyRemaining.set(
           candidate.ownItemKey,
           Math.max(0, ownAvailableQty - recommendedQty)

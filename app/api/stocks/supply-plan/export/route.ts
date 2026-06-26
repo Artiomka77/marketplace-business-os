@@ -11,6 +11,13 @@ export const revalidate = 0;
 type AbcCategory = "A" | "B" | "C";
 type Marketplace = "WB" | "OZON";
 type Priority = "HIGH" | "MEDIUM" | "LOW";
+type SupplyReservationMode =
+  | "OZON_FIRST"
+  | "WB_FIRST"
+  | "OZON_ONLY"
+  | "WB_ONLY"
+  | "OZON_CANCELLED_TO_WB"
+  | "WB_CANCELLED_TO_OZON";
 
 type StockAbcInfo = {
   abcByRevenue: AbcCategory;
@@ -463,6 +470,51 @@ function supplyPriorityWeight(priority: Priority) {
   if (priority === "HIGH") return 3;
   if (priority === "MEDIUM") return 2;
   return 1;
+}
+
+function getSupplyReservationMode(value?: string): SupplyReservationMode {
+  if (
+    value === "OZON_FIRST" ||
+    value === "WB_FIRST" ||
+    value === "OZON_ONLY" ||
+    value === "WB_ONLY" ||
+    value === "OZON_CANCELLED_TO_WB" ||
+    value === "WB_CANCELLED_TO_OZON"
+  ) {
+    return value;
+  }
+
+  return "OZON_FIRST";
+}
+
+function shouldReserveMarketplace(
+  marketplace: Marketplace,
+  mode: SupplyReservationMode
+) {
+  if (mode === "OZON_ONLY" || mode === "WB_CANCELLED_TO_OZON") {
+    return marketplace === "OZON";
+  }
+
+  if (mode === "WB_ONLY" || mode === "OZON_CANCELLED_TO_WB") {
+    return marketplace === "WB";
+  }
+
+  return true;
+}
+
+function supplyMarketplaceAllocationWeight(
+  marketplace: Marketplace,
+  mode: SupplyReservationMode
+) {
+  if (
+    mode === "WB_FIRST" ||
+    mode === "WB_ONLY" ||
+    mode === "OZON_CANCELLED_TO_WB"
+  ) {
+    return marketplace === "WB" ? 2 : 1;
+  }
+
+  return marketplace === "OZON" ? 2 : 1;
 }
 
 function getSupplyPriority(params: {
@@ -1674,9 +1726,21 @@ async function buildSupplyPlanRows(url: URL) {
   const ownSupplyRemaining = new Map(
     ownSupplyItems.map((item) => [item.key, item.availableQty])
   );
+  const supplyReservationMode = getSupplyReservationMode(
+    getQueryValue(url, "supplyReservationMode")
+  );
 
   const rows: SupplyPlanRow[] = supplyPlanCandidates
     .sort((a, b) => {
+      // Важно: распределяем один и тот же собственный склад единым планом.
+      // По умолчанию резервируем сначала Ozon, потом WB. Режимы отмены
+      // исключают отменённый маркетплейс из резерва и отдают остаток второму.
+      const marketplaceDiff =
+        supplyMarketplaceAllocationWeight(b.marketplace, supplyReservationMode) -
+        supplyMarketplaceAllocationWeight(a.marketplace, supplyReservationMode);
+
+      if (marketplaceDiff !== 0) return marketplaceDiff;
+
       const priorityDiff =
         supplyPriorityWeight(b.priority) - supplyPriorityWeight(a.priority);
 
@@ -1692,9 +1756,15 @@ async function buildSupplyPlanRows(url: URL) {
       const ownAvailableQty = candidate.ownItemKey
         ? ownSupplyRemaining.get(candidate.ownItemKey) ?? 0
         : 0;
-      const recommendedQty = Math.min(candidate.wantedQty, ownAvailableQty);
+      const shouldReserve = shouldReserveMarketplace(
+        candidate.marketplace,
+        supplyReservationMode
+      );
+      const recommendedQty = shouldReserve
+        ? Math.min(candidate.wantedQty, ownAvailableQty)
+        : 0;
 
-      if (candidate.ownItemKey) {
+      if (candidate.ownItemKey && shouldReserve) {
         ownSupplyRemaining.set(
           candidate.ownItemKey,
           Math.max(0, ownAvailableQty - recommendedQty)
@@ -1709,7 +1779,13 @@ async function buildSupplyPlanRows(url: URL) {
     })
     .filter((row) => row.wantedQty > 0);
 
-  const marketplaceFilter = getMarketplaceFilter(getQueryValue(url, "supplyMarketplace"));
+  const exportMarketplaceForFilter = getExportMarketplace(
+    getQueryValue(url, "exportMarketplace")
+  );
+  const marketplaceFilter =
+    exportMarketplaceForFilter === "ALL"
+      ? getMarketplaceFilter(getQueryValue(url, "supplyMarketplace"))
+      : exportMarketplaceForFilter;
   const priorityFilter = getPriorityFilter(getQueryValue(url, "supplyPriority"));
   const abcFilter = getAbcFilter(getQueryValue(url, "supplyAbc"));
   const targetFilter = getQueryValue(url, "supplyTarget");
