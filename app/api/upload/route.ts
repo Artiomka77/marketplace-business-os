@@ -9,6 +9,7 @@ import { normalizeWbSales } from "@/lib/import/normalizers/wbSalesNormalizer";
 import { normalizeWbFinance } from "@/lib/import/normalizers/wbFinanceNormalizer";
 import { normalizeWbAds } from "@/lib/import/normalizers/wbAdsNormalizer";
 import { normalizeWbStock } from "@/lib/import/normalizers/wbStockNormalizer";
+import { normalizeWbSupplyRecommendation } from "@/lib/import/normalizers/wbSupplyRecommendationNormalizer";
 import { normalizeProductCost } from "@/lib/import/normalizers/productCostNormalizer";
 
 import { normalizeOzonFinance } from "@/lib/import/normalizers/ozonFinanceNormalizer";
@@ -224,6 +225,45 @@ export async function POST(req: Request) {
     if (detection.reportType === "WB_STOCK") {
       const result = await normalizeWbStock(data, importSession.id, companyName);
       normalizedRows = result.savedRows;
+    }
+
+
+    if (detection.reportType === "WB_SUPPLY_RECOMMENDATION") {
+      const result = await normalizeWbSupplyRecommendation(
+        data,
+        importSession.id,
+        companyName
+      );
+      normalizedRows = result.savedRows;
+
+      if (normalizedRows === 0) {
+        await prisma.importSession.update({
+          where: {
+            id: importSession.id,
+          },
+          data: {
+            status: "ERROR",
+          },
+        });
+
+        return NextResponse.json(
+          {
+            success: false,
+            error:
+              "Файл распознан как Wildberries — Рекомендации по поставке, но не удалось сохранить строки. Проверьте заголовки: Регион, Артикул продавца, Артикул WB, Рекомендация, Рекомендуем отгрузить.",
+            reportType: detection.reportType,
+            marketplace,
+            companyName,
+            sheet: detection.sheetName,
+            headerRowIndex: detection.headerRowIndex + 1,
+            matchedColumns: detection.matchedColumns,
+            rows: data.length,
+            normalizedRows,
+            preview: data.slice(0, 5),
+          },
+          { status: 422 }
+        );
+      }
     }
 
     if (detection.reportType === "OZON_FINANCE") {

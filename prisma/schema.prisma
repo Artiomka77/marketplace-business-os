@@ -665,6 +665,58 @@ model MarketplaceApiConnection {
   @@index([marketplace])
 }
 
+model WbSupplyRecommendation {
+  id String @id @default(cuid())
+
+  importSessionId String?
+  companyName     String?
+
+  recommendationDate DateTime?
+
+  regionName     String
+  warehousesText String?
+
+  vendorCode  String
+  size        String?
+  productName String?
+  nmId        String?
+  barcode     String?
+
+  regionStockQty Int @default(0)
+
+  avgOrdersPerDay      Decimal?
+  forecastOrdersPerDay Decimal?
+  stockDays            Decimal?
+
+  stockLevel     String?
+  recommendation String?
+
+  potentialLostRevenue28 Decimal?
+
+  plannedSupplyQty Int @default(0)
+
+  recommendedQty14 Int @default(0)
+  recommendedQty21 Int @default(0)
+  recommendedQty28 Int @default(0)
+  recommendedQty56 Int @default(0)
+
+  isAllRegions Boolean @default(false)
+
+  createdAt DateTime @default(now())
+
+  @@index([importSessionId])
+  @@index([companyName])
+  @@index([recommendationDate])
+  @@index([regionName])
+  @@index([vendorCode])
+  @@index([nmId])
+  @@index([barcode])
+  @@index([size])
+  @@index([recommendation])
+  @@index([stockLevel])
+  @@index([isAllRegions])
+}
+
 model OzonSupplyRecommendation {
   id String @id @default(cuid())
 

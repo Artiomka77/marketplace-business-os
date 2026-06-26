@@ -46,6 +46,14 @@ const supportedReports = [
     path: "Товары → Остатки → Скачать отчет",
     tag: "WB",
   },
+
+  {
+    title: "Wildberries — Рекомендации по поставке",
+    desc: "Рекомендации WB по отгрузке на 14 / 21 / 28 / 56 дней с разбивкой по регионам и складам.",
+    path: "WB → Поставки → Рекомендации по поставке → Скачать Excel",
+    tag: "WB",
+    reportType: "WB_SUPPLY_RECOMMENDATION",
+  },
   {
     title: "Ozon — Экономика магазина",
     desc: "Отчет по товарам",
@@ -81,6 +89,8 @@ function getReportTypeLabel(reportType?: string) {
   if (reportType === "WB_FINANCE") return "WB финансы";
   if (reportType === "WB_ADS_STATS") return "WB реклама";
   if (reportType === "WB_STOCK") return "WB остатки";
+  if (reportType === "WB_SUPPLY_RECOMMENDATION")
+    return "WB рекомендации по поставке";
   if (reportType === "OZON_FINANCE") return "Ozon финансы";
   if (reportType === "OZON_ADS") return "Ozon реклама";
   if (reportType === "OZON_STOCK") return "Ozon остатки";

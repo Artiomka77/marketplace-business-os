@@ -7,6 +7,7 @@ export type ReportType =
   | "WB_ADS_FINANCE"
   | "WB_ADS_STATS"
   | "WB_STOCK"
+  | "WB_SUPPLY_RECOMMENDATION"
   | "OZON_FINANCE"
   | "OZON_ADS"
   | "OZON_STOCK"
@@ -55,6 +56,20 @@ const reportSignatures: {
   type: ReportType;
   columns: string[];
 }[] = [
+  {
+    type: "WB_SUPPLY_RECOMMENDATION",
+    columns: [
+      "Регион",
+      "Склады в регионе",
+      "Артикул продавца",
+      "Размер",
+      "Наименование товара",
+      "Артикул WB",
+      "Баркоды",
+      "Рекомендация",
+      "Рекомендуем отгрузить (хватит на 14 дней)",
+    ],
+  },
   {
     type: "OZON_SUPPLY_RECOMMENDATION",
     columns: [
@@ -265,6 +280,32 @@ export function detectWorkbookReport(workbook: XLSX.WorkBook): DetectionResult {
     for (let rowIndex = 0; rowIndex < Math.min(matrix.length, 40); rowIndex++) {
       const row = matrix[rowIndex];
 
+
+      if (
+        rowHas(row, "Регион") &&
+        rowHas(row, "Склады в регионе") &&
+        rowHas(row, "Артикул продавца") &&
+        rowHas(row, "Артикул WB") &&
+        rowHas(row, "Баркоды") &&
+        rowHas(row, "Рекомендация") &&
+        rowHasTextIncludes(row, "Рекомендуем отгрузить")
+      ) {
+        return {
+          reportType: "WB_SUPPLY_RECOMMENDATION",
+          sheetName,
+          headerRowIndex: rowIndex,
+          matchedColumns: [
+            "Регион",
+            "Склады в регионе",
+            "Артикул продавца",
+            "Артикул WB",
+            "Баркоды",
+            "Рекомендация",
+            "Рекомендуем отгрузить",
+          ],
+        };
+      }
+
       if (
         rowHas(row, "SKU") &&
         rowHas(row, "Артикул") &&
@@ -424,6 +465,7 @@ export function detectWorkbookReport(workbook: XLSX.WorkBook): DetectionResult {
     bestResult.reportType === "FINANCE_TRANSACTIONS" ||
     bestResult.reportType === "FINANCE_CATEGORIES" ||
     bestResult.reportType === "LOANS" ||
+    bestResult.reportType === "WB_SUPPLY_RECOMMENDATION" ||
     bestResult.reportType === "OZON_SUPPLY_RECOMMENDATION" ||
     bestResult.reportType === "OZON_WAREHOUSE_STOCK"
   ) {
