@@ -408,12 +408,12 @@ function FilterHelpLabel({
   tooltip: string;
 }) {
   return (
-    <div className="mb-1 flex items-center gap-1">
-      <span className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">
+    <div className="mb-1 flex min-w-0 items-center gap-1 whitespace-nowrap">
+      <span className="text-[10px] font-black uppercase tracking-[0.1em] text-slate-400">
         {label}
       </span>
       <span className="group relative inline-flex">
-        <span className="inline-flex h-4 w-4 cursor-help items-center justify-center rounded-full bg-violet-50 text-[10px] font-black text-violet-700 ring-1 ring-violet-100">
+        <span className="inline-flex h-3.5 w-3.5 cursor-help items-center justify-center rounded-full bg-slate-100 text-[9px] font-black text-slate-400 ring-1 ring-slate-200 transition group-hover:bg-violet-50 group-hover:text-violet-600 group-hover:ring-violet-100">
           ?
         </span>
         <span className="pointer-events-none absolute left-0 top-full z-30 mt-2 hidden w-64 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-[11px] font-semibold normal-case tracking-normal text-slate-600 shadow-xl group-hover:block group-focus-within:block">
@@ -434,7 +434,7 @@ function HelpIcon({
 }) {
   return (
     <span className="group relative inline-flex align-middle">
-      <span className="inline-flex h-4 w-4 cursor-help items-center justify-center rounded-full bg-violet-50 text-[10px] font-black text-violet-700 ring-1 ring-violet-100">
+      <span className="inline-flex h-3.5 w-3.5 cursor-help items-center justify-center rounded-full bg-slate-100 text-[9px] font-black text-slate-400 ring-1 ring-slate-200 transition group-hover:bg-violet-50 group-hover:text-violet-600 group-hover:ring-violet-100">
         ?
       </span>
       <span
@@ -2339,7 +2339,7 @@ function SupplyPlanningBlock({
             {params.sizeRows ? <input type="hidden" name="sizeRows" value={params.sizeRows} /> : null}
             {params.sizeSort ? <input type="hidden" name="sizeSort" value={params.sizeSort} /> : null}
 
-            <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-[1.05fr_0.9fr_0.85fr_0.85fr_1.35fr_0.85fr_0.85fr_0.75fr_1.25fr_auto]">
+            <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-[1fr_0.8fr_0.75fr_0.75fr_1.15fr_0.85fr_0.65fr_0.75fr_0.65fr_minmax(170px,1.25fr)_auto]">
               <label className="block">
                 <FilterHelpLabel
                   label="Компания"
@@ -2514,7 +2514,7 @@ function SupplyPlanningBlock({
               </label>
 
               <div className="flex items-end">
-                <button className="h-11 w-full rounded-2xl bg-slate-950 px-5 text-sm font-black text-white shadow-sm transition hover:bg-slate-800">
+                <button className="h-11 w-full rounded-2xl bg-slate-950 px-4 text-sm font-black text-white shadow-sm transition hover:bg-slate-800">
                   Применить
                 </button>
               </div>
