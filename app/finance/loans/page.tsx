@@ -1,6 +1,9 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 function formatMoney(value: unknown) {
   return new Intl.NumberFormat("ru-RU", {
     style: "currency",
