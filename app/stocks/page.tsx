@@ -2534,12 +2534,12 @@ function ProductionPlanningBlock({
                     })}
                     className="inline-flex items-center gap-2 rounded-full bg-white px-3 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-amber-700 ring-1 ring-amber-200 transition hover:bg-amber-50"
                   >
-                    <span>План пошива</span>
-                    <span className="text-sm">{productionOpen ? "▲" : "▼"}</span>
+                    <span>{productionOpen ? "Свернуть" : "Открыть детально"}</span>
+                    <span className="text-sm">{productionOpen ? "↑" : "→"}</span>
                   </Link>
 
                   <span className="rounded-full bg-white/70 px-3 py-1 text-xs font-black text-slate-500 ring-1 ring-amber-100">
-                    {productionOpen ? "развернут" : "свернут"}
+                    {productionOpen ? "детальная таблица открыта" : "показана краткая сводка"}
                   </span>
                 </div>
 
@@ -4834,51 +4834,138 @@ export default async function StocksPage({
             </section>
           ) : null}
 
-          <section id="supply-plan" className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_280px] xl:items-start">
-            <div className="min-w-0 space-y-4">
+          <section id="quick-recommendations" className="rounded-[30px] border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+            <div className="flex flex-col gap-2 xl:flex-row xl:items-center xl:justify-between">
               <div>
-                <SupplyPlanningBlock rows={supplyPlanRows} params={params} companyNames={companyNames} />
-              </div>
-              <div>
-                <ProductionPlanningBlock rows={supplyPlanRows} params={params} />
+                <h2 className="text-xl font-black tracking-tight text-slate-950">
+                  Быстрые рекомендации
+                </h2>
+                <p className="mt-1 text-sm font-semibold text-slate-500">
+                  Короткая сводка по поставкам, пошиву и дефициту без отдельной боковой колонки.
+                </p>
               </div>
             </div>
 
-            <aside className="space-y-3 xl:self-start">
-              <div className="rounded-[26px] border border-slate-200 bg-white p-4 shadow-sm">
-                <div className="text-xs font-black uppercase tracking-[0.12em] text-blue-600">
-                  Быстрые рекомендации
-                </div>
-                <div className="mt-3 space-y-3">
-                  <div className="rounded-2xl bg-red-50 p-3 ring-1 ring-red-100">
-                    <div className="text-sm font-black text-red-700">
-                      Товары ABC A с нулевым остатком
-                    </div>
-                    <p className="mt-1 text-xs font-bold leading-5 text-slate-600">
-                      Найдено {formatNumber(dashboardCriticalRows.length)} критичных строк. Проверьте поставку и пошив перед следующей закупкой.
-                    </p>
+            <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
+              <div className="rounded-[22px] border border-violet-100 bg-white p-3 shadow-sm ring-1 ring-violet-50">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-violet-50 text-violet-700 ring-1 ring-violet-100">
+                    ◊
                   </div>
-
-                  <div className="rounded-2xl bg-blue-50 p-3 ring-1 ring-blue-100">
-                    <div className="text-sm font-black text-blue-700">
-                      География WB обновляется ежедневно
+                  <div className="min-w-0">
+                    <div className="text-[11px] font-black uppercase tracking-[0.08em] text-violet-700">
+                      К пошиву
                     </div>
-                    <p className="mt-1 text-xs font-bold leading-5 text-slate-600">
-                      План WB строится по складам и регионам спроса. Чем больше истории, тем точнее рекомендации.
-                    </p>
-                  </div>
-
-                  <div className="rounded-2xl bg-amber-50 p-3 ring-1 ring-amber-100">
-                    <div className="text-sm font-black text-amber-800">
-                      Короткий сезон
+                    <div className="mt-0.5 text-lg font-black text-slate-950">
+                      {formatNumber(dashboardProductionQty)} шт
                     </div>
-                    <p className="mt-1 text-xs font-bold leading-5 text-slate-600">
-                      Для футболок и шорт проверяйте ABC и буфер пошива. В конце сезона лучше снижать буфер.
-                    </p>
+                    <div className="text-[11px] font-bold text-slate-500">
+                      буфер 20 дней
+                    </div>
                   </div>
                 </div>
               </div>
-            </aside>
+
+              <div className="rounded-[22px] border border-emerald-100 bg-white p-3 shadow-sm ring-1 ring-emerald-50">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100">
+                    ⇄
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-[11px] font-black uppercase tracking-[0.08em] text-emerald-700">
+                      К отгрузке
+                    </div>
+                    <div className="mt-0.5 text-lg font-black text-slate-950">
+                      {formatNumber(dashboardSupplyQty)} шт
+                    </div>
+                    <div className="text-[11px] font-bold text-slate-500">
+                      по плану поставок
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-[22px] border border-amber-100 bg-white p-3 shadow-sm ring-1 ring-amber-50">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-amber-50 text-amber-700 ring-1 ring-amber-100">
+                    !
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-[11px] font-black uppercase tracking-[0.08em] text-amber-700">
+                      Критичный дефицит
+                    </div>
+                    <div className="mt-0.5 text-lg font-black text-slate-950">
+                      {formatNumber(dashboardCriticalRows.length)} строк
+                    </div>
+                    <div className="text-[11px] font-bold text-slate-500">
+                      {formatNumber(dashboardCriticalQty)} шт
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-[22px] border border-blue-100 bg-white p-3 shadow-sm ring-1 ring-blue-50">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-blue-50 text-blue-700 ring-1 ring-blue-100">
+                    □
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-[11px] font-black uppercase tracking-[0.08em] text-blue-700">
+                      Низкий остаток
+                    </div>
+                    <div className="mt-0.5 text-lg font-black text-slate-950">
+                      {formatNumber(lowStockCount)} поз.
+                    </div>
+                    <div className="text-[11px] font-bold text-slate-500">
+                      меньше 10 шт.
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-[22px] border border-slate-200 bg-white p-3 shadow-sm ring-1 ring-slate-50">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-slate-50 text-slate-600 ring-1 ring-slate-200">
+                    ↗
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-[11px] font-black uppercase tracking-[0.08em] text-slate-500">
+                      Строк в плане
+                    </div>
+                    <div className="mt-0.5 text-lg font-black text-slate-950">
+                      {formatNumber(dashboardPlanningRows.length)}
+                    </div>
+                    <div className="text-[11px] font-bold text-slate-500">
+                      WB + Ozon
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-[22px] border border-cyan-100 bg-white p-3 shadow-sm ring-1 ring-cyan-50">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-cyan-50 text-cyan-700 ring-1 ring-cyan-100">
+                    ▣
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-[11px] font-black uppercase tracking-[0.08em] text-cyan-700">
+                      SKU к пошиву
+                    </div>
+                    <div className="mt-0.5 text-lg font-black text-slate-950">
+                      {formatNumber(dashboardProductionRows.length)}
+                    </div>
+                    <div className="text-[11px] font-bold text-slate-500">
+                      товар/размер
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section id="supply-plan" className="space-y-4">
+            <SupplyPlanningBlock rows={supplyPlanRows} params={params} companyNames={companyNames} />
+            <ProductionPlanningBlock rows={supplyPlanRows} params={params} />
           </section>
 
           <section id="details" className="rounded-[30px] border border-slate-200 bg-white p-5 shadow-sm">
