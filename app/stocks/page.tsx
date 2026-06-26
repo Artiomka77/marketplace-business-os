@@ -1441,6 +1441,10 @@ function makeUrl(params: StockSearchParams, patch: Record<string, string | null 
     productionBufferDays: params.productionBufferDays,
     productionRows: params.productionRows,
     productionAbc: params.productionAbc,
+    productionSelectionMode: params.productionSelectionMode,
+    productionSelected: Array.isArray(params.productionSelected)
+      ? params.productionSelected.join(",")
+      : params.productionSelected,
   };
 
   for (const [key, value] of Object.entries(patch)) {
@@ -1734,8 +1738,9 @@ function getProductionAbcFilter(value?: string | string[] | null): "ALL" | AbcCa
     return current;
   }
 
-  // По умолчанию оставляем самый безопасный режим: к пошиву попадают только ABC A.
-  return "A";
+  // По умолчанию показываем весь план пошива по выбранной компании.
+  // ABC A / B / C пользователь может включить отдельным фильтром.
+  return "ALL";
 }
 
 function getProductionSelectedKeys(value?: string | string[] | null) {
@@ -1932,10 +1937,6 @@ function SupplyPlanningBlock({
     return supplyPlanMatchesSearch(row, query);
   });
 
-  const productionBaseRows = selectedCompanyName
-    ? rows.filter((row) => row.companyName === selectedCompanyName)
-    : rows;
-
   const rowsLimit = getSupplyRowsLimit(params.supplyRows, filteredRows.length);
   const visibleRows = filteredRows.slice(0, rowsLimit);
 
@@ -1985,47 +1986,6 @@ function SupplyPlanningBlock({
   const ozonRows = rows.filter((row) => row.marketplace === "OZON");
   const wbRows = rows.filter((row) => row.marketplace === "WB");
   const criticalRows = filteredRows.filter((row) => row.priority === "HIGH");
-  const productionOpen = params.productionOpen !== "0";
-  const productionBufferDays = getProductionBufferDays(params.productionBufferDays);
-  const productionAbcFilter = getProductionAbcFilter(params.productionAbc);
-  const allProductionPlanRows = getProductionPlanRows(
-    productionBaseRows,
-    productionBufferDays,
-    productionAbcFilter
-  );
-  const hasCustomProductionSelection = params.productionSelectionMode === "custom";
-  const selectedProductionKeys = getProductionSelectedKeys(params.productionSelected);
-  const productionPlanRows = hasCustomProductionSelection
-    ? allProductionPlanRows.filter((row) => selectedProductionKeys.has(row.key))
-    : allProductionPlanRows;
-  const productionRowsLimit = getProductionRowsLimit(
-    params.productionRows,
-    productionPlanRows.length
-  );
-  const visibleProductionPlanRows = productionPlanRows.slice(0, productionRowsLimit);
-  const productionPlanQty = productionPlanSummaryQty(productionPlanRows);
-
-  function makeProductionExportHref(bufferDays: number) {
-    const productionExportParams = new URLSearchParams(exportParams);
-    productionExportParams.delete("supplyRows");
-    productionExportParams.set("bufferDays", String(bufferDays));
-    productionExportParams.set("productionAbc", productionAbcFilter);
-
-    if (hasCustomProductionSelection) {
-      productionExportParams.set("productionSelectionMode", "custom");
-
-      for (const key of selectedProductionKeys) {
-        productionExportParams.append("productionSelected", key);
-      }
-    }
-
-    const queryString = productionExportParams.toString();
-
-    return queryString
-      ? `/api/stocks/production-plan/export?${queryString}`
-      : `/api/stocks/production-plan/export?bufferDays=${bufferDays}`;
-  }
-
   return (
     <section className="overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-sm">
       <div className="p-4 sm:p-5">
@@ -2104,9 +2064,19 @@ function SupplyPlanningBlock({
             className="rounded-[24px] border border-slate-200 bg-slate-50/70 p-3 ring-1 ring-white"
           >
             <input type="hidden" name="supplyOpen" value="1" />
-            <input type="hidden" name="productionOpen" value={productionOpen ? "1" : "0"} />
-            <input type="hidden" name="productionBufferDays" value={String(productionBufferDays)} />
-            <input type="hidden" name="productionRows" value={params.productionRows ?? "8"} />
+            {params.productionOpen ? <input type="hidden" name="productionOpen" value={params.productionOpen} /> : null}
+            {params.productionBufferDays ? <input type="hidden" name="productionBufferDays" value={params.productionBufferDays} /> : null}
+            {params.productionRows ? <input type="hidden" name="productionRows" value={params.productionRows} /> : null}
+            {params.productionAbc ? <input type="hidden" name="productionAbc" value={Array.isArray(params.productionAbc) ? params.productionAbc[0] : params.productionAbc} /> : null}
+            {params.productionSelectionMode ? <input type="hidden" name="productionSelectionMode" value={params.productionSelectionMode} /> : null}
+            {(Array.isArray(params.productionSelected)
+              ? params.productionSelected
+              : params.productionSelected
+                ? [params.productionSelected]
+                : []
+            ).map((key) => (
+              <input key={key} type="hidden" name="productionSelected" value={key} />
+            ))}
             {params.dateFrom ? <input type="hidden" name="dateFrom" value={params.dateFrom} /> : null}
             {params.dateTo ? <input type="hidden" name="dateTo" value={params.dateTo} /> : null}
             {params.sizeOpen ? <input type="hidden" name="sizeOpen" value={params.sizeOpen} /> : null}
@@ -2475,15 +2445,19 @@ function ProductionPlanningBlock({
   params: StockSearchParams;
 }) {
   const selectedCompanyName =
-    params.companyName && params.companyName !== "ALL" ? params.companyName : null;
+    params.companyName && params.companyName !== "ALL" ? normalizeKey(params.companyName) : null;
+  const selectedCompanyKey = selectedCompanyName
+    ? normalizeSearchValue(selectedCompanyName)
+    : null;
 
-  // План пошива должен зависеть от выбранной компании, а не от фильтров блока поставок
-  // по маркетплейсу, направлению, приоритету или поиску.
+  // План пошива должен зависеть только от общего фильтра компании.
+  // Он не должен использовать фильтры блока поставок по маркетплейсу, направлению,
+  // приоритету, количеству строк или поиску.
   // Все компании → считаем по всем компаниям.
   // ИП Петров → считаем только по ИП Петров.
   // ИП Лебедева → считаем только по ИП Лебедева.
-  const productionBaseRows = selectedCompanyName
-    ? rows.filter((row) => row.companyName === selectedCompanyName)
+  const productionBaseRows = selectedCompanyKey
+    ? rows.filter((row) => normalizeSearchValue(row.companyName) === selectedCompanyKey)
     : rows;
 
   const exportParams = new URLSearchParams();
@@ -2556,7 +2530,6 @@ function ProductionPlanningBlock({
                 <div className="flex flex-wrap items-center gap-2">
                   <Link
                     href={makeUrl(params, {
-                      supplyOpen: "1",
                       productionOpen: productionOpen ? "0" : "1",
                     })}
                     className="inline-flex items-center gap-2 rounded-full bg-white px-3 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-amber-700 ring-1 ring-amber-200 transition hover:bg-amber-50"
@@ -2611,7 +2584,13 @@ function ProductionPlanningBlock({
                   method="GET"
                   className="flex flex-col gap-3 border-b border-amber-100 bg-white/40 p-4 xl:flex-row xl:items-end xl:justify-between"
                 >
-                  <input type="hidden" name="supplyOpen" value="1" />
+                  {params.supplyOpen ? <input type="hidden" name="supplyOpen" value={params.supplyOpen} /> : null}
+                  {params.supplyMarketplace ? <input type="hidden" name="supplyMarketplace" value={params.supplyMarketplace} /> : null}
+                  {params.supplyTarget ? <input type="hidden" name="supplyTarget" value={params.supplyTarget} /> : null}
+                  {params.supplyAbc ? <input type="hidden" name="supplyAbc" value={params.supplyAbc} /> : null}
+                  {params.supplyPriority ? <input type="hidden" name="supplyPriority" value={params.supplyPriority} /> : null}
+                  {params.supplyRows ? <input type="hidden" name="supplyRows" value={params.supplyRows} /> : null}
+                  {params.supplyQ ? <input type="hidden" name="supplyQ" value={params.supplyQ} /> : null}
                   <input type="hidden" name="productionOpen" value="1" />
                   {params.companyName ? <input type="hidden" name="companyName" value={params.companyName} /> : null}
                   {params.dateFrom ? <input type="hidden" name="dateFrom" value={params.dateFrom} /> : null}
@@ -2818,7 +2797,7 @@ function ProductionPlanningBlock({
                       Заказывать в пошив пока нечего
                     </h3>
                     <p className="mt-1 max-w-4xl text-xs font-bold leading-5 text-slate-500">
-                      По текущим фильтрам система не нашла товары выбранной ABC-категории, где есть рекомендация к поставке и при этом не хватает собственного склада. Если нужно проверить дефицит сразу по WB и Ozon, выберите источник “WB + Ozon”, ABC “A” и все направления.
+                      По текущим фильтрам система не нашла товары, где есть рекомендация к поставке и при этом не хватает собственного склада. Проверьте общий фильтр компании и фильтр ABC внутри блока пошива. Блок пошива не зависит от фильтров блока поставок.
                     </p>
                   </div>
                 )}
