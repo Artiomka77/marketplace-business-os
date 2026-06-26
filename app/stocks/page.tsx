@@ -2247,7 +2247,7 @@ function SupplyPlanningBlock({
             </div>
           </form>
 
-          <div className="mt-4 overflow-hidden rounded-[24px] border border-amber-200 bg-amber-50/70 ring-1 ring-amber-100">
+          <div id="production-plan" className="mt-4 overflow-hidden rounded-[24px] border border-amber-200 bg-amber-50/70 ring-1 ring-amber-100">
             <div className="flex flex-col gap-3 border-b border-amber-100 p-4 lg:flex-row lg:items-start lg:justify-between">
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
@@ -4429,101 +4429,209 @@ export default async function StocksPage({
     ? summaries.find((summary) => summary.companyName === selectedCompanyName)
     : null;
 
+  const dashboardProductionRows = getProductionPlanRows(supplyPlanRows, 20, "ALL");
+  const dashboardProductionQty = productionPlanSummaryQty(dashboardProductionRows);
+  const dashboardSupplyQty = supplySummaryQty(supplyPlanRows);
+  const dashboardCriticalRows = supplyPlanRows.filter(
+    (row) => row.priority === "HIGH"
+  );
+  const dashboardCriticalQty = supplyWantedQty(dashboardCriticalRows);
+  const quickSizePreviewRows = productSizeSummaries.slice(0, 4);
+
   return (
     <main className="min-h-screen bg-slate-100">
       <MarketplaceNav />
 
       <div className="p-4 sm:p-6 lg:p-8">
         <div className="mx-auto max-w-7xl space-y-4">
-          <section className="rounded-[28px] border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
-            <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(520px,auto)] xl:items-center">
+          <section className="rounded-[30px] border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+            <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
               <div>
                 <h1 className="text-3xl font-black tracking-tight text-slate-950">
-                  Остатки товаров
+                  Остатки, поставки и пошив
                 </h1>
-                <p className="mt-1 max-w-3xl text-sm font-semibold leading-6 text-slate-500">
-                  Остатки WB, Ozon и собственного склада с оценкой по себестоимости.
+                <p className="mt-1 max-w-4xl text-sm font-semibold leading-6 text-slate-500">
+                  Управляйте остатками, рекомендациями к поставке и планом пошива в одном рабочем экране.
                 </p>
               </div>
 
-              <div className="flex flex-col gap-3 xl:items-end">
-                <div className="flex flex-wrap justify-start gap-2 xl:justify-end">
-                  <Link
-                    href="/api/templates/ozon-warehouse-stock"
-                    className="inline-flex items-center justify-center rounded-2xl bg-emerald-50 px-4 py-2.5 text-sm font-black text-emerald-700 ring-1 ring-emerald-100 transition hover:bg-emerald-100"
-                  >
-                    ⇩ Скачать шаблон остатков
-                  </Link>
+              <div className="flex flex-wrap gap-2 xl:justify-end">
+                <Link
+                  href="/import?reportType=OZON_WAREHOUSE_STOCK"
+                  className="inline-flex items-center justify-center rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-black text-slate-700 transition hover:bg-slate-50"
+                >
+                  Импорт
+                </Link>
 
-                  <Link
-                    href="/import?reportType=OZON_WAREHOUSE_STOCK"
-                    className="inline-flex items-center justify-center rounded-2xl bg-slate-950 px-4 py-2.5 text-sm font-black text-white shadow-lg shadow-slate-300 transition hover:bg-slate-800"
-                  >
-                    Загрузить остатки
-                  </Link>
-                </div>
+                <Link
+                  href="/api/templates/ozon-warehouse-stock"
+                  className="inline-flex items-center justify-center rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm font-black text-emerald-700 transition hover:bg-emerald-100"
+                >
+                  Скачать шаблон
+                </Link>
 
-                <form className="grid w-full gap-2 sm:grid-cols-[minmax(260px,1fr)_150px] xl:w-[520px]">
-                  <input type="hidden" name="dateFrom" value={abcDateFrom} />
-                  <input type="hidden" name="dateTo" value={abcDateTo} />
-                  <select
-                    name="companyName"
-                    defaultValue={selectedCompanyName ?? "ALL"}
-                    className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 outline-none transition focus:border-violet-200 focus:ring-4 focus:ring-violet-50"
-                    aria-label="Компания"
-                  >
-                    <option value="ALL">Все компании</option>
-                    {companyNames.map((companyName) => (
-                      <option key={companyName} value={companyName}>
-                        {companyName}
-                      </option>
-                    ))}
-                  </select>
-
-                  <button className="rounded-2xl bg-slate-950 px-5 py-2.5 text-sm font-black text-white shadow-lg shadow-slate-300 transition hover:bg-slate-800">
-                    Применить
-                  </button>
-                </form>
+                <Link
+                  href={selectedCompanyName ? `/stocks?companyName=${encodeURIComponent(selectedCompanyName)}` : "/stocks"}
+                  className="inline-flex items-center justify-center rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-black text-slate-700 transition hover:bg-slate-50"
+                >
+                  Сбросить
+                </Link>
               </div>
             </div>
+
+            <div className="mt-5 flex flex-wrap gap-1 rounded-[22px] bg-slate-50 p-1 ring-1 ring-slate-100">
+              {[
+                ["Обзор", "#overview"],
+                ["Размеры", "#sizes"],
+                ["Поставки", "#supply-plan"],
+                ["Пошив", "#production-plan"],
+                ["Детализация", "#details"],
+              ].map(([label, href]) => (
+                <a
+                  key={label}
+                  href={href}
+                  className={`rounded-2xl px-4 py-2 text-sm font-black transition ${
+                    href === "#supply-plan"
+                      ? "bg-white text-blue-700 shadow-sm ring-1 ring-blue-100"
+                      : "text-slate-600 hover:bg-white hover:text-slate-950"
+                  }`}
+                >
+                  {label}
+                </a>
+              ))}
+            </div>
+
+            <form className="mt-4 grid gap-3 rounded-[24px] border border-slate-200 bg-white p-3 md:grid-cols-2 xl:grid-cols-[minmax(180px,1fr)_minmax(180px,1fr)_150px_minmax(260px,1.3fr)_140px]">
+              <input type="hidden" name="dateFrom" value={abcDateFrom} />
+              <input type="hidden" name="dateTo" value={abcDateTo} />
+              <select
+                name="companyName"
+                defaultValue={selectedCompanyName ?? "ALL"}
+                className="h-11 w-full rounded-2xl border border-slate-200 bg-white px-3 text-sm font-bold text-slate-700 outline-none transition focus:border-blue-200 focus:ring-4 focus:ring-blue-50"
+                aria-label="Компания"
+              >
+                <option value="ALL">Все компании</option>
+                {companyNames.map((companyName) => (
+                  <option key={companyName} value={companyName}>
+                    {companyName}
+                  </option>
+                ))}
+              </select>
+
+              <select
+                name="source"
+                defaultValue={selectedSource}
+                className="h-11 w-full rounded-2xl border border-slate-200 bg-white px-3 text-sm font-bold text-slate-700 outline-none transition focus:border-blue-200 focus:ring-4 focus:ring-blue-50"
+              >
+                <option value="ALL">Маркетплейс: все</option>
+                <option value="WB">WB</option>
+                <option value="OZON">Ozon</option>
+                <option value="OWN">Свой склад</option>
+              </select>
+
+              <select
+                name="rows"
+                defaultValue={String(rowsLimit)}
+                className="h-11 w-full rounded-2xl border border-slate-200 bg-white px-3 text-sm font-bold text-slate-700 outline-none transition focus:border-blue-200 focus:ring-4 focus:ring-blue-50"
+              >
+                <option value="20">20 строк</option>
+                <option value="50">50 строк</option>
+                <option value="100">100 строк</option>
+                <option value="200">200 строк</option>
+              </select>
+
+              <input
+                name="q"
+                defaultValue={params.q ?? ""}
+                placeholder="Поиск по артикулу, SKU, названию"
+                className="h-11 rounded-2xl border border-slate-200 bg-white px-3 text-sm font-bold text-slate-700 outline-none transition placeholder:text-slate-300 focus:border-blue-200 focus:ring-4 focus:ring-blue-50"
+              />
+
+              <button className="h-11 rounded-2xl bg-slate-950 px-5 text-sm font-black text-white shadow-lg shadow-slate-200 transition hover:bg-slate-800">
+                Применить
+              </button>
+            </form>
           </section>
 
-          <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <section id="overview" className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
             <MetricCard
-              title="Wildberries"
-              value={`${formatNumber(totalWbQty)} шт`}
-              money={formatMoney(totalWbCost)}
-              hint="На складах WB, в пути к покупателям и возвраты"
-              tone="violet"
-              icon="WB"
-            />
-            <MetricCard
-              title="Ozon"
-              value={`${formatNumber(totalOzonQty)} шт`}
-              money={formatMoney(totalOzonCost)}
-              hint="Доступно, готовится, поставки, транзит и возвраты"
+              title="Остатки всего"
+              value={`${formatNumber(totalWbQty + totalOzonQty + totalWarehouseQty)} шт`}
+              money={formatMoney(totalWbCost + totalOzonCost + totalWarehouseCost)}
+              hint="WB + Ozon + собственный склад"
               tone="blue"
-              icon="OZ"
+              icon="□"
             />
             <MetricCard
-              title="Собственный склад"
-              value={`${formatNumber(totalWarehouseQty)} шт`}
-              money={formatMoney(totalWarehouseCost)}
-              hint={`Резерв: ${formatNumber(totalReservedQty)} шт`}
+              title="К отгрузке"
+              value={`${formatNumber(dashboardSupplyQty)} шт`}
+              money="по плану поставок"
+              hint="С учётом спроса и доступного склада"
               tone="emerald"
-              icon="⌂"
-            />
-            <MetricCard
-              title="Доступно к поставке"
-              value={`${formatNumber(totalAvailableForSupplyQty)} шт`}
-              money={formatMoney(totalAvailableForSupplyCost)}
-              hint="Товар на своём складе за вычетом резерва"
-              tone="amber"
               icon="⇄"
             />
+            <MetricCard
+              title="К пошиву"
+              value={`${formatNumber(dashboardProductionQty)} шт`}
+              money="буфер 20 дней"
+              hint={`${formatNumber(dashboardProductionRows.length)} товар/размер`}
+              tone="violet"
+              icon="♢"
+            />
+            <MetricCard
+              title="Критичный дефицит"
+              value={`${formatNumber(dashboardCriticalRows.length)} строк`}
+              money={`${formatNumber(dashboardCriticalQty)} шт`}
+              hint="Высокий приоритет в плане поставок"
+              tone="amber"
+              icon="!"
+            />
           </section>
 
-          <section className="grid gap-4 xl:grid-cols-4">
+          <section id="sizes" className="rounded-[26px] border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+              <div>
+                <h2 className="text-lg font-black tracking-tight text-slate-950">
+                  Быстрый разбор по размерам
+                </h2>
+                <p className="mt-1 text-sm font-semibold text-slate-500">
+                  Ключевые товары по размерам и направлениям. Полная детализация ниже.
+                </p>
+              </div>
+              <Link
+                href={makeUrl(params, { sizeOpen: "1" })}
+                className="inline-flex items-center justify-center rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-black text-slate-700 transition hover:bg-slate-50"
+              >
+                Открыть разбор →
+              </Link>
+            </div>
+
+            {quickSizePreviewRows.length > 0 ? (
+              <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-4">
+                {quickSizePreviewRows.map((group) => (
+                  <div
+                    key={group.groupKey}
+                    className="rounded-2xl border border-slate-200 bg-slate-50/70 p-3"
+                  >
+                    <div className="line-clamp-1 text-sm font-black text-slate-950">
+                      {group.marketplaceArticle || group.vendorCode}
+                    </div>
+                    <div className="mt-2 grid grid-cols-3 gap-2 text-[11px] font-bold text-slate-500">
+                      <span>WB: <b className="text-slate-900">{formatNumber(group.wb.totalQty)}</b></span>
+                      <span>Ozon: <b className="text-slate-900">{formatNumber(group.ozon.totalQty)}</b></span>
+                      <span>Склад: <b className="text-slate-900">{formatNumber(group.own.totalQty)}</b></span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="mt-3 rounded-2xl border border-dashed border-slate-200 p-4 text-sm font-bold text-slate-500">
+                Для быстрого разбора пока нет строк по текущим фильтрам.
+              </div>
+            )}
+          </section>
+
+          <section className="hidden gap-4 xl:grid-cols-4">
             <section className="rounded-[28px] border border-slate-200 bg-white p-4 shadow-sm xl:col-span-3">
               <div>
                 <h2 className="text-xl font-black tracking-tight text-slate-950">
@@ -4648,7 +4756,7 @@ export default async function StocksPage({
           </section>
 
           {selectedCompanySummary ? (
-            <section className="grid gap-4 xl:grid-cols-3">
+            <section className="hidden gap-4 xl:grid-cols-3">
               <div className="rounded-[26px] border border-violet-100 bg-violet-50 p-5 shadow-sm">
                 <div className="text-xs font-black uppercase tracking-[0.12em] text-violet-600">
                   Wildberries
@@ -4732,9 +4840,49 @@ export default async function StocksPage({
             </section>
           ) : null}
 
-          <SupplyPlanningBlock rows={supplyPlanRows} params={params} companyNames={companyNames} />
+          <section id="supply-plan" className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_280px]">
+            <div className="min-w-0">
+              <SupplyPlanningBlock rows={supplyPlanRows} params={params} companyNames={companyNames} />
+            </div>
 
-          <section className="rounded-[30px] border border-slate-200 bg-white p-5 shadow-sm">
+            <aside className="space-y-3">
+              <div className="rounded-[26px] border border-slate-200 bg-white p-4 shadow-sm">
+                <div className="text-xs font-black uppercase tracking-[0.12em] text-blue-600">
+                  Быстрые рекомендации
+                </div>
+                <div className="mt-3 space-y-3">
+                  <div className="rounded-2xl bg-red-50 p-3 ring-1 ring-red-100">
+                    <div className="text-sm font-black text-red-700">
+                      Товары ABC A с нулевым остатком
+                    </div>
+                    <p className="mt-1 text-xs font-bold leading-5 text-slate-600">
+                      Найдено {formatNumber(dashboardCriticalRows.length)} критичных строк. Проверьте поставку и пошив перед следующей закупкой.
+                    </p>
+                  </div>
+
+                  <div className="rounded-2xl bg-blue-50 p-3 ring-1 ring-blue-100">
+                    <div className="text-sm font-black text-blue-700">
+                      География WB обновляется ежедневно
+                    </div>
+                    <p className="mt-1 text-xs font-bold leading-5 text-slate-600">
+                      План WB строится по складам и регионам спроса. Чем больше истории, тем точнее рекомендации.
+                    </p>
+                  </div>
+
+                  <div className="rounded-2xl bg-amber-50 p-3 ring-1 ring-amber-100">
+                    <div className="text-sm font-black text-amber-800">
+                      Короткий сезон
+                    </div>
+                    <p className="mt-1 text-xs font-bold leading-5 text-slate-600">
+                      Для футболок и шорт проверяйте ABC и буфер пошива. В конце сезона лучше снижать буфер.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </aside>
+          </section>
+
+          <section id="details" className="rounded-[30px] border border-slate-200 bg-white p-5 shadow-sm">
             <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
               <div>
                 <h2 className="text-2xl font-black tracking-tight text-slate-950">
