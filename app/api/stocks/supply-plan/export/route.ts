@@ -493,6 +493,21 @@ function getRowsLimit(value: string, totalRows: number) {
   return [20, 50, 100, 200].includes(parsed) ? parsed : totalRows;
 }
 
+function getSelectedKeys(url: URL, name: string) {
+  return new Set(
+    url.searchParams
+      .getAll(name)
+      .flatMap((item) => String(item).split(","))
+      .map((item) => item.trim())
+      .filter(Boolean)
+  );
+}
+
+function getExportMarketplace(value: string): "ALL" | Marketplace {
+  if (value === "WB" || value === "OZON") return value;
+  return "ALL";
+}
+
 function applyHeaderStyle(row: ExcelJS.Row) {
   row.eachCell((cell) => {
     cell.fill = {
@@ -1480,9 +1495,156 @@ async function buildSupplyPlanRows(url: URL) {
     return supplyPlanMatchesSearch(row, query);
   });
 
-  const rowsLimit = getRowsLimit(getQueryValue(url, "supplyRows"), filteredRows.length);
+  const exportMarketplace = getExportMarketplace(getQueryValue(url, "exportMarketplace"));
+  const marketplaceRows =
+    exportMarketplace === "ALL"
+      ? filteredRows
+      : filteredRows.filter((row) => row.marketplace === exportMarketplace);
 
-  return filteredRows.slice(0, rowsLimit);
+  const selectedKeys = getSelectedKeys(url, "supplySelected");
+  const hasCustomSelection = getQueryValue(url, "supplySelectionMode") === "custom";
+  const selectedRows = hasCustomSelection
+    ? marketplaceRows.filter((row) => selectedKeys.has(row.key))
+    : marketplaceRows;
+
+  const rowsLimit = getRowsLimit(getQueryValue(url, "supplyRows"), selectedRows.length);
+
+  return selectedRows.slice(0, rowsLimit);
+}
+
+
+function addGeneralSupplySheet(workbook: ExcelJS.Workbook, rows: SupplyPlanRow[]) {
+  const sheet = workbook.addWorksheet("План поставок", {
+    views: [{ state: "frozen", ySplit: 1 }],
+  });
+
+  sheet.columns = [
+    { header: "Компания", key: "companyName", width: 18 },
+    { header: "Маркетплейс", key: "marketplace", width: 14 },
+    { header: "Куда / склад / кластер", key: "targetName", width: 28 },
+    { header: "Артикул", key: "vendorCode", width: 24 },
+    { header: "SKU", key: "sku", width: 18 },
+    { header: "Размер", key: "size", width: 12 },
+    { header: "Название", key: "productName", width: 34 },
+    { header: "ABC", key: "abc", width: 10 },
+    { header: "Приоритет", key: "priority", width: 14 },
+    { header: "Остаток там", key: "currentQty", width: 14 },
+    { header: "Рекомендовано системой", key: "wantedQty", width: 22 },
+    { header: "Доступно на своём складе", key: "ownAvailableQty", width: 24 },
+    { header: "К отгрузке", key: "recommendedQty", width: 14 },
+    { header: "Средние продажи, шт/день", key: "avgDailySalesQty", width: 22 },
+    { header: "Дней без остатка", key: "daysWithoutStock", width: 18 },
+    { header: "Причина", key: "reason", width: 48 },
+    { header: "Детали", key: "details", width: 42 },
+  ];
+
+  applyHeaderStyle(sheet.getRow(1));
+  sheet.getRow(1).height = 34;
+
+  for (const row of rows) {
+    sheet.addRow({
+      companyName: row.companyName,
+      marketplace: row.marketplace === "OZON" ? "Ozon" : "WB",
+      targetName: row.targetName,
+      vendorCode: row.vendorCode,
+      sku: row.sku ?? "",
+      size: row.size ?? "",
+      productName: row.productName ?? "",
+      abc: row.abc?.abcByProfit ?? "C",
+      priority: priorityLabel(row.priority),
+      currentQty: row.currentQty,
+      wantedQty: row.wantedQty,
+      ownAvailableQty: row.ownAvailableQty,
+      recommendedQty: row.recommendedQty,
+      avgDailySalesQty: row.avgDailySalesQty ?? "",
+      daysWithoutStock: row.daysWithoutStock ?? "",
+      reason: row.reason,
+      details: row.details.join("; "),
+    });
+  }
+
+  for (let rowNumber = 2; rowNumber <= sheet.rowCount; rowNumber++) {
+    const row = sheet.getRow(rowNumber);
+    applyBodyStyle(row);
+
+    row.getCell(10).numFmt = "0";
+    row.getCell(11).numFmt = "0";
+    row.getCell(12).numFmt = "0";
+    row.getCell(13).numFmt = "0";
+    row.getCell(14).numFmt = "0.00";
+    row.getCell(15).numFmt = "0";
+  }
+
+  sheet.autoFilter = {
+    from: "A1",
+    to: "Q1",
+  };
+
+  if (rows.length === 0) {
+    const row = sheet.addRow({
+      companyName: "Нет строк по выбранным фильтрам",
+    });
+
+    sheet.mergeCells(`A${row.number}:Q${row.number}`);
+    row.getCell(1).alignment = { vertical: "middle", horizontal: "center" };
+    row.getCell(1).font = { bold: true, color: { argb: "64748B" } };
+  }
+}
+
+function addMarketplaceUploadSheet(workbook: ExcelJS.Workbook, rows: SupplyPlanRow[]) {
+  const sheet = workbook.addWorksheet("Для загрузки", {
+    views: [{ state: "frozen", ySplit: 1 }],
+  });
+
+  sheet.columns = [
+    { header: "Компания", key: "companyName", width: 18 },
+    { header: "Маркетплейс", key: "marketplace", width: 14 },
+    { header: "Склад / кластер / направление", key: "targetName", width: 34 },
+    { header: "Артикул продавца", key: "vendorCode", width: 24 },
+    { header: "SKU / nmId", key: "sku", width: 18 },
+    { header: "Размер", key: "size", width: 12 },
+    { header: "Количество к поставке", key: "recommendedQty", width: 22 },
+    { header: "Название товара", key: "productName", width: 34 },
+    { header: "Комментарий", key: "comment", width: 58 },
+  ];
+
+  applyHeaderStyle(sheet.getRow(1));
+  sheet.getRow(1).height = 34;
+
+  for (const row of rows) {
+    sheet.addRow({
+      companyName: row.companyName,
+      marketplace: row.marketplace === "OZON" ? "Ozon" : "WB",
+      targetName: row.targetName,
+      vendorCode: row.vendorCode,
+      sku: row.sku ?? "",
+      size: row.size ?? "",
+      recommendedQty: row.recommendedQty,
+      productName: row.productName ?? "",
+      comment: `${priorityLabel(row.priority)} приоритет. ${row.reason}`,
+    });
+  }
+
+  for (let rowNumber = 2; rowNumber <= sheet.rowCount; rowNumber++) {
+    const row = sheet.getRow(rowNumber);
+    applyBodyStyle(row);
+    row.getCell(7).numFmt = "0";
+  }
+
+  sheet.autoFilter = {
+    from: "A1",
+    to: "I1",
+  };
+
+  if (rows.length === 0) {
+    const row = sheet.addRow({
+      companyName: "Нет строк по выбранным фильтрам",
+    });
+
+    sheet.mergeCells(`A${row.number}:I${row.number}`);
+    row.getCell(1).alignment = { vertical: "middle", horizontal: "center" };
+    row.getCell(1).font = { bold: true, color: { argb: "64748B" } };
+  }
 }
 
 export async function GET(req: Request) {
@@ -1494,87 +1656,17 @@ export async function GET(req: Request) {
     workbook.creator = "Marketplace Business OS";
     workbook.created = new Date();
 
-    const sheet = workbook.addWorksheet("План поставок", {
-      views: [{ state: "frozen", ySplit: 1 }],
-    });
-
-    sheet.columns = [
-      { header: "Компания", key: "companyName", width: 18 },
-      { header: "Маркетплейс", key: "marketplace", width: 14 },
-      { header: "Куда / склад / кластер", key: "targetName", width: 28 },
-      { header: "Артикул", key: "vendorCode", width: 24 },
-      { header: "SKU", key: "sku", width: 18 },
-      { header: "Размер", key: "size", width: 12 },
-      { header: "Название", key: "productName", width: 34 },
-      { header: "ABC", key: "abc", width: 10 },
-      { header: "Приоритет", key: "priority", width: 14 },
-      { header: "Остаток там", key: "currentQty", width: 14 },
-      { header: "Рекомендовано системой", key: "wantedQty", width: 22 },
-      { header: "Доступно на своём складе", key: "ownAvailableQty", width: 24 },
-      { header: "К отгрузке", key: "recommendedQty", width: 14 },
-      { header: "Средние продажи, шт/день", key: "avgDailySalesQty", width: 22 },
-      { header: "Дней без остатка", key: "daysWithoutStock", width: 18 },
-      { header: "Причина", key: "reason", width: 48 },
-      { header: "Детали", key: "details", width: 42 },
-    ];
-
-    applyHeaderStyle(sheet.getRow(1));
-    sheet.getRow(1).height = 34;
-
-    for (const row of rows) {
-      sheet.addRow({
-        companyName: row.companyName,
-        marketplace: row.marketplace === "OZON" ? "Ozon" : "WB",
-        targetName: row.targetName,
-        vendorCode: row.vendorCode,
-        sku: row.sku ?? "",
-        size: row.size ?? "",
-        productName: row.productName ?? "",
-        abc: row.abc?.abcByProfit ?? "C",
-        priority: priorityLabel(row.priority),
-        currentQty: row.currentQty,
-        wantedQty: row.wantedQty,
-        ownAvailableQty: row.ownAvailableQty,
-        recommendedQty: row.recommendedQty,
-        avgDailySalesQty: row.avgDailySalesQty ?? "",
-        daysWithoutStock: row.daysWithoutStock ?? "",
-        reason: row.reason,
-        details: row.details.join("; "),
-      });
-    }
-
-    for (let rowNumber = 2; rowNumber <= sheet.rowCount; rowNumber++) {
-      const row = sheet.getRow(rowNumber);
-      applyBodyStyle(row);
-
-      row.getCell(10).numFmt = "0";
-      row.getCell(11).numFmt = "0";
-      row.getCell(12).numFmt = "0";
-      row.getCell(13).numFmt = "0";
-      row.getCell(14).numFmt = "0.00";
-      row.getCell(15).numFmt = "0";
-    }
-
-    sheet.autoFilter = {
-      from: "A1",
-      to: "Q1",
-    };
-
-    if (rows.length === 0) {
-      const row = sheet.addRow({
-        companyName: "Нет строк по выбранным фильтрам",
-      });
-
-      sheet.mergeCells(`A${row.number}:Q${row.number}`);
-      row.getCell(1).alignment = { vertical: "middle", horizontal: "center" };
-      row.getCell(1).font = { bold: true, color: { argb: "64748B" } };
-    }
+    addGeneralSupplySheet(workbook, rows);
+    addMarketplaceUploadSheet(workbook, rows);
 
     const now = new Date();
     const fileStamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(
       2,
       "0"
     )}-${String(now.getDate()).padStart(2, "0")}`;
+    const exportMarketplace = getExportMarketplace(getQueryValue(url, "exportMarketplace"));
+    const marketplaceSuffix =
+      exportMarketplace === "ALL" ? "all" : exportMarketplace.toLowerCase();
     const buffer = await workbook.xlsx.writeBuffer();
 
     return new NextResponse(Buffer.from(buffer), {
@@ -1582,7 +1674,7 @@ export async function GET(req: Request) {
       headers: {
         "Content-Type":
           "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        "Content-Disposition": `attachment; filename="supply-plan-${fileStamp}.xlsx"`,
+        "Content-Disposition": `attachment; filename="supply-plan-${marketplaceSuffix}-${fileStamp}.xlsx"`,
         "Cache-Control": "no-store",
       },
     });

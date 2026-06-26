@@ -27,6 +27,8 @@ type StockSearchParams = {
   supplyPriority?: string;
   supplyRows?: string;
   supplyQ?: string;
+  supplySelectionMode?: string;
+  supplySelected?: string | string[];
   productionOpen?: string;
   productionBufferDays?: string;
   productionRows?: string;
@@ -1437,6 +1439,10 @@ function makeUrl(params: StockSearchParams, patch: Record<string, string | null 
     supplyPriority: params.supplyPriority,
     supplyRows: params.supplyRows,
     supplyQ: params.supplyQ,
+    supplySelectionMode: params.supplySelectionMode,
+    supplySelected: Array.isArray(params.supplySelected)
+      ? params.supplySelected.join(",")
+      : params.supplySelected,
     productionOpen: params.productionOpen,
     productionBufferDays: params.productionBufferDays,
     productionRows: params.productionRows,
@@ -1649,6 +1655,17 @@ function getSupplyRowsLimit(value: string | undefined, totalRows: number) {
   const parsed = Number(value ?? 20);
 
   return [20, 50, 100, 200].includes(parsed) ? parsed : 20;
+}
+
+function getSupplySelectedKeys(value?: string | string[] | null) {
+  const rawValues = Array.isArray(value) ? value : value ? [value] : [];
+
+  return new Set(
+    rawValues
+      .flatMap((item) => String(item).split(","))
+      .map((item) => item.trim())
+      .filter(Boolean)
+  );
 }
 
 function supplyPlanMatchesSearch(row: SupplyPlanRow, query: string) {
@@ -1939,6 +1956,14 @@ function SupplyPlanningBlock({
 
   const rowsLimit = getSupplyRowsLimit(params.supplyRows, filteredRows.length);
   const visibleRows = filteredRows.slice(0, rowsLimit);
+  const rawSelectedSupplyKeys = getSupplySelectedKeys(params.supplySelected);
+  const hasCustomSupplySelection = params.supplySelectionMode === "custom";
+  const selectedSupplyKeys = hasCustomSupplySelection
+    ? rawSelectedSupplyKeys
+    : new Set<string>();
+  const selectedSupplyRows = hasCustomSupplySelection
+    ? filteredRows.filter((row) => selectedSupplyKeys.has(row.key))
+    : filteredRows;
 
   const exportParams = new URLSearchParams();
 
@@ -1978,10 +2003,31 @@ function SupplyPlanningBlock({
     exportParams.set("dateTo", params.dateTo);
   }
 
-  const exportQuery = exportParams.toString();
-  const exportHref = exportQuery
-    ? `/api/stocks/supply-plan/export?${exportQuery}`
-    : "/api/stocks/supply-plan/export";
+  if (hasCustomSupplySelection) {
+    exportParams.set("supplySelectionMode", "custom");
+
+    for (const key of selectedSupplyKeys) {
+      exportParams.append("supplySelected", key);
+    }
+  }
+
+  function makeSupplyExportHref(exportMarketplace: "ALL" | SupplyPlanMarketplace) {
+    const supplyExportParams = new URLSearchParams(exportParams);
+
+    if (exportMarketplace !== "ALL") {
+      supplyExportParams.set("exportMarketplace", exportMarketplace);
+    }
+
+    const queryString = supplyExportParams.toString();
+
+    return queryString
+      ? `/api/stocks/supply-plan/export?${queryString}`
+      : "/api/stocks/supply-plan/export";
+  }
+
+  const exportHref = makeSupplyExportHref("ALL");
+  const exportWbHref = makeSupplyExportHref("WB");
+  const exportOzonHref = makeSupplyExportHref("OZON");
 
   const ozonRows = rows.filter((row) => row.marketplace === "OZON");
   const wbRows = rows.filter((row) => row.marketplace === "WB");
@@ -2247,30 +2293,79 @@ function SupplyPlanningBlock({
                 <Link
                   href={exportHref}
                   className="inline-flex h-9 items-center justify-center rounded-2xl border border-emerald-200 bg-emerald-50 px-3 text-xs font-black text-emerald-700 transition hover:bg-emerald-100"
-                  title="Скачать Excel-файл по текущим фильтрам плана поставок"
+                  title="Скачать общий Excel-файл по текущим фильтрам и выбранным строкам"
                 >
-                  Экспорт Excel
+                  Excel общий
+                </Link>
+
+                <Link
+                  href={exportWbHref}
+                  className="inline-flex h-9 items-center justify-center rounded-2xl border border-violet-200 bg-violet-50 px-3 text-xs font-black text-violet-700 transition hover:bg-violet-100"
+                  title="Скачать Excel-план поставок только для WB по текущим фильтрам и выбранным строкам"
+                >
+                  Excel WB
+                </Link>
+
+                <Link
+                  href={exportOzonHref}
+                  className="inline-flex h-9 items-center justify-center rounded-2xl border border-blue-200 bg-blue-50 px-3 text-xs font-black text-blue-700 transition hover:bg-blue-100"
+                  title="Скачать Excel-план поставок только для Ozon по текущим фильтрам и выбранным строкам"
+                >
+                  Excel Ozon
                 </Link>
 
                 <button
                   type="button"
                   disabled
                   className="inline-flex h-9 cursor-not-allowed items-center justify-center rounded-2xl border border-slate-200 bg-white px-3 text-xs font-black text-slate-400"
-                  title="После Excel добавим сохранение черновика поставки внутри системы"
+                  title="Следующий этап: внутренние черновики поставок с проверкой перед отправкой"
                 >
-                  Запланировать · позже
+                  Черновики · следующий этап
                 </button>
               </div>
             </div>
           </div>
 
           {visibleRows.length > 0 ? (
-            <div className="mt-4 overflow-hidden rounded-[24px] border border-slate-200 bg-white">
+            <form
+              id="supply-plan-selection-form"
+              action="/stocks"
+              method="GET"
+              className="mt-4 overflow-hidden rounded-[24px] border border-slate-200 bg-white"
+            >
+              <input type="hidden" name="supplyOpen" value="1" />
+              {params.productionOpen ? <input type="hidden" name="productionOpen" value={params.productionOpen} /> : null}
+              {params.productionBufferDays ? <input type="hidden" name="productionBufferDays" value={params.productionBufferDays} /> : null}
+              {params.productionRows ? <input type="hidden" name="productionRows" value={params.productionRows} /> : null}
+              {params.productionAbc ? <input type="hidden" name="productionAbc" value={Array.isArray(params.productionAbc) ? params.productionAbc[0] : params.productionAbc} /> : null}
+              {params.productionSelectionMode ? <input type="hidden" name="productionSelectionMode" value={params.productionSelectionMode} /> : null}
+              {(Array.isArray(params.productionSelected)
+                ? params.productionSelected
+                : params.productionSelected
+                  ? [params.productionSelected]
+                  : []
+              ).map((key) => (
+                <input key={key} type="hidden" name="productionSelected" value={key} />
+              ))}
+              {params.companyName ? <input type="hidden" name="companyName" value={params.companyName} /> : null}
+              {marketplaceFilter !== "ALL" ? <input type="hidden" name="supplyMarketplace" value={marketplaceFilter} /> : null}
+              {safeTargetFilter && safeTargetFilter !== "ALL" ? <input type="hidden" name="supplyTarget" value={safeTargetFilter} /> : null}
+              {abcFilter !== "ALL" ? <input type="hidden" name="supplyAbc" value={abcFilter} /> : null}
+              {priorityFilter !== "ALL" ? <input type="hidden" name="supplyPriority" value={priorityFilter} /> : null}
+              {params.supplyRows ? <input type="hidden" name="supplyRows" value={params.supplyRows} /> : null}
+              {query ? <input type="hidden" name="supplyQ" value={query} /> : null}
+              {params.dateFrom ? <input type="hidden" name="dateFrom" value={params.dateFrom} /> : null}
+              {params.dateTo ? <input type="hidden" name="dateTo" value={params.dateTo} /> : null}
+              {params.sizeOpen ? <input type="hidden" name="sizeOpen" value={params.sizeOpen} /> : null}
+              {params.sizeRows ? <input type="hidden" name="sizeRows" value={params.sizeRows} /> : null}
+              {params.sizeSort ? <input type="hidden" name="sizeSort" value={params.sizeSort} /> : null}
+
               <div className="overflow-x-auto">
                 <table className="w-full table-fixed border-collapse text-left text-xs xl:text-sm">
                   <thead className="bg-slate-50 text-[10px] font-black uppercase tracking-[0.08em] text-slate-400 xl:text-[11px]">
                     <tr>
-                      <th className="w-[23%] px-3 py-3">Товар</th>
+                      <th className="w-[5%] px-3 py-3">Выбор</th>
+                      <th className="w-[21%] px-3 py-3">Товар</th>
                       <th className="w-[5%] px-2 py-3">Размер</th>
                       <th className="w-[24%] px-3 py-3">Куда</th>
                       <th className="w-[7%] px-2 py-3">Источник</th>
@@ -2305,6 +2400,17 @@ function SupplyPlanningBlock({
 
                       return (
                         <tr key={row.key} className="align-middle transition hover:bg-slate-50/70">
+                          <td className="px-3 py-3 text-center">
+                            <input
+                              type="checkbox"
+                              name="supplySelected"
+                              value={row.key}
+                              defaultChecked={!hasCustomSupplySelection || selectedSupplyKeys.has(row.key)}
+                              className="h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
+                              aria-label={`Выбрать в план поставок ${row.vendorCode} ${row.size ?? ""}`}
+                            />
+                          </td>
+
                           <td className="px-3 py-3">
                             <div
                               className="flex min-w-0 items-center gap-3"
@@ -2415,13 +2521,22 @@ SKU: ${row.sku}` : ""
 
               <div className="flex flex-col gap-2 border-t border-slate-100 bg-slate-50 px-4 py-3 text-sm font-bold text-slate-500 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                  Показано {formatNumber(visibleRows.length)} из {formatNumber(filteredRows.length)} строк.
+                  Выбрано к выгрузке: {formatNumber(selectedSupplyRows.length)} из {formatNumber(filteredRows.length)} строк. По умолчанию все найденные строки отмечены галками.
                 </div>
-                <div>
-                  Отредактированные значения “К отгрузке” пока не сохраняются. Сохранение черновика — следующий этап.
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-xs text-slate-400">
+                    Изменение количества в строке пока не сохраняется; Excel берёт рассчитанное “К отгрузке”.
+                  </span>
+                  <button
+                    name="supplySelectionMode"
+                    value="custom"
+                    className="inline-flex h-10 items-center justify-center rounded-2xl border border-emerald-200 bg-white px-4 text-sm font-black text-emerald-700 transition hover:bg-emerald-50"
+                  >
+                    Применить выбор
+                  </button>
                 </div>
               </div>
-            </div>
+            </form>
           ) : (
             <div className="mt-4 rounded-2xl border border-dashed border-slate-300 p-6 text-center text-sm font-bold leading-6 text-slate-500">
               {marketplaceFilter === "OZON"
@@ -2591,6 +2706,15 @@ function ProductionPlanningBlock({
                   {params.supplyPriority ? <input type="hidden" name="supplyPriority" value={params.supplyPriority} /> : null}
                   {params.supplyRows ? <input type="hidden" name="supplyRows" value={params.supplyRows} /> : null}
                   {params.supplyQ ? <input type="hidden" name="supplyQ" value={params.supplyQ} /> : null}
+                  {params.supplySelectionMode ? <input type="hidden" name="supplySelectionMode" value={params.supplySelectionMode} /> : null}
+                  {(Array.isArray(params.supplySelected)
+                    ? params.supplySelected
+                    : params.supplySelected
+                      ? [params.supplySelected]
+                      : []
+                  ).map((key) => (
+                    <input key={key} type="hidden" name="supplySelected" value={key} />
+                  ))}
                   <input type="hidden" name="productionOpen" value="1" />
                   {params.companyName ? <input type="hidden" name="companyName" value={params.companyName} /> : null}
                   {params.dateFrom ? <input type="hidden" name="dateFrom" value={params.dateFrom} /> : null}
