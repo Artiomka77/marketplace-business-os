@@ -528,17 +528,15 @@ export async function getDashboardDailyAnalytics(params: {
       }),
       prisma.wbAds.findMany({
         where: {
-          OR: [
+          AND: [
             {
               dateFrom: {
-                gte: from,
                 lt: toExclusive,
               },
             },
             {
               dateTo: {
                 gte: from,
-                lt: toExclusive,
               },
             },
           ],
@@ -665,10 +663,11 @@ export async function getDashboardDailyAnalytics(params: {
   }
 
   for (const row of wbAdsRaw) {
-    const dates = getDateSpan(row.dateFrom, row.dateTo).filter((date) => pointsByDate.has(date));
-    if (dates.length === 0) continue;
+    const fullDates = getDateSpan(row.dateFrom, row.dateTo);
+    const dates = fullDates.filter((date) => pointsByDate.has(date));
+    if (dates.length === 0 || fullDates.length === 0) continue;
 
-    const spendPerDay = toNumber(row.spend) / dates.length;
+    const spendPerDay = toNumber(row.spend) / fullDates.length;
 
     for (const date of dates) {
       const point = pointsByDate.get(date);

@@ -27,13 +27,13 @@ function normalizeText(value: unknown): string {
     .trim();
 }
 
-function startOfDay(value: string) {
+function startOfDay(value: string | Date) {
   const date = new Date(value);
   date.setHours(0, 0, 0, 0);
   return date;
 }
 
-function nextDayStart(value: string) {
+function nextDayStart(value: string | Date) {
   const date = startOfDay(value);
   date.setDate(date.getDate() + 1);
   return date;
@@ -117,6 +117,41 @@ function createDateFilterFromDates(dateFrom?: Date | null, dateTo?: Date | null)
       },
     ],
   };
+}
+
+function getInclusiveDateDiff(from: Date, to: Date) {
+  const fromStart = startOfDay(from);
+  const toStart = startOfDay(to);
+  const diff = Math.round((toStart.getTime() - fromStart.getTime()) / 86_400_000) + 1;
+  return Math.max(1, diff);
+}
+
+function getMaxDate(left: Date, right: Date) {
+  return left.getTime() >= right.getTime() ? left : right;
+}
+
+function getMinDate(left: Date, right: Date) {
+  return left.getTime() <= right.getTime() ? left : right;
+}
+
+function prorateSpendByPeriod(
+  spend: unknown,
+  rowDateFrom: Date | null,
+  rowDateTo: Date | null,
+  periodFrom: Date,
+  periodTo: Date
+) {
+  const rowFrom = startOfDay(rowDateFrom ?? rowDateTo ?? periodFrom);
+  const rowTo = startOfDay(rowDateTo ?? rowDateFrom ?? periodTo);
+  const overlapFrom = getMaxDate(rowFrom, periodFrom);
+  const overlapTo = getMinDate(rowTo, periodTo);
+
+  if (overlapTo.getTime() < overlapFrom.getTime()) return 0;
+
+  const fullDays = getInclusiveDateDiff(rowFrom, rowTo);
+  const overlapDays = getInclusiveDateDiff(overlapFrom, overlapTo);
+
+  return toNumber(spend) * (overlapDays / fullDays);
 }
 
 function createComparison(current: number, previous: number) {
@@ -730,16 +765,58 @@ async function findWbSaleRowsByPeriod(params?: {
   });
 }
 
-async function findAdsRowsByDateFilter(
-  dateFilter: object,
-  companyName?: string | null
-) {
-  return prisma.wbAds.findMany({
+async function findAdsRowsByPeriod(params?: {
+  dateFrom?: string | null;
+  dateTo?: string | null;
+  companyName?: string | null;
+}) {
+  const from = params?.dateFrom ? startOfDay(params.dateFrom) : null;
+  const toExclusive = params?.dateTo ? nextDayStart(params.dateTo) : null;
+  const toInclusive = params?.dateTo ? startOfDay(params.dateTo) : null;
+
+  const dateOverlapFilter =
+    from && toExclusive
+      ? {
+          AND: [
+            {
+              dateFrom: {
+                lt: toExclusive,
+              },
+            },
+            {
+              dateTo: {
+                gte: from,
+              },
+            },
+          ],
+        }
+      : from
+        ? {
+            dateTo: {
+              gte: from,
+            },
+          }
+        : toExclusive
+          ? {
+              dateFrom: {
+                lt: toExclusive,
+              },
+            }
+          : {};
+
+  const rows = await prisma.wbAds.findMany({
     where: {
-      ...dateFilter,
-      ...(companyName ? { companyName } : {}),
+      ...dateOverlapFilter,
+      ...(params?.companyName ? { companyName: params.companyName } : {}),
     },
   });
+
+  if (!from || !toInclusive) return rows;
+
+  return rows.map((row) => ({
+    ...row,
+    spend: prorateSpendByPeriod(row.spend, row.dateFrom, row.dateTo, from, toInclusive),
+  }));
 }
 
 async function findWbFinanceExpenseTotalsByPeriod(params?: {
@@ -876,24 +953,16 @@ export async function getProfitAnalytics(params?: {
     companyName,
   });
 
-  const currentAdsDateFilter = createDateFilterFromStrings(
-    params?.dateFrom,
-    params?.dateTo
-  );
-
   const previousPeriod = calculatePreviousPeriod(
     params?.dateFrom,
     params?.dateTo
   );
 
-  const previousAdsDateFilter = previousPeriod
-    ? createDateFilterFromDates(previousPeriod.dateFrom, previousPeriod.dateTo)
-    : {};
-
-  const currentAdsRows = await findAdsRowsByDateFilter(
-    currentAdsDateFilter,
-    companyName
-  );
+  const currentAdsRows = await findAdsRowsByPeriod({
+    dateFrom: params?.dateFrom,
+    dateTo: params?.dateTo,
+    companyName,
+  });
 
   const currentFinanceExpenses = await findWbFinanceExpenseTotalsByPeriod({
     dateFrom: params?.dateFrom,
@@ -902,7 +971,11 @@ export async function getProfitAnalytics(params?: {
   });
 
   const previousAdsRows = previousPeriod
-    ? await findAdsRowsByDateFilter(previousAdsDateFilter, companyName)
+    ? await findAdsRowsByPeriod({
+        dateFrom: previousPeriod.dateFrom.toISOString().slice(0, 10),
+        dateTo: previousPeriod.dateTo.toISOString().slice(0, 10),
+        companyName,
+      })
     : [];
 
   const previousFinanceExpenses = previousPeriod
