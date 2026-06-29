@@ -2617,16 +2617,29 @@ async function buildCompanyDashboardRows(params: {
   companies: CompanyForDashboard[];
   dateFrom: string;
   dateTo: string;
+  debug?: boolean;
 }) {
   const rows: CompanyDashboardRow[] = [];
+  const rowsStartedAt = Date.now();
+  const logRowsPerf = (label: string, startedAt: number) => {
+    if (!params.debug) return;
+
+    console.log(
+      `[dashboard-perf] buildCompanyDashboardRows ${params.dateFrom}..${params.dateTo} ${label}: ${
+        Date.now() - startedAt
+      }ms`
+    );
+  };
 
   // Важно: Dashboard должен использовать те же финансовые итоги, что и Telegram-сводка собственника.
   // Поэтому продажи/начисления, реклама, ДДС, чистая прибыль и остатки берём из buildDailyReport.
   // getProfitAnalytics / getProfitAnalyticsOzon оставляем здесь только для ABC-разрезов.
+  const ownerReportStartedAt = Date.now();
   const ownerReport = await buildDailyReport({
     from: params.dateFrom,
     to: params.dateTo,
   });
+  logRowsPerf("buildDailyReport", ownerReportStartedAt);
 
   const reportByCompanyName = new Map(
     ownerReport.companies.map((companyReport) => [
@@ -2638,6 +2651,7 @@ async function buildCompanyDashboardRows(params: {
   for (const company of params.companies) {
     const companyReport = reportByCompanyName.get(company.name);
 
+    const companyStartedAt = Date.now();
     const [wbAnalytics, ozonAnalytics, cash] = await Promise.all([
       getProfitAnalytics({
         dateFrom: params.dateFrom,
@@ -2663,6 +2677,7 @@ async function buildCompanyDashboardRows(params: {
         dateTo: params.dateTo,
       }),
     ]);
+    logRowsPerf(`company ${company.name} analytics+cash`, companyStartedAt);
 
     const wbAbc = countAbc(wbAnalytics.rows);
     const ozonAbc = countAbc(ozonAnalytics.rows);
@@ -2744,6 +2759,8 @@ async function buildCompanyDashboardRows(params: {
       ozonAbcC: ozonAbc.C,
     });
   }
+
+  logRowsPerf("total", rowsStartedAt);
 
   return rows;
 }
@@ -2862,8 +2879,14 @@ function summarizeDashboardRows(rows: CompanyDashboardRow[]): DashboardSummary {
 }
 
 export default async function HomePage({ searchParams }: Props) {
+  const dashboardPerfStartedAt = Date.now();
   const params = searchParams ? await searchParams : {};
   const showDebug = params.debug === "1";
+  const logDashboardPerf = (label: string, startedAt: number) => {
+    if (!showDebug) return;
+
+    console.log(`[dashboard-perf] ${label}: ${Date.now() - startedAt}ms`);
+  };
 
   const periodOptions = createPeriodOptions();
   const selectedPeriodOption =
@@ -2895,24 +2918,30 @@ export default async function HomePage({ searchParams }: Props) {
       ? params.companyName
       : null;
 
+  const companiesStartedAt = Date.now();
   const companies = await prisma.company.findMany({
     orderBy: {
       name: "asc",
     },
   });
+  logDashboardPerf("companies query", companiesStartedAt);
 
+  const dashboardRowsStartedAt = Date.now();
   const [allCurrentRows, allPreviousRows] = await Promise.all([
     buildCompanyDashboardRows({
       companies,
       dateFrom: selectedPeriod.dateFrom,
       dateTo: selectedPeriod.dateTo,
+      debug: showDebug,
     }),
     buildCompanyDashboardRows({
       companies,
       dateFrom: previousPeriod.dateFrom,
       dateTo: previousPeriod.dateTo,
+      debug: showDebug,
     }),
   ]);
+  logDashboardPerf("buildCompanyDashboardRows current+previous", dashboardRowsStartedAt);
 
   const currentRows = selectedCompanyName
     ? allCurrentRows.filter((row) => row.companyName === selectedCompanyName)
@@ -2953,6 +2982,7 @@ export default async function HomePage({ searchParams }: Props) {
   const selectedChartPreset = getChartPreset(params.chartPreset);
   const dailyCompanyName =
     selectedMarketplaceCompanyValue === "ALL" ? null : selectedMarketplaceCompanyValue;
+  const dailyAnalyticsStartedAt = Date.now();
   const [currentDailyPoints, previousDailyPoints] = await Promise.all([
     getDashboardDailyAnalytics({
       dateFrom: selectedPeriod.dateFrom,
@@ -2967,6 +2997,7 @@ export default async function HomePage({ searchParams }: Props) {
       expectedTotals: createDailyExpectedTotals(marketplacePrevious),
     }),
   ]);
+  logDashboardPerf("getDashboardDailyAnalytics current+previous", dailyAnalyticsStartedAt);
   const currentReconciliationRows = buildReconciliationRows(marketplaceCurrent, currentDailyPoints);
   const previousReconciliationRows = buildReconciliationRows(marketplacePrevious, previousDailyPoints);
   const currentReconciliationProblems = currentReconciliationRows.filter((row) => !row.isOk).length;
@@ -3041,6 +3072,8 @@ export default async function HomePage({ searchParams }: Props) {
   const previousCompanyRowsByName = new Map(
     previous.companyRows.map((row) => [row.companyName, row])
   );
+
+  logDashboardPerf("homepage total before render", dashboardPerfStartedAt);
 
   return (
     <main className="page-shell">
