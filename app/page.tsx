@@ -2646,6 +2646,7 @@ async function buildCompanyDashboardRows(params: {
   dateFrom: string;
   dateTo: string;
   debug?: boolean;
+  includeAbc?: boolean;
 }) {
   const rows: CompanyDashboardRow[] = [];
   const rowsStartedAt = Date.now();
@@ -2691,6 +2692,8 @@ async function buildCompanyDashboardRows(params: {
       const companyReport = reportByCompanyName.get(company.name);
 
       const companyStartedAt = Date.now();
+      const shouldCalculateAbc = params.includeAbc !== false;
+
       const timedCompanyTask = async <T,>(
         label: string,
         task: () => Promise<T>
@@ -2703,41 +2706,54 @@ async function buildCompanyDashboardRows(params: {
         return result;
       };
 
-      const [wbAnalytics, ozonAnalytics, cash] = await Promise.all([
-        timedCompanyTask("wbAnalytics", () =>
-          getProfitAnalyticsRowsForPeriod({
-            dateFrom: params.dateFrom,
-            dateTo: params.dateTo,
-            companyName: company.name,
-          })
-        ),
-        timedCompanyTask("ozonAnalytics", () =>
-          getProfitAnalyticsOzonRowsForPeriod({
-            dateFrom: params.dateFrom,
-            dateTo: params.dateTo,
-            companyName: company.name,
-            usnRate:
-              company.usnRate !== null && company.usnRate !== undefined
-                ? Number(company.usnRate)
-                : 1,
-            vatRate:
-              company.vatRate !== null && company.vatRate !== undefined
-                ? Number(company.vatRate)
-                : 5,
-          })
-        ),
-        timedCompanyTask("cash", () =>
-          getFinanceCashResult({
-            companyName: company.name,
-            dateFrom: params.dateFrom,
-            dateTo: params.dateTo,
-          })
-        ),
-      ]);
-      logRowsPerf(`company ${company.name} analytics+cash`, companyStartedAt);
+      let cash: Awaited<ReturnType<typeof getFinanceCashResult>>;
+      let wbAbc: AbcCounts = { A: 0, B: 0, C: 0 };
+      let ozonAbc: AbcCounts = { A: 0, B: 0, C: 0 };
 
-      const wbAbc = countAbc(wbAnalytics.rows);
-      const ozonAbc = countAbc(ozonAnalytics.rows);
+      const cashPromise = timedCompanyTask("cash", () =>
+        getFinanceCashResult({
+          companyName: company.name,
+          dateFrom: params.dateFrom,
+          dateTo: params.dateTo,
+        })
+      );
+
+      if (shouldCalculateAbc) {
+        const [wbAnalytics, ozonAnalytics, cashResult] = await Promise.all([
+          timedCompanyTask("wbAnalytics", () =>
+            getProfitAnalyticsRowsForPeriod({
+              dateFrom: params.dateFrom,
+              dateTo: params.dateTo,
+              companyName: company.name,
+            })
+          ),
+          timedCompanyTask("ozonAnalytics", () =>
+            getProfitAnalyticsOzonRowsForPeriod({
+              dateFrom: params.dateFrom,
+              dateTo: params.dateTo,
+              companyName: company.name,
+              usnRate:
+                company.usnRate !== null && company.usnRate !== undefined
+                  ? Number(company.usnRate)
+                  : 1,
+              vatRate:
+                company.vatRate !== null && company.vatRate !== undefined
+                  ? Number(company.vatRate)
+                  : 5,
+            })
+          ),
+          cashPromise,
+        ]);
+
+        cash = cashResult;
+        wbAbc = countAbc(wbAnalytics.rows);
+        ozonAbc = countAbc(ozonAnalytics.rows);
+      } else {
+        cash = await cashPromise;
+        logRowsPerf(`company ${company.name} abc skipped`, companyStartedAt);
+      }
+
+      logRowsPerf(`company ${company.name} analytics+cash`, companyStartedAt);
 
       const ordersQty =
         (companyReport?.wb.ordersQty ?? 0) + (companyReport?.ozon.ordersQty ?? 0);
@@ -2991,12 +3007,14 @@ export default async function HomePage({ searchParams }: Props) {
       dateFrom: selectedPeriod.dateFrom,
       dateTo: selectedPeriod.dateTo,
       debug: showDebug,
+      includeAbc: true,
     }),
     buildCompanyDashboardRows({
       companies,
       dateFrom: previousPeriod.dateFrom,
       dateTo: previousPeriod.dateTo,
       debug: showDebug,
+      includeAbc: false,
     }),
   ]);
   logDashboardPerf("buildCompanyDashboardRows current+previous", dashboardRowsStartedAt);
