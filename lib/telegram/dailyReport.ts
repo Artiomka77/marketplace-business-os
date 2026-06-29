@@ -1,4 +1,4 @@
-﻿import { prisma } from "@/lib/prisma";
+import { prisma } from "@/lib/prisma";
 import { calculateFinanceMetricsForRows } from "@/lib/finance/financeMetrics";
 
 export type DailyReportPeriodPreset =
@@ -1464,7 +1464,6 @@ export async function buildDailyReport(params?: {
   date?: string;
   from?: string;
   to?: string;
-  debug?: boolean;
 }): Promise<DailyReport> {
   const range = getDailyReportRange(params);
 
@@ -1504,72 +1503,39 @@ export async function buildDailyReport(params?: {
     warnings: [],
   };
 
-  const companyReports = await Promise.all(
-    companies.map(async (company) => {
-      const timedDailyMetric = async <T,>(
-        label: string,
-        task: () => Promise<T>
-      ) => {
-        const startedAt = Date.now();
-        const result = await task();
-
-        if (params?.debug) {
-          console.log(
-            `[daily-report-perf] ${range.periodLabel} company ${company.name} ${label}: ${
-              Date.now() - startedAt
-            }ms`
-          );
-        }
-
-        return result;
-      };
-
-      const [wb, ozon, finance] = await Promise.all([
-        timedDailyMetric("wb", () => getWbMetrics(company.name, range)),
-        timedDailyMetric("ozon", () => getOzonMetrics(company.name, range)),
-        timedDailyMetric("finance", () =>
-          getFinanceMetricsForCompany({
-            companyName: company.name,
-            range,
-          })
-        ),
-      ]);
-
-      const realNetProfit =
-        wb.netProfitAfterTax + ozon.netProfitAfterTax + finance.netProfitImpact;
-
-      const financeForReport = {
-        ...finance,
-        netProfitImpact: realNetProfit,
-      };
-
-      return {
+  for (const company of companies) {
+    const [wb, ozon, finance] = await Promise.all([
+      getWbMetrics(company.name, range),
+      getOzonMetrics(company.name, range),
+      getFinanceMetricsForCompany({
         companyName: company.name,
-        wb,
-        ozon,
-        finance,
-        financeForReport,
-        realNetProfit,
-      };
-    })
-  );
+        range,
+      }),
+    ]);
 
-  for (const companyReport of companyReports) {
+    const realNetProfit =
+      wb.netProfitAfterTax + ozon.netProfitAfterTax + finance.netProfitImpact;
+
+    const financeForReport = {
+      ...finance,
+      netProfitImpact: realNetProfit,
+    };
+
     report.companies.push({
-      companyName: companyReport.companyName,
-      wb: companyReport.wb,
-      ozon: companyReport.ozon,
-      finance: companyReport.financeForReport,
+      companyName: company.name,
+      wb,
+      ozon,
+      finance: financeForReport,
     });
 
-    addMarketplaceTotals(report.totals, companyReport.wb);
-    addMarketplaceTotals(report.totals, companyReport.ozon);
+    addMarketplaceTotals(report.totals, wb);
+    addMarketplaceTotals(report.totals, ozon);
 
-    report.totals.cashIncome += companyReport.finance.cashIncome;
-    report.totals.cashOutflow += companyReport.finance.cashOutflow;
-    report.totals.netCashFlow += companyReport.finance.netCashFlow;
-    report.totals.netProfitImpact += companyReport.realNetProfit;
-    report.totals.ownerWithdrawals += companyReport.finance.ownerWithdrawals;
+    report.totals.cashIncome += finance.cashIncome;
+    report.totals.cashOutflow += finance.cashOutflow;
+    report.totals.netCashFlow += finance.netCashFlow;
+    report.totals.netProfitImpact += realNetProfit;
+    report.totals.ownerWithdrawals += finance.ownerWithdrawals;
   }
 
   report.totals.drrByOrders = calculateDrr(

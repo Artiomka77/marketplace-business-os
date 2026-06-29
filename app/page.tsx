@@ -23,153 +23,6 @@ type Props = {
   }>;
 };
 
-const DASHBOARD_HOME_CACHE_TTL_MS = 60_000;
-const DASHBOARD_HOME_CACHE_MAX_ENTRIES = 80;
-
-type DashboardHomeCacheEntry<T> = {
-  expiresAt: number;
-  value: T;
-};
-
-type DashboardDailyAnalyticsParams = Parameters<
-  typeof getDashboardDailyAnalytics
->[0];
-
-const dashboardCompanyRowsCache = new Map<
-  string,
-  DashboardHomeCacheEntry<CompanyDashboardRow[]>
->();
-
-const dashboardDailyAnalyticsCache = new Map<
-  string,
-  DashboardHomeCacheEntry<DashboardDailyPoint[]>
->();
-
-function cleanupDashboardHomeCache<T>(
-  cache: Map<string, DashboardHomeCacheEntry<T>>,
-  now: number
-) {
-  for (const [key, entry] of cache.entries()) {
-    if (entry.expiresAt <= now || cache.size > DASHBOARD_HOME_CACHE_MAX_ENTRIES) {
-      cache.delete(key);
-    }
-  }
-}
-
-function normalizeDashboardCacheValue(value: unknown) {
-  return String(value ?? "");
-}
-
-function createCompanyRowsCacheKey(params: {
-  companies: CompanyForDashboard[];
-  dateFrom: string;
-  dateTo: string;
-  includeAbc?: boolean;
-}) {
-  return JSON.stringify({
-    v: 1,
-    kind: "company-rows",
-    dateFrom: params.dateFrom,
-    dateTo: params.dateTo,
-    includeAbc: params.includeAbc !== false,
-    companies: params.companies.map((company) => ({
-      name: company.name,
-      usnRate: normalizeDashboardCacheValue(company.usnRate),
-      vatRate: normalizeDashboardCacheValue(company.vatRate),
-    })),
-  });
-}
-
-function createDailyAnalyticsCacheKey(params: DashboardDailyAnalyticsParams) {
-  return JSON.stringify({
-    v: 1,
-    kind: "daily-analytics",
-    dateFrom: params.dateFrom,
-    dateTo: params.dateTo,
-    companyName: params.companyName ?? null,
-    expectedTotals: params.expectedTotals ?? null,
-  });
-}
-
-async function getCachedCompanyDashboardRows(params: {
-  companies: CompanyForDashboard[];
-  dateFrom: string;
-  dateTo: string;
-  debug?: boolean;
-  includeAbc?: boolean;
-}) {
-  const now = Date.now();
-  const cacheKey = createCompanyRowsCacheKey(params);
-  const cached = dashboardCompanyRowsCache.get(cacheKey);
-
-  if (cached && cached.expiresAt > now) {
-    if (params.debug) {
-      console.log(
-        `[dashboard-cache] company rows ${params.dateFrom}..${params.dateTo} includeAbc=${
-          params.includeAbc !== false
-        }: hit`
-      );
-    }
-
-    return cached.value;
-  }
-
-  if (params.debug) {
-    console.log(
-      `[dashboard-cache] company rows ${params.dateFrom}..${params.dateTo} includeAbc=${
-        params.includeAbc !== false
-      }: miss`
-    );
-  }
-
-  const value = await buildCompanyDashboardRows(params);
-
-  dashboardCompanyRowsCache.set(cacheKey, {
-    expiresAt: Date.now() + DASHBOARD_HOME_CACHE_TTL_MS,
-    value,
-  });
-
-  cleanupDashboardHomeCache(dashboardCompanyRowsCache, Date.now());
-
-  return value;
-}
-
-async function getCachedDashboardDailyAnalytics(
-  params: DashboardDailyAnalyticsParams & { debug?: boolean }
-) {
-  const now = Date.now();
-  const cacheKey = createDailyAnalyticsCacheKey(params);
-  const cached = dashboardDailyAnalyticsCache.get(cacheKey);
-
-  if (cached && cached.expiresAt > now) {
-    if (params.debug) {
-      console.log(
-        `[dashboard-cache] daily analytics ${params.dateFrom}..${params.dateTo}: hit`
-      );
-    }
-
-    return cached.value;
-  }
-
-  if (params.debug) {
-    console.log(
-      `[dashboard-cache] daily analytics ${params.dateFrom}..${params.dateTo}: miss`
-    );
-  }
-
-  const { debug: _debug, ...analyticsParams } = params;
-  const value = await getDashboardDailyAnalytics(analyticsParams);
-
-  dashboardDailyAnalyticsCache.set(cacheKey, {
-    expiresAt: Date.now() + DASHBOARD_HOME_CACHE_TTL_MS,
-    value,
-  });
-
-  cleanupDashboardHomeCache(dashboardDailyAnalyticsCache, Date.now());
-
-  return value;
-}
-
 type AbcCounts = {
   A: number;
   B: number;
@@ -1186,9 +1039,9 @@ function MetricCard({
   return (
     <Link
       href={href}
-      className="group min-w-0 overflow-hidden rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/60 transition hover:-translate-y-0.5 hover:border-indigo-200 hover:shadow-lg hover:shadow-indigo-100/50 sm:p-5"
+      className="group rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm shadow-slate-200/60 transition hover:-translate-y-0.5 hover:border-indigo-200 hover:shadow-lg hover:shadow-indigo-100/50"
     >
-      <div className="flex min-w-0 items-start justify-between gap-3">
+      <div className="flex items-start justify-between gap-4">
         <div
           className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl text-lg ${accent}`}
         >
@@ -1197,7 +1050,7 @@ function MetricCard({
 
         {trend ? (
           <div
-            className={`max-w-[128px] truncate rounded-full px-2.5 py-1 text-[10px] font-black ring-1 sm:max-w-[160px] sm:px-3 sm:text-[11px] ${trend.className}`}
+            className={`rounded-full px-3 py-1 text-[11px] font-black ring-1 ${trend.className}`}
             title={trend.title}
           >
             {trend.label}
@@ -1209,15 +1062,15 @@ function MetricCard({
         )}
       </div>
 
-      <div className="mt-4 min-w-0 text-sm font-bold leading-5 text-slate-600">{title}</div>
+      <div className="mt-5 text-sm font-bold text-slate-600">{title}</div>
 
       <div
-        className={`mt-3 min-w-0 break-words text-[clamp(1.25rem,1.4vw,1.625rem)] font-black leading-tight tracking-tight [overflow-wrap:anywhere] ${valueClassName}`}
+        className={`mt-3 break-words text-[26px] font-black leading-tight tracking-tight ${valueClassName}`}
       >
         {value}
       </div>
 
-      <p className="mt-3 min-h-[42px] min-w-0 text-sm leading-6 text-slate-500 [overflow-wrap:anywhere]">
+      <p className="mt-3 min-h-[42px] text-sm leading-6 text-slate-500">
         {subtitle}
       </p>
 
@@ -2195,7 +2048,7 @@ function DailyDataReconciliation({
         </span>
       </div>
 
-      <div className="mt-5 grid min-w-0 gap-4 min-[1700px]:grid-cols-2">
+      <div className="mt-5 grid gap-4 xl:grid-cols-2">
         <ReconciliationTable title="Текущий период" rows={currentRows} />
         <ReconciliationTable title="Период сравнения" rows={previousRows} />
       </div>
@@ -2283,12 +2136,12 @@ function MarketplaceShare({
       </div>
 
       <div className="mt-5 space-y-4">
-        <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(120px,160px)_minmax(0,1fr)_58px] lg:items-center">
+        <div className="grid gap-4 md:grid-cols-[160px_1fr_58px] md:items-center">
           <div className="flex items-start gap-3">
             <span className="mt-1 h-3 w-3 rounded-full bg-violet-600" />
             <div>
               <div className="text-base font-black text-violet-700">Wildberries</div>
-              <div className="mt-1 min-w-0 break-words text-lg font-black leading-tight text-slate-950 [overflow-wrap:anywhere]">{formatCurrency(wbRevenue)}</div>
+              <div className="mt-1 text-lg font-black text-slate-950">{formatCurrency(wbRevenue)}</div>
               <div className="mt-1 text-xs font-bold text-slate-400">{formatCurrency(previousWbRevenue)}</div>
             </div>
           </div>
@@ -2311,12 +2164,12 @@ function MarketplaceShare({
           </div>
         </div>
 
-        <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(120px,160px)_minmax(0,1fr)_58px] lg:items-center">
+        <div className="grid gap-4 md:grid-cols-[160px_1fr_58px] md:items-center">
           <div className="flex items-start gap-3">
             <span className="mt-1 h-3 w-3 rounded-full bg-sky-500" />
             <div>
               <div className="text-base font-black text-sky-700">Ozon</div>
-              <div className="mt-1 min-w-0 break-words text-lg font-black leading-tight text-slate-950 [overflow-wrap:anywhere]">{formatCurrency(ozonRevenue)}</div>
+              <div className="mt-1 text-lg font-black text-slate-950">{formatCurrency(ozonRevenue)}</div>
               <div className="mt-1 text-xs font-bold text-slate-400">{formatCurrency(previousOzonRevenue)}</div>
             </div>
           </div>
@@ -2340,39 +2193,39 @@ function MarketplaceShare({
         </div>
       </div>
 
-      <div className="mt-5 grid min-w-0 overflow-hidden rounded-2xl border border-slate-200 bg-white sm:grid-cols-2 min-[1900px]:grid-cols-4">
-        <div className="flex min-w-0 items-center gap-3 border-b border-slate-100 p-3 sm:border-r min-[1900px]:border-b-0">
+      <div className="mt-5 grid overflow-hidden rounded-2xl border border-slate-200 bg-white sm:grid-cols-2 xl:grid-cols-4">
+        <div className="flex items-center gap-3 border-b border-slate-100 p-3 sm:border-r xl:border-b-0">
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-violet-50 text-base font-black text-violet-700">▦</div>
           <div>
             <div className="text-xs font-bold text-slate-500">Продажи/начисления</div>
-            <div className="mt-1 min-w-0 break-words text-[15px] font-black leading-tight text-slate-950 [overflow-wrap:anywhere]">{formatCurrency(current.totalRevenue)}</div>
+            <div className="mt-1 text-base font-black text-slate-950">{formatCurrency(current.totalRevenue)}</div>
             <div className="mt-1 text-xs font-black text-emerald-600">{formatDelta(percentDelta(current.totalRevenue, previous.totalRevenue), "money")}</div>
           </div>
         </div>
 
-        <div className="flex min-w-0 items-center gap-3 border-b border-slate-100 p-3 min-[1900px]:border-b-0 min-[1900px]:border-r">
+        <div className="flex items-center gap-3 border-b border-slate-100 p-3 xl:border-b-0 xl:border-r">
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-red-50 text-base font-black text-red-600">↗</div>
           <div>
             <div className="text-xs font-bold text-slate-500">Реклама / ДРР</div>
-            <div className="mt-1 min-w-0 break-words text-[15px] font-black leading-tight text-slate-950 [overflow-wrap:anywhere]">{formatCurrency(current.adsCost)} / {current.drr !== null ? formatPercent(current.drr) : "—"}</div>
+            <div className="mt-1 text-base font-black text-slate-950">{formatCurrency(current.adsCost)} / {current.drr !== null ? formatPercent(current.drr) : "—"}</div>
             <div className="mt-1 text-xs font-black text-red-600">{formatDelta(current.drr !== null && previous.drr !== null ? current.drr - previous.drr : null, "percent")}</div>
           </div>
         </div>
 
-        <div className="flex min-w-0 items-center gap-3 border-b border-slate-100 p-3 sm:border-r min-[1900px]:border-b-0">
+        <div className="flex items-center gap-3 border-b border-slate-100 p-3 sm:border-r xl:border-b-0">
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-emerald-50 text-base font-black text-emerald-600">⌁</div>
           <div>
             <div className="text-xs font-bold text-slate-500">Опер. прибыль</div>
-            <div className="mt-1 min-w-0 break-words text-[15px] font-black leading-tight text-slate-950 [overflow-wrap:anywhere]">{formatCurrency(current.operatingProfitAfterTax)}</div>
+            <div className="mt-1 text-base font-black text-slate-950">{formatCurrency(current.operatingProfitAfterTax)}</div>
             <div className="mt-1 text-xs font-black text-emerald-600">{formatDelta(percentDelta(current.operatingProfitAfterTax, previous.operatingProfitAfterTax), "money")}</div>
           </div>
         </div>
 
-        <div className="flex min-w-0 items-center gap-3 p-3">
+        <div className="flex items-center gap-3 p-3">
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-orange-50 text-base font-black text-orange-600">□</div>
           <div>
             <div className="text-xs font-bold text-slate-500">Остаток товаров</div>
-            <div className="mt-1 min-w-0 break-words text-[15px] font-black leading-tight text-slate-950 [overflow-wrap:anywhere]">{formatNumber(stockQty)} шт. / — ₽</div>
+            <div className="mt-1 text-base font-black text-slate-950">{formatNumber(stockQty)} шт. / — ₽</div>
             <div className="mt-1 text-xs font-black text-slate-400">себестоимость подключим отдельно</div>
           </div>
         </div>
@@ -2445,7 +2298,7 @@ function CompanyCard({
   });
 
   return (
-    <article className="h-full min-w-0 overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-sm shadow-slate-200/60 transition hover:border-indigo-200 hover:shadow-md">
+    <article className="h-full overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-sm shadow-slate-200/60 transition hover:border-indigo-200 hover:shadow-md">
       <div className="border-b border-slate-100 p-4">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
@@ -2467,10 +2320,10 @@ function CompanyCard({
           </Link>
         </div>
 
-        <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2 min-[1900px]:grid-cols-4">
-          <div className="min-w-0 rounded-2xl border border-slate-200 bg-white p-3">
+        <div className="mt-4 grid grid-cols-2 gap-2 xl:grid-cols-4">
+          <div className="rounded-2xl border border-slate-200 bg-white p-3">
             <div className="text-[10px] font-bold text-slate-500">Выручка</div>
-            <div className="mt-1 min-w-0 break-words text-[15px] font-black leading-tight text-slate-950 [overflow-wrap:anywhere]">
+            <div className="mt-1 text-base font-black text-slate-950">
               {formatCurrency(row.totalRevenue)}
             </div>
             <CompanyKpiMeta
@@ -2479,9 +2332,9 @@ function CompanyCard({
             />
           </div>
 
-          <div className="min-w-0 rounded-2xl border border-slate-200 bg-white p-3">
+          <div className="rounded-2xl border border-slate-200 bg-white p-3">
             <div className="text-[10px] font-bold text-slate-500">Опер. прибыль</div>
-            <div className={`mt-1 min-w-0 break-words text-[15px] font-black leading-tight [overflow-wrap:anywhere] ${valueColor(row.operatingProfitAfterTax)}`}>
+            <div className={`mt-1 text-base font-black ${valueColor(row.operatingProfitAfterTax)}`}>
               {formatCurrency(row.operatingProfitAfterTax)}
             </div>
             <CompanyKpiMeta
@@ -2491,9 +2344,9 @@ function CompanyCard({
             />
           </div>
 
-          <div className="min-w-0 rounded-2xl border border-slate-200 bg-white p-3">
+          <div className="rounded-2xl border border-slate-200 bg-white p-3">
             <div className="text-[10px] font-bold text-slate-500">Чистая прибыль</div>
-            <div className={`mt-1 min-w-0 break-words text-[15px] font-black leading-tight [overflow-wrap:anywhere] ${valueColor(row.netProfit)}`}>
+            <div className={`mt-1 text-base font-black ${valueColor(row.netProfit)}`}>
               {formatCurrency(row.netProfit)}
             </div>
             <CompanyKpiMeta
@@ -2503,9 +2356,9 @@ function CompanyCard({
             />
           </div>
 
-          <div className="min-w-0 rounded-2xl border border-slate-200 bg-white p-3">
+          <div className="rounded-2xl border border-slate-200 bg-white p-3">
             <div className="text-[10px] font-bold text-slate-500">Ден. поток</div>
-            <div className={`mt-1 min-w-0 break-words text-[15px] font-black leading-tight [overflow-wrap:anywhere] ${valueColor(row.cashFlowResult)}`}>
+            <div className={`mt-1 text-base font-black ${valueColor(row.cashFlowResult)}`}>
               {formatCurrency(row.cashFlowResult)}
             </div>
             <CompanyKpiMeta
@@ -2517,7 +2370,7 @@ function CompanyCard({
         </div>
       </div>
 
-      <div className="grid min-w-0 gap-4 p-4 sm:grid-cols-2 min-[1900px]:grid-cols-4">
+      <div className="grid gap-4 p-4 sm:grid-cols-4">
         <Link href="/analytics" className="group min-w-0">
           <div className="flex items-center justify-between gap-2">
             <div className="text-xs font-black text-slate-950">Каналы</div>
@@ -2793,7 +2646,6 @@ async function buildCompanyDashboardRows(params: {
   dateFrom: string;
   dateTo: string;
   debug?: boolean;
-  includeAbc?: boolean;
 }) {
   const rows: CompanyDashboardRow[] = [];
   const rowsStartedAt = Date.now();
@@ -2814,7 +2666,6 @@ async function buildCompanyDashboardRows(params: {
   const ownerReport = await buildDailyReport({
     from: params.dateFrom,
     to: params.dateTo,
-    debug: params.debug,
   });
   logRowsPerf("buildDailyReport", ownerReportStartedAt);
 
@@ -2839,8 +2690,6 @@ async function buildCompanyDashboardRows(params: {
       const companyReport = reportByCompanyName.get(company.name);
 
       const companyStartedAt = Date.now();
-      const shouldCalculateAbc = params.includeAbc !== false;
-
       const timedCompanyTask = async <T,>(
         label: string,
         task: () => Promise<T>
@@ -2853,54 +2702,41 @@ async function buildCompanyDashboardRows(params: {
         return result;
       };
 
-      let cash: Awaited<ReturnType<typeof getFinanceCashResult>>;
-      let wbAbc: AbcCounts = { A: 0, B: 0, C: 0 };
-      let ozonAbc: AbcCounts = { A: 0, B: 0, C: 0 };
-
-      const cashPromise = timedCompanyTask("cash", () =>
-        getFinanceCashResult({
-          companyName: company.name,
-          dateFrom: params.dateFrom,
-          dateTo: params.dateTo,
-        })
-      );
-
-      if (shouldCalculateAbc) {
-        const [wbAnalytics, ozonAnalytics, cashResult] = await Promise.all([
-          timedCompanyTask("wbAnalytics", () =>
-            getProfitAnalyticsRowsForPeriod({
-              dateFrom: params.dateFrom,
-              dateTo: params.dateTo,
-              companyName: company.name,
-            })
-          ),
-          timedCompanyTask("ozonAnalytics", () =>
-            getProfitAnalyticsOzonRowsForPeriod({
-              dateFrom: params.dateFrom,
-              dateTo: params.dateTo,
-              companyName: company.name,
-              usnRate:
-                company.usnRate !== null && company.usnRate !== undefined
-                  ? Number(company.usnRate)
-                  : 1,
-              vatRate:
-                company.vatRate !== null && company.vatRate !== undefined
-                  ? Number(company.vatRate)
-                  : 5,
-            })
-          ),
-          cashPromise,
-        ]);
-
-        cash = cashResult;
-        wbAbc = countAbc(wbAnalytics.rows);
-        ozonAbc = countAbc(ozonAnalytics.rows);
-      } else {
-        cash = await cashPromise;
-        logRowsPerf(`company ${company.name} abc skipped`, companyStartedAt);
-      }
-
+      const [wbAnalytics, ozonAnalytics, cash] = await Promise.all([
+        timedCompanyTask("wbAnalytics", () =>
+          getProfitAnalyticsRowsForPeriod({
+            dateFrom: params.dateFrom,
+            dateTo: params.dateTo,
+            companyName: company.name,
+          })
+        ),
+        timedCompanyTask("ozonAnalytics", () =>
+          getProfitAnalyticsOzonRowsForPeriod({
+            dateFrom: params.dateFrom,
+            dateTo: params.dateTo,
+            companyName: company.name,
+            usnRate:
+              company.usnRate !== null && company.usnRate !== undefined
+                ? Number(company.usnRate)
+                : 1,
+            vatRate:
+              company.vatRate !== null && company.vatRate !== undefined
+                ? Number(company.vatRate)
+                : 5,
+          })
+        ),
+        timedCompanyTask("cash", () =>
+          getFinanceCashResult({
+            companyName: company.name,
+            dateFrom: params.dateFrom,
+            dateTo: params.dateTo,
+          })
+        ),
+      ]);
       logRowsPerf(`company ${company.name} analytics+cash`, companyStartedAt);
+
+      const wbAbc = countAbc(wbAnalytics.rows);
+      const ozonAbc = countAbc(ozonAnalytics.rows);
 
       const ordersQty =
         (companyReport?.wb.ordersQty ?? 0) + (companyReport?.ozon.ordersQty ?? 0);
@@ -3149,19 +2985,17 @@ export default async function HomePage({ searchParams }: Props) {
 
   const dashboardRowsStartedAt = Date.now();
   const [allCurrentRows, allPreviousRows] = await Promise.all([
-    getCachedCompanyDashboardRows({
+    buildCompanyDashboardRows({
       companies,
       dateFrom: selectedPeriod.dateFrom,
       dateTo: selectedPeriod.dateTo,
       debug: showDebug,
-      includeAbc: true,
     }),
-    getCachedCompanyDashboardRows({
+    buildCompanyDashboardRows({
       companies,
       dateFrom: previousPeriod.dateFrom,
       dateTo: previousPeriod.dateTo,
       debug: showDebug,
-      includeAbc: false,
     }),
   ]);
   logDashboardPerf("buildCompanyDashboardRows current+previous", dashboardRowsStartedAt);
@@ -3207,19 +3041,17 @@ export default async function HomePage({ searchParams }: Props) {
     selectedMarketplaceCompanyValue === "ALL" ? null : selectedMarketplaceCompanyValue;
   const dailyAnalyticsStartedAt = Date.now();
   const [currentDailyPoints, previousDailyPoints] = await Promise.all([
-    getCachedDashboardDailyAnalytics({
+    getDashboardDailyAnalytics({
       dateFrom: selectedPeriod.dateFrom,
       dateTo: selectedPeriod.dateTo,
       companyName: dailyCompanyName,
       expectedTotals: createDailyExpectedTotals(marketplaceCurrent),
-      debug: showDebug,
     }),
-    getCachedDashboardDailyAnalytics({
+    getDashboardDailyAnalytics({
       dateFrom: previousPeriod.dateFrom,
       dateTo: previousPeriod.dateTo,
       companyName: dailyCompanyName,
       expectedTotals: createDailyExpectedTotals(marketplacePrevious),
-      debug: showDebug,
     }),
   ]);
   logDashboardPerf("getDashboardDailyAnalytics current+previous", dailyAnalyticsStartedAt);
@@ -3301,7 +3133,7 @@ export default async function HomePage({ searchParams }: Props) {
   logDashboardPerf("homepage total before render", dashboardPerfStartedAt);
 
   return (
-    <main className="page-shell dashboard-page">
+    <main className="page-shell">
       <div className="page-container">
         <section className="sticky top-0 z-40 -mx-4 border-b border-slate-200 bg-background/90 px-4 py-2.5 backdrop-blur-xl sm:-mx-6 sm:px-6 xl:-mx-8 xl:px-8">
           <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
@@ -3477,7 +3309,7 @@ export default async function HomePage({ searchParams }: Props) {
           </div>
         </section>
 
-        <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 min-[2200px]:grid-cols-7">
+        <section className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-[repeat(7,minmax(0,1fr))]">
           <MetricCard
             title="Заказы"
             value={current.ordersAmount > 0 ? formatCurrency(current.ordersAmount) : "Нет данных"}
@@ -3557,7 +3389,7 @@ export default async function HomePage({ searchParams }: Props) {
           />
         </section>
 
-        <section className="grid min-w-0 items-stretch gap-4 2xl:grid-cols-[repeat(6,minmax(0,1fr))]">
+        <section className="grid items-stretch gap-4 2xl:grid-cols-[repeat(6,minmax(0,1fr))]">
           <div className="min-w-0 2xl:col-span-4">
             <MarketplaceShare
               wbRevenue={marketplaceCurrent.wbRevenue}
@@ -3617,7 +3449,7 @@ export default async function HomePage({ searchParams }: Props) {
           </section>
         </section>
 
-        <section className="grid min-w-0 items-stretch gap-4 2xl:grid-cols-[repeat(6,minmax(0,1fr))]">
+        <section className="grid items-stretch gap-4 2xl:grid-cols-[repeat(6,minmax(0,1fr))]">
           <section className="panel h-full min-w-0 p-4 2xl:col-span-4">
             <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
               <div>
@@ -3701,7 +3533,7 @@ export default async function HomePage({ searchParams }: Props) {
             </div>
 
             {current.companyRows.length > 0 ? (
-              <div className="mt-5 grid min-w-0 gap-4 min-[1700px]:grid-cols-2">
+              <div className="mt-5 grid gap-4 xl:grid-cols-2">
                 {current.companyRows.map((row) => (
                   <CompanyCard
                     key={row.companyName}
