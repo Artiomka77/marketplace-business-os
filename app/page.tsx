@@ -2690,30 +2690,48 @@ async function buildCompanyDashboardRows(params: {
       const companyReport = reportByCompanyName.get(company.name);
 
       const companyStartedAt = Date.now();
+      const timedCompanyTask = async <T,>(
+        label: string,
+        task: () => Promise<T>
+      ) => {
+        const startedAt = Date.now();
+        const result = await task();
+
+        logRowsPerf(`company ${company.name} ${label}`, startedAt);
+
+        return result;
+      };
+
       const [wbAnalytics, ozonAnalytics, cash] = await Promise.all([
-        getProfitAnalytics({
-          dateFrom: params.dateFrom,
-          dateTo: params.dateTo,
-          companyName: company.name,
-        }),
-        getProfitAnalyticsOzon({
-          dateFrom: params.dateFrom,
-          dateTo: params.dateTo,
-          companyName: company.name,
-          usnRate:
-            company.usnRate !== null && company.usnRate !== undefined
-              ? Number(company.usnRate)
-              : 1,
-          vatRate:
-            company.vatRate !== null && company.vatRate !== undefined
-              ? Number(company.vatRate)
-              : 5,
-        }),
-        getFinanceCashResult({
-          companyName: company.name,
-          dateFrom: params.dateFrom,
-          dateTo: params.dateTo,
-        }),
+        timedCompanyTask("wbAnalytics", () =>
+          getProfitAnalytics({
+            dateFrom: params.dateFrom,
+            dateTo: params.dateTo,
+            companyName: company.name,
+          })
+        ),
+        timedCompanyTask("ozonAnalytics", () =>
+          getProfitAnalyticsOzon({
+            dateFrom: params.dateFrom,
+            dateTo: params.dateTo,
+            companyName: company.name,
+            usnRate:
+              company.usnRate !== null && company.usnRate !== undefined
+                ? Number(company.usnRate)
+                : 1,
+            vatRate:
+              company.vatRate !== null && company.vatRate !== undefined
+                ? Number(company.vatRate)
+                : 5,
+          })
+        ),
+        timedCompanyTask("cash", () =>
+          getFinanceCashResult({
+            companyName: company.name,
+            dateFrom: params.dateFrom,
+            dateTo: params.dateTo,
+          })
+        ),
       ]);
       logRowsPerf(`company ${company.name} analytics+cash`, companyStartedAt);
 
