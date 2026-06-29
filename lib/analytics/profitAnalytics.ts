@@ -612,6 +612,12 @@ function calculateRowsAndTotals({
     createEmptyTotals(usnRate, vatRate, undistributedAdsCost)
   );
 
+  if (totals.undistributedAdsCost > 0) {
+    totals.adsCost += totals.undistributedAdsCost;
+    totals.marginProfit -= totals.undistributedAdsCost;
+    totals.netProfitAfterTax -= totals.undistributedAdsCost;
+  }
+
   totals.marginProfitPercent =
     totals.revenue > 0 ? (totals.marginProfit / totals.revenue) * 100 : 0;
 
