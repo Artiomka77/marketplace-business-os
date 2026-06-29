@@ -734,32 +734,10 @@ async function findAdsRowsByDateFilter(
   dateFilter: object,
   companyName?: string | null
 ) {
-  const latestAdsRow = await prisma.wbAds.findFirst({
-    where: {
-      ...dateFilter,
-      ...(companyName ? { companyName } : {}),
-    },
-    orderBy: {
-      createdAt: "desc",
-    },
-  });
-
-  if (!latestAdsRow) return [];
-
   return prisma.wbAds.findMany({
     where: {
       ...dateFilter,
       ...(companyName ? { companyName } : {}),
-      ...(latestAdsRow.importSessionId
-        ? {
-            importSessionId: latestAdsRow.importSessionId,
-          }
-        : {
-            createdAt: {
-              gte: new Date(latestAdsRow.createdAt.getTime() - 10 * 60 * 1000),
-              lte: new Date(latestAdsRow.createdAt.getTime() + 10 * 60 * 1000),
-            },
-          }),
     },
   });
 }

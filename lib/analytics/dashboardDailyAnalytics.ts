@@ -664,7 +664,7 @@ export async function getDashboardDailyAnalytics(params: {
     addTaxForRevenue(point, revenueDelta, row.companyName, taxByCompany);
   }
 
-  for (const row of keepLatestWbAdsRowsPerDate(wbAdsRaw)) {
+  for (const row of wbAdsRaw) {
     const dates = getDateSpan(row.dateFrom, row.dateTo).filter((date) => pointsByDate.has(date));
     if (dates.length === 0) continue;
 
