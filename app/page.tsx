@@ -53,6 +53,7 @@ type CompanyDashboardRow = {
   cashOnlyExpenses: number;
   wbStockQty: number;
   ozonStockQty: number;
+  warehouseStockQty: number;
   wbAbcA: number;
   wbAbcB: number;
   wbAbcC: number;
@@ -80,6 +81,7 @@ type DashboardSummary = {
   cashOnlyExpenses: number;
   wbStockQty: number;
   ozonStockQty: number;
+  warehouseStockQty: number;
   wbAbc: AbcCounts;
   ozonAbc: AbcCounts;
   totalAbc: AbcCounts;
@@ -871,6 +873,7 @@ function hasAnyCompanyMetric(row: CompanyDashboardRow) {
     row.cashOnlyExpenses !== 0 ||
     row.wbStockQty !== 0 ||
     row.ozonStockQty !== 0 ||
+    row.warehouseStockQty !== 0 ||
     row.wbAbcA !== 0 ||
     row.wbAbcB !== 0 ||
     row.wbAbcC !== 0 ||
@@ -2015,7 +2018,7 @@ function MarketplaceShare({
   const ozonPercent = total > 0 ? (ozonRevenue / total) * 100 : 0;
   const previousWbPercent = previousTotal > 0 ? (previousWbRevenue / previousTotal) * 100 : 0;
   const previousOzonPercent = previousTotal > 0 ? (previousOzonRevenue / previousTotal) * 100 : 0;
-  const stockQty = current.wbStockQty + current.ozonStockQty;
+  const stockQty = current.wbStockQty + current.ozonStockQty + current.warehouseStockQty;
   const companyOptions = [
     { name: "ALL", label: "Все компании" },
     ...companies.map((company) => ({ name: company.name, label: company.name })),
@@ -2452,11 +2455,13 @@ async function getLatestWbStockQty(companyName: string) {
     where: {
       companyName,
       importSessionId: latestStockImport.id,
-      warehouseName: "__TOTAL__",
     },
   });
 
-  return rows.reduce(
+  const totalRows = rows.filter((row) => row.warehouseName === "__TOTAL__");
+  const stockRows = totalRows.length > 0 ? totalRows : rows;
+
+  return stockRows.reduce(
     (sum, row) =>
       sum +
       safeNumber(row.inTransitToCustomer) +
@@ -2500,6 +2505,29 @@ async function getLatestOzonStockQty(companyName: string) {
   }, 0);
 }
 
+async function getLatestWarehouseStockQty(companyName: string) {
+  const latestWarehouseImport = await prisma.importSession.findFirst({
+    where: {
+      companyName,
+      reportType: "OZON_WAREHOUSE_STOCK",
+    },
+    orderBy: {
+      createdAt: "desc",
+    },
+  });
+
+  if (!latestWarehouseImport) return 0;
+
+  const rows = await prisma.ozonWarehouseStock.findMany({
+    where: {
+      companyName,
+      importSessionId: latestWarehouseImport.id,
+    },
+  });
+
+  return rows.reduce((sum, row) => sum + safeNumber(row.warehouseQty), 0);
+}
+
 async function buildCompanyDashboardRows(params: {
   companies: CompanyForDashboard[];
   dateFrom: string;
@@ -2534,9 +2562,10 @@ async function buildCompanyDashboardRows(params: {
       dateTo: params.dateTo,
     });
 
-    const [wbStockQty, ozonStockQty] = await Promise.all([
+    const [wbStockQty, ozonStockQty, warehouseStockQty] = await Promise.all([
       getLatestWbStockQty(company.name),
       getLatestOzonStockQty(company.name),
+      getLatestWarehouseStockQty(company.name),
     ]);
 
     const wbAbc = countAbc(wb.rows);
@@ -2578,6 +2607,7 @@ async function buildCompanyDashboardRows(params: {
       cashOnlyExpenses: cash.cashOnlyExpenses,
       wbStockQty,
       ozonStockQty,
+      warehouseStockQty,
       wbAbcA: wbAbc.A,
       wbAbcB: wbAbc.B,
       wbAbcC: wbAbc.C,
@@ -2641,6 +2671,7 @@ function summarizeDashboardRows(rows: CompanyDashboardRow[]): DashboardSummary {
 
   const wbStockQty = companyRows.reduce((sum, row) => sum + row.wbStockQty, 0);
   const ozonStockQty = companyRows.reduce((sum, row) => sum + row.ozonStockQty, 0);
+  const warehouseStockQty = companyRows.reduce((sum, row) => sum + row.warehouseStockQty, 0);
 
   const wbAbc = {
     A: companyRows.reduce((sum, row) => sum + row.wbAbcA, 0),
@@ -2679,6 +2710,7 @@ function summarizeDashboardRows(rows: CompanyDashboardRow[]): DashboardSummary {
     cashOnlyExpenses,
     wbStockQty,
     ozonStockQty,
+    warehouseStockQty,
     wbAbc,
     ozonAbc,
     totalAbc,

@@ -247,6 +247,7 @@ type WbAdsRecord = {
 };
 
 type WbFinanceExpenseTotals = {
+  hasRows: boolean;
   revenue: number;
   sellerPayout: number;
   storageCost: number;
@@ -593,41 +594,26 @@ function calculateRowsAndTotals({
   };
 }
 
-async function findWbSaleRowsByPeriod(params?: {
+async function findLatestWbSaleRowsBySaleDate(params?: {
   dateFrom?: string | null;
   dateTo?: string | null;
   companyName?: string | null;
+  reportTypes?: string[];
 }) {
-  const financeRows = await prisma.wbFinance.findMany({
-    where: {
-      ...(params?.companyName ? { companyName: params.companyName } : {}),
-      ...(params?.dateFrom || params?.dateTo
-        ? createDateFilterFromStrings(params?.dateFrom, params?.dateTo)
-        : {}),
-    },
-  });
-
-  const reportNumbers = Array.from(
-    new Set(
-      financeRows
-        .map((row) => String(row.reportNumber ?? "").trim())
-        .filter(Boolean)
-    )
-  );
-
-  if (reportNumbers.length === 0) {
-    return [];
-  }
+  const saleDateWhere =
+    params?.dateFrom || params?.dateTo
+      ? {
+          ...(params?.dateFrom ? { gte: startOfDay(params.dateFrom) } : {}),
+          ...(params?.dateTo ? { lt: nextDayStart(params.dateTo) } : {}),
+        }
+      : undefined;
 
   const importSessions = await prisma.importSession.findMany({
     where: {
       ...(params?.companyName ? { companyName: params.companyName } : {}),
-      reportType: "WB_SALES",
-      OR: reportNumbers.map((reportNumber) => ({
-        fileName: {
-          contains: reportNumber,
-        },
-      })),
+      reportType: {
+        in: params?.reportTypes ?? ["WB_SALES_DAILY"],
+      },
     },
     orderBy: {
       createdAt: "desc",
@@ -651,6 +637,7 @@ async function findWbSaleRowsByPeriod(params?: {
   return prisma.wbSale.findMany({
     where: {
       ...(params?.companyName ? { companyName: params.companyName } : {}),
+      ...(saleDateWhere ? { saleDate: saleDateWhere } : {}),
       importSessionId: {
         in: latestImportSessionIds,
       },
@@ -658,6 +645,88 @@ async function findWbSaleRowsByPeriod(params?: {
     orderBy: {
       saleDate: "desc",
     },
+  });
+}
+
+async function findWbSaleRowsByPeriod(params?: {
+  dateFrom?: string | null;
+  dateTo?: string | null;
+  companyName?: string | null;
+}) {
+  const financeRows = await prisma.wbFinance.findMany({
+    where: {
+      ...(params?.companyName ? { companyName: params.companyName } : {}),
+      ...(params?.dateFrom || params?.dateTo
+        ? createDateFilterFromStrings(params?.dateFrom, params?.dateTo)
+        : {}),
+    },
+  });
+
+  const reportNumbers = Array.from(
+    new Set(
+      financeRows
+        .map((row) => String(row.reportNumber ?? "").trim())
+        .filter(Boolean)
+    )
+  );
+
+  if (reportNumbers.length > 0) {
+    const importSessions = await prisma.importSession.findMany({
+      where: {
+        ...(params?.companyName ? { companyName: params.companyName } : {}),
+        reportType: "WB_SALES",
+        OR: reportNumbers.map((reportNumber) => ({
+          fileName: {
+            contains: reportNumber,
+          },
+        })),
+      },
+      orderBy: {
+        createdAt: "desc",
+      },
+    });
+
+    const latestSessionByFileName = new Map<string, string>();
+
+    for (const session of importSessions) {
+      if (!latestSessionByFileName.has(session.fileName)) {
+        latestSessionByFileName.set(session.fileName, session.id);
+      }
+    }
+
+    const latestImportSessionIds = Array.from(latestSessionByFileName.values());
+
+    if (latestImportSessionIds.length > 0) {
+      const rows = await prisma.wbSale.findMany({
+        where: {
+          ...(params?.companyName ? { companyName: params.companyName } : {}),
+          importSessionId: {
+            in: latestImportSessionIds,
+          },
+        },
+        orderBy: {
+          saleDate: "desc",
+        },
+      });
+
+      if (rows.length > 0) {
+        return rows;
+      }
+    }
+  }
+
+  const currentDailyRows = await findLatestWbSaleRowsBySaleDate({
+    ...params,
+    reportTypes: ["WB_SALES_DAILY"],
+  });
+
+  if (currentDailyRows.length > 0) {
+    return currentDailyRows;
+  }
+
+  return findLatestWbSaleRowsBySaleDate({
+    ...params,
+    reportTypes: ["WB_SALES"],
   });
 }
 
@@ -727,6 +796,7 @@ async function findWbFinanceExpenseTotalsByPeriod(params?: {
       return acc;
     },
     {
+      hasRows: rows.length > 0,
       revenue: 0,
       sellerPayout: 0,
       storageCost: 0,
@@ -864,6 +934,7 @@ export async function getProfitAnalytics(params?: {
         companyName,
       })
     : {
+        hasRows: false,
         revenue: 0,
         sellerPayout: 0,
         storageCost: 0,
@@ -871,17 +942,18 @@ export async function getProfitAnalytics(params?: {
         penaltiesAmount: 0,
       };
 
-  const current = applyWbFinanceExpenseTotals(
-    calculateRowsAndTotals({
-      wbRows: currentSalesRows,
-      costs,
-      adsRows: currentAdsRows,
-      adMaps,
-      usnRate,
-      vatRate,
-    }),
-    currentFinanceExpenses
-  );
+  const currentBase = calculateRowsAndTotals({
+    wbRows: currentSalesRows,
+    costs,
+    adsRows: currentAdsRows,
+    adMaps,
+    usnRate,
+    vatRate,
+  });
+
+  const current = currentFinanceExpenses.hasRows
+    ? applyWbFinanceExpenseTotals(currentBase, currentFinanceExpenses)
+    : currentBase;
 
   const previousSalesRows = previousPeriod
     ? await findWbSaleRowsByPeriod({
@@ -891,17 +963,18 @@ export async function getProfitAnalytics(params?: {
       })
     : [];
 
-  const previous = applyWbFinanceExpenseTotals(
-    calculateRowsAndTotals({
-      wbRows: previousSalesRows,
-      costs,
-      adsRows: previousAdsRows,
-      adMaps,
-      usnRate,
-      vatRate,
-    }),
-    previousFinanceExpenses
-  );
+  const previousBase = calculateRowsAndTotals({
+    wbRows: previousSalesRows,
+    costs,
+    adsRows: previousAdsRows,
+    adMaps,
+    usnRate,
+    vatRate,
+  });
+
+  const previous = previousFinanceExpenses.hasRows
+    ? applyWbFinanceExpenseTotals(previousBase, previousFinanceExpenses)
+    : previousBase;
 
   const comparison = {
     revenue: createComparison(current.totals.revenue, previous.totals.revenue),
