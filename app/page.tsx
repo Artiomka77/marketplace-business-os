@@ -530,9 +530,9 @@ function formatOrdersSubtitle(summary: DashboardSummary) {
   const drrText =
     summary.drrByOrders !== null ? formatPercent(summary.drrByOrders) : "—";
 
-  return `${formatCurrency(
-    summary.ordersAmount
-  )} · ДРР от заказов: ${drrText}`;
+  return `Количество: ${formatNumber(
+    summary.ordersQty
+  )} шт · ДРР от заказов: ${drrText}`;
 }
 
 function calculateCompanyDelta(current: number, previous?: number | null) {
@@ -3222,7 +3222,7 @@ export default async function HomePage({ searchParams }: Props) {
         <section className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-[repeat(7,minmax(0,1fr))]">
           <MetricCard
             title="Заказы"
-            value={current.ordersQty > 0 ? `${formatNumber(current.ordersQty)} шт` : "Нет данных"}
+            value={current.ordersAmount > 0 ? formatCurrency(current.ordersAmount) : "Нет данных"}
             subtitle={formatOrdersSubtitle(current)}
             icon="▦"
             accent="bg-violet-50 text-violet-700"
