@@ -966,9 +966,12 @@ function buildDashboardHref(params: {
   debug?: boolean;
 }) {
   const searchParams = new URLSearchParams();
+  const synchronizedCompanyName =
+    params.marketplaceCompanyName ?? params.companyName ?? "ALL";
 
   searchParams.set("period", params.period);
-  searchParams.set("companyName", params.companyName || "ALL");
+  searchParams.set("companyName", synchronizedCompanyName || "ALL");
+  searchParams.set("marketplaceCompanyName", synchronizedCompanyName || "ALL");
 
   if (params.dateFrom) {
     searchParams.set("dateFrom", params.dateFrom);
@@ -980,10 +983,6 @@ function buildDashboardHref(params: {
 
   if (params.chartPreset) {
     searchParams.set("chartPreset", params.chartPreset);
-  }
-
-  if (params.marketplaceCompanyName) {
-    searchParams.set("marketplaceCompanyName", params.marketplaceCompanyName);
   }
 
   if (params.debug) {
@@ -2970,11 +2969,6 @@ export default async function HomePage({ searchParams }: Props) {
     selectedPeriod.dateTo
   );
 
-  const selectedCompanyName =
-    params.companyName && params.companyName !== "ALL"
-      ? params.companyName
-      : null;
-
   const companiesStartedAt = Date.now();
   const companies = await prisma.company.findMany({
     orderBy: {
@@ -3000,45 +2994,47 @@ export default async function HomePage({ searchParams }: Props) {
   ]);
   logDashboardPerf("buildCompanyDashboardRows current+previous", dashboardRowsStartedAt);
 
-  const currentRows = selectedCompanyName
-    ? allCurrentRows.filter((row) => row.companyName === selectedCompanyName)
-    : allCurrentRows;
+  const companyRowsWithMetrics = allCurrentRows.filter(hasAnyCompanyMetric);
+  const companiesWithMetrics = companies.filter((company) =>
+    companyRowsWithMetrics.some((row) => row.companyName === company.name)
+  );
+  const validCompanyNames = new Set(
+    companiesWithMetrics.map((company) => company.name)
+  );
+  const requestedCompanyValue =
+    params.companyName && params.companyName !== "ALL"
+      ? params.companyName
+      : params.marketplaceCompanyName && params.marketplaceCompanyName !== "ALL"
+        ? params.marketplaceCompanyName
+        : "ALL";
+  const selectedCompanyValue =
+    requestedCompanyValue !== "ALL" && validCompanyNames.has(requestedCompanyValue)
+      ? requestedCompanyValue
+      : "ALL";
+  const selectedCompanyName =
+    selectedCompanyValue === "ALL" ? null : selectedCompanyValue;
 
-  const previousRows = selectedCompanyName
-    ? allPreviousRows.filter((row) => row.companyName === selectedCompanyName)
-    : allPreviousRows;
+  const currentRows = selectedCompanyName
+    ? companyRowsWithMetrics.filter((row) => row.companyName === selectedCompanyName)
+    : companyRowsWithMetrics;
+
+  const previousRows = allPreviousRows.filter((row) =>
+    selectedCompanyName
+      ? row.companyName === selectedCompanyName
+      : validCompanyNames.has(row.companyName)
+  );
 
   const current = summarizeDashboardRows(currentRows);
   const previous = summarizeDashboardRows(previousRows);
 
-  const selectedCompanyValue = params.companyName ?? "ALL";
-  const companyRowsWithMetrics = allCurrentRows.filter(hasAnyCompanyMetric);
-  const marketplaceCompanies = companyRowsWithMetrics.map((row) => ({
-    name: row.companyName,
+  const marketplaceCompanies = companiesWithMetrics.map((company) => ({
+    name: company.name,
   }));
-  const rawMarketplaceCompanyValue =
-    params.marketplaceCompanyName ?? selectedCompanyValue ?? "ALL";
-  const selectedMarketplaceCompanyValue = marketplaceCompanies.some(
-    (company) => company.name === rawMarketplaceCompanyValue
-  )
-    ? rawMarketplaceCompanyValue
-    : "ALL";
-  const marketplaceCurrent = summarizeDashboardRows(
-    selectedMarketplaceCompanyValue === "ALL"
-      ? companyRowsWithMetrics
-      : companyRowsWithMetrics.filter(
-          (row) => row.companyName === selectedMarketplaceCompanyValue
-        )
-  );
-  const marketplacePreviousRows = allPreviousRows.filter((row) =>
-    selectedMarketplaceCompanyValue === "ALL"
-      ? marketplaceCompanies.some((company) => company.name === row.companyName)
-      : row.companyName === selectedMarketplaceCompanyValue
-  );
-  const marketplacePrevious = summarizeDashboardRows(marketplacePreviousRows);
+  const selectedMarketplaceCompanyValue = selectedCompanyValue;
+  const marketplaceCurrent = current;
+  const marketplacePrevious = previous;
   const selectedChartPreset = getChartPreset(params.chartPreset);
-  const dailyCompanyName =
-    selectedMarketplaceCompanyValue === "ALL" ? null : selectedMarketplaceCompanyValue;
+  const dailyCompanyName = selectedCompanyName;
   const dailyAnalyticsStartedAt = Date.now();
   const [currentDailyPoints, previousDailyPoints] = await Promise.all([
     getDashboardDailyAnalytics({
@@ -3246,7 +3242,7 @@ export default async function HomePage({ searchParams }: Props) {
                     {selectedCompanyValue === "ALL" ? <span>✓</span> : null}
                   </Link>
 
-                  {companies.map((company) => {
+                  {companiesWithMetrics.map((company) => {
                     const isActive = selectedCompanyValue === company.name;
 
                     return (
