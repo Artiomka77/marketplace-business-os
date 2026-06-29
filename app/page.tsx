@@ -2666,6 +2666,7 @@ async function buildCompanyDashboardRows(params: {
   const ownerReport = await buildDailyReport({
     from: params.dateFrom,
     to: params.dateTo,
+    debug: params.debug,
   });
   logRowsPerf("buildDailyReport", ownerReportStartedAt);
 

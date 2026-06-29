@@ -1464,6 +1464,7 @@ export async function buildDailyReport(params?: {
   date?: string;
   from?: string;
   to?: string;
+  debug?: boolean;
 }): Promise<DailyReport> {
   const range = getDailyReportRange(params);
 
@@ -1505,13 +1506,33 @@ export async function buildDailyReport(params?: {
 
   const companyReports = await Promise.all(
     companies.map(async (company) => {
+      const timedDailyMetric = async <T,>(
+        label: string,
+        task: () => Promise<T>
+      ) => {
+        const startedAt = Date.now();
+        const result = await task();
+
+        if (params?.debug) {
+          console.log(
+            `[daily-report-perf] ${range.periodLabel} company ${company.name} ${label}: ${
+              Date.now() - startedAt
+            }ms`
+          );
+        }
+
+        return result;
+      };
+
       const [wb, ozon, finance] = await Promise.all([
-        getWbMetrics(company.name, range),
-        getOzonMetrics(company.name, range),
-        getFinanceMetricsForCompany({
-          companyName: company.name,
-          range,
-        }),
+        timedDailyMetric("wb", () => getWbMetrics(company.name, range)),
+        timedDailyMetric("ozon", () => getOzonMetrics(company.name, range)),
+        timedDailyMetric("finance", () =>
+          getFinanceMetricsForCompany({
+            companyName: company.name,
+            range,
+          })
+        ),
       ]);
 
       const realNetProfit =
