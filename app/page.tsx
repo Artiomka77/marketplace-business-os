@@ -1,4 +1,4 @@
-import Link from "next/link";
+﻿import Link from "next/link";
 import type { ReactNode } from "react";
 
 import { prisma } from "@/lib/prisma";
@@ -925,6 +925,34 @@ function hasAnyCompanyMetric(row: CompanyDashboardRow) {
     row.ozonAbcA !== 0 ||
     row.ozonAbcB !== 0 ||
     row.ozonAbcC !== 0
+  );
+}
+
+function companyReportHasAnyDashboardMetric(
+  companyReport: Awaited<ReturnType<typeof buildDailyReport>>["companies"][number] | undefined
+) {
+  if (!companyReport) return false;
+
+  return (
+    companyReport.wb.ordersQty !== 0 ||
+    companyReport.wb.ordersAmount !== 0 ||
+    companyReport.wb.salesQty !== 0 ||
+    companyReport.wb.salesAmount !== 0 ||
+    companyReport.wb.adSpend !== 0 ||
+    companyReport.wb.stockQty !== 0 ||
+    companyReport.wb.netProfitAfterTax !== 0 ||
+    companyReport.ozon.ordersQty !== 0 ||
+    companyReport.ozon.ordersAmount !== 0 ||
+    companyReport.ozon.salesQty !== 0 ||
+    companyReport.ozon.salesAmount !== 0 ||
+    companyReport.ozon.adSpend !== 0 ||
+    companyReport.ozon.stockQty !== 0 ||
+    companyReport.ozon.netProfitAfterTax !== 0 ||
+    companyReport.finance.cashIncome !== 0 ||
+    companyReport.finance.cashOutflow !== 0 ||
+    companyReport.finance.netCashFlow !== 0 ||
+    companyReport.finance.netProfitImpact !== 0 ||
+    companyReport.finance.ownerWithdrawals !== 0
   );
 }
 
@@ -2648,117 +2676,128 @@ async function buildCompanyDashboardRows(params: {
     ])
   );
 
-  for (const company of params.companies) {
-    const companyReport = reportByCompanyName.get(company.name);
+  const companiesWithMetrics = params.companies.filter((company) =>
+    companyReportHasAnyDashboardMetric(reportByCompanyName.get(company.name))
+  );
 
-    const companyStartedAt = Date.now();
-    const [wbAnalytics, ozonAnalytics, cash] = await Promise.all([
-      getProfitAnalytics({
-        dateFrom: params.dateFrom,
-        dateTo: params.dateTo,
+  logRowsPerf(
+    `non-zero companies filter ${companiesWithMetrics.length}/${params.companies.length}`,
+    rowsStartedAt
+  );
+
+  const companyRows = await Promise.all(
+    companiesWithMetrics.map(async (company) => {
+      const companyReport = reportByCompanyName.get(company.name);
+
+      const companyStartedAt = Date.now();
+      const [wbAnalytics, ozonAnalytics, cash] = await Promise.all([
+        getProfitAnalytics({
+          dateFrom: params.dateFrom,
+          dateTo: params.dateTo,
+          companyName: company.name,
+        }),
+        getProfitAnalyticsOzon({
+          dateFrom: params.dateFrom,
+          dateTo: params.dateTo,
+          companyName: company.name,
+          usnRate:
+            company.usnRate !== null && company.usnRate !== undefined
+              ? Number(company.usnRate)
+              : 1,
+          vatRate:
+            company.vatRate !== null && company.vatRate !== undefined
+              ? Number(company.vatRate)
+              : 5,
+        }),
+        getFinanceCashResult({
+          companyName: company.name,
+          dateFrom: params.dateFrom,
+          dateTo: params.dateTo,
+        }),
+      ]);
+      logRowsPerf(`company ${company.name} analytics+cash`, companyStartedAt);
+
+      const wbAbc = countAbc(wbAnalytics.rows);
+      const ozonAbc = countAbc(ozonAnalytics.rows);
+
+      const ordersQty =
+        (companyReport?.wb.ordersQty ?? 0) + (companyReport?.ozon.ordersQty ?? 0);
+      const ordersAmount =
+        (companyReport?.wb.ordersAmount ?? 0) +
+        (companyReport?.ozon.ordersAmount ?? 0);
+      const orderDataLoadedDays =
+        (companyReport?.wb.orderDataLoadedDays ?? 0) +
+        (companyReport?.ozon.orderDataLoadedDays ?? 0);
+      const orderDataExpectedDays =
+        (companyReport?.wb.orderDataExpectedDays ?? 0) +
+        (companyReport?.ozon.orderDataExpectedDays ?? 0);
+
+      const wbRevenue = companyReport?.wb.salesAmount ?? 0;
+      const ozonRevenue = companyReport?.ozon.salesAmount ?? 0;
+      const totalRevenue = wbRevenue + ozonRevenue;
+
+      const operatingProfitAfterTax =
+        (companyReport?.wb.netProfitAfterTax ?? 0) +
+        (companyReport?.ozon.netProfitAfterTax ?? 0);
+
+      const netProfit =
+        companyReport?.finance.netProfitImpact ??
+        operatingProfitAfterTax +
+          cash.netProfitIncludedIncome -
+          cash.netProfitIncludedExpenses;
+
+      const personalExpenses =
+        companyReport?.finance.ownerWithdrawals ?? cash.personalExpenses;
+
+      const profitAfterOwnerWithdrawal = netProfit - personalExpenses;
+
+      const cashFlowResult = companyReport?.finance.netCashFlow ?? cash.cashFlowResult;
+
+      const adsCost =
+        (companyReport?.wb.adSpend ?? 0) + (companyReport?.ozon.adSpend ?? 0);
+
+      const drr = totalRevenue > 0 ? (adsCost / totalRevenue) * 100 : null;
+      const drrByOrders = ordersAmount > 0 ? (adsCost / ordersAmount) * 100 : null;
+
+      const wbStockQty = companyReport?.wb.stockQty ?? 0;
+      const ozonStockQty = companyReport?.ozon.stockQty ?? 0;
+
+      return {
         companyName: company.name,
-      }),
-      getProfitAnalyticsOzon({
-        dateFrom: params.dateFrom,
-        dateTo: params.dateTo,
-        companyName: company.name,
-        usnRate:
-          company.usnRate !== null && company.usnRate !== undefined
-            ? Number(company.usnRate)
-            : 1,
-        vatRate:
-          company.vatRate !== null && company.vatRate !== undefined
-            ? Number(company.vatRate)
-            : 5,
-      }),
-      getFinanceCashResult({
-        companyName: company.name,
-        dateFrom: params.dateFrom,
-        dateTo: params.dateTo,
-      }),
-    ]);
-    logRowsPerf(`company ${company.name} analytics+cash`, companyStartedAt);
+        ordersQty,
+        ordersAmount,
+        orderDataLoadedDays,
+        orderDataExpectedDays,
+        wbRevenue,
+        ozonRevenue,
+        totalRevenue,
+        operatingProfitAfterTax,
+        netProfit,
+        profitAfterOwnerWithdrawal,
+        cashFlowResult,
+        adsCost,
+        drr,
+        drrByOrders,
+        loanPayments: cash.loanPayments,
+        creditPrincipal: cash.creditPrincipal,
+        creditInterest: cash.creditInterest,
+        personalExpenses,
+        financialExpenses: cash.financialExpenses,
+        cashOnlyExpenses: cash.cashOnlyExpenses,
+        wbStockQty,
+        ozonStockQty,
+        warehouseStockQty: 0,
+        wbAbcA: wbAbc.A,
+        wbAbcB: wbAbc.B,
+        wbAbcC: wbAbc.C,
+        ozonAbcA: ozonAbc.A,
+        ozonAbcB: ozonAbc.B,
+        ozonAbcC: ozonAbc.C,
+      };
+    })
+  );
 
-    const wbAbc = countAbc(wbAnalytics.rows);
-    const ozonAbc = countAbc(ozonAnalytics.rows);
-
-    const ordersQty =
-      (companyReport?.wb.ordersQty ?? 0) + (companyReport?.ozon.ordersQty ?? 0);
-    const ordersAmount =
-      (companyReport?.wb.ordersAmount ?? 0) +
-      (companyReport?.ozon.ordersAmount ?? 0);
-    const orderDataLoadedDays =
-      (companyReport?.wb.orderDataLoadedDays ?? 0) +
-      (companyReport?.ozon.orderDataLoadedDays ?? 0);
-    const orderDataExpectedDays =
-      (companyReport?.wb.orderDataExpectedDays ?? 0) +
-      (companyReport?.ozon.orderDataExpectedDays ?? 0);
-
-    const wbRevenue = companyReport?.wb.salesAmount ?? 0;
-    const ozonRevenue = companyReport?.ozon.salesAmount ?? 0;
-    const totalRevenue = wbRevenue + ozonRevenue;
-
-    const operatingProfitAfterTax =
-      (companyReport?.wb.netProfitAfterTax ?? 0) +
-      (companyReport?.ozon.netProfitAfterTax ?? 0);
-
-    const netProfit =
-      companyReport?.finance.netProfitImpact ??
-      operatingProfitAfterTax +
-        cash.netProfitIncludedIncome -
-        cash.netProfitIncludedExpenses;
-
-    const personalExpenses =
-      companyReport?.finance.ownerWithdrawals ?? cash.personalExpenses;
-
-    const profitAfterOwnerWithdrawal = netProfit - personalExpenses;
-
-    const cashFlowResult = companyReport?.finance.netCashFlow ?? cash.cashFlowResult;
-
-    const adsCost =
-      (companyReport?.wb.adSpend ?? 0) + (companyReport?.ozon.adSpend ?? 0);
-
-    const drr = totalRevenue > 0 ? (adsCost / totalRevenue) * 100 : null;
-    const drrByOrders = ordersAmount > 0 ? (adsCost / ordersAmount) * 100 : null;
-
-    const wbStockQty = companyReport?.wb.stockQty ?? 0;
-    const ozonStockQty = companyReport?.ozon.stockQty ?? 0;
-
-    rows.push({
-      companyName: company.name,
-      ordersQty,
-      ordersAmount,
-      orderDataLoadedDays,
-      orderDataExpectedDays,
-      wbRevenue,
-      ozonRevenue,
-      totalRevenue,
-      operatingProfitAfterTax,
-      netProfit,
-      profitAfterOwnerWithdrawal,
-      cashFlowResult,
-      adsCost,
-      drr,
-      drrByOrders,
-      loanPayments: cash.loanPayments,
-      creditPrincipal: cash.creditPrincipal,
-      creditInterest: cash.creditInterest,
-      personalExpenses,
-      financialExpenses: cash.financialExpenses,
-      cashOnlyExpenses: cash.cashOnlyExpenses,
-      wbStockQty,
-      ozonStockQty,
-      // Собственный склад не включаем в главный KPI остатков Dashboard,
-      // чтобы показатель совпадал с Telegram-сводкой: WB + Ozon.
-      warehouseStockQty: 0,
-      wbAbcA: wbAbc.A,
-      wbAbcB: wbAbc.B,
-      wbAbcC: wbAbc.C,
-      ozonAbcA: ozonAbc.A,
-      ozonAbcB: ozonAbc.B,
-      ozonAbcC: ozonAbc.C,
-    });
-  }
+  rows.push(...companyRows);
 
   logRowsPerf("total", rowsStartedAt);
 
