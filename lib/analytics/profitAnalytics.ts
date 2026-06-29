@@ -1,4 +1,4 @@
-﻿import { prisma } from "@/lib/prisma";
+import { prisma } from "@/lib/prisma";
 
 function toNumber(value: unknown): number {
   if (value === null || value === undefined) return 0;
@@ -919,66 +919,6 @@ function applyWbFinanceExpenseTotals(
   return result;
 }
 
-export async function getProfitAnalyticsRowsForPeriod(params?: {
-  dateFrom?: string | null;
-  dateTo?: string | null;
-  companyName?: string | null;
-}) {
-  const companyName =
-    params?.companyName && params.companyName !== "ALL"
-      ? params.companyName
-      : null;
-
-  const companySettingsPromise = companyName
-    ? prisma.company.findFirst({
-        where: {
-          name: companyName,
-        },
-      })
-    : Promise.resolve(null);
-
-  const [companySettings, costs, adMaps, currentSalesRows, currentAdsRows] =
-    await Promise.all([
-      companySettingsPromise,
-      prisma.productCost.findMany({
-        orderBy: {
-          costDate: "desc",
-        },
-      }),
-      prisma.adCampaignMap.findMany({
-        where: {
-          marketplace: "WB",
-          ...(companyName ? { companyName } : {}),
-        },
-      }),
-      findWbSaleRowsByPeriod({
-        dateFrom: params?.dateFrom,
-        dateTo: params?.dateTo,
-        companyName,
-      }),
-      findAdsRowsByPeriod({
-        dateFrom: params?.dateFrom,
-        dateTo: params?.dateTo,
-        companyName,
-      }),
-    ]);
-
-  const usnRate = clampRate(companySettings?.usnRate, [0, 1, 2, 3, 4, 5, 6], 1);
-  const vatRate = clampRate(companySettings?.vatRate, [0, 5, 7], 5);
-
-  const current = calculateRowsAndTotals({
-    wbRows: currentSalesRows,
-    costs,
-    adsRows: currentAdsRows,
-    adMaps,
-    usnRate,
-    vatRate,
-  });
-
-  return {
-    rows: current.rows,
-  };
-}
 export async function getProfitAnalytics(params?: {
   dateFrom?: string | null;
   dateTo?: string | null;

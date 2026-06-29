@@ -1,4 +1,4 @@
-﻿import { prisma } from "@/lib/prisma";
+import { prisma } from "@/lib/prisma";
 
 function toNumber(value: unknown): number {
   if (value === null || value === undefined) return 0;
@@ -819,65 +819,6 @@ function keepOnlyLatestAdsImportPerReportDate<
   });
 }
 
-export async function getProfitAnalyticsOzonRowsForPeriod(params?: {
-  dateFrom?: string | null;
-  dateTo?: string | null;
-  usnRate?: string | number | null;
-  vatRate?: string | number | null;
-  companyName?: string | null;
-}) {
-  const usnRate = clampRate(params?.usnRate, [0, 1, 2, 3, 4, 5, 6], 1);
-  const vatRate = clampRate(params?.vatRate, [0, 5, 7], 5);
-  const companyName =
-    params?.companyName && params.companyName !== "ALL"
-      ? params.companyName
-      : null;
-
-  const [costs, ozonProducts, currentFinanceRows] = await Promise.all([
-    prisma.productCost.findMany({
-      orderBy: {
-        costDate: "desc",
-      },
-    }),
-    prisma.ozonProduct.findMany({
-      where: {
-        ...(companyName ? { companyName } : {}),
-      },
-      select: {
-        vendorCode: true,
-        sku: true,
-      },
-    }),
-    findLatestOzonFinanceRowsByPeriod({
-      dateFrom: params?.dateFrom,
-      dateTo: params?.dateTo,
-      companyName,
-    }),
-  ]);
-
-  const currentHasFinanceAds = hasOzonFinanceAdRows(currentFinanceRows);
-
-  const currentAdsRows = currentHasFinanceAds
-    ? []
-    : await findLatestOzonAdsRowsByPeriod({
-        dateFrom: params?.dateFrom,
-        dateTo: params?.dateTo,
-        companyName,
-      });
-
-  const current = calculateRowsAndTotals({
-    financeRows: currentFinanceRows,
-    adsRows: currentAdsRows,
-    costs,
-    ozonProducts,
-    usnRate,
-    vatRate,
-  });
-
-  return {
-    rows: current.rows,
-  };
-}
 export async function getProfitAnalyticsOzon(params?: {
   dateFrom?: string | null;
   dateTo?: string | null;
