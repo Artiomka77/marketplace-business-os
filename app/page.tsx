@@ -37,6 +37,10 @@ type CompanyForDashboard = {
 
 type CompanyDashboardRow = {
   companyName: string;
+  ordersQty: number;
+  ordersAmount: number;
+  orderDataLoadedDays: number;
+  orderDataExpectedDays: number;
   wbRevenue: number;
   ozonRevenue: number;
   totalRevenue: number;
@@ -46,6 +50,7 @@ type CompanyDashboardRow = {
   cashFlowResult: number;
   adsCost: number;
   drr: number | null;
+  drrByOrders: number | null;
   loanPayments: number;
   creditPrincipal: number;
   creditInterest: number;
@@ -65,6 +70,10 @@ type CompanyDashboardRow = {
 
 type DashboardSummary = {
   companyRows: CompanyDashboardRow[];
+  ordersQty: number;
+  ordersAmount: number;
+  orderDataLoadedDays: number;
+  orderDataExpectedDays: number;
   totalRevenue: number;
   wbRevenue: number;
   ozonRevenue: number;
@@ -74,6 +83,7 @@ type DashboardSummary = {
   cashFlowResult: number;
   adsCost: number;
   drr: number | null;
+  drrByOrders: number | null;
   loanPayments: number;
   creditPrincipal: number;
   creditInterest: number;
@@ -493,6 +503,38 @@ function formatRevenuePercent(value: number, revenue: number) {
   return `${formatPercent(percent)} от выручки`;
 }
 
+function hasPartialOrderCoverage(summary: DashboardSummary) {
+  return (
+    summary.orderDataExpectedDays > 0 &&
+    summary.orderDataLoadedDays < summary.orderDataExpectedDays
+  );
+}
+
+function formatOrderCoverage(summary: DashboardSummary) {
+  if (summary.orderDataExpectedDays <= 0) {
+    return "Покрытие заказов пока не рассчитано";
+  }
+
+  if (!hasPartialOrderCoverage(summary)) {
+    return "Заказы загружены за весь выбранный период";
+  }
+
+  return `Заказы загружены частично: ${formatNumber(
+    summary.orderDataLoadedDays
+  )} из ${formatNumber(
+    summary.orderDataExpectedDays
+  )} дневных срезов. ДРР от заказов может быть завышен.`;
+}
+
+function formatOrdersSubtitle(summary: DashboardSummary) {
+  const drrText =
+    summary.drrByOrders !== null ? formatPercent(summary.drrByOrders) : "—";
+
+  return `${formatCurrency(
+    summary.ordersAmount
+  )} · ДРР от заказов: ${drrText}`;
+}
+
 function calculateCompanyDelta(current: number, previous?: number | null) {
   const previousValue = previous ?? 0;
 
@@ -858,6 +900,8 @@ function abcPercent(count: number, total: number) {
 
 function hasAnyCompanyMetric(row: CompanyDashboardRow) {
   return (
+    row.ordersQty !== 0 ||
+    row.ordersAmount !== 0 ||
     row.wbRevenue !== 0 ||
     row.ozonRevenue !== 0 ||
     row.totalRevenue !== 0 ||
@@ -2623,6 +2667,18 @@ async function buildCompanyDashboardRows(params: {
     const wbAbc = countAbc(wbAnalytics.rows);
     const ozonAbc = countAbc(ozonAnalytics.rows);
 
+    const ordersQty =
+      (companyReport?.wb.ordersQty ?? 0) + (companyReport?.ozon.ordersQty ?? 0);
+    const ordersAmount =
+      (companyReport?.wb.ordersAmount ?? 0) +
+      (companyReport?.ozon.ordersAmount ?? 0);
+    const orderDataLoadedDays =
+      (companyReport?.wb.orderDataLoadedDays ?? 0) +
+      (companyReport?.ozon.orderDataLoadedDays ?? 0);
+    const orderDataExpectedDays =
+      (companyReport?.wb.orderDataExpectedDays ?? 0) +
+      (companyReport?.ozon.orderDataExpectedDays ?? 0);
+
     const wbRevenue = companyReport?.wb.salesAmount ?? 0;
     const ozonRevenue = companyReport?.ozon.salesAmount ?? 0;
     const totalRevenue = wbRevenue + ozonRevenue;
@@ -2648,12 +2704,17 @@ async function buildCompanyDashboardRows(params: {
       (companyReport?.wb.adSpend ?? 0) + (companyReport?.ozon.adSpend ?? 0);
 
     const drr = totalRevenue > 0 ? (adsCost / totalRevenue) * 100 : null;
+    const drrByOrders = ordersAmount > 0 ? (adsCost / ordersAmount) * 100 : null;
 
     const wbStockQty = companyReport?.wb.stockQty ?? 0;
     const ozonStockQty = companyReport?.ozon.stockQty ?? 0;
 
     rows.push({
       companyName: company.name,
+      ordersQty,
+      ordersAmount,
+      orderDataLoadedDays,
+      orderDataExpectedDays,
       wbRevenue,
       ozonRevenue,
       totalRevenue,
@@ -2663,6 +2724,7 @@ async function buildCompanyDashboardRows(params: {
       cashFlowResult,
       adsCost,
       drr,
+      drrByOrders,
       loanPayments: cash.loanPayments,
       creditPrincipal: cash.creditPrincipal,
       creditInterest: cash.creditInterest,
@@ -2688,6 +2750,17 @@ async function buildCompanyDashboardRows(params: {
 function summarizeDashboardRows(rows: CompanyDashboardRow[]): DashboardSummary {
   const companyRows = rows.filter(hasAnyCompanyMetric);
 
+  const ordersQty = companyRows.reduce((sum, row) => sum + row.ordersQty, 0);
+  const ordersAmount = companyRows.reduce((sum, row) => sum + row.ordersAmount, 0);
+  const orderDataLoadedDays = companyRows.reduce(
+    (sum, row) => sum + row.orderDataLoadedDays,
+    0
+  );
+  const orderDataExpectedDays = companyRows.reduce(
+    (sum, row) => sum + row.orderDataExpectedDays,
+    0
+  );
+
   const totalRevenue = companyRows.reduce((sum, row) => sum + row.totalRevenue, 0);
   const wbRevenue = companyRows.reduce((sum, row) => sum + row.wbRevenue, 0);
   const ozonRevenue = companyRows.reduce((sum, row) => sum + row.ozonRevenue, 0);
@@ -2711,6 +2784,7 @@ function summarizeDashboardRows(rows: CompanyDashboardRow[]): DashboardSummary {
 
   const adsCost = companyRows.reduce((sum, row) => sum + row.adsCost, 0);
   const drr = totalRevenue > 0 ? (adsCost / totalRevenue) * 100 : null;
+  const drrByOrders = ordersAmount > 0 ? (adsCost / ordersAmount) * 100 : null;
 
   const loanPayments = companyRows.reduce((sum, row) => sum + row.loanPayments, 0);
   const creditPrincipal = companyRows.reduce(
@@ -2758,6 +2832,10 @@ function summarizeDashboardRows(rows: CompanyDashboardRow[]): DashboardSummary {
 
   return {
     companyRows,
+    ordersQty,
+    ordersAmount,
+    orderDataLoadedDays,
+    orderDataExpectedDays,
     totalRevenue,
     wbRevenue,
     ozonRevenue,
@@ -2767,6 +2845,7 @@ function summarizeDashboardRows(rows: CompanyDashboardRow[]): DashboardSummary {
     cashFlowResult,
     adsCost,
     drr,
+    drrByOrders,
     loanPayments,
     creditPrincipal,
     creditInterest,
@@ -2894,6 +2973,8 @@ export default async function HomePage({ searchParams }: Props) {
   const previousReconciliationProblems = previousReconciliationRows.filter((row) => !row.isOk).length;
   const totalReconciliationProblems = currentReconciliationProblems + previousReconciliationProblems;
   const hasDataQualityIssues = totalReconciliationProblems > 0;
+  const hasOrderCoverageWarning = hasPartialOrderCoverage(current);
+  const ordersCoverageText = formatOrderCoverage(current);
 
   const debugHref = buildDashboardHref({
     period: selectedPeriod.key,
@@ -2908,6 +2989,13 @@ export default async function HomePage({ searchParams }: Props) {
   const presetPeriods = periodOptions.filter((period) => period.key !== "custom");
 
   const attentionItems = [
+    {
+      level: hasOrderCoverageWarning ? "warning" : "ok",
+      title: "Заказы",
+      text: ordersCoverageText,
+      href: "/analytics",
+      icon: "▦",
+    },
     {
       level: current.cashFlowResult < 0 ? "danger" : "ok",
       title: "Денежный поток",
@@ -3096,6 +3184,16 @@ export default async function HomePage({ searchParams }: Props) {
                 </div>
               </details>
 
+              {hasOrderCoverageWarning ? (
+                <span
+                  className="inline-flex items-center gap-1.5 rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-black text-amber-700 shadow-sm"
+                  title={ordersCoverageText}
+                >
+                  <span>⚠</span>
+                  <span>Заказы загружены частично</span>
+                </span>
+              ) : null}
+
               {hasDataQualityIssues ? (
                 <Link
                   href={debugHref}
@@ -3121,7 +3219,18 @@ export default async function HomePage({ searchParams }: Props) {
           </div>
         </section>
 
-        <section className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
+        <section className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-[repeat(7,minmax(0,1fr))]">
+          <MetricCard
+            title="Заказы"
+            value={current.ordersQty > 0 ? `${formatNumber(current.ordersQty)} шт` : "Нет данных"}
+            subtitle={formatOrdersSubtitle(current)}
+            icon="▦"
+            accent="bg-violet-50 text-violet-700"
+            valueClassName={hasOrderCoverageWarning ? "text-amber-700" : "text-slate-950"}
+            href="/analytics"
+            trend={buildMoneyTrend({ current: current.ordersAmount, previous: previous.ordersAmount, goodWhen: "up" })}
+          />
+
           <MetricCard
             title="Продажи/начисления"
             value={current.totalRevenue > 0 ? formatCurrency(current.totalRevenue) : "Нет данных"}
@@ -3177,9 +3286,11 @@ export default async function HomePage({ searchParams }: Props) {
           />
 
           <MetricCard
-            title="Реклама / ДРР"
+            title="Реклама / ДРР от продаж"
             value={current.drr !== null ? formatPercent(current.drr) : "Нет данных"}
-            subtitle={`Реклама всего: ${formatCurrency(current.adsCost)} · ${formatRevenuePercent(current.adsCost, current.totalRevenue)}`}
+            subtitle={`Реклама всего: ${formatCurrency(current.adsCost)} · ДРР от заказов: ${
+              current.drrByOrders !== null ? formatPercent(current.drrByOrders) : "—"
+            }`}
             icon="↗"
             accent="bg-orange-50 text-orange-700"
             valueClassName={current.drr !== null && current.drr > 12 ? "text-red-600" : "text-slate-950"}

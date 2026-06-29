@@ -27,7 +27,10 @@ type MarketplaceDailyMetrics = {
   marketplace: "WB" | "OZON";
   ordersQty: number;
   ordersAmount: number;
+  orderDataLoadedDays: number;
+  orderDataExpectedDays: number;
   ordersDataMissing: boolean;
+  ordersDataIncomplete: boolean;
   ordersDataMissingReason: string | null;
   salesQty: number;
   salesAmount: number;
@@ -65,6 +68,8 @@ type DailyReport = {
   totals: {
     ordersQty: number;
     ordersAmount: number;
+    orderDataLoadedDays: number;
+    orderDataExpectedDays: number;
     salesQty: number;
     salesAmount: number;
     adSpend: number;
@@ -323,6 +328,24 @@ export function getDailyReportRange(params?: {
     label: "Вчера",
     now: params?.now,
   });
+}
+
+function getExpectedOrderDays(range: DateRange) {
+  const diff = range.dateToExclusive.getTime() - range.dateFrom.getTime();
+  return Math.max(1, Math.round(diff / 86_400_000));
+}
+
+function getOrderDateKey(date: Date) {
+  return new Date(date.getTime() + 3 * 60 * 60 * 1000)
+    .toISOString()
+    .slice(0, 10);
+}
+
+function hasIncompleteOrderData(report: DailyReport) {
+  return (
+    report.totals.orderDataExpectedDays > 0 &&
+    report.totals.orderDataLoadedDays < report.totals.orderDataExpectedDays
+  );
 }
 
 function isWbSaleOperation(reason: string | null | undefined) {
@@ -916,21 +939,28 @@ async function getOrderStats(params: {
       },
     },
     select: {
+      orderDate: true,
       ordersQty: true,
       ordersAmount: true,
     },
   });
 
+  const loadedDateKeys = new Set<string>();
+
   return rows.reduce(
     (acc, row) => {
       acc.ordersQty += Number(row.ordersQty ?? 0);
       acc.ordersAmount += toNumber(row.ordersAmount);
+      loadedDateKeys.add(getOrderDateKey(row.orderDate));
+      acc.loadedDays = loadedDateKeys.size;
       return acc;
     },
     {
       ordersQty: 0,
       ordersAmount: 0,
       rowsCount: rows.length,
+      loadedDays: 0,
+      expectedDays: getExpectedOrderDays(params.range),
     }
   );
 }
@@ -1098,9 +1128,13 @@ async function getWbMetrics(companyName: string, range: DateRange) {
   }
 
   const ordersDataMissing = orderStats.rowsCount === 0;
+  const ordersDataIncomplete =
+    !ordersDataMissing && orderStats.loadedDays < orderStats.expectedDays;
   const ordersDataMissingReason = ordersDataMissing
     ? "WB заказы за этот период ещё не загружены в MarketplaceDailyOrderStat"
-    : null;
+    : ordersDataIncomplete
+      ? `WB заказы загружены частично: ${orderStats.loadedDays} из ${orderStats.expectedDays} дней`
+      : null;
 
   const salesDataMissing =
     effectiveSalesRows.length === 0 && orderStats.ordersQty > 0;
@@ -1123,7 +1157,10 @@ async function getWbMetrics(companyName: string, range: DateRange) {
     marketplace: "WB" as const,
     ordersQty: orderStats.ordersQty,
     ordersAmount: orderStats.ordersAmount,
+    orderDataLoadedDays: orderStats.loadedDays,
+    orderDataExpectedDays: orderStats.expectedDays,
     ordersDataMissing,
+    ordersDataIncomplete,
     ordersDataMissingReason,
     salesQty,
     salesAmount,
@@ -1287,9 +1324,13 @@ async function getOzonMetrics(companyName: string, range: DateRange) {
   });
 
   const ordersDataMissing = orderStats.rowsCount === 0;
+  const ordersDataIncomplete =
+    !ordersDataMissing && orderStats.loadedDays < orderStats.expectedDays;
   const ordersDataMissingReason = ordersDataMissing
     ? "Ozon заказы за этот период ещё не загружены в MarketplaceDailyOrderStat"
-    : null;
+    : ordersDataIncomplete
+      ? `Ozon заказы загружены частично: ${orderStats.loadedDays} из ${orderStats.expectedDays} дней`
+      : null;
 
   const hasOzonActivity = orderStats.rowsCount > 0 || salesAmount > 0;
   const adDataMissing =
@@ -1302,7 +1343,10 @@ async function getOzonMetrics(companyName: string, range: DateRange) {
     marketplace: "OZON" as const,
     ordersQty: orderStats.ordersQty,
     ordersAmount: orderStats.ordersAmount,
+    orderDataLoadedDays: orderStats.loadedDays,
+    orderDataExpectedDays: orderStats.expectedDays,
     ordersDataMissing,
+    ordersDataIncomplete,
     ordersDataMissingReason,
     salesQty: 0,
     salesAmount,
@@ -1327,6 +1371,8 @@ function addMarketplaceTotals(
 ) {
   target.ordersQty += source.ordersQty;
   target.ordersAmount += source.ordersAmount;
+  target.orderDataLoadedDays += source.orderDataLoadedDays;
+  target.orderDataExpectedDays += source.orderDataExpectedDays;
   target.salesQty += source.salesQty;
   target.salesAmount += source.salesAmount;
   target.adSpend += source.adSpend;
@@ -1338,6 +1384,12 @@ function buildWarnings(report: DailyReport) {
 
   if (report.totals.ordersQty <= 0 && report.totals.ordersAmount <= 0) {
     warnings.push("нет заказов за период");
+  }
+
+  if (hasIncompleteOrderData(report)) {
+    warnings.push(
+      `заказы загружены не за весь выбранный период: ${report.totals.orderDataLoadedDays} из ${report.totals.orderDataExpectedDays} дневных срезов. ДРР от заказов может быть завышен`
+    );
   }
 
   if (report.totals.salesQty <= 0 && report.totals.salesAmount <= 0) {
@@ -1365,10 +1417,18 @@ function buildWarnings(report: DailyReport) {
   for (const company of report.companies) {
     if (company.wb.ordersDataMissing) {
       warnings.push(`${company.companyName} WB: заказы ещё не загружены`);
+    } else if (company.wb.ordersDataIncomplete) {
+      warnings.push(
+        `${company.companyName} WB: заказы загружены частично (${company.wb.orderDataLoadedDays} из ${company.wb.orderDataExpectedDays} дней)`
+      );
     }
 
     if (company.ozon.ordersDataMissing) {
       warnings.push(`${company.companyName} Ozon: заказы ещё не загружены`);
+    } else if (company.ozon.ordersDataIncomplete) {
+      warnings.push(
+        `${company.companyName} Ozon: заказы загружены частично (${company.ozon.orderDataLoadedDays} из ${company.ozon.orderDataExpectedDays} дней)`
+      );
     }
 
     if (company.wb.adDataMissing) {
@@ -1426,6 +1486,8 @@ export async function buildDailyReport(params?: {
     totals: {
       ordersQty: 0,
       ordersAmount: 0,
+      orderDataLoadedDays: 0,
+      orderDataExpectedDays: 0,
       salesQty: 0,
       salesAmount: 0,
       adSpend: 0,
@@ -1529,9 +1591,15 @@ function marketplaceOrdersLine(metrics: MarketplaceDailyMetrics) {
     return "Заказы: данные ещё не загружены";
   }
 
+  const coverageText = metrics.ordersDataIncomplete
+    ? ` · частично: ${formatNumber(metrics.orderDataLoadedDays)} из ${formatNumber(
+        metrics.orderDataExpectedDays
+      )} дней`
+    : "";
+
   return `Заказы: ${formatNumber(metrics.ordersQty)} шт / ${formatMoney(
     metrics.ordersAmount
-  )}`;
+  )}${coverageText}`;
 }
 
 function marketplaceAdLine(metrics: MarketplaceDailyMetrics) {
@@ -1549,6 +1617,7 @@ type MarketplaceConclusionItem = {
   ordersAmount: number;
   salesAmount: number;
   adSpend: number;
+  ordersDataIncomplete: boolean;
 };
 
 function getMarketplaceConclusionItems(report: DailyReport) {
@@ -1562,6 +1631,7 @@ function getMarketplaceConclusionItems(report: DailyReport) {
       ordersAmount: company.wb.ordersAmount,
       salesAmount: company.wb.salesAmount,
       adSpend: company.wb.adSpend,
+      ordersDataIncomplete: company.wb.ordersDataIncomplete,
     });
 
     items.push({
@@ -1571,6 +1641,7 @@ function getMarketplaceConclusionItems(report: DailyReport) {
       ordersAmount: company.ozon.ordersAmount,
       salesAmount: company.ozon.salesAmount,
       adSpend: company.ozon.adSpend,
+      ordersDataIncomplete: company.ozon.ordersDataIncomplete,
     });
   }
 
@@ -1579,7 +1650,8 @@ function getMarketplaceConclusionItems(report: DailyReport) {
 
 function getHighestDrrItem(report: DailyReport) {
   const items = getMarketplaceConclusionItems(report).filter(
-    (item) => item.ordersAmount > 0 && item.adSpend > 0
+    (item) =>
+      item.ordersAmount > 0 && item.adSpend > 0 && !item.ordersDataIncomplete
   );
 
   if (items.length === 0) return null;
@@ -1592,6 +1664,12 @@ function getDrrConclusion(report: DailyReport) {
 
   if (report.totals.ordersAmount <= 0 || report.totals.adSpend <= 0) {
     return "Реклама: нет достаточно данных для оценки ДРР.";
+  }
+
+  if (hasIncompleteOrderData(report)) {
+    return `Заказы загружены частично, поэтому ДРР от заказов сейчас ориентировочный. Основной контроль пока по ДРР от продаж/начислений: ${formatPercent(
+      report.totals.drrBySales
+    )}.`;
   }
 
   if (totalDrr <= 7) {
@@ -1694,7 +1772,7 @@ function getHighDrrAction(report: DailyReport) {
 }
 
 function getSalesGapAction(report: DailyReport) {
-  if (report.totals.ordersAmount <= 0) return null;
+  if (report.totals.ordersAmount <= 0 || hasIncompleteOrderData(report)) return null;
 
   const salesToOrdersRatio =
     (report.totals.salesAmount / report.totals.ordersAmount) * 100;
@@ -1710,6 +1788,12 @@ function getSalesGapAction(report: DailyReport) {
 
 function buildOwnerActions(report: DailyReport) {
   const actions: string[] = [];
+
+  if (hasIncompleteOrderData(report)) {
+    actions.push(
+      "Не делать окончательные выводы по ДРР от заказов, пока заказы не накопятся за весь период. Сейчас главный ориентир — ДРР от продаж/начислений."
+    );
+  }
 
   if (report.totals.netCashFlow < 0) {
     actions.push(
