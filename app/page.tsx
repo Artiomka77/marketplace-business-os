@@ -23,6 +23,153 @@ type Props = {
   }>;
 };
 
+const DASHBOARD_HOME_CACHE_TTL_MS = 60_000;
+const DASHBOARD_HOME_CACHE_MAX_ENTRIES = 80;
+
+type DashboardHomeCacheEntry<T> = {
+  expiresAt: number;
+  value: T;
+};
+
+type DashboardDailyAnalyticsParams = Parameters<
+  typeof getDashboardDailyAnalytics
+>[0];
+
+const dashboardCompanyRowsCache = new Map<
+  string,
+  DashboardHomeCacheEntry<CompanyDashboardRow[]>
+>();
+
+const dashboardDailyAnalyticsCache = new Map<
+  string,
+  DashboardHomeCacheEntry<DashboardDailyPoint[]>
+>();
+
+function cleanupDashboardHomeCache<T>(
+  cache: Map<string, DashboardHomeCacheEntry<T>>,
+  now: number
+) {
+  for (const [key, entry] of cache.entries()) {
+    if (entry.expiresAt <= now || cache.size > DASHBOARD_HOME_CACHE_MAX_ENTRIES) {
+      cache.delete(key);
+    }
+  }
+}
+
+function normalizeDashboardCacheValue(value: unknown) {
+  return String(value ?? "");
+}
+
+function createCompanyRowsCacheKey(params: {
+  companies: CompanyForDashboard[];
+  dateFrom: string;
+  dateTo: string;
+  includeAbc?: boolean;
+}) {
+  return JSON.stringify({
+    v: 1,
+    kind: "company-rows",
+    dateFrom: params.dateFrom,
+    dateTo: params.dateTo,
+    includeAbc: params.includeAbc !== false,
+    companies: params.companies.map((company) => ({
+      name: company.name,
+      usnRate: normalizeDashboardCacheValue(company.usnRate),
+      vatRate: normalizeDashboardCacheValue(company.vatRate),
+    })),
+  });
+}
+
+function createDailyAnalyticsCacheKey(params: DashboardDailyAnalyticsParams) {
+  return JSON.stringify({
+    v: 1,
+    kind: "daily-analytics",
+    dateFrom: params.dateFrom,
+    dateTo: params.dateTo,
+    companyName: params.companyName ?? null,
+    expectedTotals: params.expectedTotals ?? null,
+  });
+}
+
+async function getCachedCompanyDashboardRows(params: {
+  companies: CompanyForDashboard[];
+  dateFrom: string;
+  dateTo: string;
+  debug?: boolean;
+  includeAbc?: boolean;
+}) {
+  const now = Date.now();
+  const cacheKey = createCompanyRowsCacheKey(params);
+  const cached = dashboardCompanyRowsCache.get(cacheKey);
+
+  if (cached && cached.expiresAt > now) {
+    if (params.debug) {
+      console.log(
+        `[dashboard-cache] company rows ${params.dateFrom}..${params.dateTo} includeAbc=${
+          params.includeAbc !== false
+        }: hit`
+      );
+    }
+
+    return cached.value;
+  }
+
+  if (params.debug) {
+    console.log(
+      `[dashboard-cache] company rows ${params.dateFrom}..${params.dateTo} includeAbc=${
+        params.includeAbc !== false
+      }: miss`
+    );
+  }
+
+  const value = await buildCompanyDashboardRows(params);
+
+  dashboardCompanyRowsCache.set(cacheKey, {
+    expiresAt: Date.now() + DASHBOARD_HOME_CACHE_TTL_MS,
+    value,
+  });
+
+  cleanupDashboardHomeCache(dashboardCompanyRowsCache, Date.now());
+
+  return value;
+}
+
+async function getCachedDashboardDailyAnalytics(
+  params: DashboardDailyAnalyticsParams & { debug?: boolean }
+) {
+  const now = Date.now();
+  const cacheKey = createDailyAnalyticsCacheKey(params);
+  const cached = dashboardDailyAnalyticsCache.get(cacheKey);
+
+  if (cached && cached.expiresAt > now) {
+    if (params.debug) {
+      console.log(
+        `[dashboard-cache] daily analytics ${params.dateFrom}..${params.dateTo}: hit`
+      );
+    }
+
+    return cached.value;
+  }
+
+  if (params.debug) {
+    console.log(
+      `[dashboard-cache] daily analytics ${params.dateFrom}..${params.dateTo}: miss`
+    );
+  }
+
+  const { debug: _debug, ...analyticsParams } = params;
+  const value = await getDashboardDailyAnalytics(analyticsParams);
+
+  dashboardDailyAnalyticsCache.set(cacheKey, {
+    expiresAt: Date.now() + DASHBOARD_HOME_CACHE_TTL_MS,
+    value,
+  });
+
+  cleanupDashboardHomeCache(dashboardDailyAnalyticsCache, Date.now());
+
+  return value;
+}
+
 type AbcCounts = {
   A: number;
   B: number;
@@ -3002,14 +3149,14 @@ export default async function HomePage({ searchParams }: Props) {
 
   const dashboardRowsStartedAt = Date.now();
   const [allCurrentRows, allPreviousRows] = await Promise.all([
-    buildCompanyDashboardRows({
+    getCachedCompanyDashboardRows({
       companies,
       dateFrom: selectedPeriod.dateFrom,
       dateTo: selectedPeriod.dateTo,
       debug: showDebug,
       includeAbc: true,
     }),
-    buildCompanyDashboardRows({
+    getCachedCompanyDashboardRows({
       companies,
       dateFrom: previousPeriod.dateFrom,
       dateTo: previousPeriod.dateTo,
@@ -3060,17 +3207,19 @@ export default async function HomePage({ searchParams }: Props) {
     selectedMarketplaceCompanyValue === "ALL" ? null : selectedMarketplaceCompanyValue;
   const dailyAnalyticsStartedAt = Date.now();
   const [currentDailyPoints, previousDailyPoints] = await Promise.all([
-    getDashboardDailyAnalytics({
+    getCachedDashboardDailyAnalytics({
       dateFrom: selectedPeriod.dateFrom,
       dateTo: selectedPeriod.dateTo,
       companyName: dailyCompanyName,
       expectedTotals: createDailyExpectedTotals(marketplaceCurrent),
+      debug: showDebug,
     }),
-    getDashboardDailyAnalytics({
+    getCachedDashboardDailyAnalytics({
       dateFrom: previousPeriod.dateFrom,
       dateTo: previousPeriod.dateTo,
       companyName: dailyCompanyName,
       expectedTotals: createDailyExpectedTotals(marketplacePrevious),
+      debug: showDebug,
     }),
   ]);
   logDashboardPerf("getDashboardDailyAnalytics current+previous", dailyAnalyticsStartedAt);
