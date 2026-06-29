@@ -1039,7 +1039,7 @@ function MetricCard({
   return (
     <Link
       href={href}
-      className="group rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm shadow-slate-200/60 transition hover:-translate-y-0.5 hover:border-indigo-200 hover:shadow-lg hover:shadow-indigo-100/50"
+      className="dashboard-metric-card group rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm shadow-slate-200/60 transition hover:-translate-y-0.5 hover:border-indigo-200 hover:shadow-lg hover:shadow-indigo-100/50"
     >
       <div className="flex items-start justify-between gap-4">
         <div
@@ -3133,7 +3133,7 @@ export default async function HomePage({ searchParams }: Props) {
   logDashboardPerf("homepage total before render", dashboardPerfStartedAt);
 
   return (
-    <main className="page-shell">
+    <main className="page-shell dashboard-page">
       <div className="page-container">
         <section className="sticky top-0 z-40 -mx-4 border-b border-slate-200 bg-background/90 px-4 py-2.5 backdrop-blur-xl sm:-mx-6 sm:px-6 xl:-mx-8 xl:px-8">
           <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
@@ -3309,7 +3309,7 @@ export default async function HomePage({ searchParams }: Props) {
           </div>
         </section>
 
-        <section className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-[repeat(7,minmax(0,1fr))]">
+        <section className="dashboard-kpi-grid grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-[repeat(7,minmax(0,1fr))]">
           <MetricCard
             title="Заказы"
             value={current.ordersAmount > 0 ? formatCurrency(current.ordersAmount) : "Нет данных"}

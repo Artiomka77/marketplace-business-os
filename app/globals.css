@@ -1,4 +1,4 @@
-@import "tailwindcss";
+﻿@import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 
@@ -207,3 +207,118 @@
   }
 }
 
+/* dashboard-kpi-balanced-compact:start */
+.dashboard-page {
+  overflow-x: clip;
+}
+
+.dashboard-page .dashboard-kpi-grid {
+  grid-template-columns: repeat(1, minmax(0, 1fr));
+  gap: 0.9rem;
+}
+
+.dashboard-page .dashboard-kpi-grid > * {
+  min-width: 0;
+}
+
+.dashboard-page .dashboard-metric-card {
+  display: flex;
+  min-width: 0;
+  min-height: 15.5rem;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: 1.35rem;
+  padding: 1rem !important;
+}
+
+.dashboard-page .dashboard-metric-card > div:first-child {
+  gap: 0.55rem;
+}
+
+.dashboard-page .dashboard-metric-card > div:first-child > div:first-child {
+  width: 2.35rem;
+  height: 2.35rem;
+  border-radius: 1rem;
+  font-size: 0.95rem;
+}
+
+.dashboard-page .dashboard-metric-card [title] {
+  max-width: 8.5rem;
+  white-space: normal;
+  text-align: center;
+  line-height: 1.1;
+  padding: 0.36rem 0.58rem;
+  font-size: 0.65rem;
+}
+
+.dashboard-page .dashboard-metric-card > div:nth-child(2) {
+  margin-top: 1rem;
+  font-size: 0.86rem;
+  line-height: 1.22rem;
+}
+
+.dashboard-page .dashboard-metric-card > div:nth-child(3) {
+  margin-top: 0.62rem;
+  font-size: clamp(1.28rem, 1.25vw, 1.68rem) !important;
+  line-height: 1.08 !important;
+  overflow-wrap: anywhere;
+}
+
+.dashboard-page .dashboard-metric-card > p {
+  margin-top: 0.72rem;
+  min-height: 3.7rem;
+  font-size: 0.78rem;
+  line-height: 1.32rem;
+  overflow-wrap: anywhere;
+}
+
+.dashboard-page .dashboard-metric-card > div:last-child {
+  margin-top: auto;
+  padding-top: 0.65rem;
+  font-size: 0.82rem;
+}
+
+@media (min-width: 768px) {
+  .dashboard-page .dashboard-kpi-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1180px) {
+  .dashboard-page .dashboard-kpi-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1420px) {
+  .dashboard-page .dashboard-kpi-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1680px) {
+  .dashboard-page .dashboard-kpi-grid {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+
+  .dashboard-page .dashboard-metric-card {
+    min-height: 14.5rem;
+  }
+}
+
+@media (min-width: 2200px) {
+  .dashboard-page .dashboard-kpi-grid {
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+  }
+
+  .dashboard-page .dashboard-metric-card {
+    min-height: 15rem;
+  }
+}
+
+@media (max-width: 640px) {
+  .dashboard-page .dashboard-metric-card {
+    min-height: 0;
+  }
+}
+/* dashboard-kpi-balanced-compact:end */
