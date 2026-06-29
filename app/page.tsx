@@ -3510,8 +3510,8 @@ export default async function HomePage({ searchParams }: Props) {
           />
         ) : null}
 
-        <section className="grid items-stretch gap-5 2xl:grid-cols-6">
-          <section className="panel h-full p-5 sm:p-6 2xl:col-span-4">
+        <section className="grid gap-5">
+          <section className="panel h-full p-5 sm:p-6">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
               <div>
                 <div className="section-eyebrow">Компании</div>
@@ -3547,33 +3547,33 @@ export default async function HomePage({ searchParams }: Props) {
             )}
           </section>
 
-          <section className="panel h-full p-5 sm:p-6 2xl:col-span-2">
+          <section className="panel p-4 sm:p-5">
             <div>
               <h2 className="text-xl font-black tracking-tight text-slate-950">
                 Быстрые действия
               </h2>
-              <p className="mt-2 text-sm leading-6 text-slate-500">
+              <p className="mt-1 text-sm leading-6 text-slate-500">
                 Быстрый переход к действиям после просмотра Dashboard.
               </p>
             </div>
 
-            <div className="mt-5 grid gap-3 sm:grid-cols-2">
+            <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-6">
               {quickActions.map((item) => (
                 <Link
                   key={item.href + item.title}
                   href={item.href}
-                  className="group flex items-center gap-3 rounded-2xl border border-slate-200 bg-white p-4 transition hover:border-indigo-200 hover:bg-indigo-50/30"
+                  className="group flex min-w-0 items-center gap-3 rounded-2xl border border-slate-200 bg-white p-3 transition hover:border-indigo-200 hover:bg-indigo-50/30"
                 >
-                  <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl text-base font-black ${item.tone}`}>
+                  <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl text-sm font-black ${item.tone}`}>
                     {item.icon}
                   </div>
 
                   <div className="min-w-0 flex-1">
-                    <div className="text-sm font-black leading-5 text-slate-950">{item.title}</div>
-                    <p className="mt-1 text-xs leading-4 text-slate-500">{item.description}</p>
+                    <div className="truncate text-sm font-black leading-5 text-slate-950">{item.title}</div>
+                    <p className="mt-0.5 text-xs leading-4 text-slate-500">{item.description}</p>
                   </div>
 
-                  <div className="text-base font-black text-slate-300 transition group-hover:translate-x-1 group-hover:text-indigo-500">
+                  <div className="shrink-0 text-base font-black text-slate-300 transition group-hover:translate-x-1 group-hover:text-indigo-500">
                     →
                   </div>
                 </Link>
