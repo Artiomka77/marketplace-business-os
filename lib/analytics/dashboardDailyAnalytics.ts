@@ -176,6 +176,25 @@ function isWbReturnOperation(reason: string | null) {
   return normalizeText(reason) === "возврат";
 }
 
+
+function isOzonFinanceAdOperation(operationType: unknown) {
+  const value = normalizeText(operationType);
+
+  return (
+    value.includes("оплата за клик") ||
+    value.includes("продвижение с оплатой за заказ") ||
+    value.includes("оплата за заказ") ||
+    (value.includes("реклам") && !value.includes("сторно"))
+  );
+}
+
+function getOzonFinanceAdAmount(row: { totalAmount: unknown; salesAmount: unknown }) {
+  const totalAmount = Math.abs(toNumber(row.totalAmount));
+  const salesAmount = Math.abs(toNumber(row.salesAmount));
+
+  return totalAmount > 0 ? totalAmount : salesAmount;
+}
+
 function getDateSpan(dateFrom: Date | null, dateTo: Date | null) {
   if (!dateFrom && !dateTo) return [];
 
@@ -547,6 +566,7 @@ export async function getDashboardDailyAnalytics(params: {
         select: {
           accrualDate: true,
           companyName: true,
+          operationType: true,
           sku: true,
           vendorCode: true,
           quantity: true,
@@ -657,11 +677,20 @@ export async function getDashboardDailyAnalytics(params: {
     }
   }
 
+  const hasOzonFinanceAds = ozonFinance.some((row) =>
+    isOzonFinanceAdOperation(row.operationType)
+  );
+
   for (const row of ozonFinance) {
     if (!row.accrualDate) continue;
     const date = toIsoDate(row.accrualDate);
     const point = pointsByDate.get(date);
     if (!point) continue;
+
+    if (isOzonFinanceAdOperation(row.operationType)) {
+      point.adsCost += getOzonFinanceAdAmount(row);
+      continue;
+    }
 
     const sku = normalizeText(row.sku);
     const vendorCode = normalizeText(row.vendorCode) || ozonVendorCodeBySku.get(sku) || sku;
@@ -678,13 +707,15 @@ export async function getDashboardDailyAnalytics(params: {
     addTaxForRevenue(point, salesAmount, row.companyName, taxByCompany);
   }
 
-  for (const row of keepLatestOzonAdsRowsPerDate(ozonAdsRaw)) {
-    if (!row.reportDate) continue;
-    const date = toIsoDate(row.reportDate);
-    const point = pointsByDate.get(date);
-    if (!point) continue;
+  if (!hasOzonFinanceAds) {
+    for (const row of keepLatestOzonAdsRowsPerDate(ozonAdsRaw)) {
+      if (!row.reportDate) continue;
+      const date = toIsoDate(row.reportDate);
+      const point = pointsByDate.get(date);
+      if (!point) continue;
 
-    point.adsCost += toNumber(row.spend);
+      point.adsCost += toNumber(row.spend);
+    }
   }
 
   const financeRowsByDate = new Map<string, typeof financeTransactions>();

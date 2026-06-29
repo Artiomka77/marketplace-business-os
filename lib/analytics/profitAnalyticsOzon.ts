@@ -53,6 +53,29 @@ function calculateVatTax(revenue: number, vatRate: number) {
   return revenue * (vatRate / (100 + vatRate));
 }
 
+
+function isOzonFinanceAdOperation(operationType: unknown) {
+  const value = normalizeText(operationType);
+
+  return (
+    value.includes("оплата за клик") ||
+    value.includes("продвижение с оплатой за заказ") ||
+    value.includes("оплата за заказ") ||
+    (value.includes("реклам") && !value.includes("сторно"))
+  );
+}
+
+function getOzonFinanceAdAmount(row: OzonFinanceRecord) {
+  const totalAmount = Math.abs(toNumber(row.totalAmount));
+  const salesAmount = Math.abs(toNumber(row.salesAmount));
+
+  return totalAmount > 0 ? totalAmount : salesAmount;
+}
+
+function hasOzonFinanceAdRows(rows: OzonFinanceRecord[]) {
+  return rows.some((row) => isOzonFinanceAdOperation(row.operationType));
+}
+
 function calculatePreviousPeriod(dateFrom?: string | null, dateTo?: string | null) {
   if (!dateFrom || !dateTo) return null;
 
@@ -192,6 +215,7 @@ type CostRecord = {
 
 type OzonFinanceRecord = {
   accrualDate: Date | null;
+  operationType: string | null;
   sku: string | null;
   vendorCode: string | null;
   quantity: number | null;
@@ -386,9 +410,21 @@ function calculateRowsAndTotals({
   const { adsCostByVendorCode, undistributedAdsCost } =
     buildAdsCostByVendorCode(adsRows, ozonProducts);
 
+  const financeAdsCost = financeRows.reduce(
+    (sum, row) =>
+      isOzonFinanceAdOperation(row.operationType)
+        ? sum + getOzonFinanceAdAmount(row)
+        : sum,
+    0
+  );
+
+  const marketplaceFinanceRows = financeRows.filter(
+    (row) => !isOzonFinanceAdOperation(row.operationType)
+  );
+
   const grouped = new Map<string, OzonProfitAnalyticsRow>();
 
-  for (const financeRow of financeRows) {
+  for (const financeRow of marketplaceFinanceRows) {
     const skuKey = normalizeText(financeRow.sku);
     const directVendorCodeKey = normalizeText(financeRow.vendorCode);
     const mappedVendorCodeKey = skuKey
@@ -613,8 +649,14 @@ function calculateRowsAndTotals({
 
       return acc;
     },
-    createEmptyTotals(usnRate, vatRate, undistributedAdsCost)
+    createEmptyTotals(usnRate, vatRate, undistributedAdsCost + financeAdsCost)
   );
+
+  if (totals.undistributedAdsCost > 0) {
+    totals.adsCost += totals.undistributedAdsCost;
+    totals.marginProfit -= totals.undistributedAdsCost;
+    totals.netProfitAfterTax -= totals.undistributedAdsCost;
+  }
 
   totals.marginProfitPercent =
     totals.revenue > 0 ? (totals.marginProfit / totals.revenue) * 100 : 0;
@@ -813,11 +855,15 @@ export async function getProfitAnalyticsOzon(params?: {
     companyName,
   });
 
-  const currentAdsRows = await findLatestOzonAdsRowsByPeriod({
-    dateFrom: params?.dateFrom,
-    dateTo: params?.dateTo,
-    companyName,
-  });
+  const currentHasFinanceAds = hasOzonFinanceAdRows(currentFinanceRows);
+
+  const currentAdsRows = currentHasFinanceAds
+    ? []
+    : await findLatestOzonAdsRowsByPeriod({
+        dateFrom: params?.dateFrom,
+        dateTo: params?.dateTo,
+        companyName,
+      });
 
   const previousPeriod = calculatePreviousPeriod(
     params?.dateFrom,
@@ -832,13 +878,16 @@ export async function getProfitAnalyticsOzon(params?: {
       })
     : [];
 
-  const previousAdsRows = previousPeriod
-    ? await findLatestOzonAdsRowsByDatePeriod({
-        dateFrom: previousPeriod.dateFrom,
-        dateTo: previousPeriod.dateTo,
-        companyName,
-      })
-    : [];
+  const previousHasFinanceAds = hasOzonFinanceAdRows(previousFinanceRows);
+
+  const previousAdsRows =
+    previousPeriod && !previousHasFinanceAds
+      ? await findLatestOzonAdsRowsByDatePeriod({
+          dateFrom: previousPeriod.dateFrom,
+          dateTo: previousPeriod.dateTo,
+          companyName,
+        })
+      : [];
 
   const current = calculateRowsAndTotals({
     financeRows: currentFinanceRows,
