@@ -2,8 +2,8 @@
 import type { ReactNode } from "react";
 
 import { prisma } from "@/lib/prisma";
-import { getProfitAnalytics } from "@/lib/analytics/profitAnalytics";
-import { getProfitAnalyticsOzon } from "@/lib/analytics/profitAnalyticsOzon";
+import { getProfitAnalyticsRowsForPeriod } from "@/lib/analytics/profitAnalytics";
+import { getProfitAnalyticsOzonRowsForPeriod } from "@/lib/analytics/profitAnalyticsOzon";
 import {
   getDashboardDailyAnalytics,
   type DashboardDailyPoint,
@@ -2704,14 +2704,14 @@ async function buildCompanyDashboardRows(params: {
 
       const [wbAnalytics, ozonAnalytics, cash] = await Promise.all([
         timedCompanyTask("wbAnalytics", () =>
-          getProfitAnalytics({
+          getProfitAnalyticsRowsForPeriod({
             dateFrom: params.dateFrom,
             dateTo: params.dateTo,
             companyName: company.name,
           })
         ),
         timedCompanyTask("ozonAnalytics", () =>
-          getProfitAnalyticsOzon({
+          getProfitAnalyticsOzonRowsForPeriod({
             dateFrom: params.dateFrom,
             dateTo: params.dateTo,
             companyName: company.name,
