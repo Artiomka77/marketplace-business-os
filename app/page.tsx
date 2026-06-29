@@ -9,6 +9,7 @@ import {
   type DashboardDailyPoint,
 } from "@/lib/analytics/dashboardDailyAnalytics";
 import { calculateFinanceMetricsForRows } from "@/lib/finance/financeMetrics";
+import { buildDailyReport } from "@/lib/telegram/dailyReport";
 
 type Props = {
   searchParams?: Promise<{
@@ -487,7 +488,7 @@ function getRevenuePercent(value: number, revenue: number) {
 function formatRevenuePercent(value: number, revenue: number) {
   const percent = getRevenuePercent(value, revenue);
 
-  if (percent === null) return "— от выручки";
+  if (percent === null) return "— от продаж/начислений";
 
   return `${formatPercent(percent)} от выручки`;
 }
@@ -1179,7 +1180,7 @@ function InteractiveDonut({
         />
 
         <div className="pointer-events-none relative z-30 flex h-20 w-20 flex-col items-center justify-center rounded-full bg-white text-center shadow-sm ring-1 ring-slate-100 sm:h-24 sm:w-24">
-          <div className="text-[10px] font-bold text-slate-400 sm:text-xs">Выручка всего</div>
+          <div className="text-[10px] font-bold text-slate-400 sm:text-xs">Продажи/начисления</div>
           <div className="mt-1 text-sm font-black text-slate-950 sm:text-base">
             {formatCurrency(total)}
           </div>
@@ -1833,7 +1834,7 @@ function buildReconciliationRows(summary: DashboardSummary, points: DashboardDai
   const daily = summarizeDailyForReconciliation(points);
 
   return [
-    makeMoneyReconciliationRow("Выручка всего", summary.totalRevenue, daily.revenue),
+    makeMoneyReconciliationRow("Продажи/начисления", summary.totalRevenue, daily.revenue),
     makeMoneyReconciliationRow("Выручка WB", summary.wbRevenue, daily.wbRevenue),
     makeMoneyReconciliationRow("Выручка Ozon", summary.ozonRevenue, daily.ozonRevenue),
     makeMoneyReconciliationRow("Реклама", summary.adsCost, daily.adsCost),
@@ -2030,7 +2031,7 @@ function MarketplaceShare({
         <div>
           <div className="section-eyebrow">Разрез по маркетплейсам</div>
           <h2 className="mt-1 text-xl font-black tracking-tight text-slate-950">
-            Доля выручки WB / Ozon
+            Доля продаж/начислений WB / Ozon
           </h2>
         </div>
 
@@ -2124,7 +2125,7 @@ function MarketplaceShare({
         <div className="flex items-center gap-3 border-b border-slate-100 p-3 sm:border-r xl:border-b-0">
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-violet-50 text-base font-black text-violet-700">▦</div>
           <div>
-            <div className="text-xs font-bold text-slate-500">Выручка всего</div>
+            <div className="text-xs font-bold text-slate-500">Продажи/начисления</div>
             <div className="mt-1 text-base font-black text-slate-950">{formatCurrency(current.totalRevenue)}</div>
             <div className="mt-1 text-xs font-black text-emerald-600">{formatDelta(percentDelta(current.totalRevenue, previous.totalRevenue), "money")}</div>
           </div>
@@ -2575,58 +2576,81 @@ async function buildCompanyDashboardRows(params: {
 }) {
   const rows: CompanyDashboardRow[] = [];
 
+  // Важно: Dashboard должен использовать те же финансовые итоги, что и Telegram-сводка собственника.
+  // Поэтому продажи/начисления, реклама, ДДС, чистая прибыль и остатки берём из buildDailyReport.
+  // getProfitAnalytics / getProfitAnalyticsOzon оставляем здесь только для ABC-разрезов.
+  const ownerReport = await buildDailyReport({
+    from: params.dateFrom,
+    to: params.dateTo,
+  });
+
+  const reportByCompanyName = new Map(
+    ownerReport.companies.map((companyReport) => [
+      companyReport.companyName,
+      companyReport,
+    ])
+  );
+
   for (const company of params.companies) {
-    const wb = await getProfitAnalytics({
-      dateFrom: params.dateFrom,
-      dateTo: params.dateTo,
-      companyName: company.name,
-    });
+    const companyReport = reportByCompanyName.get(company.name);
 
-    const ozon = await getProfitAnalyticsOzon({
-      dateFrom: params.dateFrom,
-      dateTo: params.dateTo,
-      companyName: company.name,
-      usnRate:
-        company.usnRate !== null && company.usnRate !== undefined
-          ? Number(company.usnRate)
-          : 1,
-      vatRate:
-        company.vatRate !== null && company.vatRate !== undefined
-          ? Number(company.vatRate)
-          : 5,
-    });
-
-    const cash = await getFinanceCashResult({
-      companyName: company.name,
-      dateFrom: params.dateFrom,
-      dateTo: params.dateTo,
-    });
-
-    const [wbStockQty, ozonStockQty, warehouseStockQty] = await Promise.all([
-      getLatestWbStockQty(company.name),
-      getLatestOzonStockQty(company.name),
-      getLatestWarehouseStockQty(company.name),
+    const [wbAnalytics, ozonAnalytics, cash] = await Promise.all([
+      getProfitAnalytics({
+        dateFrom: params.dateFrom,
+        dateTo: params.dateTo,
+        companyName: company.name,
+      }),
+      getProfitAnalyticsOzon({
+        dateFrom: params.dateFrom,
+        dateTo: params.dateTo,
+        companyName: company.name,
+        usnRate:
+          company.usnRate !== null && company.usnRate !== undefined
+            ? Number(company.usnRate)
+            : 1,
+        vatRate:
+          company.vatRate !== null && company.vatRate !== undefined
+            ? Number(company.vatRate)
+            : 5,
+      }),
+      getFinanceCashResult({
+        companyName: company.name,
+        dateFrom: params.dateFrom,
+        dateTo: params.dateTo,
+      }),
     ]);
 
-    const wbAbc = countAbc(wb.rows);
-    const ozonAbc = countAbc(ozon.rows);
+    const wbAbc = countAbc(wbAnalytics.rows);
+    const ozonAbc = countAbc(ozonAnalytics.rows);
 
-    const wbRevenue = wb.totals.revenue;
-    const ozonRevenue = ozon.totals.revenue;
+    const wbRevenue = companyReport?.wb.salesAmount ?? 0;
+    const ozonRevenue = companyReport?.ozon.salesAmount ?? 0;
     const totalRevenue = wbRevenue + ozonRevenue;
 
     const operatingProfitAfterTax =
-      wb.totals.netProfitAfterTax + ozon.totals.netProfitAfterTax;
-
-    const adsCost = wb.totals.adsCost + ozon.totals.adsCost;
-    const drr = totalRevenue > 0 ? (adsCost / totalRevenue) * 100 : null;
+      (companyReport?.wb.netProfitAfterTax ?? 0) +
+      (companyReport?.ozon.netProfitAfterTax ?? 0);
 
     const netProfit =
+      companyReport?.finance.netProfitImpact ??
       operatingProfitAfterTax +
-      cash.netProfitIncludedIncome -
-      cash.netProfitIncludedExpenses;
+        cash.netProfitIncludedIncome -
+        cash.netProfitIncludedExpenses;
 
-    const profitAfterOwnerWithdrawal = netProfit - cash.personalExpenses;
+    const personalExpenses =
+      companyReport?.finance.ownerWithdrawals ?? cash.personalExpenses;
+
+    const profitAfterOwnerWithdrawal = netProfit - personalExpenses;
+
+    const cashFlowResult = companyReport?.finance.netCashFlow ?? cash.cashFlowResult;
+
+    const adsCost =
+      (companyReport?.wb.adSpend ?? 0) + (companyReport?.ozon.adSpend ?? 0);
+
+    const drr = totalRevenue > 0 ? (adsCost / totalRevenue) * 100 : null;
+
+    const wbStockQty = companyReport?.wb.stockQty ?? 0;
+    const ozonStockQty = companyReport?.ozon.stockQty ?? 0;
 
     rows.push({
       companyName: company.name,
@@ -2636,18 +2660,20 @@ async function buildCompanyDashboardRows(params: {
       operatingProfitAfterTax,
       netProfit,
       profitAfterOwnerWithdrawal,
-      cashFlowResult: cash.cashFlowResult,
+      cashFlowResult,
       adsCost,
       drr,
       loanPayments: cash.loanPayments,
       creditPrincipal: cash.creditPrincipal,
       creditInterest: cash.creditInterest,
-      personalExpenses: cash.personalExpenses,
+      personalExpenses,
       financialExpenses: cash.financialExpenses,
       cashOnlyExpenses: cash.cashOnlyExpenses,
       wbStockQty,
       ozonStockQty,
-      warehouseStockQty,
+      // Собственный склад не включаем в главный KPI остатков Dashboard,
+      // чтобы показатель совпадал с Telegram-сводкой: WB + Ozon.
+      warehouseStockQty: 0,
       wbAbcA: wbAbc.A,
       wbAbcB: wbAbc.B,
       wbAbcC: wbAbc.C,
@@ -2659,7 +2685,6 @@ async function buildCompanyDashboardRows(params: {
 
   return rows;
 }
-
 function summarizeDashboardRows(rows: CompanyDashboardRow[]): DashboardSummary {
   const companyRows = rows.filter(hasAnyCompanyMetric);
 
@@ -3098,7 +3123,7 @@ export default async function HomePage({ searchParams }: Props) {
 
         <section className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
           <MetricCard
-            title="Выручка всего"
+            title="Продажи/начисления"
             value={current.totalRevenue > 0 ? formatCurrency(current.totalRevenue) : "Нет данных"}
             subtitle={`WB: ${formatCurrency(current.wbRevenue)} · Ozon: ${formatCurrency(current.ozonRevenue)}`}
             icon="▣"
