@@ -3301,7 +3301,7 @@ export default async function HomePage({ searchParams }: Props) {
   logDashboardPerf("homepage total before render", dashboardPerfStartedAt);
 
   return (
-    <main className="page-shell">
+    <main className="page-shell dashboard-page">
       <div className="page-container">
         <section className="sticky top-0 z-40 -mx-4 border-b border-slate-200 bg-background/90 px-4 py-2.5 backdrop-blur-xl sm:-mx-6 sm:px-6 xl:-mx-8 xl:px-8">
           <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
