@@ -1186,9 +1186,9 @@ function MetricCard({
   return (
     <Link
       href={href}
-      className="group rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm shadow-slate-200/60 transition hover:-translate-y-0.5 hover:border-indigo-200 hover:shadow-lg hover:shadow-indigo-100/50"
+      className="group min-w-0 overflow-hidden rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/60 transition hover:-translate-y-0.5 hover:border-indigo-200 hover:shadow-lg hover:shadow-indigo-100/50 sm:p-5"
     >
-      <div className="flex items-start justify-between gap-4">
+      <div className="flex min-w-0 items-start justify-between gap-3">
         <div
           className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl text-lg ${accent}`}
         >
@@ -1197,7 +1197,7 @@ function MetricCard({
 
         {trend ? (
           <div
-            className={`rounded-full px-3 py-1 text-[11px] font-black ring-1 ${trend.className}`}
+            className={`max-w-[128px] truncate rounded-full px-2.5 py-1 text-[10px] font-black ring-1 sm:max-w-[160px] sm:px-3 sm:text-[11px] ${trend.className}`}
             title={trend.title}
           >
             {trend.label}
@@ -1209,15 +1209,15 @@ function MetricCard({
         )}
       </div>
 
-      <div className="mt-5 text-sm font-bold text-slate-600">{title}</div>
+      <div className="mt-4 min-w-0 text-sm font-bold leading-5 text-slate-600">{title}</div>
 
       <div
-        className={`mt-3 break-words text-[26px] font-black leading-tight tracking-tight ${valueClassName}`}
+        className={`mt-3 min-w-0 break-words text-[clamp(1.25rem,1.4vw,1.625rem)] font-black leading-tight tracking-tight [overflow-wrap:anywhere] ${valueClassName}`}
       >
         {value}
       </div>
 
-      <p className="mt-3 min-h-[42px] text-sm leading-6 text-slate-500">
+      <p className="mt-3 min-h-[42px] min-w-0 text-sm leading-6 text-slate-500 [overflow-wrap:anywhere]">
         {subtitle}
       </p>
 
@@ -2195,7 +2195,7 @@ function DailyDataReconciliation({
         </span>
       </div>
 
-      <div className="mt-5 grid gap-4 xl:grid-cols-2">
+      <div className="mt-5 grid min-w-0 gap-4 min-[1700px]:grid-cols-2">
         <ReconciliationTable title="Текущий период" rows={currentRows} />
         <ReconciliationTable title="Период сравнения" rows={previousRows} />
       </div>
@@ -2283,12 +2283,12 @@ function MarketplaceShare({
       </div>
 
       <div className="mt-5 space-y-4">
-        <div className="grid gap-4 md:grid-cols-[160px_1fr_58px] md:items-center">
+        <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(120px,160px)_minmax(0,1fr)_58px] lg:items-center">
           <div className="flex items-start gap-3">
             <span className="mt-1 h-3 w-3 rounded-full bg-violet-600" />
             <div>
               <div className="text-base font-black text-violet-700">Wildberries</div>
-              <div className="mt-1 text-lg font-black text-slate-950">{formatCurrency(wbRevenue)}</div>
+              <div className="mt-1 min-w-0 break-words text-lg font-black leading-tight text-slate-950 [overflow-wrap:anywhere]">{formatCurrency(wbRevenue)}</div>
               <div className="mt-1 text-xs font-bold text-slate-400">{formatCurrency(previousWbRevenue)}</div>
             </div>
           </div>
@@ -2311,12 +2311,12 @@ function MarketplaceShare({
           </div>
         </div>
 
-        <div className="grid gap-4 md:grid-cols-[160px_1fr_58px] md:items-center">
+        <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(120px,160px)_minmax(0,1fr)_58px] lg:items-center">
           <div className="flex items-start gap-3">
             <span className="mt-1 h-3 w-3 rounded-full bg-sky-500" />
             <div>
               <div className="text-base font-black text-sky-700">Ozon</div>
-              <div className="mt-1 text-lg font-black text-slate-950">{formatCurrency(ozonRevenue)}</div>
+              <div className="mt-1 min-w-0 break-words text-lg font-black leading-tight text-slate-950 [overflow-wrap:anywhere]">{formatCurrency(ozonRevenue)}</div>
               <div className="mt-1 text-xs font-bold text-slate-400">{formatCurrency(previousOzonRevenue)}</div>
             </div>
           </div>
@@ -2340,39 +2340,39 @@ function MarketplaceShare({
         </div>
       </div>
 
-      <div className="mt-5 grid overflow-hidden rounded-2xl border border-slate-200 bg-white sm:grid-cols-2 xl:grid-cols-4">
-        <div className="flex items-center gap-3 border-b border-slate-100 p-3 sm:border-r xl:border-b-0">
+      <div className="mt-5 grid min-w-0 overflow-hidden rounded-2xl border border-slate-200 bg-white sm:grid-cols-2 min-[1900px]:grid-cols-4">
+        <div className="flex min-w-0 items-center gap-3 border-b border-slate-100 p-3 sm:border-r min-[1900px]:border-b-0">
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-violet-50 text-base font-black text-violet-700">▦</div>
           <div>
             <div className="text-xs font-bold text-slate-500">Продажи/начисления</div>
-            <div className="mt-1 text-base font-black text-slate-950">{formatCurrency(current.totalRevenue)}</div>
+            <div className="mt-1 min-w-0 break-words text-[15px] font-black leading-tight text-slate-950 [overflow-wrap:anywhere]">{formatCurrency(current.totalRevenue)}</div>
             <div className="mt-1 text-xs font-black text-emerald-600">{formatDelta(percentDelta(current.totalRevenue, previous.totalRevenue), "money")}</div>
           </div>
         </div>
 
-        <div className="flex items-center gap-3 border-b border-slate-100 p-3 xl:border-b-0 xl:border-r">
+        <div className="flex min-w-0 items-center gap-3 border-b border-slate-100 p-3 min-[1900px]:border-b-0 min-[1900px]:border-r">
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-red-50 text-base font-black text-red-600">↗</div>
           <div>
             <div className="text-xs font-bold text-slate-500">Реклама / ДРР</div>
-            <div className="mt-1 text-base font-black text-slate-950">{formatCurrency(current.adsCost)} / {current.drr !== null ? formatPercent(current.drr) : "—"}</div>
+            <div className="mt-1 min-w-0 break-words text-[15px] font-black leading-tight text-slate-950 [overflow-wrap:anywhere]">{formatCurrency(current.adsCost)} / {current.drr !== null ? formatPercent(current.drr) : "—"}</div>
             <div className="mt-1 text-xs font-black text-red-600">{formatDelta(current.drr !== null && previous.drr !== null ? current.drr - previous.drr : null, "percent")}</div>
           </div>
         </div>
 
-        <div className="flex items-center gap-3 border-b border-slate-100 p-3 sm:border-r xl:border-b-0">
+        <div className="flex min-w-0 items-center gap-3 border-b border-slate-100 p-3 sm:border-r min-[1900px]:border-b-0">
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-emerald-50 text-base font-black text-emerald-600">⌁</div>
           <div>
             <div className="text-xs font-bold text-slate-500">Опер. прибыль</div>
-            <div className="mt-1 text-base font-black text-slate-950">{formatCurrency(current.operatingProfitAfterTax)}</div>
+            <div className="mt-1 min-w-0 break-words text-[15px] font-black leading-tight text-slate-950 [overflow-wrap:anywhere]">{formatCurrency(current.operatingProfitAfterTax)}</div>
             <div className="mt-1 text-xs font-black text-emerald-600">{formatDelta(percentDelta(current.operatingProfitAfterTax, previous.operatingProfitAfterTax), "money")}</div>
           </div>
         </div>
 
-        <div className="flex items-center gap-3 p-3">
+        <div className="flex min-w-0 items-center gap-3 p-3">
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-orange-50 text-base font-black text-orange-600">□</div>
           <div>
             <div className="text-xs font-bold text-slate-500">Остаток товаров</div>
-            <div className="mt-1 text-base font-black text-slate-950">{formatNumber(stockQty)} шт. / — ₽</div>
+            <div className="mt-1 min-w-0 break-words text-[15px] font-black leading-tight text-slate-950 [overflow-wrap:anywhere]">{formatNumber(stockQty)} шт. / — ₽</div>
             <div className="mt-1 text-xs font-black text-slate-400">себестоимость подключим отдельно</div>
           </div>
         </div>
@@ -2445,7 +2445,7 @@ function CompanyCard({
   });
 
   return (
-    <article className="h-full overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-sm shadow-slate-200/60 transition hover:border-indigo-200 hover:shadow-md">
+    <article className="h-full min-w-0 overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-sm shadow-slate-200/60 transition hover:border-indigo-200 hover:shadow-md">
       <div className="border-b border-slate-100 p-4">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
@@ -2467,10 +2467,10 @@ function CompanyCard({
           </Link>
         </div>
 
-        <div className="mt-4 grid grid-cols-2 gap-2 xl:grid-cols-4">
-          <div className="rounded-2xl border border-slate-200 bg-white p-3">
+        <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2 min-[1900px]:grid-cols-4">
+          <div className="min-w-0 rounded-2xl border border-slate-200 bg-white p-3">
             <div className="text-[10px] font-bold text-slate-500">Выручка</div>
-            <div className="mt-1 text-base font-black text-slate-950">
+            <div className="mt-1 min-w-0 break-words text-[15px] font-black leading-tight text-slate-950 [overflow-wrap:anywhere]">
               {formatCurrency(row.totalRevenue)}
             </div>
             <CompanyKpiMeta
@@ -2479,9 +2479,9 @@ function CompanyCard({
             />
           </div>
 
-          <div className="rounded-2xl border border-slate-200 bg-white p-3">
+          <div className="min-w-0 rounded-2xl border border-slate-200 bg-white p-3">
             <div className="text-[10px] font-bold text-slate-500">Опер. прибыль</div>
-            <div className={`mt-1 text-base font-black ${valueColor(row.operatingProfitAfterTax)}`}>
+            <div className={`mt-1 min-w-0 break-words text-[15px] font-black leading-tight [overflow-wrap:anywhere] ${valueColor(row.operatingProfitAfterTax)}`}>
               {formatCurrency(row.operatingProfitAfterTax)}
             </div>
             <CompanyKpiMeta
@@ -2491,9 +2491,9 @@ function CompanyCard({
             />
           </div>
 
-          <div className="rounded-2xl border border-slate-200 bg-white p-3">
+          <div className="min-w-0 rounded-2xl border border-slate-200 bg-white p-3">
             <div className="text-[10px] font-bold text-slate-500">Чистая прибыль</div>
-            <div className={`mt-1 text-base font-black ${valueColor(row.netProfit)}`}>
+            <div className={`mt-1 min-w-0 break-words text-[15px] font-black leading-tight [overflow-wrap:anywhere] ${valueColor(row.netProfit)}`}>
               {formatCurrency(row.netProfit)}
             </div>
             <CompanyKpiMeta
@@ -2503,9 +2503,9 @@ function CompanyCard({
             />
           </div>
 
-          <div className="rounded-2xl border border-slate-200 bg-white p-3">
+          <div className="min-w-0 rounded-2xl border border-slate-200 bg-white p-3">
             <div className="text-[10px] font-bold text-slate-500">Ден. поток</div>
-            <div className={`mt-1 text-base font-black ${valueColor(row.cashFlowResult)}`}>
+            <div className={`mt-1 min-w-0 break-words text-[15px] font-black leading-tight [overflow-wrap:anywhere] ${valueColor(row.cashFlowResult)}`}>
               {formatCurrency(row.cashFlowResult)}
             </div>
             <CompanyKpiMeta
@@ -2517,7 +2517,7 @@ function CompanyCard({
         </div>
       </div>
 
-      <div className="grid gap-4 p-4 sm:grid-cols-4">
+      <div className="grid min-w-0 gap-4 p-4 sm:grid-cols-2 min-[1900px]:grid-cols-4">
         <Link href="/analytics" className="group min-w-0">
           <div className="flex items-center justify-between gap-2">
             <div className="text-xs font-black text-slate-950">Каналы</div>
@@ -3477,7 +3477,7 @@ export default async function HomePage({ searchParams }: Props) {
           </div>
         </section>
 
-        <section className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-[repeat(7,minmax(0,1fr))]">
+        <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 min-[2200px]:grid-cols-7">
           <MetricCard
             title="Заказы"
             value={current.ordersAmount > 0 ? formatCurrency(current.ordersAmount) : "Нет данных"}
@@ -3557,7 +3557,7 @@ export default async function HomePage({ searchParams }: Props) {
           />
         </section>
 
-        <section className="grid items-stretch gap-4 2xl:grid-cols-[repeat(6,minmax(0,1fr))]">
+        <section className="grid min-w-0 items-stretch gap-4 2xl:grid-cols-[repeat(6,minmax(0,1fr))]">
           <div className="min-w-0 2xl:col-span-4">
             <MarketplaceShare
               wbRevenue={marketplaceCurrent.wbRevenue}
@@ -3617,7 +3617,7 @@ export default async function HomePage({ searchParams }: Props) {
           </section>
         </section>
 
-        <section className="grid items-stretch gap-4 2xl:grid-cols-[repeat(6,minmax(0,1fr))]">
+        <section className="grid min-w-0 items-stretch gap-4 2xl:grid-cols-[repeat(6,minmax(0,1fr))]">
           <section className="panel h-full min-w-0 p-4 2xl:col-span-4">
             <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
               <div>
@@ -3701,7 +3701,7 @@ export default async function HomePage({ searchParams }: Props) {
             </div>
 
             {current.companyRows.length > 0 ? (
-              <div className="mt-5 grid gap-4 xl:grid-cols-2">
+              <div className="mt-5 grid min-w-0 gap-4 min-[1700px]:grid-cols-2">
                 {current.companyRows.map((row) => (
                   <CompanyCard
                     key={row.companyName}
