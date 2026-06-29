@@ -640,39 +640,10 @@ async function findLatestOzonFinanceRowsByPeriod(params?: {
 }) {
   const accrualDateWhere = createDateWhere(params?.dateFrom, params?.dateTo);
 
-  const latestRow = await prisma.ozonFinance.findFirst({
-    where: {
-      ...(accrualDateWhere ? { accrualDate: accrualDateWhere } : {}),
-      ...(params?.companyName ? { companyName: params.companyName } : {}),
-    },
-    orderBy: {
-      createdAt: "desc",
-    },
-  });
-
-  if (!latestRow) return [];
-
-  if (latestRow.importSessionId) {
-    return prisma.ozonFinance.findMany({
-      where: {
-        importSessionId: latestRow.importSessionId,
-        ...(accrualDateWhere ? { accrualDate: accrualDateWhere } : {}),
-        ...(params?.companyName ? { companyName: params.companyName } : {}),
-      },
-      orderBy: {
-        accrualDate: "desc",
-      },
-    });
-  }
-
   return prisma.ozonFinance.findMany({
     where: {
       ...(accrualDateWhere ? { accrualDate: accrualDateWhere } : {}),
       ...(params?.companyName ? { companyName: params.companyName } : {}),
-      createdAt: {
-        gte: new Date(latestRow.createdAt.getTime() - 10 * 60 * 1000),
-        lte: new Date(latestRow.createdAt.getTime() + 10 * 60 * 1000),
-      },
     },
     orderBy: {
       accrualDate: "desc",
@@ -690,39 +661,10 @@ async function findLatestOzonFinanceRowsByDatePeriod(params?: {
     params?.dateTo
   );
 
-  const latestRow = await prisma.ozonFinance.findFirst({
-    where: {
-      ...(accrualDateWhere ? { accrualDate: accrualDateWhere } : {}),
-      ...(params?.companyName ? { companyName: params.companyName } : {}),
-    },
-    orderBy: {
-      createdAt: "desc",
-    },
-  });
-
-  if (!latestRow) return [];
-
-  if (latestRow.importSessionId) {
-    return prisma.ozonFinance.findMany({
-      where: {
-        importSessionId: latestRow.importSessionId,
-        ...(accrualDateWhere ? { accrualDate: accrualDateWhere } : {}),
-        ...(params?.companyName ? { companyName: params.companyName } : {}),
-      },
-      orderBy: {
-        accrualDate: "desc",
-      },
-    });
-  }
-
   return prisma.ozonFinance.findMany({
     where: {
       ...(accrualDateWhere ? { accrualDate: accrualDateWhere } : {}),
       ...(params?.companyName ? { companyName: params.companyName } : {}),
-      createdAt: {
-        gte: new Date(latestRow.createdAt.getTime() - 10 * 60 * 1000),
-        lte: new Date(latestRow.createdAt.getTime() + 10 * 60 * 1000),
-      },
     },
     orderBy: {
       accrualDate: "desc",

@@ -2438,8 +2438,24 @@ async function getFinanceCashResult(params: {
   };
 }
 
+function getLatestSessionIdsByFileName(
+  sessions: Array<{ id: string; fileName: string | null }>
+) {
+  const latestSessionByFileName = new Map<string, string>();
+
+  for (const session of sessions) {
+    const key = String(session.fileName ?? session.id).trim() || session.id;
+
+    if (!latestSessionByFileName.has(key)) {
+      latestSessionByFileName.set(key, session.id);
+    }
+  }
+
+  return Array.from(latestSessionByFileName.values());
+}
+
 async function getLatestWbStockQty(companyName: string) {
-  const latestStockImport = await prisma.importSession.findFirst({
+  const stockImports = await prisma.importSession.findMany({
     where: {
       companyName,
       reportType: "WB_STOCK",
@@ -2447,14 +2463,22 @@ async function getLatestWbStockQty(companyName: string) {
     orderBy: {
       createdAt: "desc",
     },
+    select: {
+      id: true,
+      fileName: true,
+    },
   });
 
-  if (!latestStockImport) return 0;
+  const latestImportSessionIds = getLatestSessionIdsByFileName(stockImports);
+
+  if (latestImportSessionIds.length === 0) return 0;
 
   const rows = await prisma.wbStock.findMany({
     where: {
       companyName,
-      importSessionId: latestStockImport.id,
+      importSessionId: {
+        in: latestImportSessionIds,
+      },
     },
   });
 
@@ -2472,7 +2496,7 @@ async function getLatestWbStockQty(companyName: string) {
 }
 
 async function getLatestOzonStockQty(companyName: string) {
-  const latestStockImport = await prisma.importSession.findFirst({
+  const stockImports = await prisma.importSession.findMany({
     where: {
       companyName,
       reportType: "OZON_STOCK",
@@ -2480,14 +2504,22 @@ async function getLatestOzonStockQty(companyName: string) {
     orderBy: {
       createdAt: "desc",
     },
+    select: {
+      id: true,
+      fileName: true,
+    },
   });
 
-  if (!latestStockImport) return 0;
+  const latestImportSessionIds = getLatestSessionIdsByFileName(stockImports);
+
+  if (latestImportSessionIds.length === 0) return 0;
 
   const rows = await prisma.ozonStock.findMany({
     where: {
       companyName,
-      importSessionId: latestStockImport.id,
+      importSessionId: {
+        in: latestImportSessionIds,
+      },
     },
   });
 
@@ -2506,7 +2538,7 @@ async function getLatestOzonStockQty(companyName: string) {
 }
 
 async function getLatestWarehouseStockQty(companyName: string) {
-  const latestWarehouseImport = await prisma.importSession.findFirst({
+  const warehouseImports = await prisma.importSession.findMany({
     where: {
       companyName,
       reportType: "OZON_WAREHOUSE_STOCK",
@@ -2514,14 +2546,22 @@ async function getLatestWarehouseStockQty(companyName: string) {
     orderBy: {
       createdAt: "desc",
     },
+    select: {
+      id: true,
+      fileName: true,
+    },
   });
 
-  if (!latestWarehouseImport) return 0;
+  const latestImportSessionIds = getLatestSessionIdsByFileName(warehouseImports);
+
+  if (latestImportSessionIds.length === 0) return 0;
 
   const rows = await prisma.ozonWarehouseStock.findMany({
     where: {
       companyName,
-      importSessionId: latestWarehouseImport.id,
+      importSessionId: {
+        in: latestImportSessionIds,
+      },
     },
   });
 
