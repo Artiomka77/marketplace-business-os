@@ -1,11 +1,45 @@
 import { prisma } from "@/lib/prisma";
 
 type MarketplaceName = "WB" | "OZON";
+type MarketplaceFilter = MarketplaceName | "ALL";
+type SyncMode = "daily" | "recheck" | "manual";
+
+const DEFAULT_SAFE_RECHECK_DAYS = 3;
+const MAX_SAFE_RECHECK_DAYS = 7;
+const MAX_MANUAL_SYNC_DAYS = 31;
+const DEFAULT_WB_REQUEST_DELAY_MS = 3_000;
+const DEFAULT_GENERAL_REQUEST_DELAY_MS = 700;
 
 type SyncPeriodOptions = {
   date?: Date;
   dateFrom?: Date;
   dateTo?: Date;
+  /**
+   * daily — безопасный режим по умолчанию: только вчера.
+   * recheck — мягкая перепроверка последних 3 дней, максимум 7 дней.
+   * manual — явный диапазон dateFrom/dateTo, максимум 31 день.
+   */
+  mode?: SyncMode;
+  /**
+   * Используется только для mode="recheck". По умолчанию 3 дня.
+   */
+  recheckDays?: number;
+  /**
+   * Можно синхронизировать только WB, только Ozon или оба маркетплейса.
+   */
+  marketplace?: MarketplaceFilter;
+  /**
+   * Пауза между обычными запросами/маркетплейсами.
+   */
+  delayMs?: number;
+  /**
+   * Отдельная более длинная пауза между WB-запросами, чтобы снизить риск 429.
+   */
+  wbDelayMs?: number;
+  /**
+   * Если WB вернул 429, не продолжаем WB в этом запуске.
+   */
+  stopWbOnRateLimit?: boolean;
 };
 
 type CompanyWithConnection = {
@@ -82,11 +116,34 @@ function getYesterdayMoscowDate(now = new Date()) {
   );
 }
 
+function getSafeRecheckDays(value: unknown) {
+  const number = Math.trunc(toNumber(value));
+  if (number <= 0) return DEFAULT_SAFE_RECHECK_DAYS;
+  return Math.min(number, MAX_SAFE_RECHECK_DAYS);
+}
+
+function getPositiveDelayMs(value: unknown, fallback: number) {
+  const number = Math.trunc(toNumber(value));
+  if (number < 0) return fallback;
+  return number;
+}
+
 function getDateRange(options: SyncPeriodOptions = {}) {
+  const mode: SyncMode =
+    options.mode ??
+    (options.dateFrom || options.dateTo ? "manual" : "daily");
+
+  const defaultDateTo = getYesterdayMoscowDate();
+
+  const dateTo = startOfUtcDay(options.dateTo ?? options.date ?? defaultDateTo);
+
   const dateFrom = startOfUtcDay(
-    options.dateFrom ?? options.date ?? getYesterdayMoscowDate()
+    options.dateFrom ??
+      options.date ??
+      (mode === "recheck"
+        ? addUtcDays(dateTo, -(getSafeRecheckDays(options.recheckDays) - 1))
+        : dateTo)
   );
-  const dateTo = startOfUtcDay(options.dateTo ?? options.date ?? dateFrom);
 
   if (dateFrom.getTime() > dateTo.getTime()) {
     throw new Error("dateFrom не может быть позже dateTo");
@@ -99,21 +156,64 @@ function getDateRange(options: SyncPeriodOptions = {}) {
     cursor.getTime() <= dateTo.getTime();
     cursor.setUTCDate(cursor.getUTCDate() + 1)
   ) {
-    dates.push(new Date(Date.UTC(
-      cursor.getUTCFullYear(),
-      cursor.getUTCMonth(),
-      cursor.getUTCDate(),
-      12,
-      0,
-      0
-    )));
+    dates.push(
+      new Date(
+        Date.UTC(
+          cursor.getUTCFullYear(),
+          cursor.getUTCMonth(),
+          cursor.getUTCDate(),
+          12,
+          0,
+          0
+        )
+      )
+    );
+  }
+
+  const maxDays = mode === "recheck" ? MAX_SAFE_RECHECK_DAYS : MAX_MANUAL_SYNC_DAYS;
+
+  if (dates.length > maxDays) {
+    throw new Error(
+      `Период синхронизации заказов слишком большой: ${dates.length} дней. Для режима ${mode} максимум: ${maxDays} дней.`
+    );
   }
 
   return dates;
 }
 
+
 function formatDateOnly(date: Date) {
   return date.toISOString().slice(0, 10);
+}
+
+function sleep(ms: number) {
+  if (ms <= 0) return Promise.resolve();
+
+  return new Promise<void>((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
+function errorToMessage(error: unknown) {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function isRateLimitError(error: unknown) {
+  const message = errorToMessage(error).toLowerCase();
+  return (
+    message.includes("429") ||
+    message.includes("too many requests") ||
+    message.includes("rate limit") ||
+    message.includes("limited") ||
+    message.includes("лимит")
+  );
+}
+
+function shouldSyncMarketplace(
+  filter: MarketplaceFilter | undefined,
+  marketplace: MarketplaceName
+) {
+  return !filter || filter === "ALL" || filter === marketplace;
 }
 
 function toNumber(value: unknown) {
@@ -400,6 +500,7 @@ async function getCompaniesWithConnections() {
 export async function syncWbDailyOrdersForCompany(params: {
   company: CompanyWithConnection;
   date: Date;
+  delayMs?: number;
 }) {
   const connection = params.company.apiConnections.find(
     (item) => item.marketplace === "WB" && item.isEnabled
@@ -433,6 +534,8 @@ export async function syncWbDailyOrdersForCompany(params: {
   let funnelError: string | null = null;
 
   try {
+    await sleep(params.delayMs ?? DEFAULT_WB_REQUEST_DELAY_MS);
+
     funnelResult = await fetchWbSalesFunnelForDate(
       connection.wbToken,
       params.date
@@ -545,34 +648,112 @@ export async function syncOzonDailyOrdersForCompany(params: {
   };
 }
 
+async function safeSyncWbDailyOrdersForCompany(params: {
+  company: CompanyWithConnection;
+  date: Date;
+  delayMs: number;
+}) {
+  try {
+    return await syncWbDailyOrdersForCompany(params);
+  } catch (error) {
+    return {
+      marketplace: "WB" as const,
+      companyName: params.company.name,
+      date: formatDateOnly(params.date),
+      skipped: true,
+      reason: errorToMessage(error),
+      isRateLimit: isRateLimitError(error),
+    };
+  }
+}
+
+async function safeSyncOzonDailyOrdersForCompany(params: {
+  company: CompanyWithConnection;
+  date: Date;
+}) {
+  try {
+    return await syncOzonDailyOrdersForCompany(params);
+  } catch (error) {
+    return {
+      marketplace: "OZON" as const,
+      companyName: params.company.name,
+      date: formatDateOnly(params.date),
+      skipped: true,
+      reason: errorToMessage(error),
+      isRateLimit: isRateLimitError(error),
+    };
+  }
+}
+
 export async function syncMarketplaceDailyOrders(
   options: SyncPeriodOptions = {}
 ) {
   const dates = getDateRange(options);
   const companies = await getCompaniesWithConnections();
   const results = [];
+  const marketplaceFilter = options.marketplace ?? "ALL";
+  const shouldStopWbOnRateLimit = options.stopWbOnRateLimit ?? true;
+  const wbDelayMs = getPositiveDelayMs(
+    options.wbDelayMs,
+    DEFAULT_WB_REQUEST_DELAY_MS
+  );
+  const generalDelayMs = getPositiveDelayMs(
+    options.delayMs,
+    DEFAULT_GENERAL_REQUEST_DELAY_MS
+  );
+  let wbRateLimited = false;
 
   for (const date of dates) {
     for (const company of companies) {
-      results.push(
-        await syncWbDailyOrdersForCompany({
-          company,
-          date,
-        })
-      );
+      if (shouldSyncMarketplace(marketplaceFilter, "WB")) {
+        if (wbRateLimited && shouldStopWbOnRateLimit) {
+          results.push({
+            marketplace: "WB" as const,
+            companyName: company.name,
+            date: formatDateOnly(date),
+            skipped: true,
+            reason:
+              "WB синхронизация остановлена в этом запуске после rate limit 429",
+            isRateLimit: true,
+          });
+        } else {
+          const wbResult = await safeSyncWbDailyOrdersForCompany({
+            company,
+            date,
+            delayMs: wbDelayMs,
+          });
 
-      results.push(
-        await syncOzonDailyOrdersForCompany({
+          results.push(wbResult);
+
+          if ("isRateLimit" in wbResult && wbResult.isRateLimit) {
+            wbRateLimited = true;
+          }
+
+          await sleep(wbDelayMs);
+        }
+      }
+
+      if (shouldSyncMarketplace(marketplaceFilter, "OZON")) {
+        const ozonResult = await safeSyncOzonDailyOrdersForCompany({
           company,
           date,
-        })
-      );
+        });
+
+        results.push(ozonResult);
+
+        await sleep(generalDelayMs);
+      }
     }
   }
 
   return {
     ok: true,
+    mode: options.mode ?? (options.dateFrom || options.dateTo ? "manual" : "daily"),
+    marketplace: marketplaceFilter,
     dates: dates.map(formatDateOnly),
+    safeRecheckDays:
+      options.mode === "recheck" ? getSafeRecheckDays(options.recheckDays) : null,
+    wbStoppedByRateLimit: wbRateLimited,
     results,
   };
 }
