@@ -285,9 +285,9 @@ export default function AppNav() {
             className={`flex w-full items-center rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm font-bold text-slate-600 shadow-sm transition hover:bg-slate-50 hover:text-slate-950 ${
               isCollapsed ? "justify-center" : "justify-between gap-3"
             }`}
-            title={isCollapsed ? (isAuthenticated ? "\u238b" : "\u21aa") : authLabel}
+            title={isCollapsed ? "\u041f\u043e\u043a\u0430\u0437\u0430\u0442\u044c \u043c\u0435\u043d\u044e" : "\u0421\u043a\u0440\u044b\u0442\u044c \u043c\u0435\u043d\u044e"}
           >
-            <span className="text-base">{isCollapsed ? (isAuthenticated ? "\u238b" : "\u21aa") : authLabel}</span>
+            <span className="text-base">{isCollapsed ? "\u2192" : "\u2190"}</span>
             {!isCollapsed ? <span>Скрыть меню</span> : null}
           </button>
         </div>
@@ -405,7 +405,7 @@ export default function AppNav() {
             }`}
             title={authLabel}
           >
-            {isCollapsed ? (isAuthenticated ? "\u238b" : "\u21aa") : authLabel}
+            {isCollapsed ? "\u2192" : "\u2190"}
           </a>
         </div>
       </aside>
