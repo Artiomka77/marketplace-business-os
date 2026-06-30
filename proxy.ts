@@ -60,6 +60,11 @@ function isPublicPath(pathname: string) {
   return (
     pathname === "/login" ||
     pathname.startsWith("/api/local-auth/login") ||
+    pathname.startsWith("/api/telegram") ||
+    pathname.startsWith("/api/telegram-bot") ||
+    pathname.startsWith("/api/tg") ||
+    pathname.startsWith("/api/bot") ||
+    pathname.startsWith("/api/finance-bot") ||
     pathname.startsWith("/_next") ||
     pathname.startsWith("/favicon") ||
     pathname.startsWith("/robots.txt") ||
