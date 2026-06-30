@@ -1788,7 +1788,11 @@ async function buildSupplyPlanRows(url: URL) {
       : exportMarketplaceForFilter;
   const priorityFilter = getPriorityFilter(getQueryValue(url, "supplyPriority"));
   const abcFilter = getAbcFilter(getQueryValue(url, "supplyAbc"));
-  const targetFilter = getQueryValue(url, "supplyTarget");
+  const targetFilters = new Set(
+    Array.from(getSelectedKeys(url, "supplyTarget")).filter(
+      (target) => target && target !== "ALL"
+    )
+  );
   const query = getQueryValue(url, "supplyQ");
 
   const filteredRows = rows.filter((row) => {
@@ -1804,7 +1808,7 @@ async function buildSupplyPlanRows(url: URL) {
       return false;
     }
 
-    if (targetFilter && targetFilter !== "ALL" && row.targetName !== targetFilter) {
+    if (targetFilters.size > 0 && !targetFilters.has(row.targetName)) {
       return false;
     }
 
@@ -2205,6 +2209,23 @@ function createZipArchive(files: Array<{ name: string; buffer: Buffer }>) {
 async function createMarketplaceUploadZip(rows: SupplyPlanRow[], marketplace: Marketplace) {
   const groups = groupRowsForUpload(rows, marketplace);
   const files: Array<{ name: string; buffer: Buffer }> = [];
+  const summaryRows = rows.filter((row) => {
+    if (row.marketplace !== marketplace || row.recommendedQty <= 0) return false;
+    if (marketplace === "WB") return Boolean(normalizeKey(row.barcode));
+    return Boolean(normalizeKey(row.vendorCode));
+  });
+
+  if (summaryRows.length > 0) {
+    const summaryBuffer =
+      marketplace === "WB"
+        ? await createWbUploadWorkbook(summaryRows)
+        : await createOzonUploadWorkbook(summaryRows);
+
+    files.push({
+      name: `${marketplace}/00-${marketplace.toLowerCase()}-summary.xlsx`,
+      buffer: summaryBuffer,
+    });
+  }
 
   for (const group of groups) {
     const buffer =

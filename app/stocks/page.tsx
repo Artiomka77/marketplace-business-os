@@ -22,7 +22,7 @@ type StockSearchParams = {
   dateTo?: string;
   supplyOpen?: string;
   supplyMarketplace?: string;
-  supplyTarget?: string;
+  supplyTarget?: string | string[];
   supplyAbc?: string;
   supplyPriority?: string;
   supplyRows?: string;
@@ -1610,7 +1610,9 @@ function makeUrl(params: StockSearchParams, patch: Record<string, string | null 
     dateTo: params.dateTo,
     supplyOpen: params.supplyOpen,
     supplyMarketplace: params.supplyMarketplace,
-    supplyTarget: params.supplyTarget,
+    supplyTarget: Array.isArray(params.supplyTarget)
+      ? params.supplyTarget.join(",")
+      : params.supplyTarget,
     supplyAbc: params.supplyAbc,
     supplyPriority: params.supplyPriority,
     supplyRows: params.supplyRows,
@@ -1845,6 +1847,10 @@ function getSupplySelectedKeys(value?: string | string[] | null) {
       .map((item) => item.trim())
       .filter(Boolean)
   );
+}
+
+function getSupplyParamValues(value?: string | string[] | null) {
+  return Array.from(getSupplySelectedKeys(value));
 }
 
 function supplyPlanMatchesSearch(row: SupplyPlanRow, query: string) {
@@ -2097,17 +2103,23 @@ function SupplyPlanningBlock({
   const marketplaceFilter = getSupplyMarketplaceFilter(params.supplyMarketplace);
   const priorityFilter = getSupplyPriorityFilter(params.supplyPriority);
   const abcFilter = getSupplyAbcFilter(params.supplyAbc);
-  const targetFilter = normalizeKey(params.supplyTarget);
+  const selectedSupplyTargetValues = getSupplySelectedKeys(params.supplyTarget);
   const query = normalizeKey(params.supplyQ);
   const wbRecommendationDays = getWbRecommendationDays(params.supplyWbDays);
   const ozonRecommendationDays = getOzonRecommendationDays(params.supplyOzonDays);
   const reservationMode = getSupplyReservationMode(params.supplyReservationMode);
 
   const targetOptions = getSupplyTargetOptions(rows, marketplaceFilter);
-  const safeTargetFilter =
-    targetFilter && targetFilter !== "ALL" && targetOptions.includes(targetFilter)
-      ? targetFilter
-      : "ALL";
+  const rawTargetFilters = Array.from(selectedSupplyTargetValues).filter(
+    (target) => target && target !== "ALL"
+  );
+  const safeTargetFilters = new Set(
+    rawTargetFilters.filter((target) => targetOptions.includes(target))
+  );
+  const hasTargetFilter = safeTargetFilters.size > 0;
+  const targetFilterLabel = hasTargetFilter
+    ? `${formatNumber(safeTargetFilters.size)} \u0432\u044b\u0431\u0440\u0430\u043d\u043e`
+    : "\u0412\u0441\u0435 \u043d\u0430\u043f\u0440\u0430\u0432\u043b\u0435\u043d\u0438\u044f";
 
   const filteredRows = rows.filter((row) => {
     if (selectedCompanyName && row.companyName !== selectedCompanyName) {
@@ -2126,11 +2138,7 @@ function SupplyPlanningBlock({
       return false;
     }
 
-    if (
-      safeTargetFilter &&
-      safeTargetFilter !== "ALL" &&
-      row.targetName !== safeTargetFilter
-    ) {
+    if (hasTargetFilter && !safeTargetFilters.has(row.targetName)) {
       return false;
     }
 
@@ -2158,8 +2166,8 @@ function SupplyPlanningBlock({
     exportParams.set("supplyMarketplace", marketplaceFilter);
   }
 
-  if (safeTargetFilter && safeTargetFilter !== "ALL") {
-    exportParams.set("supplyTarget", safeTargetFilter);
+  for (const target of safeTargetFilters) {
+    exportParams.append("supplyTarget", target);
   }
 
   if (abcFilter !== "ALL") {
@@ -2434,18 +2442,43 @@ function SupplyPlanningBlock({
                   label="Куда"
                   tooltip="Фильтр по направлению поставки: региону WB, кластеру или городу Ozon. Помогает смотреть план по конкретному направлению."
                 />
-                <select
-                  name="supplyTarget"
-                  defaultValue={safeTargetFilter || "ALL"}
-                  className="h-11 w-full rounded-2xl border border-slate-200 bg-white px-3 text-sm font-bold text-slate-700 outline-none transition focus:border-violet-200 focus:ring-4 focus:ring-violet-50"
-                >
-                  <option value="ALL">Все направления</option>
-                  {targetOptions.map((target) => (
-                    <option key={target} value={target}>
-                      {target}
-                    </option>
-                  ))}
-                </select>
+                <details className="group relative">
+                  <summary className="flex h-11 w-full cursor-pointer list-none items-center justify-between gap-2 rounded-2xl border border-slate-200 bg-white px-3 text-sm font-bold text-slate-700 outline-none transition focus:border-violet-200 focus:ring-4 focus:ring-violet-50 [&::-webkit-details-marker]:hidden">
+                    <span className="min-w-0 truncate">{targetFilterLabel}</span>
+                    <span className="shrink-0 text-xs text-slate-400 transition group-open:rotate-180">
+                      \u25be
+                    </span>
+                  </summary>
+
+                  <div className="absolute left-0 z-50 mt-2 max-h-80 w-[min(360px,calc(100vw-2rem))] overflow-y-auto rounded-2xl border border-slate-200 bg-white p-2 shadow-2xl shadow-slate-200">
+                    <label className="flex cursor-pointer items-center gap-2 rounded-xl px-3 py-2 text-sm font-bold text-slate-700 transition hover:bg-slate-50">
+                      <input
+                        type="checkbox"
+                        name="supplyTarget"
+                        value="ALL"
+                        defaultChecked={!hasTargetFilter}
+                        className="h-4 w-4 rounded border-slate-300 text-violet-600"
+                      />
+                      <span>&#1042;&#1089;&#1077; &#1085;&#1072;&#1087;&#1088;&#1072;&#1074;&#1083;&#1077;&#1085;&#1080;&#1103;</span>
+                    </label>
+
+                    {targetOptions.map((target) => (
+                      <label
+                        key={target}
+                        className="flex cursor-pointer items-center gap-2 rounded-xl px-3 py-2 text-sm font-bold text-slate-700 transition hover:bg-slate-50"
+                      >
+                        <input
+                          type="checkbox"
+                          name="supplyTarget"
+                          value={target}
+                          defaultChecked={safeTargetFilters.has(target)}
+                          className="h-4 w-4 rounded border-slate-300 text-violet-600"
+                        />
+                        <span className="min-w-0 truncate">{target}</span>
+                      </label>
+                    ))}
+                  </div>
+                </details>
               </label>
 
               <label className="block">
@@ -2631,7 +2664,9 @@ function SupplyPlanningBlock({
               ))}
               {params.companyName ? <input type="hidden" name="companyName" value={params.companyName} /> : null}
               {marketplaceFilter !== "ALL" ? <input type="hidden" name="supplyMarketplace" value={marketplaceFilter} /> : null}
-              {safeTargetFilter && safeTargetFilter !== "ALL" ? <input type="hidden" name="supplyTarget" value={safeTargetFilter} /> : null}
+              {Array.from(safeTargetFilters).map((target) => (
+                <input key={target} type="hidden" name="supplyTarget" value={target} />
+              ))}
               {abcFilter !== "ALL" ? <input type="hidden" name="supplyAbc" value={abcFilter} /> : null}
               {priorityFilter !== "ALL" ? <input type="hidden" name="supplyPriority" value={priorityFilter} /> : null}
               {params.supplyRows ? <input type="hidden" name="supplyRows" value={params.supplyRows} /> : null}
@@ -2987,7 +3022,9 @@ function ProductionPlanningBlock({
                 >
                   {params.supplyOpen ? <input type="hidden" name="supplyOpen" value={params.supplyOpen} /> : null}
                   {params.supplyMarketplace ? <input type="hidden" name="supplyMarketplace" value={params.supplyMarketplace} /> : null}
-                  {params.supplyTarget ? <input type="hidden" name="supplyTarget" value={params.supplyTarget} /> : null}
+                  {getSupplyParamValues(params.supplyTarget).map((target) => (
+                    <input key={target} type="hidden" name="supplyTarget" value={target} />
+                  ))}
                   {params.supplyAbc ? <input type="hidden" name="supplyAbc" value={params.supplyAbc} /> : null}
                   {params.supplyPriority ? <input type="hidden" name="supplyPriority" value={params.supplyPriority} /> : null}
                   {params.supplyRows ? <input type="hidden" name="supplyRows" value={params.supplyRows} /> : null}
