@@ -3,7 +3,7 @@ import "server-only";
 import { createHmac, timingSafeEqual } from "crypto";
 
 export const LOCAL_AUTH_COOKIE_NAME = "avorofin_local_auth";
-export const LOCAL_AUTH_MAX_AGE_SECONDS = 60 * 60 * 24 * 7;
+export const LOCAL_AUTH_MAX_AGE_SECONDS = 60 * 60 * 24 * 30;
 
 function getLocalAuthSecret() {
   return process.env.LOCAL_AUTH_SECRET || "";

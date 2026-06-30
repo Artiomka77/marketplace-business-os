@@ -17,7 +17,7 @@ function LoginForm() {
   const searchParams = useSearchParams();
   const next = getSafeNextPath(searchParams.get("next"));
 
-  const [email, setEmail] = useState("saitema77@gmail.com");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [errorText, setErrorText] = useState("");
@@ -104,7 +104,7 @@ function LoginForm() {
       </form>
 
       <p className="mt-4 text-xs leading-5 text-slate-400">
-        {"\u0412\u0440\u0435\u043c\u0435\u043d\u043d\u0430\u044f \u0430\u0432\u0442\u043e\u0440\u0438\u0437\u0430\u0446\u0438\u044f \u0431\u0435\u0437 Supabase Auth. \u041f\u043e\u0441\u043b\u0435 \u0438\u0441\u043f\u0440\u0430\u0432\u043b\u0435\u043d\u0438\u044f \u0441\u0435\u0442\u0438 \u0432\u0435\u0440\u043d\u0451\u043c Supabase Auth."}
+        {"\u0412\u043d\u0443\u0442\u0440\u0435\u043d\u043d\u044f\u044f \u0430\u0432\u0442\u043e\u0440\u0438\u0437\u0430\u0446\u0438\u044f \u0434\u043b\u044f \u0434\u043e\u0441\u0442\u0443\u043f\u0430 \u043a \u0437\u0430\u043a\u0440\u044b\u0442\u043e\u0439 \u0444\u0438\u043d\u0430\u043d\u0441\u043e\u0432\u043e\u0439 \u0441\u0438\u0441\u0442\u0435\u043c\u0435."}
       </p>
     </div>
   );
