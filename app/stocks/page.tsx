@@ -893,6 +893,74 @@ function compactList(values: Iterable<string>, limit = 5) {
   return hidden > 0 ? `${shown} + ещё ${hidden}` : shown;
 }
 
+
+function splitWbWarehouseNames(value: unknown) {
+  const text = normalizeKey(value);
+
+  if (!text) return [];
+
+  return text
+    .split(/[,;|\n]+/g)
+    .map((part) => part.replace(/^\s*\u0441\u043a\u043b\u0430\u0434\s*/i, "").trim())
+    .filter(Boolean);
+}
+
+function formatWbSupplyDirectionName(params: {
+  warehouseName?: string | null;
+  regionName?: string | null;
+  fallback?: string;
+}) {
+  const warehouseName = normalizeKey(params.warehouseName);
+  const regionName = normalizeKey(params.regionName);
+  const fallback = normalizeKey(params.fallback) || "WB / \u043d\u0430\u043f\u0440\u0430\u0432\u043b\u0435\u043d\u0438\u0435";
+
+  if (warehouseName && regionName) return `WB / ${warehouseName} / ${regionName}`;
+  if (warehouseName) return `WB / ${warehouseName}`;
+  if (regionName) return `WB / ${regionName}`;
+
+  return fallback;
+}
+
+function formatWbOfficialDirectionName(warehousesText: unknown, regionName: unknown) {
+  const warehouses = splitWbWarehouseNames(warehousesText);
+  const primaryWarehouse = warehouses[0] ?? "";
+  const extraCount = Math.max(0, warehouses.length - 1);
+  const warehouseLabel =
+    primaryWarehouse && extraCount > 0
+      ? `${primaryWarehouse} + \u0435\u0449\u0451 ${extraCount}`
+      : primaryWarehouse;
+
+  return formatWbSupplyDirectionName({
+    warehouseName: warehouseLabel || "\u0421\u043a\u043b\u0430\u0434\u044b \u0440\u0435\u0433\u0438\u043e\u043d\u0430",
+    regionName: normalizeKey(regionName),
+    fallback: "WB / \u0440\u0435\u0433\u0438\u043e\u043d",
+  });
+}
+
+function formatWbGeoDirectionName(group: {
+  warehouseName: string;
+  oblastNames: Set<string>;
+  regionNames: Set<string>;
+}) {
+  const regionName = Array.from(group.oblastNames.size > 0 ? group.oblastNames : group.regionNames)
+    .filter(Boolean)
+    .join(", ");
+
+  return formatWbSupplyDirectionName({
+    warehouseName: group.warehouseName,
+    regionName,
+    fallback: `WB / ${group.warehouseName}`,
+  });
+}
+
+function formatOzonSupplyDirectionName(clusterName: unknown) {
+  const cluster = normalizeKey(clusterName);
+
+  return cluster
+    ? `Ozon / \u041a\u043b\u0430\u0441\u0442\u0435\u0440: ${cluster}`
+    : "Ozon / \u041a\u043b\u0430\u0441\u0442\u0435\u0440";
+}
+
 function formatDecimal(value: number) {
   return value.toLocaleString("ru-RU", {
     maximumFractionDigits: 2,
@@ -4384,7 +4452,7 @@ export default async function StocksPage({
         costNameByVendorCode.get(vendorCode) ??
         null,
       imageUrl: visual.imageUrl ?? ownItem?.imageUrl ?? null,
-      targetName: row.clusterName ? `Кластер: ${row.clusterName}` : "Кластер Ozon",
+      targetName: formatOzonSupplyDirectionName(row.clusterName),
       currentQty,
       ownItemKey: ownItem?.key ?? null,
       wantedQty,
@@ -4498,7 +4566,7 @@ export default async function StocksPage({
         costNameByVendorCode.get(vendorCode) ??
         null,
       imageUrl: visual.imageUrl ?? ownItem?.imageUrl ?? null,
-      targetName: row.regionName ? `WB / ${row.regionName}` : "WB / регион",
+      targetName: formatWbOfficialDirectionName(row.warehousesText, row.regionName),
       currentQty,
       ownItemKey: ownItem?.key ?? null,
       wantedQty,
@@ -4979,7 +5047,7 @@ export default async function StocksPage({
         costNameByVendorCode.get(group.vendorCode) ??
         null,
       imageUrl: visual.imageUrl ?? ownItem?.imageUrl ?? null,
-      targetName: `WB / ${group.warehouseName}`,
+      targetName: formatWbGeoDirectionName(group),
       currentQty: group.currentQty,
       ownItemKey: ownItem?.key ?? null,
       wantedQty,
