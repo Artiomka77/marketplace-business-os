@@ -180,6 +180,7 @@ type SupplyPlanCandidate = {
   productName: string | null;
   imageUrl: string | null;
   targetName: string;
+  targetAliases?: string[];
   currentQty: number;
   ownItemKey: string | null;
   wantedQty: number;
@@ -1953,6 +1954,49 @@ function supplyPlanMatchesSearch(row: SupplyPlanRow, query: string) {
   );
 }
 
+
+function getUniqueSupplyTargets(values: Array<string | null | undefined>) {
+  return Array.from(
+    new Set(values.map((value) => normalizeKey(value)).filter(Boolean))
+  );
+}
+
+function getWbOfficialDirectionNames(warehousesText: unknown, regionName: unknown) {
+  const warehouses = splitWbWarehouseNames(warehousesText);
+  const region = normalizeKey(regionName);
+
+  if (warehouses.length === 0) {
+    return [
+      formatWbSupplyDirectionName({
+        warehouseName: "\u0421\u043a\u043b\u0430\u0434\u044b \u0440\u0435\u0433\u0438\u043e\u043d\u0430",
+        regionName: region,
+        fallback: "WB / \u0440\u0435\u0433\u0438\u043e\u043d",
+      }),
+    ];
+  }
+
+  return getUniqueSupplyTargets(
+    warehouses.map((warehouseName) =>
+      formatWbSupplyDirectionName({
+        warehouseName,
+        regionName: region,
+        fallback: `WB / ${warehouseName}`,
+      })
+    )
+  );
+}
+
+function getSupplyTargetValues(row: { targetName: string; targetAliases?: string[] | null }) {
+  return getUniqueSupplyTargets([row.targetName, ...(row.targetAliases ?? [])]);
+}
+
+function supplyRowMatchesTargetFilter(
+  row: { targetName: string; targetAliases?: string[] | null },
+  targetFilters: Set<string>
+) {
+  return getSupplyTargetValues(row).some((target) => targetFilters.has(target));
+}
+
 function getSupplyTargetOptions(
   rows: SupplyPlanRow[],
   marketplaceFilter: "ALL" | SupplyPlanMarketplace
@@ -1963,7 +2007,7 @@ function getSupplyTargetOptions(
       : rows.filter((row) => row.marketplace === marketplaceFilter);
 
   return Array.from(
-    new Set(filteredRows.map((row) => row.targetName).filter(Boolean))
+    new Set(filteredRows.flatMap((row) => getSupplyTargetValues(row)).filter(Boolean))
   ).sort((a, b) =>
     a.localeCompare(b, "ru", {
       numeric: true,
@@ -2206,7 +2250,7 @@ function SupplyPlanningBlock({
       return false;
     }
 
-    if (hasTargetFilter && !safeTargetFilters.has(row.targetName)) {
+    if (hasTargetFilter && !supplyRowMatchesTargetFilter(row, safeTargetFilters)) {
       return false;
     }
 
@@ -2518,8 +2562,8 @@ function SupplyPlanningBlock({
                     </span>
                   </summary>
 
-                  <div className="absolute left-0 z-50 mt-2 max-h-80 w-[min(360px,calc(100vw-2rem))] overflow-y-auto rounded-2xl border border-slate-200 bg-white p-2 shadow-2xl shadow-slate-200">
-                    <label className="flex cursor-pointer items-center gap-2 rounded-xl px-3 py-2 text-sm font-bold text-slate-700 transition hover:bg-slate-50">
+                  <div className="absolute left-0 z-50 mt-2 max-h-80 w-[min(760px,calc(100vw-2rem))] overflow-y-auto rounded-2xl border border-slate-200 bg-white p-2 shadow-2xl shadow-slate-200">
+                    <label className="flex cursor-pointer items-start gap-2 rounded-xl px-3 py-2 text-sm font-bold text-slate-700 transition hover:bg-slate-50">
                       <input
                         type="checkbox"
                         name="supplyTarget"
@@ -2533,7 +2577,7 @@ function SupplyPlanningBlock({
                     {targetOptions.map((target) => (
                       <label
                         key={target}
-                        className="flex cursor-pointer items-center gap-2 rounded-xl px-3 py-2 text-sm font-bold text-slate-700 transition hover:bg-slate-50"
+                        className="flex cursor-pointer items-start gap-2 rounded-xl px-3 py-2 text-sm font-bold text-slate-700 transition hover:bg-slate-50"
                       >
                         <input
                           type="checkbox"
@@ -2542,7 +2586,7 @@ function SupplyPlanningBlock({
                           defaultChecked={safeTargetFilters.has(target)}
                           className="h-4 w-4 rounded border-slate-300 text-violet-600"
                         />
-                        <span className="min-w-0 truncate">{target}</span>
+                        <span className="min-w-0 whitespace-normal break-words leading-5">{target}</span>
                       </label>
                     ))}
                   </div>
@@ -4566,7 +4610,10 @@ export default async function StocksPage({
         costNameByVendorCode.get(vendorCode) ??
         null,
       imageUrl: visual.imageUrl ?? ownItem?.imageUrl ?? null,
-      targetName: formatWbOfficialDirectionName(row.warehousesText, row.regionName),
+      targetName:
+        getWbOfficialDirectionNames(row.warehousesText, row.regionName)[0] ??
+        formatWbOfficialDirectionName(row.warehousesText, row.regionName),
+      targetAliases: getWbOfficialDirectionNames(row.warehousesText, row.regionName),
       currentQty,
       ownItemKey: ownItem?.key ?? null,
       wantedQty,

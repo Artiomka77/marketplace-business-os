@@ -45,6 +45,7 @@ type SupplyPlanCandidate = {
   size: string | null;
   productName: string | null;
   targetName: string;
+  targetAliases?: string[];
   currentQty: number;
   ownItemKey: string | null;
   wantedQty: number;
@@ -617,6 +618,49 @@ function priorityLabel(priority: Priority) {
   if (priority === "HIGH") return "Высокий";
   if (priority === "MEDIUM") return "Средний";
   return "Низкий";
+}
+
+
+function getUniqueSupplyTargets(values: Array<string | null | undefined>) {
+  return Array.from(
+    new Set(values.map((value) => normalizeKey(value)).filter(Boolean))
+  );
+}
+
+function getWbOfficialDirectionNames(warehousesText: unknown, regionName: unknown) {
+  const warehouses = splitWbWarehouseNames(warehousesText);
+  const region = normalizeKey(regionName);
+
+  if (warehouses.length === 0) {
+    return [
+      formatWbSupplyDirectionName({
+        warehouseName: "\u0421\u043a\u043b\u0430\u0434\u044b \u0440\u0435\u0433\u0438\u043e\u043d\u0430",
+        regionName: region,
+        fallback: "WB / \u0440\u0435\u0433\u0438\u043e\u043d",
+      }),
+    ];
+  }
+
+  return getUniqueSupplyTargets(
+    warehouses.map((warehouseName) =>
+      formatWbSupplyDirectionName({
+        warehouseName,
+        regionName: region,
+        fallback: `WB / ${warehouseName}`,
+      })
+    )
+  );
+}
+
+function getSupplyTargetValues(row: { targetName: string; targetAliases?: string[] | null }) {
+  return getUniqueSupplyTargets([row.targetName, ...(row.targetAliases ?? [])]);
+}
+
+function supplyRowMatchesTargetFilter(
+  row: { targetName: string; targetAliases?: string[] | null },
+  targetFilters: Set<string>
+) {
+  return getSupplyTargetValues(row).some((target) => targetFilters.has(target));
 }
 
 function supplyPlanMatchesSearch(row: SupplyPlanRow, query: string) {
@@ -1312,7 +1356,10 @@ async function buildSupplyPlanRows(url: URL) {
       barcode: barcode || null,
       size,
       productName: row.productName ?? ownItem?.productName ?? null,
-      targetName: formatWbOfficialDirectionName(row.warehousesText, row.regionName),
+      targetName:
+        getWbOfficialDirectionNames(row.warehousesText, row.regionName)[0] ??
+        formatWbOfficialDirectionName(row.warehousesText, row.regionName),
+      targetAliases: getWbOfficialDirectionNames(row.warehousesText, row.regionName),
       currentQty,
       ownItemKey: ownItem?.key ?? null,
       wantedQty,
@@ -1876,7 +1923,7 @@ async function buildSupplyPlanRows(url: URL) {
       return false;
     }
 
-    if (targetFilters.size > 0 && !targetFilters.has(row.targetName)) {
+    if (targetFilters.size > 0 && !supplyRowMatchesTargetFilter(row, targetFilters)) {
       return false;
     }
 
