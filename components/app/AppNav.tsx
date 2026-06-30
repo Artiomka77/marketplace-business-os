@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { usePathname } from "next/navigation";
+import { createClient } from "@/lib/supabase/client";
 
 const SIDEBAR_STORAGE_KEY = "marketplace-os-sidebar-collapsed";
 
@@ -198,11 +199,47 @@ export default function AppNav() {
   const pathname = usePathname();
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({});
+  const [isAuthReady, setIsAuthReady] = useState(false);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
 
   const activeSectionTitles = useMemo(
     () => getActiveSectionTitles(pathname),
     [pathname]
   );
+
+  const nextPath = pathname && pathname !== "/login" ? pathname : "/";
+  const authHref = isAuthenticated
+    ? "/auth/sign-out"
+    : `/login?next=${encodeURIComponent(nextPath)}`;
+  const authLabel = !isAuthReady
+    ? "\u041f\u0440\u043e\u0432\u0435\u0440\u043a\u0430..."
+    : isAuthenticated
+      ? "\u0412\u044b\u0439\u0442\u0438"
+      : "\u0412\u043e\u0439\u0442\u0438";
+
+  useEffect(() => {
+    const supabase = createClient();
+    let isMounted = true;
+
+    supabase.auth.getSession().then(({ data }) => {
+      if (!isMounted) return;
+
+      setIsAuthenticated(Boolean(data.session));
+      setIsAuthReady(true);
+    });
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      setIsAuthenticated(Boolean(session));
+      setIsAuthReady(true);
+    });
+
+    return () => {
+      isMounted = false;
+      subscription.unsubscribe();
+    };
+  }, []);
 
   useEffect(() => {
     const savedValue = window.localStorage.getItem(SIDEBAR_STORAGE_KEY);
@@ -281,9 +318,9 @@ export default function AppNav() {
             className={`flex w-full items-center rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm font-bold text-slate-600 shadow-sm transition hover:bg-slate-50 hover:text-slate-950 ${
               isCollapsed ? "justify-center" : "justify-between gap-3"
             }`}
-            title={isCollapsed ? "Показать меню" : "Скрыть меню"}
+            title={isCollapsed ? (isAuthenticated ? "\u238b" : "\u21aa") : authLabel}
           >
-            <span className="text-base">{isCollapsed ? "→" : "←"}</span>
+            <span className="text-base">{isCollapsed ? (isAuthenticated ? "\u238b" : "\u21aa") : authLabel}</span>
             {!isCollapsed ? <span>Скрыть меню</span> : null}
           </button>
         </div>
@@ -395,13 +432,13 @@ export default function AppNav() {
           ) : null}
 
           <a
-            href="/auth/sign-out"
+            href={authHref}
             className={`mt-3 flex items-center justify-center rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-600 transition hover:bg-slate-50 hover:text-slate-950 ${
               isCollapsed ? "px-0" : ""
             }`}
-            title="Выйти"
+            title={authLabel}
           >
-            {isCollapsed ? "⎋" : "Выйти"}
+            {isCollapsed ? (isAuthenticated ? "\u238b" : "\u21aa") : authLabel}
           </a>
         </div>
       </aside>
@@ -418,10 +455,10 @@ export default function AppNav() {
           </Link>
 
           <a
-            href="/auth/sign-out"
+            href={authHref}
             className="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-600"
           >
-            Выйти
+            {authLabel}
           </a>
         </div>
 
