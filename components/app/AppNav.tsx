@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { usePathname } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
 
 const SIDEBAR_STORAGE_KEY = "marketplace-os-sidebar-collapsed";
 
@@ -199,47 +198,15 @@ export default function AppNav() {
   const pathname = usePathname();
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({});
-  const [isAuthReady, setIsAuthReady] = useState(false);
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
 
   const activeSectionTitles = useMemo(
     () => getActiveSectionTitles(pathname),
     [pathname]
   );
 
-  const nextPath = pathname && pathname !== "/login" ? pathname : "/";
-  const authHref = isAuthenticated
-    ? "/auth/sign-out"
-    : `/login?next=${encodeURIComponent(nextPath)}`;
-  const authLabel = !isAuthReady
-    ? "\u041f\u0440\u043e\u0432\u0435\u0440\u043a\u0430..."
-    : isAuthenticated
-      ? "\u0412\u044b\u0439\u0442\u0438"
-      : "\u0412\u043e\u0439\u0442\u0438";
-
-  useEffect(() => {
-    const supabase = createClient();
-    let isMounted = true;
-
-    supabase.auth.getSession().then(({ data }) => {
-      if (!isMounted) return;
-
-      setIsAuthenticated(Boolean(data.session));
-      setIsAuthReady(true);
-    });
-
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      setIsAuthenticated(Boolean(session));
-      setIsAuthReady(true);
-    });
-
-    return () => {
-      isMounted = false;
-      subscription.unsubscribe();
-    };
-  }, []);
+  const isLoginPage = pathname === "/login";
+  const authHref = isLoginPage ? "/login" : "/auth/sign-out";
+  const authLabel = isLoginPage ? "\u0412\u043e\u0439\u0442\u0438" : "\u0412\u044b\u0439\u0442\u0438";
 
   useEffect(() => {
     const savedValue = window.localStorage.getItem(SIDEBAR_STORAGE_KEY);

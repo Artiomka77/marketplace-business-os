@@ -1,10 +1,22 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
 
-export async function GET() {
-  const supabase = await createClient();
+import { LOCAL_AUTH_COOKIE_NAME } from "@/lib/auth/localAuth";
 
-  await supabase.auth.signOut();
+export const dynamic = "force-dynamic";
 
-  return NextResponse.redirect(new URL("/login", process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000"));
+export async function GET(request: Request) {
+  const url = new URL(request.url);
+  const response = NextResponse.redirect(new URL("/login", url.origin));
+
+  response.cookies.set({
+    name: LOCAL_AUTH_COOKIE_NAME,
+    value: "",
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+    path: "/",
+    maxAge: 0,
+  });
+
+  return response;
 }
