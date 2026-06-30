@@ -29,6 +29,7 @@ type OwnSupplyItem = {
   companyName: string;
   companyKey: string;
   articleKeys: Set<string>;
+  ownArticle: string | null;
   sizeKey: string;
   availableQty: number;
   productName: string | null;
@@ -42,6 +43,7 @@ type SupplyPlanCandidate = {
   vendorCode: string;
   sku: string | null;
   barcode: string | null;
+  ownArticle?: string | null;
   size: string | null;
   productName: string | null;
   targetName: string;
@@ -1147,6 +1149,7 @@ async function buildSupplyPlanRows(url: URL) {
         companyName: stock.companyName,
         companyKey: normalizeKey(stock.companyName),
         articleKeys,
+        ownArticle: vendorCode || sku || normalizeKey(stock.barcode) || null,
         sizeKey: normalizeSupplySize(size),
         availableQty: toNumber(stock.availableForSupplyQty),
         productName: stock.productName ?? null,
@@ -1354,6 +1357,7 @@ async function buildSupplyPlanRows(url: URL) {
       vendorCode: vendorCode || nmId || barcode,
       sku: nmId || null,
       barcode: barcode || null,
+      ownArticle: ownItem?.ownArticle ?? null,
       size,
       productName: row.productName ?? ownItem?.productName ?? null,
       targetName:
@@ -1812,6 +1816,7 @@ async function buildSupplyPlanRows(url: URL) {
       vendorCode: group.vendorCode || group.nmId || group.barcode,
       sku: group.nmId || null,
       barcode: group.barcode || null,
+      ownArticle: ownItem?.ownArticle ?? null,
       size: group.size,
       productName: ownItem?.productName ?? null,
       targetName: formatWbGeoDirectionName(group),
@@ -2138,6 +2143,57 @@ function groupRowsForUpload(rows: SupplyPlanRow[], marketplace: Marketplace) {
   });
 }
 
+
+async function createWbSummaryWorkbook(rows: SupplyPlanRow[]) {
+  const workbook = new ExcelJS.Workbook();
+  workbook.creator = "Marketplace Business OS";
+  workbook.created = new Date();
+
+  const sheet = workbook.addWorksheet("Sheet1", {
+    views: [{ state: "frozen", ySplit: 1 }],
+  });
+
+  sheet.columns = [
+    { header: "\u0410\u0440\u0442\u0438\u043a\u0443\u043b \u0441\u043a\u043b\u0430\u0434\u0430", key: "ownArticle", width: 24 },
+    { header: "\u0411\u0430\u0440\u043a\u043e\u0434", key: "barcode", width: 22 },
+    { header: "\u041a\u043e\u043b\u0438\u0447\u0435\u0441\u0442\u0432\u043e", key: "qty", width: 14 },
+  ];
+
+  sheet.getRow(1).font = { bold: true };
+
+  const groupedByBarcodeAndArticle = new Map<
+    string,
+    { ownArticle: string; barcode: string; qty: number }
+  >();
+
+  for (const row of rows) {
+    const barcode = normalizeKey(row.barcode);
+    if (!barcode) continue;
+
+    const ownArticle = normalizeKey(row.ownArticle) || normalizeKey(row.vendorCode);
+    const groupKey = `${barcode}::${ownArticle}`;
+    const current = groupedByBarcodeAndArticle.get(groupKey) ?? {
+      ownArticle,
+      barcode,
+      qty: 0,
+    };
+
+    current.qty += Math.max(0, Math.trunc(row.recommendedQty));
+    groupedByBarcodeAndArticle.set(groupKey, current);
+  }
+
+  for (const item of groupedByBarcodeAndArticle.values()) {
+    if (item.qty <= 0) continue;
+    sheet.addRow(item);
+  }
+
+  for (let rowNumber = 2; rowNumber <= sheet.rowCount; rowNumber++) {
+    sheet.getRow(rowNumber).getCell(3).numFmt = "0";
+  }
+
+  return Buffer.from(await workbook.xlsx.writeBuffer());
+}
+
 async function createWbUploadWorkbook(rows: SupplyPlanRow[]) {
   const workbook = new ExcelJS.Workbook();
   workbook.creator = "Marketplace Business OS";
@@ -2333,7 +2389,7 @@ async function createMarketplaceUploadZip(rows: SupplyPlanRow[], marketplace: Ma
   if (summaryRows.length > 0) {
     const summaryBuffer =
       marketplace === "WB"
-        ? await createWbUploadWorkbook(summaryRows)
+        ? await createWbSummaryWorkbook(summaryRows)
         : await createOzonUploadWorkbook(summaryRows);
 
     files.push({
