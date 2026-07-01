@@ -1056,7 +1056,7 @@ function TableHeader() {
       </div>
       <div className="flex items-center gap-1">
         Расходы
-        <InfoTooltip text="Расходы — управленческие расходы по артикулу: себестоимость, логистика, хранение и приёмка, штрафы/прочие удержания, реклама и налоги. Комиссия/компенсация WB и СПП показываются отдельно, потому что они уже учтены внутри суммы к перечислению продавцу." />
+        <InfoTooltip text="Расходы — управленческие расходы по артикулу: себестоимость, логистика, хранение и приёмка, штрафы/удержания, реклама и налоги. Комиссия/компенсация WB и СПП показываются отдельно, потому что они уже учтены внутри суммы к перечислению продавцу." />
       </div>
       <div className="flex items-center gap-1">
         Прибыль
@@ -1393,8 +1393,6 @@ export default async function ProfitPage({
 
   const storageAndAcceptance = totals.storageCost + totals.acceptanceCost;
   const penaltiesAndDeductions = totals.penaltiesAmount + totals.deductions;
-  const excludedWbDeductions =
-    totals.wbCreditDeduction + totals.wbUnknownDeduction;
   const wbInternalServices =
     totals.paymentServiceCost +
     totals.pvzCompensation +
@@ -1449,7 +1447,7 @@ export default async function ProfitPage({
       colorHex: "#fb923c",
     },
     {
-      label: "Штрафы и прочие удержания",
+      label: "Штрафы и удержания",
       value: penaltiesAndDeductions,
       colorClassName: "bg-red-400",
       colorHex: "#f87171",
@@ -1643,14 +1641,6 @@ export default async function ProfitPage({
             tone="slate"
           />
         </section>
-
-        {excludedWbDeductions > 0 ? (
-          <section className="rounded-[26px] border border-amber-200 bg-amber-50/70 p-4 text-sm font-semibold leading-6 text-amber-900">
-            Из удержаний WB не включено в unit-экономику: {formatMoney(excludedWbDeductions)}.
-            Кредит WB и нераспознанные удержания не списываются повторно как товарный расход,
-            чтобы не задваивать рекламу/кредит. Реклама WB учитывается отдельной строкой.
-          </section>
-        ) : null}
 
         <section className="grid gap-5 xl:grid-cols-[minmax(0,4fr)_minmax(340px,2fr)]">
           <section className="panel min-w-0 p-5 sm:p-6">

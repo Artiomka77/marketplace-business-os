@@ -105,8 +105,6 @@ type WbSalesDetailedRow = {
   acceptance?: number | string;
   deduction?: number | string;
   penalty?: number | string;
-  bonusTypeName?: string;
-  bonus_type_name?: string;
   acquiringFee?: number | string;
   acquiring_fee?: number | string;
   ppvzReward?: number | string;
@@ -365,8 +363,6 @@ function mapWbSalesApiRows(rows: WbSalesDetailedRow[]) {
     "Платная приемка": row.paidAcceptance ?? row.acceptance ?? "",
     Удержания: row.deduction ?? "",
     "Общая сумма штрафов": row.penalty ?? "",
-    "Виды логистики, штрафов и корректировок ВВ":
-      row.bonusTypeName ?? row.bonus_type_name ?? "",
 
     "Компенсация платёжных услуг/Комиссия за интеграцию платёжных сервисов":
       row.acquiringFee ?? row.acquiring_fee ?? "",

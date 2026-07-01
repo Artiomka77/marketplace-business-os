@@ -172,10 +172,6 @@ model WbSale {
 
   storageCost    Decimal?
   deductions     Decimal?
-  // Расшифровка удержаний/штрафов из колонки
-  // «Виды логистики, штрафов и корректировок ВВ».
-  // Нужна, чтобы не задваивать WB Продвижение и WB-кредит.
-  deductionReason String?
   acceptanceCost Decimal?
 
   penaltiesAmount Decimal?
@@ -198,7 +194,6 @@ model WbSale {
   @@index([nmId])
   @@index([saleDate])
   @@index([paymentReason])
-  @@index([deductionReason])
   @@index([companyName])
   @@index([warehouseName])
   @@index([countryName])

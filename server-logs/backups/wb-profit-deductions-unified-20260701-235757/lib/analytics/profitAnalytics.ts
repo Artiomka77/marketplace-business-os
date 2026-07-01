@@ -188,42 +188,6 @@ function createComparison(current: number, previous: number) {
   };
 }
 
-function isWbAdsDeductionReason(value: unknown) {
-  const text = normalizeText(value);
-
-  return (
-    text.includes("wb продвиж") ||
-    text.includes("продвиж") ||
-    text.includes("реклам") ||
-    text.includes("advert") ||
-    text.includes("promotion")
-  );
-}
-
-function isWbCreditDeductionReason(value: unknown) {
-  const text = normalizeText(value);
-
-  return (
-    text.includes("кредит") ||
-    text.includes("заем") ||
-    text.includes("заём") ||
-    text.includes("заемщик") ||
-    text.includes("заёмщик") ||
-    text.includes("счет требований") ||
-    text.includes("счёт требований")
-  );
-}
-
-function classifyWbDeductionReason(value: unknown): "ADS" | "CREDIT" | "OPERATING" | "UNKNOWN" {
-  const text = normalizeText(value);
-
-  if (!text) return "UNKNOWN";
-  if (isWbAdsDeductionReason(text)) return "ADS";
-  if (isWbCreditDeductionReason(text)) return "CREDIT";
-
-  return "OPERATING";
-}
-
 export type ProfitAnalyticsRow = {
   nmId: string;
   vendorCode: string;
@@ -251,10 +215,6 @@ export type ProfitAnalyticsRow = {
 
   penaltiesAmount: number;
   deductions: number;
-  wbAdsDeduction: number;
-  wbCreditDeduction: number;
-  wbUnknownDeduction: number;
-  wbRawDeduction: number;
 
   paymentServiceCost: number;
   pvzCompensation: number;
@@ -302,10 +262,6 @@ export type ProfitTotals = {
 
   penaltiesAmount: number;
   deductions: number;
-  wbAdsDeduction: number;
-  wbCreditDeduction: number;
-  wbUnknownDeduction: number;
-  wbRawDeduction: number;
 
   paymentServiceCost: number;
   pvzCompensation: number;
@@ -365,7 +321,6 @@ type WbSaleRecord = {
 
   penaltiesAmount: unknown;
   deductions: unknown;
-  deductionReason: string | null;
 
   paymentServiceCost: unknown;
   pvzCompensation: unknown;
@@ -483,10 +438,6 @@ function createEmptyTotals(
 
     penaltiesAmount: 0,
     deductions: 0,
-    wbAdsDeduction: 0,
-    wbCreditDeduction: 0,
-    wbUnknownDeduction: 0,
-    wbRawDeduction: 0,
     paymentServiceCost: 0,
     pvzCompensation: 0,
     transportCompensation: 0,
@@ -606,10 +557,6 @@ function calculateRowsAndTotals({
 
         penaltiesAmount: 0,
         deductions: 0,
-        wbAdsDeduction: 0,
-        wbCreditDeduction: 0,
-        wbUnknownDeduction: 0,
-        wbRawDeduction: 0,
         paymentServiceCost: 0,
         pvzCompensation: 0,
         transportCompensation: 0,
@@ -688,24 +635,7 @@ function calculateRowsAndTotals({
     current.acceptanceCost += Math.abs(toNumber(wbRow.acceptanceCost));
 
     current.penaltiesAmount += toNumber(wbRow.penaltiesAmount);
-
-    const rawDeduction = Math.abs(toNumber(wbRow.deductions));
-    const deductionClass = classifyWbDeductionReason(wbRow.deductionReason);
-
-    current.wbRawDeduction += rawDeduction;
-
-    if (deductionClass === "ADS") {
-      current.wbAdsDeduction += rawDeduction;
-    } else if (deductionClass === "CREDIT") {
-      current.wbCreditDeduction += rawDeduction;
-    } else if (deductionClass === "OPERATING") {
-      current.deductions += rawDeduction;
-    } else {
-      // Если вид удержания не сохранён, не вычитаем его в unit-экономике автоматически.
-      // Иначе можно задвоить WB Продвижение или кредит.
-      current.wbUnknownDeduction += rawDeduction;
-    }
-
+    current.deductions += toNumber(wbRow.deductions);
     current.paymentServiceCost += Math.abs(toNumber(wbRow.paymentServiceCost));
     current.pvzCompensation += Math.abs(toNumber(wbRow.pvzCompensation));
     current.transportCompensation += Math.abs(toNumber(wbRow.transportCompensation));
@@ -785,10 +715,6 @@ function calculateRowsAndTotals({
 
       acc.penaltiesAmount += row.penaltiesAmount;
       acc.deductions += row.deductions;
-      acc.wbAdsDeduction += row.wbAdsDeduction;
-      acc.wbCreditDeduction += row.wbCreditDeduction;
-      acc.wbUnknownDeduction += row.wbUnknownDeduction;
-      acc.wbRawDeduction += row.wbRawDeduction;
       acc.paymentServiceCost += row.paymentServiceCost;
       acc.pvzCompensation += row.pvzCompensation;
       acc.transportCompensation += row.transportCompensation;
@@ -811,14 +737,6 @@ function calculateRowsAndTotals({
     totals.adsCost += totals.undistributedAdsCost;
     totals.marginProfit -= totals.undistributedAdsCost;
     totals.netProfitAfterTax -= totals.undistributedAdsCost;
-  }
-
-  if (totals.wbAdsDeduction > 0) {
-    const adsDifference = totals.wbAdsDeduction - totals.adsCost;
-
-    totals.adsCost = totals.wbAdsDeduction;
-    totals.marginProfit -= adsDifference;
-    totals.netProfitAfterTax -= adsDifference;
   }
 
   totals.marginProfitPercent =
@@ -1089,18 +1007,11 @@ function applyWbFinanceExpenseTotals(
   result.totals.storageCost = financeExpenses.storageCost;
   result.totals.acceptanceCost = financeExpenses.acceptanceCost;
   result.totals.penaltiesAmount = financeExpenses.penaltiesAmount;
-
-  // Важно: WbFinance.otherDeductions НЕ подставляем целиком в прибыль.
-  // В этой сумме могут быть WB Продвижение и WB-кредит, которые нельзя задваивать.
-  // Операционные удержания берём из WbSale после классификации deductionReason.
+  result.totals.deductions = financeExpenses.deductions;
 
   if (result.totals.sellerRetailAmount > 0) {
     result.totals.sppDiscountAmount =
       result.totals.sellerRetailAmount - result.totals.revenue;
-  }
-
-  if (result.totals.wbAdsDeduction > 0) {
-    result.totals.adsCost = result.totals.wbAdsDeduction;
   }
 
   result.totals.marginProfit =

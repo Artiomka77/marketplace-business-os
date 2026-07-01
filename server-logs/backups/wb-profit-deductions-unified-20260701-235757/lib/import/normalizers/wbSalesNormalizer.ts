@@ -178,9 +178,6 @@ export async function normalizeWbSales(
       acceptanceCost:
         firstNumber(row["Платная приемка"]) ?? firstNumber(row["Операции на приемке"]),
       deductions: firstNumber(row["Удержания"]),
-      deductionReason: toStringOrNull(
-        row["Виды логистики, штрафов и корректировок ВВ"]
-      ),
       penaltiesAmount: firstNumber(row["Общая сумма штрафов"]),
 
       paymentServiceCost: firstNumber(
