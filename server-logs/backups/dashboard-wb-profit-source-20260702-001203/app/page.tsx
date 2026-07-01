@@ -1,4 +1,4 @@
-import Link from "next/link";
+﻿import Link from "next/link";
 import type { ReactNode } from "react";
 
 import { prisma } from "@/lib/prisma";
@@ -2749,18 +2749,13 @@ async function buildCompanyDashboardRows(params: {
         (companyReport?.wb.orderDataExpectedDays ?? 0) +
         (companyReport?.ozon.orderDataExpectedDays ?? 0);
 
-      // WB в Dashboard должен совпадать со страницей /profit-wb.
-      // Поэтому для WB берём финальные управленческие итоги из getProfitAnalytics,
-      // а не старую оперативную salesAmount из dailyReport.
-      const wbRevenue = wbAnalytics.totals.revenue;
-      const wbNetProfitAfterTax = wbAnalytics.totals.netProfitAfterTax;
-      const wbAdsCost = wbAnalytics.totals.adsCost;
-
+      const wbRevenue = companyReport?.wb.salesAmount ?? 0;
       const ozonRevenue = companyReport?.ozon.salesAmount ?? 0;
       const totalRevenue = wbRevenue + ozonRevenue;
 
       const operatingProfitAfterTax =
-        wbNetProfitAfterTax + (companyReport?.ozon.netProfitAfterTax ?? 0);
+        (companyReport?.wb.netProfitAfterTax ?? 0) +
+        (companyReport?.ozon.netProfitAfterTax ?? 0);
 
       const netProfit =
         companyReport?.finance.netProfitImpact ??
@@ -2775,7 +2770,8 @@ async function buildCompanyDashboardRows(params: {
 
       const cashFlowResult = companyReport?.finance.netCashFlow ?? cash.cashFlowResult;
 
-      const adsCost = wbAdsCost + (companyReport?.ozon.adSpend ?? 0);
+      const adsCost =
+        (companyReport?.wb.adSpend ?? 0) + (companyReport?.ozon.adSpend ?? 0);
 
       const drr = totalRevenue > 0 ? (adsCost / totalRevenue) * 100 : null;
       const drrByOrders = ordersAmount > 0 ? (adsCost / ordersAmount) * 100 : null;
