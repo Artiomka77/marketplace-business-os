@@ -1,6 +1,5 @@
 import { prisma } from "@/lib/prisma";
 import { calculateFinanceMetricsForRows } from "@/lib/finance/financeMetrics";
-import { getProfitAnalytics } from "@/lib/analytics/profitAnalytics";
 
 export type DailyReportPeriodPreset =
   | "yesterday"
@@ -119,12 +118,6 @@ function cleanText(value: unknown) {
 
 function formatDateInput(date: Date) {
   return date.toISOString().slice(0, 10);
-}
-
-function getInclusiveDateTo(dateToExclusive: Date) {
-  const date = new Date(dateToExclusive);
-  date.setDate(date.getDate() - 1);
-  return date;
 }
 
 function makeMoscowRange(params: {
@@ -1023,15 +1016,8 @@ function selectPreferredWbSaleRows<
 }
 
 async function getWbMetrics(companyName: string, range: DateRange) {
-  const [
-    orderStats,
-    salesRows,
-    adsRowsRaw,
-    stockQty,
-    costs,
-    companySettings,
-    wbProfitAnalytics,
-  ] = await Promise.all([
+  const [orderStats, salesRows, adsRowsRaw, stockQty, costs, companySettings] =
+    await Promise.all([
       getOrderStats({
         companyName,
         marketplace: "WB",
@@ -1118,11 +1104,6 @@ async function getWbMetrics(companyName: string, range: DateRange) {
           vatRate: true,
         },
       }),
-      getProfitAnalytics({
-        dateFrom: formatDateInput(range.dateFrom),
-        dateTo: formatDateInput(getInclusiveDateTo(range.dateToExclusive)),
-        companyName,
-      }),
     ]);
 
   const effectiveSalesRows = selectPreferredWbSaleRows(salesRows);
@@ -1164,34 +1145,13 @@ async function getWbMetrics(companyName: string, range: DateRange) {
   const adsRows = keepLatestWbAdsRowsPerDate(adsRowsRaw);
   const adSpend = adsRows.reduce((sum, row) => sum + toNumber(row.spend), 0);
   const taxRates = getCompanyTaxRates(companySettings);
-  const fallbackNetProfitAfterTax = calculateWbNetProfitAfterTax({
+  const netProfitAfterTax = calculateWbNetProfitAfterTax({
     rows: effectiveSalesRows,
     costs,
     adSpend,
     usnRate: taxRates.usnRate,
     vatRate: taxRates.vatRate,
   });
-
-  const profitTotals = wbProfitAnalytics.totals;
-  const profitAnalyticsHasWbData =
-    wbProfitAnalytics.rows.length > 0 ||
-    profitTotals.revenue !== 0 ||
-    profitTotals.sellerPayout !== 0 ||
-    profitTotals.adsCost !== 0 ||
-    profitTotals.netProfitAfterTax !== 0;
-
-  const finalSalesQty = profitAnalyticsHasWbData
-    ? profitTotals.netSalesQty
-    : salesQty;
-  const finalSalesAmount = profitAnalyticsHasWbData
-    ? profitTotals.revenue
-    : salesAmount;
-  const finalAdSpend = profitAnalyticsHasWbData
-    ? profitTotals.adsCost
-    : adSpend;
-  const finalNetProfitAfterTax = profitAnalyticsHasWbData
-    ? profitTotals.netProfitAfterTax
-    : fallbackNetProfitAfterTax;
 
   return {
     marketplace: "WB" as const,
@@ -1202,24 +1162,20 @@ async function getWbMetrics(companyName: string, range: DateRange) {
     ordersDataMissing,
     ordersDataIncomplete,
     ordersDataMissingReason,
-    salesQty: finalSalesQty,
-    salesAmount: finalSalesAmount,
+    salesQty,
+    salesAmount,
     salesLabel: "Продажи/выкупы",
     salesQtyIsReliable: !salesDataMissing,
     salesDataMissing,
     salesDataMissingReason,
-    adSpend: finalAdSpend,
+    adSpend,
     adSpendSource: "WB Ads",
     adDataMissing: false,
     adDataMissingReason: null,
-    drrByOrders: ordersDataMissing
-      ? 0
-      : calculateDrr(finalAdSpend, orderStats.ordersAmount),
-    drrBySales: salesDataMissing
-      ? 0
-      : calculateDrr(finalAdSpend, finalSalesAmount),
+    drrByOrders: ordersDataMissing ? 0 : calculateDrr(adSpend, orderStats.ordersAmount),
+    drrBySales: salesDataMissing ? 0 : calculateDrr(adSpend, salesAmount),
     stockQty,
-    netProfitAfterTax: finalNetProfitAfterTax,
+    netProfitAfterTax,
   };
 }
 

@@ -54,29 +54,6 @@ function calculateVatTax(revenue: number, vatRate: number) {
   return revenue * (vatRate / (100 + vatRate));
 }
 
-const WB_COMMISSION_VAT_RATE_FALLBACK = 0.22;
-
-function calculateWbCommissionVatFallback(
-  commissionBeforeVat: number,
-  savedCommissionVat: unknown
-) {
-  const savedVat = toNumber(savedCommissionVat);
-
-  if (savedVat !== 0) {
-    return savedVat;
-  }
-
-  // Старые уже загруженные WB Sales строки были импортированы до появления
-  // отдельной колонки «НДС с Вознаграждения WB». Чтобы Dashboard, Telegram
-  // и /profit-wb считали одинаково, для таких строк восстанавливаем НДС
-  // как 22% от вознаграждения WB без НДС. Новые загрузки берут НДС из отчёта.
-  if (commissionBeforeVat !== 0) {
-    return commissionBeforeVat * WB_COMMISSION_VAT_RATE_FALLBACK;
-  }
-
-  return 0;
-}
-
 function calculatePreviousPeriod(dateFrom?: string | null, dateTo?: string | null) {
   if (!dateFrom || !dateTo) return null;
 
@@ -592,10 +569,7 @@ function calculateRowsAndTotals({
       toNumber(wbRow.sppDiscountAmount) || sellerRetailAmount - realizedAmount;
 
     const wbCommissionBeforeVat = toNumber(wbRow.wbReward);
-    const wbCommissionVat = calculateWbCommissionVatFallback(
-      wbCommissionBeforeVat,
-      wbRow.wbRewardVat
-    );
+    const wbCommissionVat = toNumber(wbRow.wbRewardVat);
     const wbCommissionTotalRaw = toNumber(wbRow.wbRewardTotal);
     const wbCommissionTotal =
       wbCommissionTotalRaw !== 0
