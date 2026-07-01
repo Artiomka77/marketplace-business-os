@@ -1,0 +1,841 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Company {
+  id   String @id @default(cuid())
+  name String
+
+  taxSystem String?  @default("УСН Доходы")
+  usnRate   Decimal? @default(1)
+  vatRate   Decimal? @default(5)
+
+  isActive Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  marketplaceAccounts MarketplaceAccount[]
+  apiConnections      MarketplaceApiConnection[]
+}
+
+model Marketplace {
+  id        String   @id @default(cuid())
+  name      String
+  code      String   @unique
+  createdAt DateTime @default(now())
+
+  marketplaceAccounts MarketplaceAccount[]
+}
+
+model MarketplaceAccount {
+  id            String   @id @default(cuid())
+  name          String
+  companyId     String
+  marketplaceId String
+  createdAt     DateTime @default(now())
+
+  company     Company     @relation(fields: [companyId], references: [id])
+  marketplace Marketplace @relation(fields: [marketplaceId], references: [id])
+
+  @@index([companyId])
+  @@index([marketplaceId])
+}
+
+model Product {
+  id         String   @id @default(cuid())
+  name       String
+  vendorCode String?
+  createdAt  DateTime @default(now())
+
+  variants ProductVariant[]
+}
+
+model ProductVariant {
+  id        String   @id @default(cuid())
+  productId String
+  sku       String
+  barcode   String?
+  createdAt DateTime @default(now())
+
+  product Product @relation(fields: [productId], references: [id])
+
+  costPrices CostPrice[]
+
+  @@unique([sku])
+  @@index([productId])
+}
+
+model CostPrice {
+  id               String    @id @default(cuid())
+  productVariantId String
+  cost             Decimal
+  validFrom        DateTime
+  validTo          DateTime?
+
+  productVariant ProductVariant @relation(fields: [productVariantId], references: [id])
+
+  @@index([productVariantId])
+}
+
+model ImportSession {
+  id String @id @default(cuid())
+
+  fileName    String
+  reportType  String
+  marketplace String
+  companyName String?
+
+  rowsCount Int
+
+  previewJson Json?
+
+  sheetName String?
+  headerRow Int?
+
+  status String @default("SUCCESS")
+
+  createdAt DateTime @default(now())
+
+  @@index([reportType])
+  @@index([marketplace])
+  @@index([companyName])
+  @@index([createdAt])
+}
+
+model WbSale {
+  id String @id @default(cuid())
+
+  importSessionId String?
+
+  companyName String?
+
+  reportNumber String?
+  supplyNumber String?
+
+  brand       String?
+  subject     String?
+  productName String?
+  size        String?
+
+  nmId       String?
+  vendorCode String?
+  barcode    String?
+
+  // География WB Daily Sales API.
+  // Нужна для безопасной модели рекомендаций поставок по регионам/складам.
+  warehouseName   String?
+  countryName     String?
+  oblastOkrugName String?
+  regionName      String?
+
+  paymentReason String?
+  documentType  String?
+
+  saleDate DateTime?
+
+  quantity Int?
+
+  retailPrice      Decimal?
+  wbRealizedAmount Decimal?
+  sellerPayout     Decimal?
+
+  wbReward Decimal?
+
+  logisticsCost Decimal?
+
+  deliveriesCount Int?
+  returnsCount    Int?
+
+  storageCost    Decimal?
+  deductions     Decimal?
+  acceptanceCost Decimal?
+
+  penaltiesAmount Decimal?
+
+  paymentServiceCost Decimal?
+
+  pvzCompensation       Decimal?
+  transportCompensation Decimal?
+  wbRewardCorrection    Decimal?
+
+  createdAt DateTime @default(now())
+
+  @@index([importSessionId])
+  @@index([vendorCode])
+  @@index([barcode])
+  @@index([nmId])
+  @@index([saleDate])
+  @@index([paymentReason])
+  @@index([companyName])
+  @@index([warehouseName])
+  @@index([countryName])
+  @@index([oblastOkrugName])
+  @@index([regionName])
+}
+
+model WbFinance {
+  id String @id @default(cuid())
+
+  importSessionId String?
+
+  companyName String?
+
+  reportNumber   String?
+  legalEntity    String?
+  dateFrom       DateTime?
+  dateTo         DateTime?
+  reportTypeName String?
+
+  salesAmount     Decimal?
+  payoutAmount    Decimal?
+  logisticsCost   Decimal?
+  storageCost     Decimal?
+  acceptanceCost  Decimal?
+  otherDeductions Decimal?
+  penaltiesAmount Decimal?
+  totalToPay      Decimal?
+
+  createdAt DateTime @default(now())
+
+  @@index([importSessionId])
+  @@index([reportNumber])
+  @@index([dateFrom])
+  @@index([dateTo])
+  @@index([companyName])
+}
+
+model WbAds {
+  id String @id @default(cuid())
+
+  importSessionId String?
+
+  companyName String?
+
+  campaignId   String?
+  campaignName String?
+
+  dateFrom DateTime?
+  dateTo   DateTime?
+
+  impressions Int?
+  clicks      Int?
+
+  ctr Decimal?
+  cpc Decimal?
+
+  spend Decimal?
+
+  createdAt DateTime @default(now())
+
+  @@index([campaignId])
+  @@index([dateFrom])
+  @@index([dateTo])
+  @@index([companyName])
+}
+
+model WbStock {
+  id String @id @default(cuid())
+
+  importSessionId String?
+
+  companyName String?
+
+  brand      String?
+  subject    String?
+  vendorCode String?
+  barcode    String?
+  size       String?
+  nmId       String?
+  chrtId     String?
+
+  inTransitToCustomer Int?
+  inTransitReturns    Int?
+  totalStock          Int?
+
+  warehouseName String?
+  warehouseQty  Int?
+
+  createdAt DateTime @default(now())
+
+  @@index([vendorCode])
+  @@index([barcode])
+  @@index([warehouseName])
+  @@index([companyName])
+  @@index([nmId])
+  @@index([chrtId])
+}
+
+model WbProductCard {
+  id String @id @default(cuid())
+
+  companyName String
+
+  nmId       String
+  vendorCode String?
+
+  title       String?
+  brand       String?
+  subjectName String?
+
+  photoSmallUrl String?
+  photoBigUrl   String?
+
+  updatedAtFromApi DateTime?
+  lastSyncedAt     DateTime  @default(now())
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([companyName, nmId])
+  @@index([companyName])
+  @@index([nmId])
+  @@index([vendorCode])
+  @@index([lastSyncedAt])
+}
+
+model ProductCost {
+  id String @id @default(cuid())
+
+  vendorCode String
+  nmId       String?
+
+  costPrice Decimal
+
+  name     String?
+  costDate DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@index([vendorCode])
+  @@index([nmId])
+  @@index([costDate])
+}
+
+model AdCampaignMap {
+  id String @id @default(cuid())
+
+  marketplace String
+  companyName String?
+
+  campaignName String
+  vendorCode   String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([marketplace])
+  @@index([companyName])
+  @@index([campaignName])
+  @@index([vendorCode])
+}
+
+model OzonFinance {
+  id String @id @default(cuid())
+
+  importSessionId String?
+  companyName     String?
+
+  accrualDate DateTime?
+
+  operationType String?
+
+  sku        String?
+  vendorCode String?
+
+  quantity Int?
+
+  salesAmount Decimal?
+
+  ozonCommission Decimal?
+
+  logisticsCost        Decimal?
+  reverseLogisticsCost Decimal?
+
+  totalAmount Decimal?
+
+  createdAt DateTime @default(now())
+
+  @@index([importSessionId])
+  @@index([sku])
+  @@index([vendorCode])
+  @@index([accrualDate])
+  @@index([companyName])
+}
+
+model OzonAds {
+  id String @id @default(cuid())
+
+  importSessionId String?
+  companyName     String?
+
+  reportDate DateTime?
+  sku        String?
+
+  impressions Int?
+  clicks      Int?
+
+  ctr Decimal?
+  cpc Decimal?
+
+  orders Int?
+
+  spend Decimal?
+
+  createdAt DateTime @default(now())
+
+  @@index([importSessionId])
+  @@index([reportDate])
+  @@index([companyName])
+  @@index([sku])
+}
+
+model OzonStock {
+  id String @id @default(cuid())
+
+  importSessionId String?
+  companyName     String?
+
+  sku        String?
+  vendorCode String?
+  size       String?
+
+  warehouseName String?
+  clusterName   String?
+
+  availableQty Int?
+
+  preparingQty Int?
+
+  supplyQty Int?
+
+  inTransitQty Int?
+
+  returnQty Int?
+
+  createdAt DateTime @default(now())
+
+  @@index([sku])
+  @@index([vendorCode])
+  @@index([size])
+  @@index([companyName])
+  @@index([warehouseName])
+}
+
+model OzonProduct {
+  id String @id @default(cuid())
+
+  importSessionId String?
+  companyName     String?
+
+  vendorCode String
+  sku        String
+  size      String?
+
+  productName String?
+
+  imageUrl       String?
+  imageSmallUrl  String?
+  imageUpdatedAt DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@index([importSessionId])
+  @@index([vendorCode])
+  @@index([companyName])
+  @@index([sku])
+  @@index([size])
+}
+
+model FinanceCategory {
+  id String @id @default(cuid())
+
+  name       String
+  parentName String?
+
+  categoryType String
+
+  sortOrder       Int     @default(0)
+  isActive        Boolean @default(true)
+  profitTreatment String  @default("AUTO")
+
+  createdAt DateTime @default(now())
+
+  @@index([categoryType])
+  @@index([name])
+  @@index([profitTreatment])
+}
+
+model FinanceTransaction {
+  id String @id @default(cuid())
+
+  companyId   String?
+  companyName String
+
+  operationDate  DateTime
+  obligationDate DateTime?
+
+  operationType String
+
+  category    String
+  subcategory String?
+
+  counterparty String?
+
+  amount Decimal
+
+  bankAccount String?
+
+  comment String?
+
+  project String?
+
+  isInternalTransfer Boolean @default(false)
+
+  transferGroupId   String?
+  transferDirection String?
+
+  transactionStatus String  @default("FACT")
+  sourceType        String?
+  sourceId          String?
+
+  createdAt DateTime @default(now())
+
+  @@index([companyId])
+  @@index([companyName])
+  @@index([operationDate])
+  @@index([category])
+  @@index([operationType])
+  @@index([bankAccount])
+  @@index([transferGroupId])
+  @@index([transferDirection])
+}
+
+model Loan {
+  id String @id @default(cuid())
+
+  companyId   String?
+  companyName String
+
+  bankName       String
+  contractNumber String?
+
+  creditLimit    Decimal?
+  currentDebt    Decimal?
+  monthlyPayment Decimal?
+  interestRate   Decimal?
+
+  startDate DateTime?
+  endDate   DateTime?
+
+  paymentFrequency String @default("MONTHLY")
+
+  createdAt DateTime @default(now())
+
+  payments LoanPayment[]
+
+  @@index([companyId])
+  @@index([companyName])
+  @@index([bankName])
+}
+
+model LoanPayment {
+  id String @id @default(cuid())
+
+  loanId String
+
+  paymentDate DateTime
+
+  principalAmount Decimal?
+  interestAmount  Decimal?
+  totalAmount     Decimal?
+
+  paid Boolean @default(false)
+
+  createdAt DateTime @default(now())
+
+  loan Loan @relation(fields: [loanId], references: [id])
+
+  @@index([loanId])
+  @@index([paymentDate])
+}
+
+model FinanceAccount {
+  id String @id @default(cuid())
+
+  companyName String
+
+  name        String
+  accountType String
+
+  openingBalance Decimal @default(0)
+  currentBalance Decimal @default(0)
+
+  isActive Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([companyName])
+  @@index([name])
+  @@index([isActive])
+}
+
+model BudgetPlan {
+  id String @id @default(cuid())
+
+  companyName String
+  periodYear  Int
+  periodMonth Int
+
+  revenuePlan Float? @default(0)
+  profitPlan  Float? @default(0)
+
+  adsPlan       Float? @default(0)
+  logisticsPlan Float? @default(0)
+  taxPlan       Float? @default(0)
+  salaryPlan    Float? @default(0)
+  otherPlan     Float? @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([companyName, periodYear, periodMonth])
+}
+
+model MarketplaceDailyOrderStat {
+  id String @id @default(cuid())
+
+  companyName String
+  marketplace String
+  // WB | OZON
+
+  orderDate DateTime
+
+  ordersQty    Int     @default(0)
+  ordersAmount Decimal @default(0)
+
+  source String @default("API")
+
+  rawJson Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([companyName, marketplace, orderDate])
+  @@index([companyName])
+  @@index([marketplace])
+  @@index([orderDate])
+}
+
+model MarketplaceApiConnection {
+  id String @id @default(cuid())
+
+  companyId String
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  marketplace String // WB или OZON
+
+  wbToken String?
+
+  ozonClientId                String?
+  ozonApiKey                  String?
+  ozonPerformanceClientId     String?
+  ozonPerformanceClientSecret String?
+
+  isEnabled Boolean @default(false)
+
+  status String @default("NOT_CONNECTED")
+  // NOT_CONNECTED | CONNECTED | ERROR
+
+  lastSyncAt    DateTime?
+  lastAttemptAt DateTime?
+  retryCount    Int       @default(0)
+  lastError     String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([companyId, marketplace])
+  @@index([companyId])
+  @@index([marketplace])
+}
+
+model WbSupplyRecommendation {
+  id String @id @default(cuid())
+
+  importSessionId String?
+  companyName     String?
+
+  recommendationDate DateTime?
+
+  regionName     String
+  warehousesText String?
+
+  vendorCode  String
+  size        String?
+  productName String?
+  nmId        String?
+  barcode     String?
+
+  regionStockQty Int @default(0)
+
+  avgOrdersPerDay      Decimal?
+  forecastOrdersPerDay Decimal?
+  stockDays            Decimal?
+
+  stockLevel     String?
+  recommendation String?
+
+  potentialLostRevenue28 Decimal?
+
+  plannedSupplyQty Int @default(0)
+
+  recommendedQty14 Int @default(0)
+  recommendedQty21 Int @default(0)
+  recommendedQty28 Int @default(0)
+  recommendedQty56 Int @default(0)
+
+  isAllRegions Boolean @default(false)
+
+  createdAt DateTime @default(now())
+
+  @@index([importSessionId])
+  @@index([companyName])
+  @@index([recommendationDate])
+  @@index([regionName])
+  @@index([vendorCode])
+  @@index([nmId])
+  @@index([barcode])
+  @@index([size])
+  @@index([recommendation])
+  @@index([stockLevel])
+  @@index([isAllRegions])
+}
+
+model OzonSupplyRecommendation {
+  id String @id @default(cuid())
+
+  importSessionId String?
+  companyName     String?
+
+  sku        String?
+  vendorCode String
+
+  productName String?
+
+  recommendationPeriodDays Int?
+  recommendedSupplyQty     Int  @default(0)
+
+  recommendation String?
+  clusterName    String
+  salesScheme    String?
+
+  daysWithoutStock28 Int?
+
+  avgDeliveryHours   Decimal?
+  avgDailySalesRub28 Decimal?
+  avgDailySalesQty28 Decimal?
+
+  productFlag String?
+
+  daysToStockEndFbo Decimal?
+  daysToStockEndFbs Decimal?
+
+  fboStockQty Int?
+  fbsStockQty Int?
+
+  inTransitToOzonQty Int?
+
+  createdAt DateTime @default(now())
+
+  @@index([importSessionId])
+  @@index([companyName])
+  @@index([sku])
+  @@index([vendorCode])
+  @@index([clusterName])
+  @@index([recommendation])
+  @@index([recommendationPeriodDays])
+}
+
+model OzonWarehouseStock {
+  id String @id @default(cuid())
+
+  importSessionId String?
+  companyName     String
+
+  vendorCode String
+  sku        String?
+
+  productName String?
+  color       String?
+  size        String?
+  barcode     String?
+
+  warehouseQty          Int @default(0)
+  reservedQty           Int @default(0)
+  availableForSupplyQty Int @default(0)
+
+  costPrice Decimal?
+
+  inventoryDate DateTime?
+  comment       String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([importSessionId])
+  @@index([companyName])
+  @@index([vendorCode])
+  @@index([sku])
+  @@index([inventoryDate])
+}
+
+model HistoricalSyncJob {
+  id String @id @default(cuid())
+
+  companyId   String?
+  companyName String
+
+  marketplace String
+  // WB | OZON
+
+  dataType String
+  // FINANCE | SALES | ADS | STOCK | PRODUCTS
+
+  dateFrom DateTime
+  dateTo   DateTime
+
+  cursorDate         DateTime?
+  cursorReportNumber String?
+  cursorOffset       Int?
+
+  status String @default("PENDING")
+  // PENDING | RUNNING | SUCCESS | ERROR | RATE_LIMITED
+
+  totalSteps     Int? @default(0)
+  completedSteps Int? @default(0)
+
+  lastAttemptAt DateTime?
+  lastError     String?
+  retryCount    Int       @default(0)
+
+  startedAt  DateTime?
+  finishedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([companyId])
+  @@index([companyName])
+  @@index([marketplace])
+  @@index([dataType])
+  @@index([status])
+  @@index([dateFrom])
+  @@index([dateTo])
+  @@index([createdAt])
+}

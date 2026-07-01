@@ -221,64 +221,6 @@ function mapWbFinanceApiRows(rows: WbFinanceReport[]) {
   }));
 }
 
-function normalizeWbReportNumber(value: unknown) {
-  return String(value ?? "").trim();
-}
-
-function getWbFinanceApiReportNumber(row: WbFinanceReport) {
-  return normalizeWbReportNumber(row.reportId);
-}
-
-async function getExistingWbFinanceReportNumbers(
-  companyName: string,
-  reportNumbers: string[]
-) {
-  const normalizedReportNumbers = Array.from(
-    new Set(reportNumbers.map(normalizeWbReportNumber).filter(Boolean))
-  );
-
-  if (normalizedReportNumbers.length === 0) {
-    return new Set<string>();
-  }
-
-  const rows = await prisma.wbFinance.findMany({
-    where: {
-      companyName,
-      reportNumber: {
-        in: normalizedReportNumbers,
-      },
-    },
-    select: {
-      reportNumber: true,
-    },
-    distinct: ["reportNumber"],
-  });
-
-  return new Set(
-    rows
-      .map((row) => normalizeWbReportNumber(row.reportNumber))
-      .filter(Boolean)
-  );
-}
-
-async function getExistingWbSalesRowsCount(
-  companyName: string,
-  reportNumber: string
-) {
-  const normalizedReportNumber = normalizeWbReportNumber(reportNumber);
-
-  if (!normalizedReportNumber) {
-    return 0;
-  }
-
-  return prisma.wbSale.count({
-    where: {
-      companyName,
-      reportNumber: normalizedReportNumber,
-    },
-  });
-}
-
 function mapWbSalesApiRows(rows: WbSalesDetailedRow[]) {
   return rows.map((row) => ({
     "Номер отчета": row.reportId
@@ -688,110 +630,6 @@ async function runSyncStep<T extends { name: string; rows: number }>(
   }
 }
 
-export async function syncWbFinanceMissingReports(
-  companyId: string,
-  options: WbSyncPeriodOptions = {}
-) {
-  const { company, connection } = await getWbConnection(companyId);
-
-  if (isConnectionInCooldown(connection)) {
-    const message = getCooldownMessage(connection.lastAttemptAt as Date);
-
-    return {
-      name: "WB Finance Missing Reports",
-      rows: 0,
-      financeRows: 0,
-      skipped: true,
-      reason: "WB_RATE_LIMIT_COOLDOWN",
-      message,
-    };
-  }
-
-  const wbToken = connection.wbToken;
-
-  if (!wbToken) {
-    throw new Error("WB token не сохранён");
-  }
-
-  const financeResult = await fetchWbFinanceReports(wbToken, options);
-  const apiReportNumbers = Array.from(
-    new Set(
-      financeResult.rows
-        .map((row) => getWbFinanceApiReportNumber(row))
-        .filter(Boolean)
-    )
-  );
-
-  const existingReportNumbers = await getExistingWbFinanceReportNumbers(
-    company.name,
-    apiReportNumbers
-  );
-
-  const missingFinanceRows = financeResult.rows.filter((row) => {
-    const reportNumber = getWbFinanceApiReportNumber(row);
-
-    return Boolean(reportNumber && !existingReportNumbers.has(reportNumber));
-  });
-
-  if (missingFinanceRows.length === 0) {
-    return {
-      name: "WB Finance Missing Reports",
-      rows: 0,
-      financeRows: 0,
-      skipped: true,
-      reason: "ALL_FINANCE_REPORTS_ALREADY_LOADED",
-      message:
-        "Все WB Finance отчёты за проверяемый период уже есть в базе. Повторная загрузка пропущена.",
-      dateFrom: financeResult.dateFrom,
-      dateTo: financeResult.dateTo,
-      apiReports: apiReportNumbers.length,
-      existingReports: existingReportNumbers.size,
-      missingReports: 0,
-    };
-  }
-
-  const financeRows = mapWbFinanceApiRows(missingFinanceRows);
-
-  const financeImportSession = await prisma.importSession.create({
-    data: {
-      fileName: `WB API Finance missing ${company.name} ${financeResult.dateFrom} - ${financeResult.dateTo}`,
-      reportType: "WB_FINANCE",
-      marketplace: "WILDBERRIES",
-      companyName: company.name,
-      rowsCount: financeRows.length,
-      previewJson: financeRows.slice(0, 10),
-      sheetName: "WB Finance API Missing",
-      headerRow: 1,
-      status: "SUCCESS",
-    },
-  });
-
-  const financeNormalizeResult = await normalizeWbFinance(
-    financeRows,
-    financeImportSession.id,
-    company.name
-  );
-
-  await prisma.importSession.update({
-    where: { id: financeImportSession.id },
-    data: { rowsCount: financeNormalizeResult.savedRows },
-  });
-
-  return {
-    name: "WB Finance Missing Reports",
-    rows: financeNormalizeResult.savedRows,
-    financeRows: financeNormalizeResult.savedRows,
-    dateFrom: financeResult.dateFrom,
-    dateTo: financeResult.dateTo,
-    apiReports: apiReportNumbers.length,
-    existingReports: existingReportNumbers.size,
-    missingReports: missingFinanceRows.length,
-    loadedReportNumbers: missingFinanceRows
-      .map((row) => getWbFinanceApiReportNumber(row))
-      .filter(Boolean),
-  };
-}
-
 export async function syncWbFinance(
   companyId: string,
   options: WbSyncPeriodOptions = {}
@@ -864,25 +702,6 @@ export async function syncWbSalesByReportNumber(
   }
 
   const { company, connection } = await getWbConnection(companyId);
-  const existingRows = await getExistingWbSalesRowsCount(
-    company.name,
-    normalizedReportId
-  );
-
-  if (existingRows > 0) {
-    return {
-      name: "WB Sales",
-      rows: 0,
-      salesRows: 0,
-      skipped: true,
-      reason: "WB_SALES_REPORT_ALREADY_LOADED",
-      message: `WB Sales report ${normalizedReportId} уже есть в базе (${existingRows} строк). Повторная загрузка пропущена.`,
-      reportId: normalizedReportId,
-      existingRows,
-      dateFrom: formatDateForFileName(options.dateFrom),
-      dateTo: formatDateForFileName(options.dateTo),
-    };
-  }
 
   if (isConnectionInCooldown(connection)) {
     const message = getCooldownMessage(connection.lastAttemptAt as Date);
