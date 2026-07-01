@@ -789,42 +789,6 @@ function KpiCard({
   );
 }
 
-
-function PriceBridgeCard({
-  title,
-  value,
-  helper,
-  tone = "slate",
-}: {
-  title: string;
-  value: number;
-  helper: ReactNode;
-  tone?: "slate" | "emerald" | "orange" | "violet" | "red";
-}) {
-  const toneClassName =
-    tone === "emerald"
-      ? "bg-emerald-50 text-emerald-700 ring-emerald-100"
-      : tone === "orange"
-        ? "bg-orange-50 text-orange-700 ring-orange-100"
-        : tone === "violet"
-          ? "bg-violet-50 text-violet-700 ring-violet-100"
-          : tone === "red"
-            ? "bg-red-50 text-red-700 ring-red-100"
-            : "bg-slate-50 text-slate-700 ring-slate-100";
-
-  return (
-    <div className={`rounded-[24px] p-4 ring-1 ${toneClassName}`}>
-      <div className="text-xs font-black uppercase tracking-[0.12em] opacity-75">
-        {title}
-      </div>
-      <div className="mt-2 text-2xl font-black tracking-tight">
-        {formatMoney(value)}
-      </div>
-      <div className="mt-2 text-xs font-semibold leading-5 opacity-80">{helper}</div>
-    </div>
-  );
-}
-
 function AbcBadge({ value }: { value: "A" | "B" | "C" }) {
   const className =
     value === "A"
@@ -1056,11 +1020,11 @@ function TableHeader() {
       </div>
       <div className="flex items-center gap-1">
         Расходы
-        <InfoTooltip text="Расходы — управленческие расходы по артикулу: себестоимость, логистика, хранение и приёмка, штрафы/удержания, реклама и налоги. Комиссия/компенсация WB и СПП показываются отдельно, потому что они уже учтены внутри суммы к перечислению продавцу." />
+        <InfoTooltip text="Расходы — все затраты по артикулу за выбранный период: себестоимость, комиссия WB, логистика, хранение и приёмка, штрафы и удержания, платные услуги, реклама и налоги." />
       </div>
       <div className="flex items-center gap-1">
         Прибыль
-        <InfoTooltip text="Прибыль — прибыль после налогов: к перечислению продавцу минус себестоимость, логистика, хранение, приёмка, штрафы/удержания, реклама и налоги. Налог считается с суммы ‘WB реализовал товар’." />
+        <InfoTooltip text="Прибыль — прибыль после налогов: выручка минус все расходы. Процент под суммой показывает долю прибыли в выручке артикула. Бейдж A/B/C — ABC по прибыли." />
       </div>
       <div className="flex items-center gap-1">
         Процент выкупа
@@ -1393,13 +1357,6 @@ export default async function ProfitPage({
 
   const storageAndAcceptance = totals.storageCost + totals.acceptanceCost;
   const penaltiesAndDeductions = totals.penaltiesAmount + totals.deductions;
-  const wbInternalServices =
-    totals.paymentServiceCost +
-    totals.pvzCompensation +
-    totals.transportCompensation +
-    totals.loyaltyParticipationCost +
-    totals.loyaltyPointsAmount -
-    totals.loyaltyDiscountCompensation;
   const profitableSkuCount = rows.filter((row) => row.netProfitAfterTax > 0).length;
   const riskSkuCount = rows.filter(
     (row) =>
@@ -1423,7 +1380,7 @@ export default async function ProfitPage({
       colorHex: "#6366f1",
     },
     {
-      label: "Комиссия / компенсация WB",
+      label: "Комиссия WB",
       value: totals.wbCommission,
       colorClassName: "bg-violet-500",
       colorHex: "#8b5cf6",
@@ -1453,6 +1410,12 @@ export default async function ProfitPage({
       colorHex: "#f87171",
     },
     {
+      label: "Прочие расходы",
+      value: totals.paymentServiceCost,
+      colorClassName: "bg-slate-500",
+      colorHex: "#64748b",
+    },
+    {
       label: "Налоги",
       value: totals.taxesAmount,
       colorClassName: "bg-amber-500",
@@ -1477,9 +1440,8 @@ export default async function ProfitPage({
               </h1>
 
               <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-500">
-                Unit economics по WB Sales: цена продавца, СПП WB, фактическая
-                реализация, комиссия/компенсация WB, себестоимость, логистика,
-                реклама и налоги.
+                Unit economics по WB Sales с учётом себестоимости, логистики,
+                штрафов, рекламы и налогов.
               </p>
             </div>
 
@@ -1600,45 +1562,17 @@ export default async function ProfitPage({
           />
 
           <KpiCard
-            title="К перечислению WB"
-            value={formatMoney(totals.sellerPayout)}
-            helper={`${formatShare(totals.sellerPayout, totals.revenue)}`}
-            delta={comparison.sellerPayout.diffPercent}
-            sparkTone="emerald"
+            title="Комиссии и логистика"
+            value={formatMoney(totals.wbCommission + totals.logisticsCost)}
+            helper={`${formatShare(totals.wbCommission + totals.logisticsCost, totals.revenue)}`}
+            delta={(() => {
+              const currentCombined = comparison.wbCommission.current + comparison.logisticsCost.current;
+              const previousCombined = comparison.wbCommission.previous + comparison.logisticsCost.previous;
+              return previousCombined !== 0 ? ((currentCombined - previousCombined) / previousCombined) * 100 : 0;
+            })()}
+            inverseDelta
+            sparkTone="orange"
             sparkPoints={[8, 10, 9, 15, 14, 18, 23, 21]}
-          />
-        </section>
-
-        <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-          <PriceBridgeCard
-            title="Цена продавца"
-            value={totals.sellerRetailAmount}
-            helper="Цена розничная с учётом согласованной скидки, до СПП WB."
-            tone="violet"
-          />
-          <PriceBridgeCard
-            title="WB реализовал"
-            value={totals.revenue}
-            helper="Фактическая продажа покупателю после СПП. С этой суммы считаем налог и ДРР."
-            tone="emerald"
-          />
-          <PriceBridgeCard
-            title="СПП WB"
-            value={totals.sppDiscountAmount}
-            helper={`${formatShare(totals.sppDiscountAmount, totals.sellerRetailAmount, "от цены продавца")}. Скидка площадки покупателю.`}
-            tone="orange"
-          />
-          <PriceBridgeCard
-            title="Комиссия / компенсация"
-            value={totals.wbCommission}
-            helper={`Без НДС: ${formatMoney(totals.wbCommissionBeforeVat)} · НДС: ${formatMoney(totals.wbCommissionVat)}. Отрицательное значение — компенсация WB.`}
-            tone={totals.wbCommission < 0 ? "emerald" : "red"}
-          />
-          <PriceBridgeCard
-            title="Платёжные / ПВЗ"
-            value={wbInternalServices}
-            helper="Расшифровка внутри выплаты WB: платёжные сервисы, ПВЗ, перевозка и лояльность. В прибыль второй раз не вычитается."
-            tone="slate"
           />
         </section>
 
@@ -1646,7 +1580,7 @@ export default async function ProfitPage({
           <section className="panel min-w-0 p-5 sm:p-6">
             <div className="flex items-center gap-2">
               <h2 className="text-[1.7rem] font-black tracking-tight text-slate-950">
-                Структура экономики WB
+                Структура прибыли WB
               </h2>
               <span className="text-slate-300">ⓘ</span>
             </div>
@@ -1738,8 +1672,8 @@ export default async function ProfitPage({
                   Сводная таблица по артикулам
                 </h2>
                 <p className="mt-2 text-sm leading-6 text-slate-500">
-                  Рабочий список товаров: фактическая реализация WB, управленческие расходы,
-                  прибыль, процент выкупа и маржинальность. Стрелка раскрывает размеры.
+                  Рабочий список товаров: выкупы, расходы, прибыль, процент выкупа и
+                  маржинальность. Стрелка раскрывает размеры.
                 </p>
               </div>
 

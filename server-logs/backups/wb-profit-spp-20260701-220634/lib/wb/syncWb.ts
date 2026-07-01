@@ -79,20 +79,12 @@ type WbSalesDetailedRow = {
   quantity?: number | string;
   retailPrice?: number | string;
   retail_price?: number | string;
-  retailPriceWithDiscount?: number | string;
-  retail_price_with_discount?: number | string;
   retailAmount?: number | string;
   retail_amount?: number | string;
   forPay?: number | string;
   ppvz_for_pay?: number | string;
   vw?: number | string;
   ppvz_vw?: number | string;
-  ppvzVwNds?: number | string;
-  ppvz_vw_nds?: number | string;
-  commissionPercent?: number | string;
-  commission_percent?: number | string;
-  platformDiscountPercent?: number | string;
-  platform_discount_percent?: number | string;
   deliveryAmount?: number | string;
   delivery_amount?: number | string;
   returnAmount?: number | string;
@@ -111,14 +103,6 @@ type WbSalesDetailedRow = {
   ppvz_reward?: number | string;
   rebillLogisticCost?: number | string;
   rebill_logistic_cost?: number | string;
-  loyaltyDiscountCompensation?: number | string;
-  loyalty_discount_compensation?: number | string;
-  loyaltyParticipationCost?: number | string;
-  loyalty_participation_cost?: number | string;
-  loyaltyPointsAmount?: number | string;
-  loyalty_points_amount?: number | string;
-  additionalPayment?: number | string;
-  additional_payment?: number | string;
 };
 
 const WB_COOLDOWN_MS = 60 * 60 * 1000;
@@ -333,25 +317,13 @@ function mapWbSalesApiRows(rows: WbSalesDetailedRow[]) {
     "Кол-во": row.quantity ?? "",
 
     "Цена розничная": row.retailPrice ?? row.retail_price ?? "",
-    "Цена розничная с учетом согласованной скидки":
-      row.retailPriceWithDiscount ??
-      row.retail_price_with_discount ??
-      row.retailPrice ??
-      row.retail_price ??
-      "",
     "Вайлдберриз реализовал Товар (Пр)":
       row.retailAmount ?? row.retail_amount ?? "",
     "К перечислению Продавцу за реализованный Товар":
       row.forPay ?? row.ppvz_for_pay ?? "",
 
-    "Платформенные скидки, %":
-      row.platformDiscountPercent ?? row.platform_discount_percent ?? "",
-    "Размер кВВ, %": row.commissionPercent ?? row.commission_percent ?? "",
-
     "Вознаграждение Вайлдберриз (ВВ), без НДС":
       row.vw ?? row.ppvz_vw ?? "",
-    "НДС с Вознаграждения Вайлдберриз":
-      row.ppvzVwNds ?? row.ppvz_vw_nds ?? "",
 
     "Количество доставок": row.deliveryAmount ?? row.delivery_amount ?? "",
     "Количество возврата": row.returnAmount ?? row.return_amount ?? "",
@@ -372,16 +344,8 @@ function mapWbSalesApiRows(rows: WbSalesDetailedRow[]) {
 
     "Возмещение издержек по перевозке":
       row.rebillLogisticCost ?? row.rebill_logistic_cost ?? "",
-    "Возмещение издержек по перевозке/по складским операциям с товаром":
-      row.rebillLogisticCost ?? row.rebill_logistic_cost ?? "",
 
     "Корректировка вознаграждения Вайлдберриз": "",
-    "Компенсация скидки по программе лояльности":
-      row.loyaltyDiscountCompensation ?? row.loyalty_discount_compensation ?? "",
-    "Стоимость участия в программе лояльности":
-      row.loyaltyParticipationCost ?? row.loyalty_participation_cost ?? "",
-    "Сумма баллов, удержанных по программе лояльности":
-      row.loyaltyPointsAmount ?? row.loyalty_points_amount ?? "",
   }));
 }
 
