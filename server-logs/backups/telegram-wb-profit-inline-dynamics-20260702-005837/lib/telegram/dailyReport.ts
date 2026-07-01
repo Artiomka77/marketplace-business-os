@@ -1294,8 +1294,8 @@ async function getWbMetrics(companyName: string, range: DateRange) {
         },
       }),
       getProfitAnalytics({
-        dateFrom: getMoscowDateInput(range.dateFrom),
-        dateTo: getMoscowDateInput(getInclusiveDateTo(range.dateToExclusive)),
+        dateFrom: formatDateInput(range.dateFrom),
+        dateTo: formatDateInput(getInclusiveDateTo(range.dateToExclusive)),
         companyName,
       }),
     ]);
@@ -2007,7 +2007,7 @@ function getProfitConclusion(report: DailyReport) {
   }
 
   if (report.totals.netProfitImpact > 0) {
-    return `Чистая прибыль за период положительная: ${formatMoney(
+    return `Чистая прибыль за день положительная: ${formatMoney(
       report.totals.netProfitImpact
     )}.`;
   }
@@ -2016,7 +2016,7 @@ function getProfitConclusion(report: DailyReport) {
 }
 
 function buildOwnerConclusion(report: DailyReport) {
-  const lines: string[] = ["Вывод по периоду:"];
+  const lines: string[] = ["Вывод дня:"];
 
   lines.push(
     `Оборот заказов: ${formatMoney(report.totals.ordersAmount)} при остатках ${formatNumber(
@@ -2200,53 +2200,28 @@ function buildComparisonLines(report: DailyReport) {
   ];
 }
 
-function inlinePercentChange(value: number | null, inverse = false) {
-  const formatted = formatPercentChange(value, inverse);
-  return formatted === "нет базы" ? "" : ` (${formatted})`;
-}
-
-function inlinePointDiff(value: number | null, inverse = true) {
-  const formatted = formatPointDiff(value, inverse);
-  return formatted === "нет базы" ? "" : ` (${formatted})`;
-}
-
 export function formatDailyReportForTelegram(report: DailyReport) {
-  const comparison = report.comparison?.totals ?? null;
-
   const lines: string[] = [
     `📊 AvoroFin — сводка собственника`,
     `Период: ${report.periodLabel}`,
     `Даты: ${report.dateLabel}`,
-    report.comparison
-      ? `Сравнение: ${report.comparison.dateLabel}`
-      : "",
     "",
     "ИТОГО ПО БИЗНЕСУ",
     `Заказы: ${formatNumber(report.totals.ordersQty)} шт / ${formatMoney(
       report.totals.ordersAmount
-    )}${inlinePercentChange(comparison?.ordersAmountPercent ?? null)}`,
-    `Продажи/начисления: ${formatMoney(report.totals.salesAmount)}${inlinePercentChange(
-      comparison?.salesAmountPercent ?? null
     )}`,
-    `Реклама: ${formatMoney(report.totals.adSpend)}${inlinePercentChange(
-      comparison?.adSpendPercent ?? null,
-      true
-    )}`,
+    `Продажи/начисления: ${formatMoney(report.totals.salesAmount)}`,
+    `Реклама: ${formatMoney(report.totals.adSpend)}`,
     `ДРР: от заказов ${formatPercent(
       report.totals.drrByOrders
-    )} / от продаж ${formatPercent(report.totals.drrBySales)}${inlinePointDiff(
-      comparison?.drrBySalesPointDiff ?? null,
-      true
-    )}`,
-    `ДДС: ${formatMoney(report.totals.netCashFlow)}${inlinePercentChange(
-      comparison?.netCashFlowPercent ?? null
-    )}`,
-    `Чистая прибыль: ${formatMoney(report.totals.netProfitImpact)}${inlinePercentChange(
-      comparison?.netProfitImpactPercent ?? null
-    )}`,
+    )} (от продаж/начислений ${formatPercent(report.totals.drrBySales)})`,
+    `ДДС: ${formatMoney(report.totals.netCashFlow)}`,
+    `Чистая прибыль: ${formatMoney(report.totals.netProfitImpact)}`,
     `Вывод собственника: ${formatMoney(report.totals.ownerWithdrawals)}`,
     `Остатки: ${formatNumber(report.totals.stockQty)} шт`,
-  ].filter(Boolean);
+  ];
+
+  lines.push(...buildComparisonLines(report));
 
   if (report.warnings.length > 0) {
     lines.push("", "Что требует внимания:");
