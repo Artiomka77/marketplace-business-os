@@ -3,18 +3,10 @@ import { calculateFinanceMetricsForRows } from "@/lib/finance/financeMetrics";
 import { getProfitAnalytics } from "@/lib/analytics/profitAnalytics";
 
 export type DailyReportPeriodPreset =
-  | "today"
   | "yesterday"
-  | "current_week"
-  | "previous_week"
-  | "current_month"
-  | "previous_month"
-  | "last_30_days"
-  | "current_quarter"
-  | "ytd"
-  // Старые значения оставляем для обратной совместимости команд и ссылок.
   | "day_before_yesterday"
   | "3d"
+  | "current_week"
   | "7d"
   | "15d"
   | "month"
@@ -70,19 +62,6 @@ type CompanyDailyReport = {
   };
 };
 
-type DailyReportComparison = {
-  periodLabel: string;
-  dateLabel: string;
-  totals: {
-    ordersAmountPercent: number | null;
-    salesAmountPercent: number | null;
-    adSpendPercent: number | null;
-    netCashFlowPercent: number | null;
-    netProfitImpactPercent: number | null;
-    drrBySalesPointDiff: number | null;
-  };
-};
-
 type DailyReport = {
   dateLabel: string;
   periodLabel: string;
@@ -105,7 +84,6 @@ type DailyReport = {
     ownerWithdrawals: number;
   };
   warnings: string[];
-  comparison?: DailyReportComparison | null;
 };
 
 function toNumber(value: unknown): number {
@@ -236,145 +214,16 @@ function makeCurrentMoscowWeekRange(now?: Date): DateRange {
   };
 }
 
-
-function makeTodayMoscowRange(now?: Date): DateRange {
-  const currentNow = now ?? new Date();
-  const moscowNow = new Date(currentNow.getTime() + 3 * 60 * 60 * 1000);
-
-  const year = moscowNow.getUTCFullYear();
-  const month = moscowNow.getUTCMonth();
-  const day = moscowNow.getUTCDate();
-
-  const dateFrom = new Date(Date.UTC(year, month, day, -3, 0, 0));
-  const dateToExclusive = new Date(Date.UTC(year, month, day + 1, -3, 0, 0));
-  const dateLabel = formatDateInput(new Date(Date.UTC(year, month, day, 12)));
-
-  return {
-    dateLabel,
-    periodLabel: "Сегодня",
-    dateFrom,
-    dateToExclusive,
-  };
-}
-
-function makePreviousClosedMoscowWeekRange(now?: Date): DateRange {
-  const currentNow = now ?? new Date();
-  const moscowNow = new Date(currentNow.getTime() + 3 * 60 * 60 * 1000);
-
-  const year = moscowNow.getUTCFullYear();
-  const month = moscowNow.getUTCMonth();
-  const day = moscowNow.getUTCDate();
-  const dayOfWeek = moscowNow.getUTCDay();
-  const daysFromMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
-
-  const previousMondayNoon = new Date(
-    Date.UTC(year, month, day - daysFromMonday - 7, 12)
-  );
-  const previousSundayNoon = new Date(
-    Date.UTC(year, month, day - daysFromMonday - 1, 12)
-  );
-
-  const dateFrom = new Date(
-    Date.UTC(year, month, day - daysFromMonday - 7, -3, 0, 0)
-  );
-  const dateToExclusive = new Date(
-    Date.UTC(year, month, day - daysFromMonday, -3, 0, 0)
-  );
-
-  return {
-    dateLabel: `${formatDateInput(previousMondayNoon)} — ${formatDateInput(previousSundayNoon)}`,
-    periodLabel: "Прошлая закрытая неделя",
-    dateFrom,
-    dateToExclusive,
-  };
-}
-
-function makeMoscowMonthRange(params: {
-  offsetMonths: number;
-  label: string;
-  now?: Date;
-}): DateRange {
-  const currentNow = params.now ?? new Date();
-  const moscowNow = new Date(currentNow.getTime() + 3 * 60 * 60 * 1000);
-
-  const year = moscowNow.getUTCFullYear();
-  const month = moscowNow.getUTCMonth() + params.offsetMonths;
-  const day = moscowNow.getUTCDate();
-
-  const monthStartNoon = new Date(Date.UTC(year, month, 1, 12));
-  const monthEndNoon =
-    params.offsetMonths === 0
-      ? new Date(Date.UTC(year, month, day, 12))
-      : new Date(Date.UTC(year, month + 1, 0, 12));
-
-  const dateFrom = new Date(Date.UTC(year, month, 1, -3, 0, 0));
-  const dateToExclusive =
-    params.offsetMonths === 0
-      ? new Date(Date.UTC(year, month, day + 1, -3, 0, 0))
-      : new Date(Date.UTC(year, month + 1, 1, -3, 0, 0));
-
-  return {
-    dateLabel: `${formatDateInput(monthStartNoon)} — ${formatDateInput(monthEndNoon)}`,
-    periodLabel: params.label,
-    dateFrom,
-    dateToExclusive,
-  };
-}
-
-function makeCurrentMoscowQuarterRange(now?: Date): DateRange {
-  const currentNow = now ?? new Date();
-  const moscowNow = new Date(currentNow.getTime() + 3 * 60 * 60 * 1000);
-
-  const year = moscowNow.getUTCFullYear();
-  const month = moscowNow.getUTCMonth();
-  const day = moscowNow.getUTCDate();
-  const quarterStartMonth = Math.floor(month / 3) * 3;
-
-  const dateFrom = new Date(Date.UTC(year, quarterStartMonth, 1, -3, 0, 0));
-  const dateToExclusive = new Date(Date.UTC(year, month, day + 1, -3, 0, 0));
-
-  const dateFromLabel = formatDateInput(new Date(Date.UTC(year, quarterStartMonth, 1, 12)));
-  const dateToLabel = formatDateInput(new Date(Date.UTC(year, month, day, 12)));
-
-  return {
-    dateLabel: `${dateFromLabel} — ${dateToLabel}`,
-    periodLabel: "Текущий квартал",
-    dateFrom,
-    dateToExclusive,
-  };
-}
-
-function makeYearToDateMoscowRange(now?: Date): DateRange {
-  const currentNow = now ?? new Date();
-  const moscowNow = new Date(currentNow.getTime() + 3 * 60 * 60 * 1000);
-
-  const year = moscowNow.getUTCFullYear();
-  const month = moscowNow.getUTCMonth();
-  const day = moscowNow.getUTCDate();
-
-  const dateFrom = new Date(Date.UTC(year, 0, 1, -3, 0, 0));
-  const dateToExclusive = new Date(Date.UTC(year, month, day + 1, -3, 0, 0));
-
-  return {
-    dateLabel: `${formatDateInput(new Date(Date.UTC(year, 0, 1, 12)))} — ${formatDateInput(new Date(Date.UTC(year, month, day, 12)))}`,
-    periodLabel: "С начала года",
-    dateFrom,
-    dateToExclusive,
-  };
-}
-
 function normalizeReportPreset(
   preset: DailyReportPeriodPreset | undefined
 ): DailyReportPeriodPreset {
-  if (preset === "30d") return "last_30_days";
-  if (preset === "90d") return "current_quarter";
-  if (preset === "365d") return "ytd";
-  if (preset === "month") return "current_month";
-  if (preset === "3m") return "current_quarter";
-  if (preset === "year") return "ytd";
+  if (preset === "30d") return "month";
+  if (preset === "90d") return "3m";
+  if (preset === "365d") return "year";
 
   return preset ?? "yesterday";
 }
+
 export function getDailyReportRange(params?: {
   preset?: DailyReportPeriodPreset;
   date?: string;
@@ -413,18 +262,6 @@ export function getDailyReportRange(params?: {
 
   const preset = normalizeReportPreset(params?.preset);
 
-  if (preset === "today") {
-    return makeTodayMoscowRange(params?.now);
-  }
-
-  if (preset === "yesterday") {
-    return makeMoscowDayRange({
-      offsetDays: 1,
-      label: "Вчера",
-      now: params?.now,
-    });
-  }
-
   if (preset === "day_before_yesterday") {
     return makeMoscowDayRange({
       offsetDays: 2,
@@ -433,52 +270,16 @@ export function getDailyReportRange(params?: {
     });
   }
 
-  if (preset === "current_week") {
-    return makeCurrentMoscowWeekRange(params?.now);
-  }
-
-  if (preset === "previous_week") {
-    return makePreviousClosedMoscowWeekRange(params?.now);
-  }
-
-  if (preset === "current_month") {
-    return makeMoscowMonthRange({
-      offsetMonths: 0,
-      label: "Текущий месяц",
-      now: params?.now,
-    });
-  }
-
-  if (preset === "previous_month") {
-    return makeMoscowMonthRange({
-      offsetMonths: -1,
-      label: "Прошлый месяц",
-      now: params?.now,
-    });
-  }
-
-  if (preset === "last_30_days") {
-    return makeMoscowRange({
-      days: 30,
-      label: "Последние 30 дней",
-      now: params?.now,
-    });
-  }
-
-  if (preset === "current_quarter") {
-    return makeCurrentMoscowQuarterRange(params?.now);
-  }
-
-  if (preset === "ytd") {
-    return makeYearToDateMoscowRange(params?.now);
-  }
-
   if (preset === "3d") {
     return makeMoscowRange({
       days: 3,
       label: "Последние 3 дня",
       now: params?.now,
     });
+  }
+
+  if (preset === "current_week") {
+    return makeCurrentMoscowWeekRange(params?.now);
   }
 
   if (preset === "7d") {
@@ -497,10 +298,34 @@ export function getDailyReportRange(params?: {
     });
   }
 
+  if (preset === "month") {
+    return makeMoscowRange({
+      days: 30,
+      label: "Последний месяц",
+      now: params?.now,
+    });
+  }
+
+  if (preset === "3m") {
+    return makeMoscowRange({
+      days: 90,
+      label: "Последние 3 месяца",
+      now: params?.now,
+    });
+  }
+
   if (preset === "6m") {
     return makeMoscowRange({
       days: 183,
       label: "Последние 6 месяцев",
+      now: params?.now,
+    });
+  }
+
+  if (preset === "year") {
+    return makeMoscowRange({
+      days: 365,
+      label: "Последний год",
       now: params?.now,
     });
   }
@@ -1598,68 +1423,6 @@ function addMarketplaceTotals(
   target.stockQty += source.stockQty;
 }
 
-
-function getMoscowDateInput(date: Date) {
-  return new Date(date.getTime() + 3 * 60 * 60 * 1000).toISOString().slice(0, 10);
-}
-
-function getPreviousComparableRange(range: DateRange): DateRange {
-  const durationMs = range.dateToExclusive.getTime() - range.dateFrom.getTime();
-  const dateToExclusive = new Date(range.dateFrom);
-  const dateFrom = new Date(range.dateFrom.getTime() - durationMs);
-  const inclusiveTo = getInclusiveDateTo(dateToExclusive);
-
-  return {
-    dateLabel: `${getMoscowDateInput(dateFrom)} — ${getMoscowDateInput(inclusiveTo)}`,
-    periodLabel: "Аналогичный предыдущий период",
-    dateFrom,
-    dateToExclusive,
-  };
-}
-
-function percentChange(current: number, previous: number) {
-  if (!Number.isFinite(current) || !Number.isFinite(previous)) return null;
-  if (previous === 0) return current === 0 ? 0 : null;
-  return ((current - previous) / Math.abs(previous)) * 100;
-}
-
-function createReportComparison(
-  current: DailyReport,
-  previous: DailyReport
-): DailyReportComparison {
-  return {
-    periodLabel: previous.periodLabel,
-    dateLabel: previous.dateLabel,
-    totals: {
-      ordersAmountPercent: percentChange(
-        current.totals.ordersAmount,
-        previous.totals.ordersAmount
-      ),
-      salesAmountPercent: percentChange(
-        current.totals.salesAmount,
-        previous.totals.salesAmount
-      ),
-      adSpendPercent: percentChange(
-        current.totals.adSpend,
-        previous.totals.adSpend
-      ),
-      netCashFlowPercent: percentChange(
-        current.totals.netCashFlow,
-        previous.totals.netCashFlow
-      ),
-      netProfitImpactPercent: percentChange(
-        current.totals.netProfitImpact,
-        previous.totals.netProfitImpact
-      ),
-      drrBySalesPointDiff:
-        Number.isFinite(current.totals.drrBySales) &&
-        Number.isFinite(previous.totals.drrBySales)
-          ? current.totals.drrBySales - previous.totals.drrBySales
-          : null,
-    },
-  };
-}
-
 function buildWarnings(report: DailyReport) {
   const warnings: string[] = [];
 
@@ -1745,7 +1508,6 @@ export async function buildDailyReport(params?: {
   date?: string;
   from?: string;
   to?: string;
-  skipComparison?: boolean;
 }): Promise<DailyReport> {
   const range = getDailyReportRange(params);
 
@@ -1783,7 +1545,6 @@ export async function buildDailyReport(params?: {
       ownerWithdrawals: 0,
     },
     warnings: [],
-    comparison: null,
   };
 
   for (const company of companies) {
@@ -1831,17 +1592,6 @@ export async function buildDailyReport(params?: {
   );
 
   report.warnings = buildWarnings(report);
-
-  if (!params?.skipComparison) {
-    const previousRange = getPreviousComparableRange(range);
-    const previousReport = await buildDailyReport({
-      from: getMoscowDateInput(previousRange.dateFrom),
-      to: getMoscowDateInput(getInclusiveDateTo(previousRange.dateToExclusive)),
-      skipComparison: true,
-    });
-
-    report.comparison = createReportComparison(report, previousReport);
-  }
 
   return report;
 }
@@ -2150,56 +1900,6 @@ function marketplaceLine(label: string, metrics: MarketplaceDailyMetrics) {
   return lines.join("\n");
 }
 
-
-function formatPercentChange(value: number | null, inverse = false) {
-  if (value === null || !Number.isFinite(value)) return "нет базы";
-  if (value === 0) return "0.0%";
-
-  const sign = value > 0 ? "+" : "";
-  const marker = inverse
-    ? value < 0
-      ? "🟢"
-      : "🔴"
-    : value > 0
-      ? "🟢"
-      : "🔴";
-
-  return `${marker} ${sign}${formatPercent(value)}`;
-}
-
-function formatPointDiff(value: number | null, inverse = true) {
-  if (value === null || !Number.isFinite(value)) return "нет базы";
-  if (value === 0) return "0.0 п.п.";
-
-  const sign = value > 0 ? "+" : "";
-  const marker = inverse
-    ? value < 0
-      ? "🟢"
-      : "🔴"
-    : value > 0
-      ? "🟢"
-      : "🔴";
-
-  return `${marker} ${sign}${new Intl.NumberFormat("ru-RU", {
-    maximumFractionDigits: 1,
-  }).format(value)} п.п.`;
-}
-
-function buildComparisonLines(report: DailyReport) {
-  if (!report.comparison) return [];
-
-  return [
-    "",
-    `Динамика к аналогичному периоду (${report.comparison.dateLabel}):`,
-    `• Заказы ₽: ${formatPercentChange(report.comparison.totals.ordersAmountPercent)}`,
-    `• Продажи/начисления: ${formatPercentChange(report.comparison.totals.salesAmountPercent)}`,
-    `• Реклама: ${formatPercentChange(report.comparison.totals.adSpendPercent, true)}`,
-    `• ДРР от продаж: ${formatPointDiff(report.comparison.totals.drrBySalesPointDiff, true)}`,
-    `• ДДС: ${formatPercentChange(report.comparison.totals.netCashFlowPercent)}`,
-    `• Чистая прибыль: ${formatPercentChange(report.comparison.totals.netProfitImpactPercent)}`,
-  ];
-}
-
 export function formatDailyReportForTelegram(report: DailyReport) {
   const lines: string[] = [
     `📊 AvoroFin — сводка собственника`,
@@ -2220,8 +1920,6 @@ export function formatDailyReportForTelegram(report: DailyReport) {
     `Вывод собственника: ${formatMoney(report.totals.ownerWithdrawals)}`,
     `Остатки: ${formatNumber(report.totals.stockQty)} шт`,
   ];
-
-  lines.push(...buildComparisonLines(report));
 
   if (report.warnings.length > 0) {
     lines.push("", "Что требует внимания:");

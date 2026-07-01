@@ -42,24 +42,17 @@ export async function GET(req: Request) {
   const shouldUseAi = url.searchParams.get("ai") === "true";
 
   const allowedPresets = [
-    "today",
     "yesterday",
-    "current_week",
-    "previous_week",
-    "current_month",
-    "previous_month",
-    "last_30_days",
-    "current_quarter",
-    "ytd",
-    // Старые значения оставляем для обратной совместимости ссылок и команд.
     "day_before_yesterday",
     "3d",
+    "current_week",
     "7d",
     "15d",
     "month",
     "3m",
     "6m",
     "year",
+    // Старые значения оставляем для обратной совместимости ссылок и команд.
     "30d",
     "90d",
     "365d",

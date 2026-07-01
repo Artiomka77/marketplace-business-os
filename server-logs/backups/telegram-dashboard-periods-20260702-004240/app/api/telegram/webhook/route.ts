@@ -96,41 +96,6 @@ function formatMoney(value: number) {
   }).format(value);
 }
 
-
-function normalizeTelegramDate(value: string) {
-  const match = value.trim().match(/^(\d{1,2})[.\-/](\d{1,2})[.\-/](\d{2}|\d{4})$/);
-  if (!match) return null;
-
-  const day = Number(match[1]);
-  const month = Number(match[2]);
-  const rawYear = Number(match[3]);
-  const year = rawYear < 100 ? 2000 + rawYear : rawYear;
-
-  if (day < 1 || day > 31 || month < 1 || month > 12 || year < 2020) {
-    return null;
-  }
-
-  return `${year.toString().padStart(4, "0")}-${month
-    .toString()
-    .padStart(2, "0")}-${day.toString().padStart(2, "0")}`;
-}
-
-function parseReportDateRangeFromText(text: string) {
-  const normalized = text.trim().replace(/\s+/g, " ");
-  const match = normalized.match(
-    /(\d{1,2}[.\-/]\d{1,2}[.\-/]\d{2,4})\s*(?:-|—|–|по|до|\s)\s*(\d{1,2}[.\-/]\d{1,2}[.\-/]\d{2,4})/i
-  );
-
-  if (!match) return null;
-
-  const from = normalizeTelegramDate(match[1]);
-  const to = normalizeTelegramDate(match[2]);
-
-  if (!from || !to) return null;
-
-  return from <= to ? { from, to } : { from: to, to: from };
-}
-
 function operationTypeLabel(type: string) {
   if (type === "INCOME") return "Поступление";
   if (type === "EXPENSE") return "Расход";
@@ -309,52 +274,52 @@ function reportPeriodInlineKeyboard() {
     inline_keyboard: [
       [
         {
-          text: "Сегодня",
-          callback_data: "report:today",
-        },
-        {
           text: "Вчера",
           callback_data: "report:yesterday",
         },
+        {
+          text: "Позавчера",
+          callback_data: "report:day_before_yesterday",
+        },
       ],
       [
+        {
+          text: "3 дня",
+          callback_data: "report:3d",
+        },
         {
           text: "Текущая неделя",
           callback_data: "report:current_week",
         },
+      ],
+      [
         {
-          text: "Прошлая неделя",
-          callback_data: "report:previous_week",
+          text: "7 дней",
+          callback_data: "report:7d",
+        },
+        {
+          text: "15 дней",
+          callback_data: "report:15d",
         },
       ],
       [
         {
-          text: "Текущий месяц",
-          callback_data: "report:current_month",
+          text: "Месяц",
+          callback_data: "report:month",
         },
         {
-          text: "Прошлый месяц",
-          callback_data: "report:previous_month",
-        },
-      ],
-      [
-        {
-          text: "Последние 30 дней",
-          callback_data: "report:last_30_days",
-        },
-        {
-          text: "Текущий квартал",
-          callback_data: "report:current_quarter",
+          text: "3 месяца",
+          callback_data: "report:3m",
         },
       ],
       [
         {
-          text: "С начала года",
-          callback_data: "report:ytd",
+          text: "6 месяцев",
+          callback_data: "report:6m",
         },
         {
-          text: "Выбрать период",
-          callback_data: "report_custom_help",
+          text: "Год",
+          callback_data: "report:year",
         },
       ],
       [
@@ -372,53 +337,58 @@ function reportPeriodInlineKeyboard() {
     ],
   };
 }
+
 function aiReportPeriodInlineKeyboard() {
   return {
     inline_keyboard: [
       [
         {
-          text: "🤖 Сегодня",
-          callback_data: "report_ai:today",
-        },
-        {
           text: "🤖 Вчера",
           callback_data: "report_ai:yesterday",
         },
+        {
+          text: "🤖 Позавчера",
+          callback_data: "report_ai:day_before_yesterday",
+        },
       ],
       [
+        {
+          text: "🤖 3 дня",
+          callback_data: "report_ai:3d",
+        },
         {
           text: "🤖 Текущая неделя",
           callback_data: "report_ai:current_week",
         },
+      ],
+      [
         {
-          text: "🤖 Прошлая неделя",
-          callback_data: "report_ai:previous_week",
+          text: "🤖 7 дней",
+          callback_data: "report_ai:7d",
+        },
+        {
+          text: "🤖 15 дней",
+          callback_data: "report_ai:15d",
         },
       ],
       [
         {
-          text: "🤖 Текущий месяц",
-          callback_data: "report_ai:current_month",
+          text: "🤖 Месяц",
+          callback_data: "report_ai:month",
         },
         {
-          text: "🤖 Прошлый месяц",
-          callback_data: "report_ai:previous_month",
-        },
-      ],
-      [
-        {
-          text: "🤖 Последние 30 дней",
-          callback_data: "report_ai:last_30_days",
-        },
-        {
-          text: "🤖 Текущий квартал",
-          callback_data: "report_ai:current_quarter",
+          text: "🤖 3 месяца",
+          callback_data: "report_ai:3m",
         },
       ],
       [
         {
-          text: "🤖 С начала года",
-          callback_data: "report_ai:ytd",
+          text: "🤖 6 месяцев",
+          callback_data: "report_ai:6m",
+        },
+        {
+          text: "🤖 Год",
+          callback_data: "report_ai:year",
         },
       ],
       [
@@ -434,32 +404,28 @@ function aiReportPeriodInlineKeyboard() {
     ],
   };
 }
+
 function getReportMenuMessage() {
   return [
     "📊 Отчёт собственника",
     "",
     "Выберите период:",
     "",
-    "• Сегодня — оперативная картина текущего дня",
-    "• Вчера — ежедневная сверка",
-    "• Текущая неделя — темп недели",
-    "• Прошлая неделя — закрытая неделя понедельник–воскресенье",
-    "• Текущий месяц — управленческий месяц",
-    "• Прошлый месяц — финальный месяц для анализа",
-    "• Последние 30 дней — rolling-динамика",
-    "• Текущий квартал — квартальная картина",
-    "• С начала года — накопленный итог",
-    "• Выбрать период — напишите даты вручную",
+    "• Вчера — оперативная сверка за предыдущий день",
+    "• Позавчера — сверка дня до вчерашнего",
+    "• 3 дня — короткая динамика",
+    "• Текущая неделя — с понедельника по вчера",
+    "• 7 дней — недельная картина",
+    "• 15 дней — половина месяца",
+    "• Месяц — последние 30 дней",
+    "• 3 месяца — квартальный взгляд",
+    "• 6 месяцев — длинный период",
+    "• Год — годовая картина",
     "",
-    "Для произвольного периода напишите, например:",
-    "22.06.2026-28.06.2026",
-    "или",
-    "22.06.2026 28.06.2026",
-    "",
-    "В каждом отчёте добавлена динамика в процентах к аналогичному предыдущему периоду.",
     "🤖 Ответ ИИ — выбрать период и получить AI-анализ.",
   ].join("\n");
 }
+
 function getAiReportMenuMessage() {
   return [
     "🤖 Ответ ИИ",
@@ -588,16 +554,14 @@ function getHelpMessage(chatId: string) {
     "/daily — сводка собственника за вчера",
     "/report — выбрать период отчёта",
     "/report_ai — выбрать период для AI-анализа",
-    "/report_today — отчёт за сегодня",
     "/report_yesterday — отчёт за вчера",
+    "/report_day_before_yesterday — отчёт за позавчера",
     "/report_current_week — текущая неделя",
-    "/report_previous_week — прошлая закрытая неделя",
-    "/report_current_month — текущий месяц",
-    "/report_previous_month — прошлый месяц",
-    "/report_30d — последние 30 дней",
-    "/report_current_quarter — текущий квартал",
-    "/report_ytd — с начала года",
-    "22.06.2026-28.06.2026 — произвольный период",
+    "/report_15d — последние 15 дней",
+    "/report_month — последний месяц",
+    "/report_3m — 3 месяца",
+    "/report_6m — 6 месяцев",
+    "/report_year — год",
     "/undo — отменить последнюю",
     "/id — показать chat id",
     "",
@@ -1001,41 +965,6 @@ async function sendDailyOwnerReport(
   );
 }
 
-
-async function sendDailyOwnerReportForRange(
-  chatId: string,
-  from: string,
-  to: string,
-  useAi = false
-) {
-  const report = await buildDailyReport({ from, to });
-  const baseMessage = formatDailyReportForTelegram(report);
-
-  if (!useAi) {
-    await sendMessage(chatId, baseMessage);
-    return;
-  }
-
-  const aiResult = await generateDailyReportAiAnalysis(report);
-
-  if (aiResult.text) {
-    await sendMessage(chatId, `${baseMessage}\n\n${aiResult.text}`);
-    return;
-  }
-
-  await sendMessage(
-    chatId,
-    [
-      baseMessage,
-      "",
-      "🤖 AI-анализ временно недоступен.",
-      aiResult.error ? `Причина: ${aiResult.error}` : null,
-    ]
-      .filter((line) => line !== null)
-      .join("\n")
-  );
-}
-
 async function sendReportMenu(chatId: string) {
   await sendMessage(chatId, getReportMenuMessage(), reportPeriodInlineKeyboard());
 }
@@ -1275,54 +1204,6 @@ async function createDraftFromMessage(message: TelegramMessage) {
     return;
   }
 
-  const customReportRange = parseReportDateRangeFromText(text);
-
-  if (customReportRange) {
-    await sendDailyOwnerReportForRange(
-      chatId,
-      customReportRange.from,
-      customReportRange.to
-    );
-    return;
-  }
-
-  if (
-    normalizedCommandText === "/report_today"
-  ) {
-    await sendDailyOwnerReport(chatId, "today");
-    return;
-  }
-
-  if (normalizedCommandText === "/report_previous_week") {
-    await sendDailyOwnerReport(chatId, "previous_week");
-    return;
-  }
-
-  if (normalizedCommandText === "/report_current_month") {
-    await sendDailyOwnerReport(chatId, "current_month");
-    return;
-  }
-
-  if (normalizedCommandText === "/report_previous_month") {
-    await sendDailyOwnerReport(chatId, "previous_month");
-    return;
-  }
-
-  if (normalizedCommandText === "/report_last_30_days") {
-    await sendDailyOwnerReport(chatId, "last_30_days");
-    return;
-  }
-
-  if (normalizedCommandText === "/report_current_quarter") {
-    await sendDailyOwnerReport(chatId, "current_quarter");
-    return;
-  }
-
-  if (normalizedCommandText === "/report_ytd") {
-    await sendDailyOwnerReport(chatId, "ytd");
-    return;
-  }
-
   if (
     normalizedCommandText === "/daily" ||
     normalizedCommandText === "/report_yesterday" ||
@@ -1365,13 +1246,11 @@ async function createDraftFromMessage(message: TelegramMessage) {
     return;
   }
 
-  if (normalizedCommandText === "/report_month") {
-    await sendDailyOwnerReport(chatId, "current_month");
-    return;
-  }
-
-  if (normalizedCommandText === "/report_30d") {
-    await sendDailyOwnerReport(chatId, "last_30_days");
+  if (
+    normalizedCommandText === "/report_month" ||
+    normalizedCommandText === "/report_30d"
+  ) {
+    await sendDailyOwnerReport(chatId, "month");
     return;
   }
 
@@ -2280,31 +2159,6 @@ async function handleCallbackQuery(callbackQuery: TelegramCallbackQuery) {
     return;
   }
 
-  if (data === "report_custom_help") {
-    const message = callbackQuery.message;
-    const chatId = message?.chat.id ? String(message.chat.id) : null;
-
-    await answerCallbackQuery(callbackQuery.id);
-
-    if (chatId) {
-      await sendMessage(
-        chatId,
-        [
-          "📅 Произвольный период",
-          "",
-          "Напишите даты одним сообщением:",
-          "22.06.2026-28.06.2026",
-          "или",
-          "22.06.2026 28.06.2026",
-          "",
-          "Я построю отчёт и добавлю динамику к аналогичному предыдущему периоду.",
-        ].join("\n")
-      );
-    }
-
-    return;
-  }
-
   if (data === "report_ai_menu") {
     const message = callbackQuery.message;
     const chatId = message?.chat.id ? String(message.chat.id) : null;
@@ -2326,24 +2180,17 @@ async function handleCallbackQuery(callbackQuery: TelegramCallbackQuery) {
     await answerCallbackQuery(callbackQuery.id, "Готовлю AI-анализ");
 
     const allowedReportPresets = [
-      "today",
       "yesterday",
-      "current_week",
-      "previous_week",
-      "current_month",
-      "previous_month",
-      "last_30_days",
-      "current_quarter",
-      "ytd",
-      // Старые значения оставляем для обратной совместимости.
       "day_before_yesterday",
       "3d",
+      "current_week",
       "7d",
       "15d",
       "month",
       "3m",
       "6m",
       "year",
+      // Старые значения оставляем для обратной совместимости.
       "30d",
       "90d",
       "365d",
@@ -2368,24 +2215,17 @@ async function handleCallbackQuery(callbackQuery: TelegramCallbackQuery) {
     await answerCallbackQuery(callbackQuery.id, "Готовлю отчёт");
 
     const allowedReportPresets = [
-      "today",
       "yesterday",
-      "current_week",
-      "previous_week",
-      "current_month",
-      "previous_month",
-      "last_30_days",
-      "current_quarter",
-      "ytd",
-      // Старые значения оставляем для обратной совместимости.
       "day_before_yesterday",
       "3d",
+      "current_week",
       "7d",
       "15d",
       "month",
       "3m",
       "6m",
       "year",
+      // Старые значения оставляем для обратной совместимости.
       "30d",
       "90d",
       "365d",

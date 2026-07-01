@@ -655,6 +655,9 @@ function createPeriodOptions(): PeriodOption[] {
   const previousWeekStart = addDays(currentWeekStart, -7);
   const previousWeekEnd = addDays(previousWeekStart, 6);
 
+  const last4WeeksStart = addDays(currentWeekStart, -28);
+  const last4WeeksEnd = addDays(currentWeekStart, -1);
+
   const currentMonthStart = makeUtcDate(
     today.getUTCFullYear(),
     today.getUTCMonth(),
@@ -670,26 +673,25 @@ function createPeriodOptions(): PeriodOption[] {
   const previousMonthEnd = addDays(currentMonthStart, -1);
 
   const currentQuarterStart = startOfQuarter(today);
+  const previousQuarterEnd = addDays(currentQuarterStart, -1);
+  const previousQuarterStart = startOfQuarter(previousQuarterEnd);
+
   const currentYearStart = makeUtcDate(today.getUTCFullYear(), 0, 1);
-  const yesterday = addDays(today, -1);
-  const last30DaysStart = addDays(today, -29);
+  const previousYearStart = makeUtcDate(today.getUTCFullYear() - 1, 0, 1);
+  const previousYearEnd = makeUtcDate(today.getUTCFullYear() - 1, 11, 31);
 
   return [
     {
-      key: "today",
-      shortLabel: "Сегодня",
-      label: `Сегодня: ${formatDate(today)}`,
-      description: formatDate(today),
-      dateFrom: toIsoDate(today),
-      dateTo: toIsoDate(today),
-    },
-    {
-      key: "yesterday",
-      shortLabel: "Вчера",
-      label: `Вчера: ${formatDate(yesterday)}`,
-      description: formatDate(yesterday),
-      dateFrom: toIsoDate(yesterday),
-      dateTo: toIsoDate(yesterday),
+      key: "previous-week",
+      shortLabel: "Прошлая неделя",
+      label: `Прошлая неделя: ${formatDate(previousWeekStart)} — ${formatDate(
+        previousWeekEnd
+      )}`,
+      description: `${formatDate(previousWeekStart)} — ${formatDate(
+        previousWeekEnd
+      )}`,
+      dateFrom: toIsoDate(previousWeekStart),
+      dateTo: toIsoDate(previousWeekEnd),
     },
     {
       key: "current-week",
@@ -702,16 +704,16 @@ function createPeriodOptions(): PeriodOption[] {
       dateTo: toIsoDate(today),
     },
     {
-      key: "previous-week",
-      shortLabel: "Прошлая неделя",
-      label: `Прошлая закрытая неделя: ${formatDate(previousWeekStart)} — ${formatDate(
-        previousWeekEnd
+      key: "last-4-weeks",
+      shortLabel: "4 недели",
+      label: `Последние 4 недели: ${formatDate(last4WeeksStart)} — ${formatDate(
+        last4WeeksEnd
       )}`,
-      description: `${formatDate(previousWeekStart)} — ${formatDate(
-        previousWeekEnd
+      description: `${formatDate(last4WeeksStart)} — ${formatDate(
+        last4WeeksEnd
       )}`,
-      dateFrom: toIsoDate(previousWeekStart),
-      dateTo: toIsoDate(previousWeekEnd),
+      dateFrom: toIsoDate(last4WeeksStart),
+      dateTo: toIsoDate(last4WeeksEnd),
     },
     {
       key: "current-month",
@@ -736,16 +738,6 @@ function createPeriodOptions(): PeriodOption[] {
       dateTo: toIsoDate(previousMonthEnd),
     },
     {
-      key: "last-30-days",
-      shortLabel: "Последние 30 дней",
-      label: `Последние 30 дней: ${formatDate(last30DaysStart)} — ${formatDate(
-        today
-      )}`,
-      description: `${formatDate(last30DaysStart)} — ${formatDate(today)}`,
-      dateFrom: toIsoDate(last30DaysStart),
-      dateTo: toIsoDate(today),
-    },
-    {
       key: "current-quarter",
       shortLabel: "Текущий квартал",
       label: `Текущий квартал: ${formatDate(currentQuarterStart)} — ${formatDate(
@@ -756,14 +748,38 @@ function createPeriodOptions(): PeriodOption[] {
       dateTo: toIsoDate(today),
     },
     {
+      key: "previous-quarter",
+      shortLabel: "Прошлый квартал",
+      label: `Прошлый квартал: ${formatDate(previousQuarterStart)} — ${formatDate(
+        previousQuarterEnd
+      )}`,
+      description: `${formatDate(previousQuarterStart)} — ${formatDate(
+        previousQuarterEnd
+      )}`,
+      dateFrom: toIsoDate(previousQuarterStart),
+      dateTo: toIsoDate(previousQuarterEnd),
+    },
+    {
       key: "current-year",
-      shortLabel: "С начала года",
-      label: `С начала года: ${formatDate(currentYearStart)} — ${formatDate(
+      shortLabel: "Текущий год",
+      label: `Текущий год: ${formatDate(currentYearStart)} — ${formatDate(
         today
       )}`,
       description: `${formatDate(currentYearStart)} — ${formatDate(today)}`,
       dateFrom: toIsoDate(currentYearStart),
       dateTo: toIsoDate(today),
+    },
+    {
+      key: "previous-year",
+      shortLabel: "Прошлый год",
+      label: `Прошлый год: ${formatDate(previousYearStart)} — ${formatDate(
+        previousYearEnd
+      )}`,
+      description: `${formatDate(previousYearStart)} — ${formatDate(
+        previousYearEnd
+      )}`,
+      dateFrom: toIsoDate(previousYearStart),
+      dateTo: toIsoDate(previousYearEnd),
     },
     {
       key: "custom",
@@ -2935,7 +2951,6 @@ export default async function HomePage({ searchParams }: Props) {
   const periodOptions = createPeriodOptions();
   const selectedPeriodOption =
     periodOptions.find((period) => period.key === params.period) ??
-    periodOptions.find((period) => period.key === "current-month") ??
     periodOptions[0];
 
   const selectedPeriod =
