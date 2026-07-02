@@ -2740,11 +2740,18 @@ async function buildCompanyDashboardRows(params: {
       const wbNetProfitAfterTax = wbAnalytics.totals.netProfitAfterTax;
       const wbAdsCost = wbAnalytics.totals.adsCost;
 
-      const ozonRevenue = companyReport?.ozon.salesAmount ?? 0;
+      // Ozon в Dashboard должен совпадать со страницей /profit-ozon.
+      // Поэтому используем экономический оборот, рекламу и прибыль из getProfitAnalyticsOzon,
+      // а не оперативные начисления из Telegram-сводки.
+      const ozonRevenue =
+        ozonAnalytics.totals.economicTurnover > 0
+          ? ozonAnalytics.totals.economicTurnover
+          : ozonAnalytics.totals.revenue;
+      const ozonNetProfitAfterTax = ozonAnalytics.totals.netProfitAfterTax;
+      const ozonAdsCost = ozonAnalytics.totals.adsCost;
       const totalRevenue = wbRevenue + ozonRevenue;
 
-      const operatingProfitAfterTax =
-        wbNetProfitAfterTax + (companyReport?.ozon.netProfitAfterTax ?? 0);
+      const operatingProfitAfterTax = wbNetProfitAfterTax + ozonNetProfitAfterTax;
 
       const netProfit =
         companyReport?.finance.netProfitImpact ??
@@ -2759,7 +2766,7 @@ async function buildCompanyDashboardRows(params: {
 
       const cashFlowResult = companyReport?.finance.netCashFlow ?? cash.cashFlowResult;
 
-      const adsCost = wbAdsCost + (companyReport?.ozon.adSpend ?? 0);
+      const adsCost = wbAdsCost + ozonAdsCost;
 
       const drr = totalRevenue > 0 ? (adsCost / totalRevenue) * 100 : null;
       const drrByOrders = ordersAmount > 0 ? (adsCost / ordersAmount) * 100 : null;

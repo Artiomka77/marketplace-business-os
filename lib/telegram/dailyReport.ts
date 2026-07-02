@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { calculateFinanceMetricsForRows } from "@/lib/finance/financeMetrics";
 import { getProfitAnalytics } from "@/lib/analytics/profitAnalytics";
+import { getProfitAnalyticsOzon } from "@/lib/analytics/profitAnalyticsOzon";
 
 export type DailyReportPeriodPreset =
   | "today"
@@ -55,6 +56,12 @@ type MarketplaceDailyMetrics = {
   drrBySales: number;
   stockQty: number;
   netProfitAfterTax: number;
+  taxableRevenue?: number;
+  economicTurnover?: number;
+  discountPointsAmount?: number;
+  grossOzonExpenses?: number;
+  netOzonExpenses?: number;
+  excludedLoansFactoringAmount?: number;
 };
 
 type CompanyDailyReport = {
@@ -1408,6 +1415,7 @@ async function getOzonMetrics(companyName: string, range: DateRange) {
     wbProductCards,
     ozonProducts,
     companySettings,
+    ozonProfitAnalytics,
   ] = await Promise.all([
     getOrderStats({
       companyName,
@@ -1494,6 +1502,11 @@ async function getOzonMetrics(companyName: string, range: DateRange) {
         vatRate: true,
       },
     }),
+    getProfitAnalyticsOzon({
+      dateFrom: getMoscowDateInput(range.dateFrom),
+      dateTo: getMoscowDateInput(getInclusiveDateTo(range.dateToExclusive)),
+      companyName,
+    }),
   ]);
 
   let salesQty = 0;
@@ -1532,7 +1545,7 @@ async function getOzonMetrics(companyName: string, range: DateRange) {
     financeAdRowsCount > 0 ? "Ozon Finance Ads" : "Ozon Performance Ads";
 
   const taxRates = getCompanyTaxRates(companySettings);
-  const netProfitAfterTax = calculateOzonNetProfitAfterTax({
+  const fallbackNetProfitAfterTax = calculateOzonNetProfitAfterTax({
     rows: financeRows,
     costs,
     wbProductCards,
@@ -1541,6 +1554,26 @@ async function getOzonMetrics(companyName: string, range: DateRange) {
     usnRate: taxRates.usnRate,
     vatRate: taxRates.vatRate,
   });
+
+  const profitTotals = ozonProfitAnalytics.totals;
+  const profitAnalyticsHasOzonData =
+    ozonProfitAnalytics.rows.length > 0 ||
+    profitTotals.revenue !== 0 ||
+    profitTotals.taxableRevenue !== 0 ||
+    profitTotals.economicTurnover !== 0 ||
+    profitTotals.discountPointsAmount !== 0 ||
+    profitTotals.adsCost !== 0 ||
+    profitTotals.netProfitAfterTax !== 0;
+
+  const finalSalesAmount = profitAnalyticsHasOzonData
+    ? profitTotals.economicTurnover > 0
+      ? profitTotals.economicTurnover
+      : profitTotals.revenue
+    : salesAmount;
+  const finalAdSpend = profitAnalyticsHasOzonData ? profitTotals.adsCost : adSpend;
+  const finalNetProfitAfterTax = profitAnalyticsHasOzonData
+    ? profitTotals.netProfitAfterTax
+    : fallbackNetProfitAfterTax;
 
   const ordersDataMissing = orderStats.rowsCount === 0;
   const ordersDataIncomplete =
@@ -1551,9 +1584,12 @@ async function getOzonMetrics(companyName: string, range: DateRange) {
       ? `Ozon заказы загружены частично: ${orderStats.loadedDays} из ${orderStats.expectedDays} дней`
       : null;
 
-  const hasOzonActivity = orderStats.rowsCount > 0 || salesAmount > 0;
+  const hasOzonActivity = orderStats.rowsCount > 0 || finalSalesAmount > 0;
   const adDataMissing =
-    hasOzonActivity && financeAdRowsCount === 0 && performanceAdRowsCount === 0;
+    hasOzonActivity &&
+    finalAdSpend === 0 &&
+    financeAdRowsCount === 0 &&
+    performanceAdRowsCount === 0;
   const adDataMissingReason = adDataMissing
     ? "Ozon рекламные расходы за этот период ещё не загружены из Ozon Finance/Performance"
     : null;
@@ -1568,19 +1604,37 @@ async function getOzonMetrics(companyName: string, range: DateRange) {
     ordersDataIncomplete,
     ordersDataMissingReason,
     salesQty: 0,
-    salesAmount,
-    salesLabel: "Начисления",
+    salesAmount: finalSalesAmount,
+    salesLabel: profitAnalyticsHasOzonData ? "Экономический оборот" : "Начисления",
     salesQtyIsReliable: false,
     salesDataMissing: false,
     salesDataMissingReason: null,
-    adSpend,
-    adSpendSource,
+    adSpend: finalAdSpend,
+    adSpendSource: profitAnalyticsHasOzonData ? "Ozon Finance / реализация" : adSpendSource,
     adDataMissing,
     adDataMissingReason,
-    drrByOrders: ordersDataMissing ? 0 : calculateDrr(adSpend, orderStats.ordersAmount),
-    drrBySales: calculateDrr(adSpend, salesAmount),
+    drrByOrders: ordersDataMissing ? 0 : calculateDrr(finalAdSpend, orderStats.ordersAmount),
+    drrBySales: calculateDrr(finalAdSpend, finalSalesAmount),
     stockQty,
-    netProfitAfterTax,
+    netProfitAfterTax: finalNetProfitAfterTax,
+    taxableRevenue: profitAnalyticsHasOzonData
+      ? profitTotals.taxableRevenue || profitTotals.revenue
+      : undefined,
+    economicTurnover: profitAnalyticsHasOzonData
+      ? profitTotals.economicTurnover || finalSalesAmount
+      : undefined,
+    discountPointsAmount: profitAnalyticsHasOzonData
+      ? profitTotals.discountPointsAmount
+      : undefined,
+    grossOzonExpenses: profitAnalyticsHasOzonData
+      ? profitTotals.grossOzonExpenses
+      : undefined,
+    netOzonExpenses: profitAnalyticsHasOzonData
+      ? profitTotals.netOzonExpenses
+      : undefined,
+    excludedLoansFactoringAmount: profitAnalyticsHasOzonData
+      ? profitTotals.excludedLoansFactoringAmount
+      : undefined,
   };
 }
 
@@ -1871,6 +1925,22 @@ function marketplaceSalesLine(metrics: MarketplaceDailyMetrics) {
     return `${metrics.salesLabel}: данные ещё не загружены`;
   }
 
+  if (metrics.marketplace === "OZON" && metrics.economicTurnover !== undefined) {
+    const details: string[] = [];
+
+    if (metrics.taxableRevenue !== undefined) {
+      details.push(`налоговая выручка ${formatMoney(metrics.taxableRevenue)}`);
+    }
+
+    if (metrics.discountPointsAmount !== undefined && Math.abs(metrics.discountPointsAmount) > 0.5) {
+      details.push(`баллы ${formatMoney(metrics.discountPointsAmount)}`);
+    }
+
+    return `${metrics.salesLabel}: ${formatMoney(metrics.economicTurnover)}${
+      details.length > 0 ? ` (${details.join(" + ")})` : ""
+    }`;
+  }
+
   if (metrics.salesQtyIsReliable) {
     return `${metrics.salesLabel}: ${formatNumber(metrics.salesQty)} шт / ${formatMoney(
       metrics.salesAmount
@@ -2139,8 +2209,27 @@ function marketplaceLine(label: string, metrics: MarketplaceDailyMetrics) {
     lines.push(`Источник рекламы: ${metrics.adDataMissingReason}`);
   }
 
+  lines.push(marketplaceAdLine(metrics));
+
+  if (metrics.marketplace === "OZON" && metrics.netOzonExpenses !== undefined) {
+    lines.push(
+      `Чистые расходы Ozon после баллов: ${formatMoney(metrics.netOzonExpenses)}`
+    );
+  }
+
+  if (
+    metrics.marketplace === "OZON" &&
+    metrics.excludedLoansFactoringAmount !== undefined &&
+    Math.abs(metrics.excludedLoansFactoringAmount) > 0.5
+  ) {
+    lines.push(
+      `Исключено из прибыли: займы / факторинг ${formatMoney(
+        metrics.excludedLoansFactoringAmount
+      )}`
+    );
+  }
+
   lines.push(
-    marketplaceAdLine(metrics),
     `ДРР: от заказов ${formatPercent(metrics.drrByOrders)} (от продаж/начислений ${formatPercent(
       metrics.drrBySales
     )})`,
