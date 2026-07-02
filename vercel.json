@@ -5,6 +5,10 @@
       "schedule": "0 3 * * *"
     },
     {
+      "path": "/api/cron/sync-ozon-realization",
+      "schedule": "10 3 * * *"
+    },
+    {
       "path": "/api/cron/daily-priority-sync",
       "schedule": "20 3 * * *"
     },
