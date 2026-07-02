@@ -1166,7 +1166,7 @@ function ExpenseDonut({
             {formatCompactMoney(revenue)}
           </div>
           <div className="mt-1 text-xs font-black uppercase tracking-[0.12em] text-slate-400">
-            Выручка
+            Оборот
           </div>
         </div>
       </div>
@@ -1533,7 +1533,20 @@ export default async function ProfitOzonPage({
   const displayedRows = sortedRows.slice(0, pageSize);
 
   const otherDeductions = totals.penaltiesAmount + totals.deductions;
-  const commissionAndLogistics = totals.wbCommission + totals.logisticsCost;
+  const ozonPointsCompensation =
+    totals.totalPaidByPoints || totals.discountPointsWrittenOff;
+  const economicTurnover =
+    totals.economicTurnover > 0
+      ? totals.economicTurnover
+      : totals.revenue + totals.partnerProgramsAmount + ozonPointsCompensation;
+  const marketplaceGrossExpenses =
+    totals.marketplaceGrossExpenses > 0
+      ? totals.marketplaceGrossExpenses
+      : totals.wbCommission + totals.logisticsCost + Math.max(0, otherDeductions);
+  const marketplaceNetExpenses =
+    totals.marketplaceNetExpenses !== 0
+      ? totals.marketplaceNetExpenses
+      : marketplaceGrossExpenses - ozonPointsCompensation;
 
   const lossRows = rows.filter((row) => row.netProfitAfterTax < 0);
   const highDrrRows = rows.filter((row) => row.drrPercent > 20);
@@ -1549,14 +1562,14 @@ export default async function ProfitOzonPage({
       colorHex: "#2563eb",
     },
     {
-      label: "Комиссия Ozon",
-      value: totals.wbCommission,
+      label: "Валовые комиссии и логистика Ozon",
+      value: marketplaceGrossExpenses,
       colorHex: "#8b5cf6",
     },
     {
-      label: "Логистика",
-      value: totals.logisticsCost,
-      colorHex: "#0ea5e9",
+      label: "Баллы за скидки / компенсация Ozon",
+      value: -ozonPointsCompensation,
+      colorHex: "#10b981",
     },
     {
       label: "Реклама Ozon",
@@ -1564,8 +1577,8 @@ export default async function ProfitOzonPage({
       colorHex: "#ec4899",
     },
     {
-      label: "Удержания / сторно",
-      value: otherDeductions,
+      label: "Прочие корректировки / сторно",
+      value: otherDeductions < 0 ? otherDeductions : 0,
       colorHex: "#f97316",
     },
     {
@@ -1592,8 +1605,8 @@ export default async function ProfitOzonPage({
               </h1>
 
               <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-500">
-                Unit economics по Ozon с учётом начислений маркетплейса,
-                себестоимости, логистики, рекламы и налогов.
+                Unit economics по Ozon: налоговая выручка отдельно,
+                баллы за скидки и компенсации Ozon — отдельным блоком.
               </p>
             </div>
 
@@ -1667,29 +1680,38 @@ export default async function ProfitOzonPage({
           </div>
         </section>
 
-        <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-6">
+        <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           <KpiCard
-            title="Выручка"
+            title="Выручка / налоговая база"
             value={formatMoney(totals.revenue)}
-            helper="к пред. периоду"
+            helper="без баллов и соинвеста Ozon"
             delta={comparison.revenue.diffPercent}
             sparkTone="indigo"
             sparkPoints={[10, 12, 18, 14, 14, 21, 19, 28]}
           />
 
           <KpiCard
-            title="Марж. прибыль"
-            value={formatMoney(totals.marginProfit)}
-            helper={`${formatPercent(totals.marginProfitPercent)} от выручки`}
-            delta={comparison.marginProfit.diffPercent}
+            title="Баллы за скидки Ozon"
+            value={formatMoney(ozonPointsCompensation)}
+            helper={`${formatShare(ozonPointsCompensation, economicTurnover, "от оборота")}`}
+            delta={comparison.discountPointsWrittenOff.diffPercent}
             sparkTone="emerald"
             sparkPoints={[8, 12, 10, 13, 21, 19, 28, 22]}
           />
 
           <KpiCard
+            title="Экономический оборот"
+            value={formatMoney(economicTurnover)}
+            helper="выручка + баллы + программы партнёров"
+            delta={comparison.economicTurnover.diffPercent}
+            sparkTone="indigo"
+            sparkPoints={[10, 12, 18, 17, 20, 22, 21, 25]}
+          />
+
+          <KpiCard
             title="Прибыль после налогов"
             value={formatMoney(totals.netProfitAfterTax)}
-            helper={`${formatPercent(totals.marginAfterTaxPercent)} от выручки`}
+            helper={`${formatPercent(totals.marginAfterTaxPercent)} от налоговой выручки`}
             delta={comparison.netProfitAfterTax.diffPercent}
             sparkTone="emerald"
             sparkPoints={[7, 9, 15, 13, 18, 17, 24, 16]}
@@ -1698,7 +1720,7 @@ export default async function ProfitOzonPage({
           <KpiCard
             title="Реклама (ДРР)"
             value={formatMoney(totals.adsCost)}
-            helper={`${formatPercent(totals.drrPercent)} от выручки`}
+            helper={`${formatPercent(totals.drrPercent)} от налоговой выручки`}
             delta={comparison.adsCost.diffPercent}
             inverseDelta
             sparkTone="orange"
@@ -1716,9 +1738,9 @@ export default async function ProfitOzonPage({
           />
 
           <KpiCard
-            title="Комиссии и логистика"
-            value={formatMoney(commissionAndLogistics)}
-            helper={`${formatShare(commissionAndLogistics, totals.revenue)}`}
+            title="Валовые расходы Ozon"
+            value={formatMoney(marketplaceGrossExpenses)}
+            helper="комиссии, логистика и удержания до компенсации"
             delta={(() => {
               const currentCombined =
                 comparison.wbCommission.current + comparison.logisticsCost.current;
@@ -1733,20 +1755,80 @@ export default async function ProfitOzonPage({
             sparkTone="orange"
             sparkPoints={[8, 10, 9, 15, 14, 18, 23, 21]}
           />
+
+          <KpiCard
+            title="Чистые расходы Ozon"
+            value={formatMoney(marketplaceNetExpenses)}
+            helper={`валовые расходы − ${formatCompactMoney(ozonPointsCompensation)} баллами`}
+            delta={comparison.marketplaceNetExpenses.diffPercent}
+            inverseDelta
+            sparkTone={marketplaceNetExpenses <= 0 ? "emerald" : "orange"}
+            sparkPoints={[12, 10, 9, 8, 7, 6, 5, 4]}
+          />
+        </section>
+
+        <section className="grid gap-4 lg:grid-cols-4">
+          <div className="rounded-[26px] border border-blue-100 bg-blue-50/70 p-4">
+            <div className="text-xs font-black uppercase tracking-[0.12em] text-blue-500">
+              Налоговая выручка
+            </div>
+            <div className="mt-2 text-xl font-black text-slate-950">
+              {formatMoney(totals.revenue)}
+            </div>
+            <p className="mt-2 text-xs font-semibold leading-5 text-slate-500">
+              Именно эта сумма используется как база для УСН и НДС.
+            </p>
+          </div>
+
+          <div className="rounded-[26px] border border-emerald-100 bg-emerald-50/70 p-4">
+            <div className="text-xs font-black uppercase tracking-[0.12em] text-emerald-500">
+              Баллы / соинвест Ozon
+            </div>
+            <div className="mt-2 text-xl font-black text-slate-950">
+              {formatMoney(ozonPointsCompensation)}
+            </div>
+            <p className="mt-2 text-xs font-semibold leading-5 text-slate-500">
+              Не налоговая выручка, но объясняет компенсацию части расходов Ozon.
+            </p>
+          </div>
+
+          <div className="rounded-[26px] border border-violet-100 bg-violet-50/70 p-4">
+            <div className="text-xs font-black uppercase tracking-[0.12em] text-violet-500">
+              Программы партнёров
+            </div>
+            <div className="mt-2 text-xl font-black text-slate-950">
+              {formatMoney(totals.partnerProgramsAmount)}
+            </div>
+            <p className="mt-2 text-xs font-semibold leading-5 text-slate-500">
+              Дополнительная часть оборота из отчёта реализации Ozon.
+            </p>
+          </div>
+
+          <div className="rounded-[26px] border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="text-xs font-black uppercase tracking-[0.12em] text-slate-400">
+              Экономический оборот
+            </div>
+            <div className="mt-2 text-xl font-black text-slate-950">
+              {formatMoney(economicTurnover)}
+            </div>
+            <p className="mt-2 text-xs font-semibold leading-5 text-slate-500">
+              Налоговая выручка + баллы Ozon + программы партнёров.
+            </p>
+          </div>
         </section>
 
         <section className="grid gap-5 xl:grid-cols-[minmax(0,4fr)_minmax(340px,2fr)]">
           <section className="panel min-w-0 p-5 sm:p-6">
             <div className="flex items-center gap-2">
               <h2 className="text-[1.7rem] font-black tracking-tight text-slate-950">
-                Структура прибыли Ozon
+                Структура экономики Ozon
               </h2>
               <span className="text-slate-300">ⓘ</span>
             </div>
 
             <div className="mt-5 grid gap-6 lg:grid-cols-[300px_minmax(0,1fr)] lg:items-center">
               <div className="flex justify-center">
-                <ExpenseDonut rows={structureRows} revenue={totals.revenue} />
+                <ExpenseDonut rows={structureRows} revenue={economicTurnover} />
               </div>
 
               <div className="space-y-3">
@@ -1755,7 +1837,7 @@ export default async function ProfitOzonPage({
                     key={row.label}
                     label={row.label}
                     value={row.value}
-                    share={totals.revenue > 0 ? (row.value / totals.revenue) * 100 : 0}
+                    share={economicTurnover > 0 ? (row.value / economicTurnover) * 100 : 0}
                     colorHex={row.colorHex}
                   />
                 ))}
