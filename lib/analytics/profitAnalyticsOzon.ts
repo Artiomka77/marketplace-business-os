@@ -1,4 +1,4 @@
-import { prisma } from "@/lib/prisma";
+﻿import { prisma } from "@/lib/prisma";
 
 function toNumber(value: unknown): number {
   if (value === null || value === undefined) return 0;
@@ -20,7 +20,7 @@ function toNumber(value: unknown): number {
 function normalizeText(value: unknown): string {
   return String(value ?? "")
     .toLowerCase()
-    .replaceAll("С‘", "Рµ")
+    .replaceAll("ё", "е")
     .replace(/[вЂ“вЂ”в€’]/g, "-")
     .replace(/\s*-\s*/g, "-")
     .replace(/\s+/g, " ")
@@ -54,14 +54,33 @@ function calculateVatTax(revenue: number, vatRate: number) {
 }
 
 
+function isOzonFinanceClickAdOperation(operationType: unknown) {
+  const value = normalizeText(operationType);
+
+  return (
+    value.includes("оплата за клик") ||
+    value.includes("cpc") ||
+    value.includes("click")
+  );
+}
+
+function isOzonFinanceOrderAdOperation(operationType: unknown) {
+  const value = normalizeText(operationType);
+
+  return (
+    value.includes("оплата за заказ") ||
+    value.includes("продвижение с оплатой за заказ") ||
+    value.includes("оплата за заказ")
+  );
+}
+
 function isOzonFinanceAdOperation(operationType: unknown) {
   const value = normalizeText(operationType);
 
   return (
-    value.includes("РѕРїР»Р°С‚Р° Р·Р° РєР»РёРє") ||
-    value.includes("РїСЂРѕРґРІРёР¶РµРЅРёРµ СЃ РѕРїР»Р°С‚РѕР№ Р·Р° Р·Р°РєР°Р·") ||
-    value.includes("РѕРїР»Р°С‚Р° Р·Р° Р·Р°РєР°Р·") ||
-    (value.includes("СЂРµРєР»Р°Рј") && !value.includes("СЃС‚РѕСЂРЅРѕ"))
+    isOzonFinanceClickAdOperation(operationType) ||
+    isOzonFinanceOrderAdOperation(operationType) ||
+    (value.includes("реклам") && !value.includes("сторно"))
   );
 }
 
@@ -72,8 +91,8 @@ function getOzonFinanceAdAmount(row: OzonFinanceRecord) {
   return totalAmount > 0 ? totalAmount : salesAmount;
 }
 
-function hasOzonFinanceAdRows(rows: OzonFinanceRecord[]) {
-  return rows.some((row) => isOzonFinanceAdOperation(row.operationType));
+function hasOzonFinanceClickAdRows(rows: OzonFinanceRecord[]) {
+  return rows.some((row) => isOzonFinanceClickAdOperation(row.operationType));
 }
 
 function calculatePreviousPeriod(dateFrom?: string | null, dateTo?: string | null) {
@@ -180,13 +199,9 @@ export type OzonProfitTotals = {
   returnedAmount: number;
   taxableRevenue: number;
   partnerProgramsAmount: number;
-  discountPointsAccrued: number;
-  discountPointsWrittenOff: number;
-  totalPaidByPoints: number;
+  discountPointsAmount: number;
   economicTurnover: number;
-  marketplaceGrossExpenses: number;
-  marketplaceNetExpenses: number;
-  realizationRevenueSource: "OZON_FINANCE" | "OZON_REALIZATION";
+  expenseShareBase: number;
 
   sellerPayout: number;
 
@@ -202,10 +217,16 @@ export type OzonProfitTotals = {
   paymentServiceCost: number;
 
   adsCost: number;
+  clickAdsCost: number;
+  orderAdsCost: number;
   drrPercent: number;
   undistributedAdsCost: number;
 
   totalCost: number;
+
+  grossOzonExpenses: number;
+  discountPointsCompensation: number;
+  netOzonExpenses: number;
 
   marginProfit: number;
   marginProfitPercent: number;
@@ -333,7 +354,7 @@ function buildAdsCostByVendorCode(
   };
 }
 
-function applyOzonRealizationRevenueOverride(
+function applyOzonEconomicModel(
   result: { rows: OzonProfitAnalyticsRow[]; totals: OzonProfitTotals },
   realizationSummary: OzonRealizationSummaryRecord | null | undefined,
   discountPointsSummary: OzonDiscountPointsSummaryRecord | null | undefined,
@@ -344,16 +365,14 @@ function applyOzonRealizationRevenueOverride(
   const realizedAmount = toNumber(realizationSummary?.realizedAmount);
   const returnedAmount = toNumber(realizationSummary?.returnedAmount);
   const partnerProgramsAmount = toNumber(realizationSummary?.partnerProgramsAmount);
+  const discountPointsAmount =
+    toNumber(discountPointsSummary?.totalPaidByPoints) ||
+    toNumber(discountPointsSummary?.pointsWrittenOff) ||
+    toNumber(discountPointsSummary?.pointsAccrued);
 
-  const discountPointsAccrued = toNumber(discountPointsSummary?.pointsAccrued);
-  const discountPointsWrittenOff = toNumber(discountPointsSummary?.pointsWrittenOff);
-  const totalPaidByPoints =
-    toNumber(discountPointsSummary?.totalPaidByPoints) || discountPointsWrittenOff;
+  const oldTotalRevenue = result.totals.revenue;
 
-  const hasRealizationRevenue = taxableRevenue > 0;
-
-  if (hasRealizationRevenue) {
-    const oldTotalRevenue = result.totals.revenue;
+  if (taxableRevenue > 0) {
     const ratio = oldTotalRevenue > 0 ? taxableRevenue / oldTotalRevenue : 0;
 
     for (const row of result.rows) {
@@ -374,64 +393,65 @@ function applyOzonRealizationRevenueOverride(
     }
 
     result.totals.revenue = taxableRevenue;
-    result.totals.taxesAmount =
-      taxableRevenue * (usnRate / 100) + calculateVatTax(taxableRevenue, vatRate);
-    result.totals.netProfitAfterTax =
-      result.totals.marginProfit - result.totals.taxesAmount;
-
-    result.totals.marginProfitPercent =
-      result.totals.revenue > 0
-        ? (result.totals.marginProfit / result.totals.revenue) * 100
-        : 0;
-
-    result.totals.marginAfterTaxPercent =
-      result.totals.revenue > 0
-        ? (result.totals.netProfitAfterTax / result.totals.revenue) * 100
-        : 0;
-
-    result.totals.drrPercent =
-      result.totals.revenue > 0
-        ? (result.totals.adsCost / result.totals.revenue) * 100
-        : 0;
-
-    for (const row of result.rows) {
-      row.revenueSharePercent =
-        result.totals.revenue > 0
-          ? (row.revenue / result.totals.revenue) * 100
-          : 0;
-    }
+    result.totals.taxableRevenue = taxableRevenue;
+    result.totals.realizedAmount = realizedAmount;
+    result.totals.returnedAmount = returnedAmount;
+    result.totals.partnerProgramsAmount = partnerProgramsAmount;
+  } else {
+    result.totals.taxableRevenue = result.totals.revenue;
   }
 
-  const positiveMarketplaceDeductions =
-    Math.max(0, result.totals.penaltiesAmount) +
-    Math.max(0, result.totals.deductions);
+  result.totals.discountPointsAmount = discountPointsAmount;
+  result.totals.discountPointsCompensation = discountPointsAmount;
 
-  const marketplaceGrossExpenses =
+  const economicTurnover =
+    result.totals.taxableRevenue + discountPointsAmount + partnerProgramsAmount;
+
+  result.totals.economicTurnover =
+    economicTurnover > 0 ? economicTurnover : result.totals.revenue;
+  result.totals.expenseShareBase =
+    result.totals.economicTurnover > 0
+      ? result.totals.economicTurnover
+      : result.totals.revenue;
+
+  result.totals.grossOzonExpenses =
     result.totals.wbCommission +
     result.totals.logisticsCost +
-    positiveMarketplaceDeductions;
+    result.totals.adsCost +
+    result.totals.penaltiesAmount +
+    result.totals.deductions;
 
-  result.totals.realizedAmount = realizedAmount;
-  result.totals.returnedAmount = returnedAmount;
-  result.totals.taxableRevenue = taxableRevenue || result.totals.revenue;
-  result.totals.partnerProgramsAmount = partnerProgramsAmount;
-  result.totals.discountPointsAccrued = discountPointsAccrued;
-  result.totals.discountPointsWrittenOff = discountPointsWrittenOff;
-  result.totals.totalPaidByPoints = totalPaidByPoints;
-  result.totals.economicTurnover =
-    (taxableRevenue || result.totals.revenue) +
-    partnerProgramsAmount +
-    totalPaidByPoints;
-  result.totals.marketplaceGrossExpenses = marketplaceGrossExpenses;
-  result.totals.marketplaceNetExpenses =
-    marketplaceGrossExpenses - totalPaidByPoints;
-  result.totals.realizationRevenueSource = hasRealizationRevenue
-    ? "OZON_REALIZATION"
-    : "OZON_FINANCE";
+  result.totals.netOzonExpenses =
+    result.totals.grossOzonExpenses - result.totals.discountPointsCompensation;
+
+  result.totals.taxesAmount =
+    result.totals.revenue * (usnRate / 100) +
+    calculateVatTax(result.totals.revenue, vatRate);
+  result.totals.netProfitAfterTax =
+    result.totals.marginProfit - result.totals.taxesAmount;
+
+  result.totals.marginProfitPercent =
+    result.totals.expenseShareBase > 0
+      ? (result.totals.marginProfit / result.totals.expenseShareBase) * 100
+      : 0;
+
+  result.totals.marginAfterTaxPercent =
+    result.totals.expenseShareBase > 0
+      ? (result.totals.netProfitAfterTax / result.totals.expenseShareBase) * 100
+      : 0;
+
+  result.totals.drrPercent =
+    result.totals.expenseShareBase > 0
+      ? (result.totals.adsCost / result.totals.expenseShareBase) * 100
+      : 0;
+
+  for (const row of result.rows) {
+    row.revenueSharePercent =
+      result.totals.revenue > 0 ? (row.revenue / result.totals.revenue) * 100 : 0;
+  }
 
   return result;
 }
-
 
 function createEmptyTotals(
   usnRate: number,
@@ -448,13 +468,9 @@ function createEmptyTotals(
     returnedAmount: 0,
     taxableRevenue: 0,
     partnerProgramsAmount: 0,
-    discountPointsAccrued: 0,
-    discountPointsWrittenOff: 0,
-    totalPaidByPoints: 0,
+    discountPointsAmount: 0,
     economicTurnover: 0,
-    marketplaceGrossExpenses: 0,
-    marketplaceNetExpenses: 0,
-    realizationRevenueSource: "OZON_FINANCE",
+    expenseShareBase: 0,
 
     sellerPayout: 0,
 
@@ -470,10 +486,16 @@ function createEmptyTotals(
     paymentServiceCost: 0,
 
     adsCost: 0,
+    clickAdsCost: 0,
+    orderAdsCost: 0,
     drrPercent: 0,
     undistributedAdsCost,
 
     totalCost: 0,
+
+    grossOzonExpenses: 0,
+    discountPointsCompensation: 0,
+    netOzonExpenses: 0,
 
     marginProfit: 0,
     marginProfitPercent: 0,
@@ -545,13 +567,34 @@ function calculateRowsAndTotals({
   const { adsCostByVendorCode, undistributedAdsCost } =
     buildAdsCostByVendorCode(adsRows, ozonProducts);
 
-  const financeAdsCost = financeRows.reduce(
+  const financeClickAdsCost = financeRows.reduce(
     (sum, row) =>
-      isOzonFinanceAdOperation(row.operationType)
+      isOzonFinanceClickAdOperation(row.operationType)
         ? sum + getOzonFinanceAdAmount(row)
         : sum,
     0
   );
+
+  const financeOrderAdsCost = financeRows.reduce(
+    (sum, row) =>
+      isOzonFinanceOrderAdOperation(row.operationType)
+        ? sum + getOzonFinanceAdAmount(row)
+        : sum,
+    0
+  );
+
+  const financeOtherAdsCost = financeRows.reduce(
+    (sum, row) =>
+      isOzonFinanceAdOperation(row.operationType) &&
+      !isOzonFinanceClickAdOperation(row.operationType) &&
+      !isOzonFinanceOrderAdOperation(row.operationType)
+        ? sum + getOzonFinanceAdAmount(row)
+        : sum,
+    0
+  );
+
+  const financeAdsCost =
+    financeClickAdsCost + financeOrderAdsCost + financeOtherAdsCost;
 
   const marketplaceFinanceRows = financeRows.filter(
     (row) => !isOzonFinanceAdOperation(row.operationType)
@@ -793,6 +836,13 @@ function calculateRowsAndTotals({
     totals.netProfitAfterTax -= totals.undistributedAdsCost;
   }
 
+  const adsRowsTotal =
+    rows.reduce((sum, row) => sum + row.adsCost, 0) + undistributedAdsCost;
+
+  totals.clickAdsCost = adsRowsTotal + financeClickAdsCost + financeOtherAdsCost;
+  totals.orderAdsCost = financeOrderAdsCost;
+  totals.adsCost = totals.clickAdsCost + totals.orderAdsCost;
+
   totals.marginProfitPercent =
     totals.revenue > 0 ? (totals.marginProfit / totals.revenue) * 100 : 0;
 
@@ -888,12 +938,12 @@ async function findOzonDiscountPointsSummaryByPeriod(params?: {
       `;
 
   const summary = rows[0];
+  const amount =
+    toNumber(summary?.totalPaidByPoints) ||
+    toNumber(summary?.pointsWrittenOff) ||
+    toNumber(summary?.pointsAccrued);
 
-  return summary &&
-    (toNumber(summary.pointsWrittenOff) > 0 ||
-      toNumber(summary.totalPaidByPoints) > 0)
-    ? summary
-    : null;
+  return summary && amount > 0 ? summary : null;
 }
 
 async function findOzonDiscountPointsSummaryByDatePeriod(params?: {
@@ -1102,9 +1152,9 @@ export async function getProfitAnalyticsOzon(params?: {
     companyName,
   });
 
-  const currentHasFinanceAds = hasOzonFinanceAdRows(currentFinanceRows);
+  const currentHasFinanceClickAds = hasOzonFinanceClickAdRows(currentFinanceRows);
 
-  const currentAdsRows = currentHasFinanceAds
+  const currentAdsRows = currentHasFinanceClickAds
     ? []
     : await findLatestOzonAdsRowsByPeriod({
         dateFrom: params?.dateFrom,
@@ -1141,10 +1191,10 @@ export async function getProfitAnalyticsOzon(params?: {
       })
     : null;
 
-  const previousHasFinanceAds = hasOzonFinanceAdRows(previousFinanceRows);
+  const previousHasFinanceClickAds = hasOzonFinanceClickAdRows(previousFinanceRows);
 
   const previousAdsRows =
-    previousPeriod && !previousHasFinanceAds
+    previousPeriod && !previousHasFinanceClickAds
       ? await findLatestOzonAdsRowsByDatePeriod({
           dateFrom: previousPeriod.dateFrom,
           dateTo: previousPeriod.dateTo,
@@ -1152,7 +1202,7 @@ export async function getProfitAnalyticsOzon(params?: {
         })
       : [];
 
-  const current = applyOzonRealizationRevenueOverride(
+  const current = applyOzonEconomicModel(
     calculateRowsAndTotals({
       financeRows: currentFinanceRows,
       adsRows: currentAdsRows,
@@ -1167,7 +1217,7 @@ export async function getProfitAnalyticsOzon(params?: {
     vatRate
   );
 
-  const previous = applyOzonRealizationRevenueOverride(
+  const previous = applyOzonEconomicModel(
     calculateRowsAndTotals({
       financeRows: previousFinanceRows,
       adsRows: previousAdsRows,
@@ -1190,14 +1240,19 @@ export async function getProfitAnalyticsOzon(params?: {
       previous.totals.economicTurnover
     ),
 
-    discountPointsWrittenOff: createComparison(
-      current.totals.discountPointsWrittenOff,
-      previous.totals.discountPointsWrittenOff
+    discountPointsAmount: createComparison(
+      current.totals.discountPointsAmount,
+      previous.totals.discountPointsAmount
     ),
 
-    marketplaceNetExpenses: createComparison(
-      current.totals.marketplaceNetExpenses,
-      previous.totals.marketplaceNetExpenses
+    clickAdsCost: createComparison(
+      current.totals.clickAdsCost,
+      previous.totals.clickAdsCost
+    ),
+
+    orderAdsCost: createComparison(
+      current.totals.orderAdsCost,
+      previous.totals.orderAdsCost
     ),
 
     sellerPayout: createComparison(
