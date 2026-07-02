@@ -407,6 +407,10 @@ function normalizeOzonFinanceText(value: unknown) {
     .trim();
 }
 
+function hasAnyOzonFinanceToken(value: string, tokens: string[]) {
+  return tokens.some((token) => value.includes(token));
+}
+
 function expenseAmountFromOzonSignedValue(value: unknown) {
   // In Ozon finance API charges usually come as negative amounts and refunds/compensations as positive amounts.
   // For management P&L we store a signed expense amount: positive increases expenses, negative reduces expenses.
@@ -424,15 +428,34 @@ function classifyOzonOperation(operation: OzonFinanceOperation): OzonFinancialCa
 
   if (!type) return null;
 
-  if (type.includes("займ") || type.includes("фактор")) {
+  if (
+    hasAnyOzonFinanceToken(type, [
+      "займ",
+      "заем",
+      "фактор",
+      "loan",
+      "factoring",
+      "factor",
+      "seller finance",
+      "finance service",
+    ])
+  ) {
     return "EXCLUDED_LOANS_FACTORING";
   }
 
-  if (type.includes("кредит") || type.includes("финансирован")) {
+  if (
+    hasAnyOzonFinanceToken(type, [
+      "кредит",
+      "финансирован",
+      "финансирование",
+      "credit",
+      "financing",
+    ])
+  ) {
     return "EXCLUDED_CREDIT";
   }
 
-  if (type.includes("перевод") || type.includes("transfer")) {
+  if (hasAnyOzonFinanceToken(type, ["перевод", "transfer", "перечисление"])) {
     return "EXCLUDED_TRANSFER";
   }
 
@@ -470,8 +493,33 @@ function classifyOzonOperation(operation: OzonFinanceOperation): OzonFinancialCa
 function classifyOzonService(serviceName: unknown): OzonFinancialCategory {
   const name = normalizeOzonFinanceText(serviceName);
 
-  if (name.includes("займ") || name.includes("фактор")) return "EXCLUDED_LOANS_FACTORING";
-  if (name.includes("кредит") || name.includes("финансирован")) return "EXCLUDED_CREDIT";
+  if (
+    hasAnyOzonFinanceToken(name, [
+      "займ",
+      "заем",
+      "фактор",
+      "loan",
+      "factoring",
+      "factor",
+      "seller finance",
+      "finance service",
+    ])
+  ) {
+    return "EXCLUDED_LOANS_FACTORING";
+  }
+
+  if (
+    hasAnyOzonFinanceToken(name, [
+      "кредит",
+      "финансирован",
+      "финансирование",
+      "credit",
+      "financing",
+    ])
+  ) {
+    return "EXCLUDED_CREDIT";
+  }
+
   if (name.includes("компенсац") || name.includes("декомпенсац")) return "OZON_COMPENSATION";
   if (name.includes("реклам") || name.includes("продвиж") || name.includes("cpc") || name.includes("cpo")) return "OZON_ADVERTISING";
   if (name.includes("партнер")) return "OZON_PARTNER_SERVICES";

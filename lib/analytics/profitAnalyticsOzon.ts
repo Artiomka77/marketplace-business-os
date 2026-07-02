@@ -278,6 +278,8 @@ type OzonProfitAnalyticsComparison = {
   wbCommission: ReturnType<typeof createComparison>;
   logisticsCost: ReturnType<typeof createComparison>;
   adsCost: ReturnType<typeof createComparison>;
+  grossOzonExpenses: ReturnType<typeof createComparison>;
+  netOzonExpenses: ReturnType<typeof createComparison>;
   taxesAmount: ReturnType<typeof createComparison>;
   marginProfit: ReturnType<typeof createComparison>;
   netProfitAfterTax: ReturnType<typeof createComparison>;
@@ -461,7 +463,7 @@ function applyOzonFinancialCategoryFactsToTotals(
   totals.excludedLoansFactoringAmount = excludedLoansFactoring;
 
   totals.penaltiesAmount = 0;
-  totals.deductions = partnerServices + otherServices + compensation;
+  totals.deductions = partnerServices + otherServices - compensation;
 
   return true;
 }
@@ -474,6 +476,10 @@ function calculateOzonGrossExpenses(totals: OzonProfitTotals) {
     totals.penaltiesAmount +
     totals.deductions
   );
+}
+
+function calculateOzonNetExpensesAfterDiscountPoints(totals: OzonProfitTotals) {
+  return totals.grossOzonExpenses - totals.discountPointsCompensation;
 }
 
 function recalculateOzonRowsFromEconomicModel(
@@ -594,7 +600,9 @@ function applyOzonEconomicModel(
   applyOzonFinancialCategoryFactsToTotals(result.totals, financialCategoryFacts);
 
   result.totals.grossOzonExpenses = calculateOzonGrossExpenses(result.totals);
-  result.totals.netOzonExpenses = result.totals.grossOzonExpenses;
+  result.totals.netOzonExpenses = calculateOzonNetExpensesAfterDiscountPoints(
+    result.totals
+  );
 
   result.totals.marginProfit =
     result.totals.economicTurnover -
@@ -707,7 +715,7 @@ function finalizeOzonTotals(totals: OzonProfitTotals) {
 
   totals.grossOzonExpenses = calculateOzonGrossExpenses(totals);
 
-  totals.netOzonExpenses = totals.grossOzonExpenses;
+  totals.netOzonExpenses = calculateOzonNetExpensesAfterDiscountPoints(totals);
 
   totals.marginProfit =
     totals.economicTurnover - totals.totalCost - totals.grossOzonExpenses;
@@ -877,6 +885,16 @@ function createOzonComparison(
     logisticsCost: createComparison(current.logisticsCost, previous.logisticsCost),
 
     adsCost: createComparison(current.adsCost, previous.adsCost),
+
+    grossOzonExpenses: createComparison(
+      current.grossOzonExpenses,
+      previous.grossOzonExpenses
+    ),
+
+    netOzonExpenses: createComparison(
+      current.netOzonExpenses,
+      previous.netOzonExpenses
+    ),
 
     taxesAmount: createComparison(current.taxesAmount, previous.taxesAmount),
 

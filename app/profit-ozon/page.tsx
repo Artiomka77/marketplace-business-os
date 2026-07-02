@@ -1580,10 +1580,12 @@ export default async function ProfitOzonPage({
   const compensationAmount = totals.compensationAmount || 0;
   const excludedLoansFactoringAmount = totals.excludedLoansFactoringAmount || 0;
   const previousPeriodRange = calculatePreviousPeriodRange(dateFrom, dateTo);
-  const otherDeductions = partnerServicesCost + otherServicesCost + compensationAmount;
+  const otherDeductions = partnerServicesCost + otherServicesCost - compensationAmount;
   const grossOzonExpenses =
     totals.grossOzonExpenses ||
     totals.wbCommission + totals.logisticsCost + totals.adsCost + otherDeductions;
+  const netOzonExpenses =
+    totals.netOzonExpenses ?? grossOzonExpenses - discountPointsAmount;
 
   const lossRows = rows.filter((row) => row.netProfitAfterTax < 0);
   const highDrrRows = rows.filter((row) => row.drrPercent > 20);
@@ -1629,8 +1631,8 @@ export default async function ProfitOzonPage({
       colorHex: "#f59e0b",
     },
     {
-      label: "Компенсации / декомпенсации",
-      value: compensationAmount,
+      label: "Компенсации Ozon (уменьшают расходы)",
+      value: -compensationAmount,
       colorHex: "#10b981",
     },
     {
@@ -1733,7 +1735,7 @@ export default async function ProfitOzonPage({
           </div>
         </section>
 
-        <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
+        <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-7">
           <KpiCard
             title="Налоговая выручка"
             value={formatMoney(totals.revenue)}
@@ -1759,6 +1761,24 @@ export default async function ProfitOzonPage({
             delta={comparison.discountPointsAmount.diffPercent}
             sparkTone="emerald"
             sparkPoints={[11, 13, 15, 17, 18, 19, 21, 23]}
+          />
+
+          <KpiCard
+            title="Чистые расходы Ozon"
+            value={formatMoney(netOzonExpenses)}
+            helper={
+              <div className="space-y-1 leading-tight">
+                <div>после вычета баллов за скидки</div>
+                <div className="text-[11px] text-slate-400">
+                  {formatMoney(grossOzonExpenses)} − {formatMoney(discountPointsAmount)}
+                </div>
+              </div>
+            }
+            delta={comparison.netOzonExpenses.diffPercent}
+            inverseDelta
+            sparkTone="orange"
+            sparkPoints={[18, 17, 16, 14, 13, 12, 11, 10]}
+            hideSparkline
           />
 
           <KpiCard
@@ -1855,15 +1875,22 @@ export default async function ProfitOzonPage({
                   />
                 ))}
 
-                <div className="grid grid-cols-[minmax(0,1fr)_105px_62px] items-center gap-3 border-t border-slate-100 pt-4">
-                  <div className="font-black text-slate-700">
-                    Операционные расходы Ozon
+                <div className="rounded-[22px] border-t border-slate-100 bg-slate-50/70 px-4 py-4">
+                  <div className="grid grid-cols-[minmax(0,1fr)_105px_62px] items-center gap-3">
+                    <div className="font-black text-slate-700">
+                      Операционные расходы Ozon
+                    </div>
+                    <div className="text-right font-black text-slate-900">
+                      {formatMoney(grossOzonExpenses)}
+                    </div>
+                    <div className="text-right font-black text-slate-700">
+                      {formatPercent(shareBase > 0 ? (grossOzonExpenses / shareBase) * 100 : 0)}
+                    </div>
                   </div>
-                  <div className="text-right font-black text-slate-900">
-                    {formatMoney(grossOzonExpenses)}
-                  </div>
-                  <div className="text-right font-black text-slate-700">
-                    {formatPercent(shareBase > 0 ? (grossOzonExpenses / shareBase) * 100 : 0)}
+
+                  <div className="mt-3 rounded-2xl bg-emerald-50 px-3 py-3 text-xs font-bold leading-5 text-emerald-700 ring-1 ring-emerald-100">
+                    Из этой суммы Ozon компенсировал баллами за скидки {formatMoney(discountPointsAmount)}.
+                    Чистые расходы Ozon после вычета баллов: {formatMoney(netOzonExpenses)}.
                   </div>
                 </div>
 
