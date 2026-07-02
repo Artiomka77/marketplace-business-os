@@ -1,4 +1,4 @@
-import { prisma } from "@/lib/prisma";
+﻿import { prisma } from "@/lib/prisma";
 
 function toNumber(value: unknown): number {
   if (value === null || value === undefined) return 0;
@@ -182,6 +182,8 @@ export type OzonProfitAnalyticsRow = {
   wbCommission: number;
 
   logisticsCost: number;
+  deliveryCost: number;
+  fboCost: number;
   storageCost: number;
   acceptanceCost: number;
 
@@ -226,6 +228,8 @@ export type OzonProfitTotals = {
   wbCommission: number;
 
   logisticsCost: number;
+  deliveryCost: number;
+  fboCost: number;
   storageCost: number;
   acceptanceCost: number;
 
@@ -237,6 +241,7 @@ export type OzonProfitTotals = {
   adsCost: number;
   clickAdsCost: number;
   orderAdsCost: number;
+  otherAdsCost: number;
   drrPercent: number;
   undistributedAdsCost: number;
 
@@ -245,6 +250,10 @@ export type OzonProfitTotals = {
   grossOzonExpenses: number;
   discountPointsCompensation: number;
   netOzonExpenses: number;
+  partnerServicesCost: number;
+  otherServicesCost: number;
+  compensationAmount: number;
+  excludedLoansFactoringAmount: number;
 
   marginProfit: number;
   marginProfitPercent: number;
@@ -320,6 +329,11 @@ type OzonDiscountPointsSummaryRecord = {
   pointsAccrued: unknown;
   pointsWrittenOff: unknown;
   totalPaidByPoints: unknown;
+};
+
+type OzonFinancialCategoryFactRecord = {
+  category: string | null;
+  amount: unknown;
 };
 
 type OzonProductRecord = {
@@ -399,6 +413,59 @@ function buildAdsCostByVendorCode(
   };
 }
 
+
+function getOzonCategoryAmount(
+  facts: OzonFinancialCategoryFactRecord[],
+  category: string
+) {
+  return facts.reduce(
+    (sum, fact) => sum + (fact.category === category ? toNumber(fact.amount) : 0),
+    0
+  );
+}
+
+function hasOzonFinancialCategoryFacts(facts: OzonFinancialCategoryFactRecord[]) {
+  return facts.some((fact) => Math.abs(toNumber(fact.amount)) > 0.005);
+}
+
+function applyOzonFinancialCategoryFactsToTotals(
+  totals: OzonProfitTotals,
+  facts: OzonFinancialCategoryFactRecord[]
+) {
+  if (!hasOzonFinancialCategoryFacts(facts)) return false;
+
+  const commission = getOzonCategoryAmount(facts, "OZON_COMMISSION");
+  const delivery = getOzonCategoryAmount(facts, "OZON_DELIVERY");
+  const fbo = getOzonCategoryAmount(facts, "OZON_FBO");
+  const advertising = getOzonCategoryAmount(facts, "OZON_ADVERTISING");
+  const partnerServices = getOzonCategoryAmount(facts, "OZON_PARTNER_SERVICES");
+  const otherServices = getOzonCategoryAmount(facts, "OZON_OTHER_SERVICES");
+  const compensation = getOzonCategoryAmount(facts, "OZON_COMPENSATION");
+  const excludedLoansFactoring =
+    getOzonCategoryAmount(facts, "EXCLUDED_LOANS_FACTORING") +
+    getOzonCategoryAmount(facts, "EXCLUDED_CREDIT") +
+    getOzonCategoryAmount(facts, "EXCLUDED_TRANSFER");
+
+  totals.wbCommission = commission;
+  totals.deliveryCost = delivery;
+  totals.fboCost = fbo;
+  totals.logisticsCost = delivery + fbo;
+
+  totals.adsCost = advertising;
+  totals.otherAdsCost =
+    advertising - totals.clickAdsCost - totals.orderAdsCost;
+
+  totals.partnerServicesCost = partnerServices;
+  totals.otherServicesCost = otherServices;
+  totals.compensationAmount = compensation;
+  totals.excludedLoansFactoringAmount = excludedLoansFactoring;
+
+  totals.penaltiesAmount = 0;
+  totals.deductions = partnerServices + otherServices + compensation;
+
+  return true;
+}
+
 function calculateOzonGrossExpenses(totals: OzonProfitTotals) {
   return (
     totals.wbCommission +
@@ -476,6 +543,7 @@ function applyOzonEconomicModel(
   result: { rows: OzonProfitAnalyticsRow[]; totals: OzonProfitTotals },
   realizationSummary: OzonRealizationSummaryRecord | null | undefined,
   discountPointsSummary: OzonDiscountPointsSummaryRecord | null | undefined,
+  financialCategoryFacts: OzonFinancialCategoryFactRecord[] = [],
   usnRate: number,
   vatRate: number
 ) {
@@ -523,9 +591,10 @@ function applyOzonEconomicModel(
     result.totals.revenue * (usnRate / 100) +
     calculateVatTax(result.totals.revenue, vatRate);
 
+  applyOzonFinancialCategoryFactsToTotals(result.totals, financialCategoryFacts);
+
   result.totals.grossOzonExpenses = calculateOzonGrossExpenses(result.totals);
-  result.totals.netOzonExpenses =
-    result.totals.grossOzonExpenses - result.totals.discountPointsCompensation;
+  result.totals.netOzonExpenses = result.totals.grossOzonExpenses;
 
   result.totals.marginProfit =
     result.totals.economicTurnover -
@@ -592,6 +661,8 @@ function createEmptyTotals(
     wbCommission: 0,
 
     logisticsCost: 0,
+    deliveryCost: 0,
+    fboCost: 0,
     storageCost: 0,
     acceptanceCost: 0,
 
@@ -603,6 +674,7 @@ function createEmptyTotals(
     adsCost: 0,
     clickAdsCost: 0,
     orderAdsCost: 0,
+    otherAdsCost: 0,
     drrPercent: 0,
     undistributedAdsCost,
 
@@ -611,6 +683,10 @@ function createEmptyTotals(
     grossOzonExpenses: 0,
     discountPointsCompensation: 0,
     netOzonExpenses: 0,
+    partnerServicesCost: 0,
+    otherServicesCost: 0,
+    compensationAmount: 0,
+    excludedLoansFactoringAmount: 0,
 
     marginProfit: 0,
     marginProfitPercent: 0,
@@ -631,8 +707,7 @@ function finalizeOzonTotals(totals: OzonProfitTotals) {
 
   totals.grossOzonExpenses = calculateOzonGrossExpenses(totals);
 
-  totals.netOzonExpenses =
-    totals.grossOzonExpenses - totals.discountPointsCompensation;
+  totals.netOzonExpenses = totals.grossOzonExpenses;
 
   totals.marginProfit =
     totals.economicTurnover - totals.totalCost - totals.grossOzonExpenses;
@@ -678,6 +753,8 @@ function mergeOzonTotals(
     "sellerPayout",
     "wbCommission",
     "logisticsCost",
+    "deliveryCost",
+    "fboCost",
     "storageCost",
     "acceptanceCost",
     "penaltiesAmount",
@@ -686,11 +763,16 @@ function mergeOzonTotals(
     "adsCost",
     "clickAdsCost",
     "orderAdsCost",
+    "otherAdsCost",
     "undistributedAdsCost",
     "totalCost",
     "grossOzonExpenses",
     "discountPointsCompensation",
     "netOzonExpenses",
+    "partnerServicesCost",
+    "otherServicesCost",
+    "compensationAmount",
+    "excludedLoansFactoringAmount",
     "marginProfit",
     "taxesAmount",
     "netProfitAfterTax",
@@ -727,6 +809,8 @@ function mergeOzonRows(rowsList: OzonProfitAnalyticsRow[][]) {
       current.sellerPayout += row.sellerPayout;
       current.wbCommission += row.wbCommission;
       current.logisticsCost += row.logisticsCost;
+      current.deliveryCost += row.deliveryCost ?? 0;
+      current.fboCost += row.fboCost ?? 0;
       current.storageCost += row.storageCost;
       current.acceptanceCost += row.acceptanceCost;
       current.penaltiesAmount += row.penaltiesAmount;
@@ -967,6 +1051,10 @@ function calculateRowsAndTotals({
         wbCommission: 0,
 
         logisticsCost: 0,
+
+        deliveryCost: 0,
+
+        fboCost: 0,
         storageCost: 0,
         acceptanceCost: 0,
 
@@ -1030,6 +1118,8 @@ function calculateRowsAndTotals({
 
     current.wbCommission += commission;
     current.logisticsCost += logistics;
+    current.deliveryCost += logistics;
+    current.fboCost += 0;
 
     const knownMarketplaceExpenses = commission + logistics;
     const payoutGap = salesAmount - totalAmount;
@@ -1082,6 +1172,10 @@ function calculateRowsAndTotals({
       wbCommission: 0,
 
       logisticsCost: 0,
+
+      deliveryCost: 0,
+
+      fboCost: 0,
       storageCost: 0,
       acceptanceCost: 0,
 
@@ -1138,6 +1232,8 @@ function calculateRowsAndTotals({
 
       acc.wbCommission += row.wbCommission;
       acc.logisticsCost += row.logisticsCost;
+        acc.deliveryCost += row.deliveryCost ?? 0;
+        acc.fboCost += row.fboCost ?? 0;
 
       acc.penaltiesAmount += row.penaltiesAmount;
       acc.deductions += row.deductions;
@@ -1291,6 +1387,64 @@ async function findOzonDiscountPointsSummaryByDatePeriod(params?: {
   if (!params?.dateFrom || !params?.dateTo) return null;
 
   return findOzonDiscountPointsSummaryByPeriod({
+    dateFrom: params.dateFrom.toISOString().slice(0, 10),
+    dateTo: params.dateTo.toISOString().slice(0, 10),
+    companyName: params.companyName,
+  });
+}
+
+
+async function findOzonFinancialCategoryFactsByPeriod(params?: {
+  dateFrom?: string | null;
+  dateTo?: string | null;
+  companyName?: string | null;
+}): Promise<OzonFinancialCategoryFactRecord[]> {
+  if (!params?.dateFrom || !params?.dateTo) return [];
+
+  try {
+    return params.companyName
+      ? await prisma.$queryRaw<OzonFinancialCategoryFactRecord[]>`
+          SELECT
+            "category" AS "category",
+            COALESCE(SUM("amount"), 0) AS "amount"
+          FROM "OzonFinancialCategoryFact"
+          WHERE "operationDate" >= CAST(${params.dateFrom} AS timestamp)
+            AND "operationDate" < (CAST(${params.dateTo} AS timestamp) + INTERVAL '1 day')
+            AND "companyName" = ${params.companyName}
+          GROUP BY "category"
+        `
+      : await prisma.$queryRaw<OzonFinancialCategoryFactRecord[]>`
+          SELECT
+            "category" AS "category",
+            COALESCE(SUM("amount"), 0) AS "amount"
+          FROM "OzonFinancialCategoryFact"
+          WHERE "operationDate" >= CAST(${params.dateFrom} AS timestamp)
+            AND "operationDate" < (CAST(${params.dateTo} AS timestamp) + INTERVAL '1 day')
+          GROUP BY "category"
+        `;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+
+    if (
+      message.includes("OzonFinancialCategoryFact") ||
+      message.includes("does not exist") ||
+      message.includes("relation")
+    ) {
+      return [];
+    }
+
+    throw error;
+  }
+}
+
+async function findOzonFinancialCategoryFactsByDatePeriod(params?: {
+  dateFrom?: Date | null;
+  dateTo?: Date | null;
+  companyName?: string | null;
+}) {
+  if (!params?.dateFrom || !params?.dateTo) return [];
+
+  return findOzonFinancialCategoryFactsByPeriod({
     dateFrom: params.dateFrom.toISOString().slice(0, 10),
     dateTo: params.dateTo.toISOString().slice(0, 10),
     companyName: params.companyName,
@@ -1504,6 +1658,12 @@ export async function getProfitAnalyticsOzon(params?: {
     companyName,
   });
 
+  const currentFinancialCategoryFacts = await findOzonFinancialCategoryFactsByPeriod({
+    dateFrom: params?.dateFrom,
+    dateTo: params?.dateTo,
+    companyName,
+  });
+
   const currentHasFinanceClickAds = hasOzonFinanceClickAdRows(currentFinanceRows);
 
   const currentAdsRows = currentHasFinanceClickAds
@@ -1543,6 +1703,14 @@ export async function getProfitAnalyticsOzon(params?: {
       })
     : null;
 
+  const previousFinancialCategoryFacts = previousPeriod
+    ? await findOzonFinancialCategoryFactsByDatePeriod({
+        dateFrom: previousPeriod.dateFrom,
+        dateTo: previousPeriod.dateTo,
+        companyName,
+      })
+    : [];
+
   const previousHasFinanceClickAds = hasOzonFinanceClickAdRows(previousFinanceRows);
 
   const previousAdsRows =
@@ -1565,6 +1733,7 @@ export async function getProfitAnalyticsOzon(params?: {
     }),
     currentRealizationSummary,
     currentDiscountPointsSummary,
+    currentFinancialCategoryFacts,
     usnRate,
     vatRate
   );
@@ -1580,6 +1749,7 @@ export async function getProfitAnalyticsOzon(params?: {
     }),
     previousRealizationSummary,
     previousDiscountPointsSummary,
+    previousFinancialCategoryFacts,
     usnRate,
     vatRate
   );
@@ -1596,3 +1766,4 @@ export async function getProfitAnalyticsOzon(params?: {
     comparison,
   };
 }
+

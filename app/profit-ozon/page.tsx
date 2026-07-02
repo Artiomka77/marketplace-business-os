@@ -988,6 +988,7 @@ function KpiCard({
   inverseDelta = false,
   sparkTone = "indigo",
   sparkPoints,
+  hideSparkline = false,
 }: {
   title: string;
   value: ReactNode;
@@ -996,6 +997,7 @@ function KpiCard({
   inverseDelta?: boolean;
   sparkTone?: "indigo" | "emerald" | "red" | "orange";
   sparkPoints?: number[];
+  hideSparkline?: boolean;
 }) {
   const formattedDelta =
     typeof delta === "number" ? formatDeltaPercent(delta, inverseDelta) : null;
@@ -1026,7 +1028,7 @@ function KpiCard({
           </div>
         </div>
 
-        <MiniTrendLine points={sparkPoints} tone={sparkTone} />
+        {hideSparkline ? null : <MiniTrendLine points={sparkPoints} tone={sparkTone} />}
       </div>
     </div>
   );
@@ -1558,20 +1560,30 @@ export default async function ProfitOzonPage({
   const economicTurnover = totals.economicTurnover || totals.revenue;
   const discountPointsAmount = totals.discountPointsAmount || 0;
   const totalAdsCost = totals.adsCost || 0;
-  const clickAdsCost =
-    totals.clickAdsCost || Math.max(0, totalAdsCost - (totals.orderAdsCost || 0));
-  const orderAdsCost = totals.orderAdsCost || 0;
+  const rawClickAdsCost = totals.clickAdsCost || 0;
+  const rawOrderAdsCost = totals.orderAdsCost || 0;
+  const rawOtherAdsCost =
+    totals.otherAdsCost ?? totalAdsCost - rawClickAdsCost - rawOrderAdsCost;
+  const clickAdsCost = rawClickAdsCost;
+  const orderAdsCost = rawOrderAdsCost;
+  const otherAdsCost = rawOtherAdsCost;
   const clickAdsShareOfAds =
     totalAdsCost > 0 ? (clickAdsCost / totalAdsCost) * 100 : 0;
   const orderAdsShareOfAds =
     totalAdsCost > 0 ? (orderAdsCost / totalAdsCost) * 100 : 0;
+  const otherAdsShareOfAds =
+    totalAdsCost > 0 ? (otherAdsCost / totalAdsCost) * 100 : 0;
+  const deliveryCost = totals.deliveryCost || Math.max(0, totals.logisticsCost - (totals.fboCost || 0));
+  const fboCost = totals.fboCost || 0;
+  const partnerServicesCost = totals.partnerServicesCost || 0;
+  const otherServicesCost = totals.otherServicesCost || 0;
+  const compensationAmount = totals.compensationAmount || 0;
+  const excludedLoansFactoringAmount = totals.excludedLoansFactoringAmount || 0;
   const previousPeriodRange = calculatePreviousPeriodRange(dateFrom, dateTo);
-  const otherDeductions = totals.penaltiesAmount + totals.deductions;
+  const otherDeductions = partnerServicesCost + otherServicesCost + compensationAmount;
   const grossOzonExpenses =
     totals.grossOzonExpenses ||
     totals.wbCommission + totals.logisticsCost + totals.adsCost + otherDeductions;
-  const netOzonExpenses =
-    totals.netOzonExpenses || grossOzonExpenses - discountPointsAmount;
 
   const lossRows = rows.filter((row) => row.netProfitAfterTax < 0);
   const highDrrRows = rows.filter((row) => row.drrPercent > 20);
@@ -1592,9 +1604,14 @@ export default async function ProfitOzonPage({
       colorHex: "#8b5cf6",
     },
     {
-      label: "Логистика Ozon",
-      value: totals.logisticsCost,
+      label: "Доставка Ozon",
+      value: deliveryCost,
       colorHex: "#0ea5e9",
+    },
+    {
+      label: "FBO Ozon",
+      value: fboCost,
+      colorHex: "#38bdf8",
     },
     {
       label: "Реклама Ozon",
@@ -1602,21 +1619,26 @@ export default async function ProfitOzonPage({
       colorHex: "#ec4899",
     },
     {
-      label: "Удержания / сторно",
-      value: otherDeductions,
+      label: "Услуги партнёров",
+      value: partnerServicesCost,
+      colorHex: "#f97316",
+    },
+    {
+      label: "Прочие услуги / штрафы",
+      value: otherServicesCost,
       colorHex: "#f59e0b",
+    },
+    {
+      label: "Компенсации / декомпенсации",
+      value: compensationAmount,
+      colorHex: "#10b981",
     },
     {
       label: "Налоги",
       value: totals.taxesAmount,
       colorHex: "#14b8a6",
     },
-    {
-      label: "Баллы за скидки / соинвест Ozon",
-      value: -discountPointsAmount,
-      colorHex: "#10b981",
-    },
-  ];
+  ].filter((row) => Math.abs(row.value) > 0.5);
 
   const currentSortDirLabel = dir === "desc" ? "сначала высокая" : "сначала низкая";
 
@@ -1743,17 +1765,31 @@ export default async function ProfitOzonPage({
             title="Реклама Ozon"
             value={formatMoney(totalAdsCost)}
             helper={
-              <div className="space-y-1 leading-tight">
-                <div>{formatPercent(totals.drrPercent)} ДРР от экон. оборота</div>
-                <div className="grid grid-cols-[auto_1fr] gap-x-2 gap-y-0.5 text-slate-400">
-                  <span>Клик</span>
-                  <span className="text-right">
-                    {formatMoney(clickAdsCost)} · {formatPercent(clickAdsShareOfAds)}
-                  </span>
-                  <span>Заказ</span>
-                  <span className="text-right">
-                    {formatMoney(orderAdsCost)} · {formatPercent(orderAdsShareOfAds)}
-                  </span>
+              <div className="min-w-0 space-y-2 leading-tight">
+                <div className="font-black text-slate-600">
+                  {formatPercent(totals.drrPercent)} ДРР от экон. оборота
+                </div>
+                <div className="space-y-1 rounded-2xl bg-orange-50/70 p-2 text-[11px] font-black text-slate-500 ring-1 ring-orange-100">
+                  <div className="flex items-center justify-between gap-2">
+                    <span>Клик</span>
+                    <span className="text-right text-slate-700">
+                      {formatMoney(clickAdsCost)} · {formatPercent(clickAdsShareOfAds)}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between gap-2">
+                    <span>Заказ</span>
+                    <span className="text-right text-slate-700">
+                      {formatMoney(orderAdsCost)} · {formatPercent(orderAdsShareOfAds)}
+                    </span>
+                  </div>
+                  {Math.abs(otherAdsCost) > 0.5 ? (
+                    <div className="flex items-center justify-between gap-2">
+                      <span>Прочее</span>
+                      <span className="text-right text-slate-700">
+                        {formatMoney(otherAdsCost)} · {formatPercent(otherAdsShareOfAds)}
+                      </span>
+                    </div>
+                  ) : null}
                 </div>
               </div>
             }
@@ -1761,6 +1797,7 @@ export default async function ProfitOzonPage({
             inverseDelta
             sparkTone="orange"
             sparkPoints={[18, 17, 22, 16, 14, 13, 15, 23]}
+            hideSparkline
           />
 
           <KpiCard
@@ -1776,7 +1813,16 @@ export default async function ProfitOzonPage({
           <KpiCard
             title="Логистика Ozon"
             value={formatMoney(totals.logisticsCost)}
-            helper={`${formatShare(totals.logisticsCost, shareBase, "от экон. оборота")}`}
+            helper={
+              <div className="space-y-1 leading-tight">
+                <div>{formatShare(totals.logisticsCost, shareBase, "от экон. оборота")}</div>
+                {fboCost !== 0 ? (
+                  <div className="text-[11px] text-slate-400">
+                    Доставка: {formatMoney(deliveryCost)} · FBO: {formatMoney(fboCost)}
+                  </div>
+                ) : null}
+              </div>
+            }
             delta={comparison.logisticsCost.diffPercent}
             inverseDelta
             sparkTone="red"
@@ -1811,7 +1857,7 @@ export default async function ProfitOzonPage({
 
                 <div className="grid grid-cols-[minmax(0,1fr)_105px_62px] items-center gap-3 border-t border-slate-100 pt-4">
                   <div className="font-black text-slate-700">
-                    Валовые расходы Ozon
+                    Операционные расходы Ozon
                   </div>
                   <div className="text-right font-black text-slate-900">
                     {formatMoney(grossOzonExpenses)}
@@ -1823,13 +1869,13 @@ export default async function ProfitOzonPage({
 
                 <div className="grid grid-cols-[minmax(0,1fr)_105px_62px] items-center gap-3">
                   <div className="font-black text-emerald-600">
-                    Чистые расходы Ozon после баллов
+                    Исключено из прибыли: займы / факторинг
                   </div>
                   <div className="text-right font-black text-emerald-600">
-                    {formatMoney(netOzonExpenses)}
+                    {formatMoney(excludedLoansFactoringAmount)}
                   </div>
                   <div className="text-right font-black text-emerald-600">
-                    {formatPercent(shareBase > 0 ? (netOzonExpenses / shareBase) * 100 : 0)}
+                    {formatPercent(shareBase > 0 ? (excludedLoansFactoringAmount / shareBase) * 100 : 0)}
                   </div>
                 </div>
 

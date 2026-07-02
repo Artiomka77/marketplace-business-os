@@ -363,6 +363,359 @@ function divideAmount(value: unknown, divisor: number) {
   return divisor <= 1 ? number : number / divisor;
 }
 
+
+type OzonFinancialCategory =
+  | "OZON_COMMISSION"
+  | "OZON_DELIVERY"
+  | "OZON_FBO"
+  | "OZON_ADVERTISING"
+  | "OZON_PARTNER_SERVICES"
+  | "OZON_OTHER_SERVICES"
+  | "OZON_COMPENSATION"
+  | "EXCLUDED_LOANS_FACTORING"
+  | "EXCLUDED_CREDIT"
+  | "EXCLUDED_TRANSFER";
+
+type OzonFinancialCategoryFactInput = {
+  id: string;
+  importSessionId: string;
+  companyName: string;
+  operationDate: Date | null;
+  dateFrom: Date;
+  dateTo: Date;
+  sourceOperationType: string | null;
+  sourceOperationCode: string | null;
+  sourceServiceName: string | null;
+  category: OzonFinancialCategory;
+  amount: number;
+  includeInProfit: boolean;
+  isCashFlowOnly: boolean;
+  isCompensation: boolean;
+};
+
+function createFactId() {
+  return `ozfc_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function normalizeOzonFinanceText(value: unknown) {
+  return String(value ?? "")
+    .toLowerCase()
+    .replaceAll("ё", "е")
+    .replace(/[–—−]/g, "-")
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function expenseAmountFromOzonSignedValue(value: unknown) {
+  // In Ozon finance API charges usually come as negative amounts and refunds/compensations as positive amounts.
+  // For management P&L we store a signed expense amount: positive increases expenses, negative reduces expenses.
+  return -toNumberSafe(value);
+}
+
+function isMeaningfulAmount(value: number) {
+  return Math.abs(value) >= 0.005;
+}
+
+function classifyOzonOperation(operation: OzonFinanceOperation): OzonFinancialCategory | null {
+  const type = normalizeOzonFinanceText(
+    operation.operation_type_name ?? operation.operation_type ?? ""
+  );
+
+  if (!type) return null;
+
+  if (type.includes("займ") || type.includes("фактор")) {
+    return "EXCLUDED_LOANS_FACTORING";
+  }
+
+  if (type.includes("кредит") || type.includes("финансирован")) {
+    return "EXCLUDED_CREDIT";
+  }
+
+  if (type.includes("перевод") || type.includes("transfer")) {
+    return "EXCLUDED_TRANSFER";
+  }
+
+  if (type.includes("компенсац") || type.includes("декомпенсац")) {
+    return "OZON_COMPENSATION";
+  }
+
+  if (type.includes("продвиж") || type.includes("реклам") || type.includes("клик") || type.includes("cpc") || type.includes("cpo")) {
+    return "OZON_ADVERTISING";
+  }
+
+  if (type.includes("услуги партнер") || type.includes("услуга партнер") || type.includes("партнер")) {
+    return "OZON_PARTNER_SERVICES";
+  }
+
+  if (type.includes("fbo") || type.includes("фбо")) {
+    return "OZON_FBO";
+  }
+
+  if (type.includes("достав") || type.includes("логист")) {
+    return "OZON_DELIVERY";
+  }
+
+  if (type.includes("вознаграждение") || type.includes("комисс")) {
+    return "OZON_COMMISSION";
+  }
+
+  if (type.includes("штраф") || type.includes("проч") || type.includes("удерж") || type.includes("услуг")) {
+    return "OZON_OTHER_SERVICES";
+  }
+
+  return null;
+}
+
+function classifyOzonService(serviceName: unknown): OzonFinancialCategory {
+  const name = normalizeOzonFinanceText(serviceName);
+
+  if (name.includes("займ") || name.includes("фактор")) return "EXCLUDED_LOANS_FACTORING";
+  if (name.includes("кредит") || name.includes("финансирован")) return "EXCLUDED_CREDIT";
+  if (name.includes("компенсац") || name.includes("декомпенсац")) return "OZON_COMPENSATION";
+  if (name.includes("реклам") || name.includes("продвиж") || name.includes("cpc") || name.includes("cpo")) return "OZON_ADVERTISING";
+  if (name.includes("партнер")) return "OZON_PARTNER_SERVICES";
+
+  if (
+    name.includes("directflowlogistic") ||
+    name.includes("returnflowlogistic") ||
+    name.includes("redistributionreturns") ||
+    name.includes("lastmile") ||
+    name.includes("courier") ||
+    name.includes("logistic") ||
+    name.includes("return") ||
+    name.includes("returns") ||
+    name.includes("достав") ||
+    name.includes("логист")
+  ) {
+    return "OZON_DELIVERY";
+  }
+
+  if (
+    name.includes("fbo") ||
+    name.includes("фбо") ||
+    name.includes("fulfillment") ||
+    name.includes("warehouse") ||
+    name.includes("storage") ||
+    name.includes("склад") ||
+    name.includes("размещ") ||
+    name.includes("хранен") ||
+    name.includes("обработ") ||
+    name.includes("упаков")
+  ) {
+    return "OZON_FBO";
+  }
+
+  return "OZON_OTHER_SERVICES";
+}
+
+function getOzonFactFlags(category: OzonFinancialCategory) {
+  const isExcluded = category.startsWith("EXCLUDED_");
+
+  return {
+    includeInProfit: !isExcluded,
+    isCashFlowOnly: isExcluded,
+    isCompensation: category === "OZON_COMPENSATION",
+  };
+}
+
+function createOzonFinancialFact(params: {
+  importSessionId: string;
+  companyName: string;
+  operation: OzonFinanceOperation;
+  dateFrom: Date;
+  dateTo: Date;
+  category: OzonFinancialCategory;
+  amount: number;
+  sourceServiceName?: string | null;
+}): OzonFinancialCategoryFactInput | null {
+  if (!isMeaningfulAmount(params.amount)) return null;
+
+  const flags = getOzonFactFlags(params.category);
+
+  return {
+    id: createFactId(),
+    importSessionId: params.importSessionId,
+    companyName: params.companyName,
+    operationDate: toDate(params.operation.operation_date),
+    dateFrom: params.dateFrom,
+    dateTo: params.dateTo,
+    sourceOperationType:
+      params.operation.operation_type_name ?? params.operation.operation_type ?? null,
+    sourceOperationCode: params.operation.operation_type ?? null,
+    sourceServiceName: params.sourceServiceName ?? null,
+    category: params.category,
+    amount: params.amount,
+    ...flags,
+  };
+}
+
+function buildOzonFinancialCategoryFacts(params: {
+  operations: OzonFinanceOperation[];
+  importSessionId: string;
+  companyName: string;
+  dateFrom: Date;
+  dateTo: Date;
+}) {
+  const facts: OzonFinancialCategoryFactInput[] = [];
+
+  const pushFact = (fact: OzonFinancialCategoryFactInput | null) => {
+    if (fact) facts.push(fact);
+  };
+
+  for (const operation of params.operations) {
+    const operationCategory = classifyOzonOperation(operation);
+    const hasItems = Boolean(operation.items?.length);
+    let serviceDeliveryAmount = 0;
+    let itemLevelExpenseWasSaved = false;
+
+    const commissionAmount = expenseAmountFromOzonSignedValue(operation.sale_commission);
+    if (isMeaningfulAmount(commissionAmount)) {
+      itemLevelExpenseWasSaved = true;
+      pushFact(
+        createOzonFinancialFact({
+          ...params,
+          operation,
+          category: "OZON_COMMISSION",
+          amount: commissionAmount,
+          sourceServiceName: "sale_commission",
+        })
+      );
+    }
+
+    for (const service of operation.services ?? []) {
+      const category = classifyOzonService(service.name);
+      const amount = expenseAmountFromOzonSignedValue(service.price);
+
+      if (category === "OZON_DELIVERY") {
+        serviceDeliveryAmount += amount;
+      }
+
+      if (isMeaningfulAmount(amount)) {
+        itemLevelExpenseWasSaved = true;
+        pushFact(
+          createOzonFinancialFact({
+            ...params,
+            operation,
+            category,
+            amount,
+            sourceServiceName: service.name ?? null,
+          })
+        );
+      }
+    }
+
+    // Use delivery_charge/return_delivery_charge only as a fallback when services did not already provide logistics details.
+    if (!isMeaningfulAmount(serviceDeliveryAmount)) {
+      const deliveryAmount = expenseAmountFromOzonSignedValue(operation.delivery_charge);
+      const returnDeliveryAmount = expenseAmountFromOzonSignedValue(
+        operation.return_delivery_charge
+      );
+
+      if (isMeaningfulAmount(deliveryAmount)) {
+        itemLevelExpenseWasSaved = true;
+        pushFact(
+          createOzonFinancialFact({
+            ...params,
+            operation,
+            category: "OZON_DELIVERY",
+            amount: deliveryAmount,
+            sourceServiceName: "delivery_charge",
+          })
+        );
+      }
+
+      if (isMeaningfulAmount(returnDeliveryAmount)) {
+        itemLevelExpenseWasSaved = true;
+        pushFact(
+          createOzonFinancialFact({
+            ...params,
+            operation,
+            category: "OZON_DELIVERY",
+            amount: returnDeliveryAmount,
+            sourceServiceName: "return_delivery_charge",
+          })
+        );
+      }
+    }
+
+    const operationAmount = expenseAmountFromOzonSignedValue(operation.amount);
+
+    // Operations without item/service expense split are financial category operations:
+    // ads, partner services, compensations, loans/factoring, other services, etc.
+    if (operationCategory && (!itemLevelExpenseWasSaved || !hasItems)) {
+      pushFact(
+        createOzonFinancialFact({
+          ...params,
+          operation,
+          category: operationCategory,
+          amount: operationAmount,
+          sourceServiceName: null,
+        })
+      );
+    }
+  }
+
+  return facts;
+}
+
+async function replaceOzonFinancialCategoryFacts(params: {
+  operations: OzonFinanceOperation[];
+  importSessionId: string;
+  companyName: string;
+  dateFrom: Date;
+  dateTo: Date;
+}) {
+  const facts = buildOzonFinancialCategoryFacts(params);
+
+  await prisma.$executeRaw`
+    DELETE FROM "OzonFinancialCategoryFact"
+    WHERE "companyName" = ${params.companyName}
+      AND "operationDate" >= ${params.dateFrom}
+      AND "operationDate" <= ${params.dateTo}
+  `;
+
+  for (const fact of facts) {
+    await prisma.$executeRaw`
+      INSERT INTO "OzonFinancialCategoryFact" (
+        "id",
+        "importSessionId",
+        "companyName",
+        "operationDate",
+        "dateFrom",
+        "dateTo",
+        "source",
+        "sourceOperationType",
+        "sourceOperationCode",
+        "sourceServiceName",
+        "category",
+        "amount",
+        "includeInProfit",
+        "isCashFlowOnly",
+        "isCompensation"
+      ) VALUES (
+        ${fact.id},
+        ${fact.importSessionId},
+        ${fact.companyName},
+        ${fact.operationDate},
+        ${fact.dateFrom},
+        ${fact.dateTo},
+        ${"OZON_FINANCE_API"},
+        ${fact.sourceOperationType},
+        ${fact.sourceOperationCode},
+        ${fact.sourceServiceName},
+        ${fact.category},
+        ${fact.amount},
+        ${fact.includeInProfit},
+        ${fact.isCashFlowOnly},
+        ${fact.isCompensation}
+      )
+    `;
+  }
+
+  return facts.length;
+}
+
 function mapOzonFinanceRows(operations: OzonFinanceOperation[]) {
   const rows: Record<string, unknown>[] = [];
 
@@ -436,9 +789,23 @@ export async function syncOzonFinance(
     }
   );
 
+  const financialCategoryFactsCount = await replaceOzonFinancialCategoryFacts({
+    operations,
+    importSessionId: importSession.id,
+    companyName: company.name,
+    dateFrom,
+    dateTo,
+  });
+
   await prisma.importSession.update({
     where: { id: importSession.id },
-    data: { rowsCount: normalizeResult.savedRows },
+    data: {
+      rowsCount: normalizeResult.savedRows,
+      previewJson: {
+        financeRows: rows.slice(0, 10),
+        financialCategoryFactsCount,
+      } as any,
+    },
   });
 
   return {
