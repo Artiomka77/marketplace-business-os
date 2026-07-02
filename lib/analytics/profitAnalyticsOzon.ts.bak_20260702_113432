@@ -1,4 +1,4 @@
-﻿import { prisma } from "@/lib/prisma";
+import { prisma } from "@/lib/prisma";
 
 function toNumber(value: unknown): number {
   if (value === null || value === undefined) return 0;
@@ -20,8 +20,8 @@ function toNumber(value: unknown): number {
 function normalizeText(value: unknown): string {
   return String(value ?? "")
     .toLowerCase()
-    .replaceAll("С‘", "Рµ")
-    .replace(/[вЂ“вЂ”в€’]/g, "-")
+    .replaceAll("ё", "е")
+    .replace(/[–—−]/g, "-")
     .replace(/\s*-\s*/g, "-")
     .replace(/\s+/g, " ")
     .trim();
@@ -58,10 +58,10 @@ function isOzonFinanceAdOperation(operationType: unknown) {
   const value = normalizeText(operationType);
 
   return (
-    value.includes("РѕРїР»Р°С‚Р° Р·Р° РєР»РёРє") ||
-    value.includes("РїСЂРѕРґРІРёР¶РµРЅРёРµ СЃ РѕРїР»Р°С‚РѕР№ Р·Р° Р·Р°РєР°Р·") ||
-    value.includes("РѕРїР»Р°С‚Р° Р·Р° Р·Р°РєР°Р·") ||
-    (value.includes("СЂРµРєР»Р°Рј") && !value.includes("СЃС‚РѕСЂРЅРѕ"))
+    value.includes("оплата за клик") ||
+    value.includes("продвижение с оплатой за заказ") ||
+    value.includes("оплата за заказ") ||
+    (value.includes("реклам") && !value.includes("сторно"))
   );
 }
 
@@ -232,13 +232,6 @@ type OzonAdsRecord = {
   spend: unknown;
 };
 
-type OzonRealizationSummaryRecord = {
-  realizedAmount: unknown;
-  returnedAmount: unknown;
-  taxableRevenue: unknown;
-  partnerProgramsAmount: unknown;
-};
-
 type OzonProductRecord = {
   vendorCode: string;
   sku: string;
@@ -314,69 +307,6 @@ function buildAdsCostByVendorCode(
     adsCostByVendorCode,
     undistributedAdsCost,
   };
-}
-
-function applyOzonRealizationRevenueOverride(
-  result: { rows: OzonProfitAnalyticsRow[]; totals: OzonProfitTotals },
-  realizationSummary: OzonRealizationSummaryRecord | null | undefined,
-  usnRate: number,
-  vatRate: number
-) {
-  const taxableRevenue = toNumber(realizationSummary?.taxableRevenue);
-
-  if (taxableRevenue <= 0) {
-    return result;
-  }
-
-  const oldTotalRevenue = result.totals.revenue;
-  const ratio = oldTotalRevenue > 0 ? taxableRevenue / oldTotalRevenue : 0;
-
-  for (const row of result.rows) {
-    row.revenue = oldTotalRevenue > 0 ? row.revenue * ratio : 0;
-
-    row.marginProfitPercent =
-      row.revenue > 0 ? (row.marginProfit / row.revenue) * 100 : 0;
-
-    row.drrPercent = row.revenue > 0 ? (row.adsCost / row.revenue) * 100 : 0;
-
-    const usnTax = row.revenue > 0 ? row.revenue * (usnRate / 100) : 0;
-    const vatTax = row.revenue > 0 ? calculateVatTax(row.revenue, vatRate) : 0;
-
-    row.taxesAmount = usnTax + vatTax;
-    row.netProfitAfterTax = row.marginProfit - row.taxesAmount;
-    row.marginAfterTaxPercent =
-      row.revenue > 0 ? (row.netProfitAfterTax / row.revenue) * 100 : 0;
-  }
-
-  result.totals.revenue = taxableRevenue;
-  result.totals.taxesAmount =
-    taxableRevenue * (usnRate / 100) + calculateVatTax(taxableRevenue, vatRate);
-  result.totals.netProfitAfterTax =
-    result.totals.marginProfit - result.totals.taxesAmount;
-
-  result.totals.marginProfitPercent =
-    result.totals.revenue > 0
-      ? (result.totals.marginProfit / result.totals.revenue) * 100
-      : 0;
-
-  result.totals.marginAfterTaxPercent =
-    result.totals.revenue > 0
-      ? (result.totals.netProfitAfterTax / result.totals.revenue) * 100
-      : 0;
-
-  result.totals.drrPercent =
-    result.totals.revenue > 0
-      ? (result.totals.adsCost / result.totals.revenue) * 100
-      : 0;
-
-  for (const row of result.rows) {
-    row.revenueSharePercent =
-      result.totals.revenue > 0
-        ? (row.revenue / result.totals.revenue) * 100
-        : 0;
-  }
-
-  return result;
 }
 
 function createEmptyTotals(
@@ -745,55 +675,6 @@ function calculateRowsAndTotals({
   };
 }
 
-async function findOzonRealizationSummaryByPeriod(params?: {
-  dateFrom?: string | null;
-  dateTo?: string | null;
-  companyName?: string | null;
-}): Promise<OzonRealizationSummaryRecord | null> {
-  if (!params?.dateFrom || !params?.dateTo) return null;
-
-  const rows = params.companyName
-    ? await prisma.$queryRaw<OzonRealizationSummaryRecord[]>`
-        SELECT
-          COALESCE(SUM("realizedAmount"), 0) AS "realizedAmount",
-          COALESCE(SUM("returnedAmount"), 0) AS "returnedAmount",
-          COALESCE(SUM("taxableRevenue"), 0) AS "taxableRevenue",
-          COALESCE(SUM("partnerProgramsAmount"), 0) AS "partnerProgramsAmount"
-        FROM "OzonRealizationSummary"
-        WHERE "dateFrom"::date = CAST(${params.dateFrom} AS date)
-          AND "dateTo"::date = CAST(${params.dateTo} AS date)
-          AND "companyName" = ${params.companyName}
-      `
-    : await prisma.$queryRaw<OzonRealizationSummaryRecord[]>`
-        SELECT
-          COALESCE(SUM("realizedAmount"), 0) AS "realizedAmount",
-          COALESCE(SUM("returnedAmount"), 0) AS "returnedAmount",
-          COALESCE(SUM("taxableRevenue"), 0) AS "taxableRevenue",
-          COALESCE(SUM("partnerProgramsAmount"), 0) AS "partnerProgramsAmount"
-        FROM "OzonRealizationSummary"
-        WHERE "dateFrom"::date = CAST(${params.dateFrom} AS date)
-          AND "dateTo"::date = CAST(${params.dateTo} AS date)
-      `;
-
-  const summary = rows[0];
-
-  return summary && toNumber(summary.taxableRevenue) > 0 ? summary : null;
-}
-
-async function findOzonRealizationSummaryByDatePeriod(params?: {
-  dateFrom?: Date | null;
-  dateTo?: Date | null;
-  companyName?: string | null;
-}) {
-  if (!params?.dateFrom || !params?.dateTo) return null;
-
-  return findOzonRealizationSummaryByPeriod({
-    dateFrom: params.dateFrom.toISOString().slice(0, 10),
-    dateTo: params.dateTo.toISOString().slice(0, 10),
-    companyName: params.companyName,
-  });
-}
-
 async function findLatestOzonFinanceRowsByPeriod(params?: {
   dateFrom?: string | null;
   dateTo?: string | null;
@@ -974,12 +855,6 @@ export async function getProfitAnalyticsOzon(params?: {
     companyName,
   });
 
-  const currentRealizationSummary = await findOzonRealizationSummaryByPeriod({
-    dateFrom: params?.dateFrom,
-    dateTo: params?.dateTo,
-    companyName,
-  });
-
   const currentHasFinanceAds = hasOzonFinanceAdRows(currentFinanceRows);
 
   const currentAdsRows = currentHasFinanceAds
@@ -1003,14 +878,6 @@ export async function getProfitAnalyticsOzon(params?: {
       })
     : [];
 
-  const previousRealizationSummary = previousPeriod
-    ? await findOzonRealizationSummaryByDatePeriod({
-        dateFrom: previousPeriod.dateFrom,
-        dateTo: previousPeriod.dateTo,
-        companyName,
-      })
-    : null;
-
   const previousHasFinanceAds = hasOzonFinanceAdRows(previousFinanceRows);
 
   const previousAdsRows =
@@ -1022,33 +889,23 @@ export async function getProfitAnalyticsOzon(params?: {
         })
       : [];
 
-  const current = applyOzonRealizationRevenueOverride(
-    calculateRowsAndTotals({
-      financeRows: currentFinanceRows,
-      adsRows: currentAdsRows,
-      costs,
-      ozonProducts,
-      usnRate,
-      vatRate,
-    }),
-    currentRealizationSummary,
+  const current = calculateRowsAndTotals({
+    financeRows: currentFinanceRows,
+    adsRows: currentAdsRows,
+    costs,
+    ozonProducts,
     usnRate,
-    vatRate
-  );
+    vatRate,
+  });
 
-  const previous = applyOzonRealizationRevenueOverride(
-    calculateRowsAndTotals({
-      financeRows: previousFinanceRows,
-      adsRows: previousAdsRows,
-      costs,
-      ozonProducts,
-      usnRate,
-      vatRate,
-    }),
-    previousRealizationSummary,
+  const previous = calculateRowsAndTotals({
+    financeRows: previousFinanceRows,
+    adsRows: previousAdsRows,
+    costs,
+    ozonProducts,
     usnRate,
-    vatRate
-  );
+    vatRate,
+  });
 
   const comparison = {
     revenue: createComparison(current.totals.revenue, previous.totals.revenue),
