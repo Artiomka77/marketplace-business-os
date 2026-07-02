@@ -198,6 +198,28 @@ function formatDateRu(value: string) {
   }).format(date);
 }
 
+function formatDateInputFromDate(date: Date) {
+  return date.toISOString().slice(0, 10);
+}
+
+function calculatePreviousPeriodRange(dateFrom: string, dateTo: string) {
+  const from = startOfDay(dateFrom);
+  const to = startOfDay(dateTo);
+  const diffMs = to.getTime() - from.getTime();
+  const days = Math.max(1, Math.ceil(diffMs / (1000 * 60 * 60 * 24)) + 1);
+
+  const previousTo = new Date(from);
+  previousTo.setDate(previousTo.getDate() - 1);
+
+  const previousFrom = new Date(previousTo);
+  previousFrom.setDate(previousFrom.getDate() - (days - 1));
+
+  return {
+    dateFrom: formatDateInputFromDate(previousFrom),
+    dateTo: formatDateInputFromDate(previousTo),
+  };
+}
+
 function formatDeltaPercent(value: number, inverse = false) {
   if (!Number.isFinite(value) || value === 0) {
     return {
@@ -1535,8 +1557,15 @@ export default async function ProfitOzonPage({
   const shareBase = totals.expenseShareBase || totals.economicTurnover || totals.revenue;
   const economicTurnover = totals.economicTurnover || totals.revenue;
   const discountPointsAmount = totals.discountPointsAmount || 0;
-  const clickAdsCost = totals.clickAdsCost || Math.max(0, totals.adsCost - (totals.orderAdsCost || 0));
+  const totalAdsCost = totals.adsCost || 0;
+  const clickAdsCost =
+    totals.clickAdsCost || Math.max(0, totalAdsCost - (totals.orderAdsCost || 0));
   const orderAdsCost = totals.orderAdsCost || 0;
+  const clickAdsShareOfAds =
+    totalAdsCost > 0 ? (clickAdsCost / totalAdsCost) * 100 : 0;
+  const orderAdsShareOfAds =
+    totalAdsCost > 0 ? (orderAdsCost / totalAdsCost) * 100 : 0;
+  const previousPeriodRange = calculatePreviousPeriodRange(dateFrom, dateTo);
   const otherDeductions = totals.penaltiesAmount + totals.deductions;
   const grossOzonExpenses =
     totals.grossOzonExpenses ||
@@ -1568,14 +1597,9 @@ export default async function ProfitOzonPage({
       colorHex: "#0ea5e9",
     },
     {
-      label: "Реклама: оплата за клик",
-      value: clickAdsCost,
+      label: "Реклама Ozon",
+      value: totalAdsCost,
       colorHex: "#ec4899",
-    },
-    {
-      label: "Реклама: оплата за заказ",
-      value: orderAdsCost,
-      colorHex: "#f97316",
     },
     {
       label: "Удержания / сторно",
@@ -1675,7 +1699,8 @@ export default async function ProfitOzonPage({
           <div className="mt-4 flex flex-wrap items-center justify-end gap-2 text-sm">
             <span className="text-slate-500">Сравнение с предыдущим периодом</span>
             <span className="rounded-2xl bg-emerald-50 px-3 py-1 font-black text-emerald-700 ring-1 ring-emerald-100">
-              {formatDateRu(dateFrom)} — {formatDateRu(dateTo)}
+              {formatDateRu(previousPeriodRange.dateFrom)} —{" "}
+              {formatDateRu(previousPeriodRange.dateTo)}
             </span>
             <Link
               href="/import"
@@ -1686,7 +1711,7 @@ export default async function ProfitOzonPage({
           </div>
         </section>
 
-        <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-8">
+        <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-7">
           <KpiCard
             title="Налоговая выручка"
             value={formatMoney(totals.revenue)}
@@ -1716,32 +1741,22 @@ export default async function ProfitOzonPage({
 
           <KpiCard
             title="Реклама Ozon"
-            value={formatMoney(totals.adsCost)}
-            helper={`${formatPercent(totals.drrPercent)} ДРР от экон. оборота`}
+            value={formatMoney(totalAdsCost)}
+            helper={
+              <div className="space-y-1">
+                <div>{formatPercent(totals.drrPercent)} ДРР от экон. оборота</div>
+                <div className="text-slate-400">
+                  Клик: {formatMoney(clickAdsCost)} · {formatPercent(clickAdsShareOfAds)} рекламы
+                </div>
+                <div className="text-slate-400">
+                  Заказ: {formatMoney(orderAdsCost)} · {formatPercent(orderAdsShareOfAds)} рекламы
+                </div>
+              </div>
+            }
             delta={comparison.adsCost.diffPercent}
             inverseDelta
             sparkTone="orange"
             sparkPoints={[18, 17, 22, 16, 14, 13, 15, 23]}
-          />
-
-          <KpiCard
-            title="Оплата за клик"
-            value={formatMoney(clickAdsCost)}
-            helper={`${formatShare(clickAdsCost, shareBase, "от экон. оборота")}`}
-            delta={comparison.clickAdsCost.diffPercent}
-            inverseDelta
-            sparkTone="orange"
-            sparkPoints={[12, 12, 13, 14, 13, 14, 15, 15]}
-          />
-
-          <KpiCard
-            title="Оплата за заказ"
-            value={formatMoney(orderAdsCost)}
-            helper={`${formatShare(orderAdsCost, shareBase, "от экон. оборота")}`}
-            delta={comparison.orderAdsCost.diffPercent}
-            inverseDelta
-            sparkTone="orange"
-            sparkPoints={[4, 5, 5, 6, 7, 8, 8, 9]}
           />
 
           <KpiCard

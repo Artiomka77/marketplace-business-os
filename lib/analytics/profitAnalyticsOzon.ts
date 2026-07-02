@@ -1,4 +1,4 @@
-﻿import { prisma } from "@/lib/prisma";
+import { prisma } from "@/lib/prisma";
 
 function toNumber(value: unknown): number {
   if (value === null || value === undefined) return 0;
@@ -21,7 +21,7 @@ function normalizeText(value: unknown): string {
   return String(value ?? "")
     .toLowerCase()
     .replaceAll("ё", "е")
-    .replace(/[вЂ“вЂ”в€’]/g, "-")
+    .replace(/[–—−]/g, "-")
     .replace(/\s*-\s*/g, "-")
     .replace(/\s+/g, " ")
     .trim();
@@ -70,7 +70,12 @@ function isOzonFinanceOrderAdOperation(operationType: unknown) {
   return (
     value.includes("оплата за заказ") ||
     value.includes("продвижение с оплатой за заказ") ||
-    value.includes("оплата за заказ")
+    value.includes("реклама оплата за заказ") ||
+    value.includes("cpo") ||
+    (value.includes("заказ") &&
+      (value.includes("продвиж") ||
+        value.includes("реклам") ||
+        value.includes("оплат")))
   );
 }
 
@@ -239,6 +244,33 @@ export type OzonProfitTotals = {
   usnRate: number;
   vatRate: number;
 };
+
+type OzonProfitAnalyticsComparison = {
+  revenue: ReturnType<typeof createComparison>;
+  economicTurnover: ReturnType<typeof createComparison>;
+  discountPointsAmount: ReturnType<typeof createComparison>;
+  clickAdsCost: ReturnType<typeof createComparison>;
+  orderAdsCost: ReturnType<typeof createComparison>;
+  sellerPayout: ReturnType<typeof createComparison>;
+  totalCost: ReturnType<typeof createComparison>;
+  wbCommission: ReturnType<typeof createComparison>;
+  logisticsCost: ReturnType<typeof createComparison>;
+  adsCost: ReturnType<typeof createComparison>;
+  taxesAmount: ReturnType<typeof createComparison>;
+  marginProfit: ReturnType<typeof createComparison>;
+  netProfitAfterTax: ReturnType<typeof createComparison>;
+};
+
+type OzonProfitAnalyticsResult = {
+  rows: OzonProfitAnalyticsRow[];
+  totals: OzonProfitTotals;
+  previousRows: OzonProfitAnalyticsRow[];
+  previousTotals: OzonProfitTotals;
+  comparison: OzonProfitAnalyticsComparison;
+};
+
+const OZON_COMPANY_NAMES = ["ИП Петров", "ИП Лебедева"];
+
 
 type CostRecord = {
   vendorCode: string;
@@ -509,6 +541,218 @@ function createEmptyTotals(
     vatRate,
   };
 }
+
+function finalizeOzonTotals(totals: OzonProfitTotals) {
+  totals.expenseShareBase =
+    totals.economicTurnover > 0 ? totals.economicTurnover : totals.revenue;
+
+  totals.grossOzonExpenses =
+    totals.wbCommission +
+    totals.logisticsCost +
+    totals.adsCost +
+    totals.penaltiesAmount +
+    totals.deductions;
+
+  totals.netOzonExpenses =
+    totals.grossOzonExpenses - totals.discountPointsCompensation;
+
+  totals.marginProfitPercent =
+    totals.expenseShareBase > 0
+      ? (totals.marginProfit / totals.expenseShareBase) * 100
+      : 0;
+
+  totals.marginAfterTaxPercent =
+    totals.expenseShareBase > 0
+      ? (totals.netProfitAfterTax / totals.expenseShareBase) * 100
+      : 0;
+
+  totals.drrPercent =
+    totals.expenseShareBase > 0
+      ? (totals.adsCost / totals.expenseShareBase) * 100
+      : 0;
+
+  return totals;
+}
+
+function mergeOzonTotals(
+  totalsList: OzonProfitTotals[],
+  usnRate: number,
+  vatRate: number
+) {
+  const result = createEmptyTotals(usnRate, vatRate);
+
+  const keys: (keyof OzonProfitTotals)[] = [
+    "salesQty",
+    "returnsQty",
+    "netSalesQty",
+    "revenue",
+    "realizedAmount",
+    "returnedAmount",
+    "taxableRevenue",
+    "partnerProgramsAmount",
+    "discountPointsAmount",
+    "economicTurnover",
+    "sellerPayout",
+    "wbCommission",
+    "logisticsCost",
+    "storageCost",
+    "acceptanceCost",
+    "penaltiesAmount",
+    "deductions",
+    "paymentServiceCost",
+    "adsCost",
+    "clickAdsCost",
+    "orderAdsCost",
+    "undistributedAdsCost",
+    "totalCost",
+    "grossOzonExpenses",
+    "discountPointsCompensation",
+    "netOzonExpenses",
+    "marginProfit",
+    "taxesAmount",
+    "netProfitAfterTax",
+  ];
+
+  for (const totals of totalsList) {
+    for (const key of keys) {
+      result[key] = (toNumber(result[key]) + toNumber(totals[key])) as never;
+    }
+  }
+
+  return finalizeOzonTotals(result);
+}
+
+function mergeOzonRows(rowsList: OzonProfitAnalyticsRow[][]) {
+  const grouped = new Map<string, OzonProfitAnalyticsRow>();
+
+  for (const rows of rowsList) {
+    for (const row of rows) {
+      const key = normalizeText(row.vendorCode) || normalizeText(row.nmId);
+      if (!key) continue;
+
+      const current = grouped.get(key);
+
+      if (!current) {
+        grouped.set(key, { ...row });
+        continue;
+      }
+
+      current.salesQty += row.salesQty;
+      current.returnsQty += row.returnsQty;
+      current.netSalesQty += row.netSalesQty;
+      current.revenue += row.revenue;
+      current.sellerPayout += row.sellerPayout;
+      current.wbCommission += row.wbCommission;
+      current.logisticsCost += row.logisticsCost;
+      current.storageCost += row.storageCost;
+      current.acceptanceCost += row.acceptanceCost;
+      current.penaltiesAmount += row.penaltiesAmount;
+      current.deductions += row.deductions;
+      current.paymentServiceCost += row.paymentServiceCost;
+      current.adsCost += row.adsCost;
+      current.totalCost += row.totalCost;
+      current.marginProfit += row.marginProfit;
+      current.taxesAmount += row.taxesAmount;
+      current.netProfitAfterTax += row.netProfitAfterTax;
+
+      if (!current.nmId && row.nmId) current.nmId = row.nmId;
+      if (!current.subject && row.subject) current.subject = row.subject;
+    }
+  }
+
+  const rows = Array.from(grouped.values());
+
+  const totalRevenue = rows.reduce((sum, row) => sum + row.revenue, 0);
+
+  for (const row of rows) {
+    row.revenueSharePercent =
+      totalRevenue > 0 ? (row.revenue / totalRevenue) * 100 : 0;
+    row.costPrice = row.netSalesQty > 0 ? row.totalCost / row.netSalesQty : 0;
+    row.drrPercent = row.revenue > 0 ? (row.adsCost / row.revenue) * 100 : 0;
+    row.marginProfitPercent =
+      row.revenue > 0 ? (row.marginProfit / row.revenue) * 100 : 0;
+    row.marginAfterTaxPercent =
+      row.revenue > 0 ? (row.netProfitAfterTax / row.revenue) * 100 : 0;
+  }
+
+  calculateAbcByProfit(rows);
+
+  return rows.sort((a, b) => b.marginProfit - a.marginProfit);
+}
+
+function createOzonComparison(
+  current: OzonProfitTotals,
+  previous: OzonProfitTotals
+): OzonProfitAnalyticsComparison {
+  return {
+    revenue: createComparison(current.revenue, previous.revenue),
+
+    economicTurnover: createComparison(
+      current.economicTurnover,
+      previous.economicTurnover
+    ),
+
+    discountPointsAmount: createComparison(
+      current.discountPointsAmount,
+      previous.discountPointsAmount
+    ),
+
+    clickAdsCost: createComparison(current.clickAdsCost, previous.clickAdsCost),
+
+    orderAdsCost: createComparison(current.orderAdsCost, previous.orderAdsCost),
+
+    sellerPayout: createComparison(current.sellerPayout, previous.sellerPayout),
+
+    totalCost: createComparison(current.totalCost, previous.totalCost),
+
+    wbCommission: createComparison(current.wbCommission, previous.wbCommission),
+
+    logisticsCost: createComparison(current.logisticsCost, previous.logisticsCost),
+
+    adsCost: createComparison(current.adsCost, previous.adsCost),
+
+    taxesAmount: createComparison(current.taxesAmount, previous.taxesAmount),
+
+    marginProfit: createComparison(current.marginProfit, previous.marginProfit),
+
+    netProfitAfterTax: createComparison(
+      current.netProfitAfterTax,
+      previous.netProfitAfterTax
+    ),
+  };
+}
+
+function mergeOzonAnalyticsResults(
+  results: OzonProfitAnalyticsResult[],
+  usnRate: number,
+  vatRate: number
+): OzonProfitAnalyticsResult {
+  const rows = mergeOzonRows(results.map((result) => result.rows));
+  const previousRows = mergeOzonRows(
+    results.map((result) => result.previousRows)
+  );
+
+  const totals = mergeOzonTotals(
+    results.map((result) => result.totals),
+    usnRate,
+    vatRate
+  );
+
+  const previousTotals = mergeOzonTotals(
+    results.map((result) => result.previousTotals),
+    usnRate,
+    vatRate
+  );
+
+  return {
+    rows,
+    totals,
+    previousRows,
+    previousTotals,
+    comparison: createOzonComparison(totals, previousTotals),
+  };
+}
+
 
 function calculateAbcByProfit(rows: OzonProfitAnalyticsRow[]) {
   const totalPositiveProfit = rows.reduce(
@@ -843,6 +1087,14 @@ function calculateRowsAndTotals({
   totals.orderAdsCost = financeOrderAdsCost;
   totals.adsCost = totals.clickAdsCost + totals.orderAdsCost;
 
+  const financeAdsCostNotAppliedToProfit =
+    financeClickAdsCost + financeOrderAdsCost + financeOtherAdsCost;
+
+  if (financeAdsCostNotAppliedToProfit > 0) {
+    totals.marginProfit -= financeAdsCostNotAppliedToProfit;
+    totals.netProfitAfterTax -= financeAdsCostNotAppliedToProfit;
+  }
+
   totals.marginProfitPercent =
     totals.revenue > 0 ? (totals.marginProfit / totals.revenue) * 100 : 0;
 
@@ -1110,13 +1362,28 @@ export async function getProfitAnalyticsOzon(params?: {
   usnRate?: string | number | null;
   vatRate?: string | number | null;
   companyName?: string | null;
-}) {
+}): Promise<OzonProfitAnalyticsResult> {
   const usnRate = clampRate(params?.usnRate, [0, 1, 2, 3, 4, 5, 6], 1);
   const vatRate = clampRate(params?.vatRate, [0, 5, 7], 5);
-  const companyName =
+  const requestedCompanyName =
     params?.companyName && params.companyName !== "ALL"
       ? params.companyName
       : null;
+
+  if (!requestedCompanyName) {
+    const companyResults = await Promise.all(
+      OZON_COMPANY_NAMES.map((companyName) =>
+        getProfitAnalyticsOzon({
+          ...params,
+          companyName,
+        })
+      )
+    );
+
+    return mergeOzonAnalyticsResults(companyResults, usnRate, vatRate);
+  }
+
+  const companyName = requestedCompanyName;
 
   const costs = await prisma.productCost.findMany({
     orderBy: {
@@ -1232,66 +1499,7 @@ export async function getProfitAnalyticsOzon(params?: {
     vatRate
   );
 
-  const comparison = {
-    revenue: createComparison(current.totals.revenue, previous.totals.revenue),
-
-    economicTurnover: createComparison(
-      current.totals.economicTurnover,
-      previous.totals.economicTurnover
-    ),
-
-    discountPointsAmount: createComparison(
-      current.totals.discountPointsAmount,
-      previous.totals.discountPointsAmount
-    ),
-
-    clickAdsCost: createComparison(
-      current.totals.clickAdsCost,
-      previous.totals.clickAdsCost
-    ),
-
-    orderAdsCost: createComparison(
-      current.totals.orderAdsCost,
-      previous.totals.orderAdsCost
-    ),
-
-    sellerPayout: createComparison(
-      current.totals.sellerPayout,
-      previous.totals.sellerPayout
-    ),
-
-    totalCost: createComparison(
-      current.totals.totalCost,
-      previous.totals.totalCost
-    ),
-
-    wbCommission: createComparison(
-      current.totals.wbCommission,
-      previous.totals.wbCommission
-    ),
-
-    logisticsCost: createComparison(
-      current.totals.logisticsCost,
-      previous.totals.logisticsCost
-    ),
-
-    adsCost: createComparison(current.totals.adsCost, previous.totals.adsCost),
-
-    taxesAmount: createComparison(
-      current.totals.taxesAmount,
-      previous.totals.taxesAmount
-    ),
-
-    marginProfit: createComparison(
-      current.totals.marginProfit,
-      previous.totals.marginProfit
-    ),
-
-    netProfitAfterTax: createComparison(
-      current.totals.netProfitAfterTax,
-      previous.totals.netProfitAfterTax
-    ),
-  };
+  const comparison = createOzonComparison(current.totals, previous.totals);
 
   return {
     rows: current.rows,
