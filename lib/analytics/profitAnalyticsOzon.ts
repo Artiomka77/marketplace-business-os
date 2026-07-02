@@ -96,6 +96,19 @@ function getOzonFinanceAdAmount(row: OzonFinanceRecord) {
   return totalAmount > 0 ? totalAmount : salesAmount;
 }
 
+function isOzonNonOperatingFinanceOperation(operationType: unknown) {
+  const value = normalizeText(operationType);
+
+  return (
+    value.includes("займ") ||
+    value.includes("факторинг") ||
+    value.includes("кредит") ||
+    value.includes("финансирован") ||
+    value.includes("loan") ||
+    value.includes("factor")
+  );
+}
+
 function hasOzonFinanceClickAdRows(rows: OzonFinanceRecord[]) {
   return rows.some((row) => isOzonFinanceClickAdOperation(row.operationType));
 }
@@ -386,6 +399,79 @@ function buildAdsCostByVendorCode(
   };
 }
 
+function calculateOzonGrossExpenses(totals: OzonProfitTotals) {
+  return (
+    totals.wbCommission +
+    totals.logisticsCost +
+    totals.adsCost +
+    totals.penaltiesAmount +
+    totals.deductions
+  );
+}
+
+function recalculateOzonRowsFromEconomicModel(
+  rows: OzonProfitAnalyticsRow[],
+  totals: OzonProfitTotals,
+  usnRate: number,
+  vatRate: number
+) {
+  const positiveRevenueTotal = rows.reduce(
+    (sum, row) => sum + Math.max(0, row.revenue),
+    0
+  );
+
+  const positiveQtyTotal = rows.reduce(
+    (sum, row) => sum + Math.max(0, row.netSalesQty),
+    0
+  );
+
+  const currentMappedAds = rows.reduce((sum, row) => sum + row.adsCost, 0);
+  const adsToAllocate = totals.adsCost - currentMappedAds;
+
+  for (const row of rows) {
+    const share =
+      positiveRevenueTotal > 0
+        ? Math.max(0, row.revenue) / positiveRevenueTotal
+        : positiveQtyTotal > 0
+          ? Math.max(0, row.netSalesQty) / positiveQtyTotal
+          : rows.length > 0
+            ? 1 / rows.length
+            : 0;
+
+    const allocatedDiscountPoints = totals.discountPointsAmount * share;
+    const allocatedPartnerPrograms = totals.partnerProgramsAmount * share;
+    const allocatedAds = adsToAllocate * share;
+
+    row.adsCost += allocatedAds;
+
+    const rowEconomicTurnover =
+      row.revenue + allocatedDiscountPoints + allocatedPartnerPrograms;
+
+    const rowGrossOzonExpenses =
+      row.wbCommission +
+      row.logisticsCost +
+      row.adsCost +
+      row.penaltiesAmount +
+      row.deductions;
+
+    const usnTax = row.revenue > 0 ? row.revenue * (usnRate / 100) : 0;
+    const vatTax = row.revenue > 0 ? calculateVatTax(row.revenue, vatRate) : 0;
+
+    row.taxesAmount = usnTax + vatTax;
+    row.marginProfit = rowEconomicTurnover - row.totalCost - rowGrossOzonExpenses;
+    row.netProfitAfterTax = row.marginProfit - row.taxesAmount;
+
+    row.drrPercent =
+      rowEconomicTurnover > 0 ? (row.adsCost / rowEconomicTurnover) * 100 : 0;
+    row.marginProfitPercent =
+      rowEconomicTurnover > 0 ? (row.marginProfit / rowEconomicTurnover) * 100 : 0;
+    row.marginAfterTaxPercent =
+      rowEconomicTurnover > 0
+        ? (row.netProfitAfterTax / rowEconomicTurnover) * 100
+        : 0;
+  }
+}
+
 function applyOzonEconomicModel(
   result: { rows: OzonProfitAnalyticsRow[]; totals: OzonProfitTotals },
   realizationSummary: OzonRealizationSummaryRecord | null | undefined,
@@ -409,19 +495,6 @@ function applyOzonEconomicModel(
 
     for (const row of result.rows) {
       row.revenue = oldTotalRevenue > 0 ? row.revenue * ratio : 0;
-
-      row.marginProfitPercent =
-        row.revenue > 0 ? (row.marginProfit / row.revenue) * 100 : 0;
-
-      row.drrPercent = row.revenue > 0 ? (row.adsCost / row.revenue) * 100 : 0;
-
-      const usnTax = row.revenue > 0 ? row.revenue * (usnRate / 100) : 0;
-      const vatTax = row.revenue > 0 ? calculateVatTax(row.revenue, vatRate) : 0;
-
-      row.taxesAmount = usnTax + vatTax;
-      row.netProfitAfterTax = row.marginProfit - row.taxesAmount;
-      row.marginAfterTaxPercent =
-        row.revenue > 0 ? (row.netProfitAfterTax / row.revenue) * 100 : 0;
     }
 
     result.totals.revenue = taxableRevenue;
@@ -446,21 +519,28 @@ function applyOzonEconomicModel(
       ? result.totals.economicTurnover
       : result.totals.revenue;
 
-  result.totals.grossOzonExpenses =
-    result.totals.wbCommission +
-    result.totals.logisticsCost +
-    result.totals.adsCost +
-    result.totals.penaltiesAmount +
-    result.totals.deductions;
-
-  result.totals.netOzonExpenses =
-    result.totals.grossOzonExpenses - result.totals.discountPointsCompensation;
-
   result.totals.taxesAmount =
     result.totals.revenue * (usnRate / 100) +
     calculateVatTax(result.totals.revenue, vatRate);
+
+  result.totals.grossOzonExpenses = calculateOzonGrossExpenses(result.totals);
+  result.totals.netOzonExpenses =
+    result.totals.grossOzonExpenses - result.totals.discountPointsCompensation;
+
+  result.totals.marginProfit =
+    result.totals.economicTurnover -
+    result.totals.totalCost -
+    result.totals.grossOzonExpenses;
+
   result.totals.netProfitAfterTax =
     result.totals.marginProfit - result.totals.taxesAmount;
+
+  recalculateOzonRowsFromEconomicModel(
+    result.rows,
+    result.totals,
+    usnRate,
+    vatRate
+  );
 
   result.totals.marginProfitPercent =
     result.totals.expenseShareBase > 0
@@ -481,6 +561,9 @@ function applyOzonEconomicModel(
     row.revenueSharePercent =
       result.totals.revenue > 0 ? (row.revenue / result.totals.revenue) * 100 : 0;
   }
+
+  calculateAbcByProfit(result.rows);
+  result.rows.sort((a, b) => b.marginProfit - a.marginProfit);
 
   return result;
 }
@@ -546,15 +629,15 @@ function finalizeOzonTotals(totals: OzonProfitTotals) {
   totals.expenseShareBase =
     totals.economicTurnover > 0 ? totals.economicTurnover : totals.revenue;
 
-  totals.grossOzonExpenses =
-    totals.wbCommission +
-    totals.logisticsCost +
-    totals.adsCost +
-    totals.penaltiesAmount +
-    totals.deductions;
+  totals.grossOzonExpenses = calculateOzonGrossExpenses(totals);
 
   totals.netOzonExpenses =
     totals.grossOzonExpenses - totals.discountPointsCompensation;
+
+  totals.marginProfit =
+    totals.economicTurnover - totals.totalCost - totals.grossOzonExpenses;
+
+  totals.netProfitAfterTax = totals.marginProfit - totals.taxesAmount;
 
   totals.marginProfitPercent =
     totals.expenseShareBase > 0
@@ -841,7 +924,9 @@ function calculateRowsAndTotals({
     financeClickAdsCost + financeOrderAdsCost + financeOtherAdsCost;
 
   const marketplaceFinanceRows = financeRows.filter(
-    (row) => !isOzonFinanceAdOperation(row.operationType)
+    (row) =>
+      !isOzonFinanceAdOperation(row.operationType) &&
+      !isOzonNonOperatingFinanceOperation(row.operationType)
   );
 
   const grouped = new Map<string, OzonProfitAnalyticsRow>();
