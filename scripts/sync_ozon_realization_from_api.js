@@ -44,6 +44,36 @@ function getPartnerProgramsAmount(value) {
   return toNumber(value && value.bank_coinvestment) + toNumber(value && value.pick_up_point_coinvestment);
 }
 
+function isOzonRealizationReportNotFound(error) {
+  const text = String(error && error.message ? error.message : error || "").toLowerCase();
+  return text.includes("report was not found") || (text.includes("404") && text.includes("realization"));
+}
+
+function applyTransactionTotalsControl(parsed, transactionTotalsAccrualsForSale) {
+  if (transactionTotalsAccrualsForSale === null || transactionTotalsAccrualsForSale === undefined) {
+    return {
+      ...parsed,
+      partnerProgramsRawAmount: parsed.partnerProgramsAmount,
+      partnerProgramsAdjustment: 0,
+      economicTurnover: roundMoney(parsed.taxableRevenue + parsed.totalPaidByPoints + parsed.partnerProgramsAmount),
+    };
+  }
+
+  const controlledEconomicTurnover = roundMoney(transactionTotalsAccrualsForSale);
+  const controlledPartnerProgramsAmount = roundMoney(
+    controlledEconomicTurnover - parsed.taxableRevenue - parsed.totalPaidByPoints
+  );
+  const rawPartnerProgramsAmount = parsed.partnerProgramsAmount;
+
+  return {
+    ...parsed,
+    partnerProgramsRawAmount: rawPartnerProgramsAmount,
+    partnerProgramsAdjustment: roundMoney(controlledPartnerProgramsAmount - rawPartnerProgramsAmount),
+    partnerProgramsAmount: controlledPartnerProgramsAmount,
+    economicTurnover: controlledEconomicTurnover,
+  };
+}
+
 async function getOzonConnections(client) {
   const result = await client.query(`
     SELECT
@@ -310,32 +340,43 @@ async function main() {
       console.log("");
       console.log(`=== ${connection.companyName} ===`);
 
-      const payload = await fetchOzonRealization(connection);
-      const parsed = parseRealization(payload, connection.companyName);
-      const transactionTotalsAccrualsForSale = await fetchOzonTransactionTotals(connection);
-      const economicTurnover = roundMoney(
-        parsed.taxableRevenue + parsed.totalPaidByPoints + parsed.partnerProgramsAmount
-      );
+      try {
+        const payload = await fetchOzonRealization(connection);
+        const rawParsed = parseRealization(payload, connection.companyName);
+        const transactionTotalsAccrualsForSale = await fetchOzonTransactionTotals(connection);
+        const parsed = applyTransactionTotalsControl(rawParsed, transactionTotalsAccrualsForSale);
+        const economicTurnover = parsed.economicTurnover;
 
-      console.log("apiStartDate:", parsed.apiStartDate);
-      console.log("apiStopDate:", parsed.apiStopDate);
-      console.log("rowsCount:", parsed.rowsCount);
-      console.log("realizedAmount:", money(parsed.realizedAmount));
-      console.log("returnedAmount:", money(parsed.returnedAmount));
-      console.log("taxableRevenue:", money(parsed.taxableRevenue));
-      console.log("pointsAccruedGross:", money(parsed.grossPointsAccrued));
-      console.log("pointsReturnedGross:", money(parsed.grossPointsReturned));
-      console.log("discountPointsAmount:", money(parsed.totalPaidByPoints));
-      console.log("partnerProgramsAmount:", money(parsed.partnerProgramsAmount));
-      console.log("economicTurnover:", money(economicTurnover));
-      console.log("transactionTotals.accruals_for_sale:", transactionTotalsAccrualsForSale === null ? "n/a" : money(transactionTotalsAccrualsForSale));
-      console.log("difference:", transactionTotalsAccrualsForSale === null ? "n/a" : money(economicTurnover - transactionTotalsAccrualsForSale));
+        console.log("apiStartDate:", parsed.apiStartDate);
+        console.log("apiStopDate:", parsed.apiStopDate);
+        console.log("rowsCount:", parsed.rowsCount);
+        console.log("realizedAmount:", money(parsed.realizedAmount));
+        console.log("returnedAmount:", money(parsed.returnedAmount));
+        console.log("taxableRevenue:", money(parsed.taxableRevenue));
+        console.log("pointsAccruedGross:", money(parsed.grossPointsAccrued));
+        console.log("pointsReturnedGross:", money(parsed.grossPointsReturned));
+        console.log("discountPointsAmount:", money(parsed.totalPaidByPoints));
+        console.log("partnerProgramsRawAmount:", money(parsed.partnerProgramsRawAmount));
+        console.log("partnerProgramsAdjustment:", money(parsed.partnerProgramsAdjustment));
+        console.log("partnerProgramsAmount:", money(parsed.partnerProgramsAmount));
+        console.log("economicTurnover:", money(economicTurnover));
+        console.log("transactionTotals.accruals_for_sale:", transactionTotalsAccrualsForSale === null ? "n/a" : money(transactionTotalsAccrualsForSale));
+        console.log("difference:", transactionTotalsAccrualsForSale === null ? "n/a" : money(economicTurnover - transactionTotalsAccrualsForSale));
 
-      if (APPLY_FIX) {
-        await applySummary(client, connection.companyName, parsed);
-        console.log("Saved to DB: yes");
-      } else {
-        console.log("Saved to DB: no, dry run");
+        if (APPLY_FIX) {
+          await applySummary(client, connection.companyName, parsed);
+          console.log("Saved to DB: yes");
+        } else {
+          console.log("Saved to DB: no, dry run");
+        }
+      } catch (error) {
+        if (isOzonRealizationReportNotFound(error)) {
+          console.log("Skipped: realization report is not available yet in Ozon API.");
+          console.log("Saved to DB: no");
+          continue;
+        }
+
+        throw error;
       }
     }
 
