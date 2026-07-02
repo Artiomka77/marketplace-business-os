@@ -1001,17 +1001,17 @@ function KpiCard({
     typeof delta === "number" ? formatDeltaPercent(delta, inverseDelta) : null;
 
   return (
-    <div className="rounded-[26px] border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/40">
+    <div className="flex h-full min-h-[156px] flex-col rounded-[26px] border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/40">
       <div className="flex items-center gap-1 text-sm font-black text-slate-700">
         <span>{title}</span>
         <span className="text-slate-300">ⓘ</span>
       </div>
 
-      <div className="mt-2 text-[1.9rem] font-black leading-none tracking-tight text-slate-950">
+      <div className="mt-2 text-[1.75rem] font-black leading-none tracking-tight text-slate-950">
         {value}
       </div>
 
-      <div className="mt-3 flex items-end justify-between gap-3">
+      <div className="mt-auto flex items-end justify-between gap-3 pt-3">
         <div>
           {formattedDelta ? (
             <div className={`text-sm font-black ${formattedDelta.className}`}>
@@ -1711,7 +1711,7 @@ export default async function ProfitOzonPage({
           </div>
         </section>
 
-        <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-7">
+        <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
           <KpiCard
             title="Налоговая выручка"
             value={formatMoney(totals.revenue)}
@@ -1743,13 +1743,17 @@ export default async function ProfitOzonPage({
             title="Реклама Ozon"
             value={formatMoney(totalAdsCost)}
             helper={
-              <div className="space-y-1">
+              <div className="space-y-1 leading-tight">
                 <div>{formatPercent(totals.drrPercent)} ДРР от экон. оборота</div>
-                <div className="text-slate-400">
-                  Клик: {formatMoney(clickAdsCost)} · {formatPercent(clickAdsShareOfAds)} рекламы
-                </div>
-                <div className="text-slate-400">
-                  Заказ: {formatMoney(orderAdsCost)} · {formatPercent(orderAdsShareOfAds)} рекламы
+                <div className="grid grid-cols-[auto_1fr] gap-x-2 gap-y-0.5 text-slate-400">
+                  <span>Клик</span>
+                  <span className="text-right">
+                    {formatMoney(clickAdsCost)} · {formatPercent(clickAdsShareOfAds)}
+                  </span>
+                  <span>Заказ</span>
+                  <span className="text-right">
+                    {formatMoney(orderAdsCost)} · {formatPercent(orderAdsShareOfAds)}
+                  </span>
                 </div>
               </div>
             }
