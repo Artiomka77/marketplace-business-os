@@ -1548,21 +1548,27 @@ async function findOzonFinancialCategoryFactsByPeriod(params?: {
       ? await prisma.$queryRaw<OzonFinancialCategoryFactRecord[]>`
           SELECT
             "category" AS "category",
+            "sourceOperationType" AS "sourceOperationType",
+            "sourceOperationCode" AS "sourceOperationCode",
+            "sourceServiceName" AS "sourceServiceName",
             COALESCE(SUM("amount"), 0) AS "amount"
           FROM "OzonFinancialCategoryFact"
           WHERE "operationDate" >= CAST(${params.dateFrom} AS timestamp)
             AND "operationDate" < (CAST(${params.dateTo} AS timestamp) + INTERVAL '1 day')
             AND "companyName" = ${params.companyName}
-          GROUP BY "category"
+          GROUP BY "category", "sourceOperationType", "sourceOperationCode", "sourceServiceName"
         `
       : await prisma.$queryRaw<OzonFinancialCategoryFactRecord[]>`
           SELECT
             "category" AS "category",
+            "sourceOperationType" AS "sourceOperationType",
+            "sourceOperationCode" AS "sourceOperationCode",
+            "sourceServiceName" AS "sourceServiceName",
             COALESCE(SUM("amount"), 0) AS "amount"
           FROM "OzonFinancialCategoryFact"
           WHERE "operationDate" >= CAST(${params.dateFrom} AS timestamp)
             AND "operationDate" < (CAST(${params.dateTo} AS timestamp) + INTERVAL '1 day')
-          GROUP BY "category"
+          GROUP BY "category", "sourceOperationType", "sourceOperationCode", "sourceServiceName"
         `;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -1908,5 +1914,6 @@ export async function getProfitAnalyticsOzon(params?: {
     comparison,
   };
 }
+
 
 
