@@ -2,8 +2,6 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 
 import { prisma } from "@/lib/prisma";
-import { getProfitAnalytics } from "@/lib/analytics/profitAnalytics";
-import { getProfitAnalyticsOzon } from "@/lib/analytics/profitAnalyticsOzon";
 import {
   getDashboardDailyAnalytics,
   type DashboardDailyPoint,
@@ -906,13 +904,7 @@ function hasAnyCompanyMetric(row: CompanyDashboardRow) {
     row.cashOnlyExpenses !== 0 ||
     row.wbStockQty !== 0 ||
     row.ozonStockQty !== 0 ||
-    row.warehouseStockQty !== 0 ||
-    row.wbAbcA !== 0 ||
-    row.wbAbcB !== 0 ||
-    row.wbAbcC !== 0 ||
-    row.ozonAbcA !== 0 ||
-    row.ozonAbcB !== 0 ||
-    row.ozonAbcC !== 0
+    row.warehouseStockQty !== 0
   );
 }
 
@@ -2262,19 +2254,6 @@ function CompanyCard({
   dateFrom: string;
   dateTo: string;
 }) {
-  const rowWbAbc = {
-    A: row.wbAbcA,
-    B: row.wbAbcB,
-    C: row.wbAbcC,
-  };
-
-  const rowOzonAbc = {
-    A: row.ozonAbcA,
-    B: row.ozonAbcB,
-    C: row.ozonAbcC,
-  };
-
-  const totalAbc = abcTotal(rowWbAbc) + abcTotal(rowOzonAbc);
   const drrText = row.drr !== null ? formatPercent(row.drr) : "—";
   const openCompanyHref = buildDashboardHref({
     period: "custom",
@@ -2357,7 +2336,7 @@ function CompanyCard({
         </div>
       </div>
 
-      <div className="grid gap-4 p-4 sm:grid-cols-4">
+      <div className="grid gap-4 p-4 sm:grid-cols-3">
         <Link href="/analytics" className="group min-w-0">
           <div className="flex items-center justify-between gap-2">
             <div className="text-xs font-black text-slate-950">Каналы</div>
@@ -2430,23 +2409,6 @@ function CompanyCard({
           </div>
         </Link>
 
-        <Link href="/abc" className="group min-w-0">
-          <div className="flex items-center justify-between gap-2">
-            <div className="text-xs font-black text-slate-950">Ассортимент</div>
-            <span className="text-slate-300 transition group-hover:translate-x-1 group-hover:text-indigo-500">→</span>
-          </div>
-          <div className="mt-3 space-y-2 text-[11px] leading-4">
-            <div>
-              <div className="font-bold uppercase tracking-[0.08em] text-slate-400">ABC всего</div>
-              <div className="font-black text-slate-950">{formatNumber(totalAbc)} SKU</div>
-            </div>
-            <div className="flex flex-wrap gap-1.5">
-              <span className="rounded-full bg-emerald-50 px-2 py-0.5 font-bold text-emerald-700">A {formatNumber(rowWbAbc.A + rowOzonAbc.A)}</span>
-              <span className="rounded-full bg-amber-50 px-2 py-0.5 font-bold text-amber-700">B {formatNumber(rowWbAbc.B + rowOzonAbc.B)}</span>
-              <span className="rounded-full bg-red-50 px-2 py-0.5 font-bold text-red-700">C {formatNumber(rowWbAbc.C + rowOzonAbc.C)}</span>
-            </div>
-          </div>
-        </Link>
       </div>
     </article>
   );
@@ -2658,13 +2620,14 @@ async function buildCompanyDashboardRows(params: {
     );
   };
 
-  // Важно: Dashboard должен использовать те же финансовые итоги, что и Telegram-сводка собственника.
-  // Поэтому продажи/начисления, реклама, ДДС, чистая прибыль и остатки берём из buildDailyReport.
-  // getProfitAnalytics / getProfitAnalyticsOzon оставляем здесь только для ABC-разрезов.
+  // Важно: buildDailyReport уже использует финальные управленческие итоги WB/Ozon.
+  // Поэтому Dashboard не запускает getProfitAnalytics / getProfitAnalyticsOzon повторно.
+  // Это убирает двойной тяжёлый расчёт SKU/ABC на главной странице.
   const ownerReportStartedAt = Date.now();
   const ownerReport = await buildDailyReport({
     from: params.dateFrom,
     to: params.dateTo,
+    skipComparison: true,
   });
   logRowsPerf("buildDailyReport", ownerReportStartedAt);
 
@@ -2688,53 +2651,14 @@ async function buildCompanyDashboardRows(params: {
       const companyReport = reportByCompanyName.get(company.name);
 
       const companyStartedAt = Date.now();
-      const timedCompanyTask = async <T,>(
-        label: string,
-        task: () => Promise<T>
-      ) => {
-        const startedAt = Date.now();
-        const result = await task();
-
-        logRowsPerf(`company ${company.name} ${label}`, startedAt);
-
-        return result;
-      };
-
-      const wbAnalytics = await timedCompanyTask("wbAnalytics", () =>
-        getProfitAnalytics({
-          dateFrom: params.dateFrom,
-          dateTo: params.dateTo,
-          companyName: company.name,
-        })
-      );
-
-      const ozonAnalytics = await timedCompanyTask("ozonAnalytics", () =>
-        getProfitAnalyticsOzon({
-          dateFrom: params.dateFrom,
-          dateTo: params.dateTo,
-          companyName: company.name,
-          usnRate:
-            company.usnRate !== null && company.usnRate !== undefined
-              ? Number(company.usnRate)
-              : 1,
-          vatRate:
-            company.vatRate !== null && company.vatRate !== undefined
-              ? Number(company.vatRate)
-              : 5,
-        })
-      );
-
-      const cash = await timedCompanyTask("cash", () =>
-        getFinanceCashResult({
-          companyName: company.name,
-          dateFrom: params.dateFrom,
-          dateTo: params.dateTo,
-        })
-      );
-      logRowsPerf(`company ${company.name} analytics+cash`, companyStartedAt);
-
-      const wbAbc = countAbc(wbAnalytics.rows);
-      const ozonAbc = countAbc(ozonAnalytics.rows);
+      const cashStartedAt = Date.now();
+      const cash = await getFinanceCashResult({
+        companyName: company.name,
+        dateFrom: params.dateFrom,
+        dateTo: params.dateTo,
+      });
+      logRowsPerf(`company ${company.name} cash`, cashStartedAt);
+      logRowsPerf(`company ${company.name} total`, companyStartedAt);
 
       const ordersQty =
         (companyReport?.wb.ordersQty ?? 0) + (companyReport?.ozon.ordersQty ?? 0);
@@ -2748,22 +2672,16 @@ async function buildCompanyDashboardRows(params: {
         (companyReport?.wb.orderDataExpectedDays ?? 0) +
         (companyReport?.ozon.orderDataExpectedDays ?? 0);
 
-      // WB в Dashboard должен совпадать со страницей /profit-wb.
-      // Поэтому для WB берём финальные управленческие итоги из getProfitAnalytics,
-      // а не старую оперативную salesAmount из dailyReport.
-      const wbRevenue = wbAnalytics.totals.revenue;
-      const wbNetProfitAfterTax = wbAnalytics.totals.netProfitAfterTax;
-      const wbAdsCost = wbAnalytics.totals.adsCost;
+      // buildDailyReport уже внутри берёт финальные управленческие итоги WB/Ozon.
+      // На главной странице используем эти готовые суммы и не пересчитываем SKU/ABC повторно.
+      const wbRevenue = companyReport?.wb.salesAmount ?? 0;
+      const wbNetProfitAfterTax = companyReport?.wb.netProfitAfterTax ?? 0;
+      const wbAdsCost = companyReport?.wb.adSpend ?? 0;
 
-      // Ozon в Dashboard должен совпадать со страницей /profit-ozon.
-      // Поэтому используем экономический оборот, рекламу и прибыль из getProfitAnalyticsOzon,
-      // а не оперативные начисления из Telegram-сводки.
       const ozonRevenue =
-        ozonAnalytics.totals.economicTurnover > 0
-          ? ozonAnalytics.totals.economicTurnover
-          : ozonAnalytics.totals.revenue;
-      const ozonNetProfitAfterTax = ozonAnalytics.totals.netProfitAfterTax;
-      const ozonAdsCost = ozonAnalytics.totals.adsCost;
+        companyReport?.ozon.economicTurnover ?? companyReport?.ozon.salesAmount ?? 0;
+      const ozonNetProfitAfterTax = companyReport?.ozon.netProfitAfterTax ?? 0;
+      const ozonAdsCost = companyReport?.ozon.adSpend ?? 0;
       const totalRevenue = wbRevenue + ozonRevenue;
 
       const operatingProfitAfterTax = wbNetProfitAfterTax + ozonNetProfitAfterTax;
@@ -2814,12 +2732,12 @@ async function buildCompanyDashboardRows(params: {
         wbStockQty,
         ozonStockQty,
         warehouseStockQty: 0,
-        wbAbcA: wbAbc.A,
-        wbAbcB: wbAbc.B,
-        wbAbcC: wbAbc.C,
-        ozonAbcA: ozonAbc.A,
-        ozonAbcB: ozonAbc.B,
-        ozonAbcC: ozonAbc.C,
+        wbAbcA: 0,
+        wbAbcB: 0,
+        wbAbcC: 0,
+        ozonAbcA: 0,
+        ozonAbcB: 0,
+        ozonAbcC: 0,
       };
   });
 
