@@ -8,6 +8,7 @@ import {
 } from "@/lib/analytics/dashboardDailyAnalytics";
 import { calculateFinanceMetricsForRows } from "@/lib/finance/financeMetrics";
 import { buildDailyReport } from "@/lib/telegram/dailyReport";
+import { getCostCoverageSummary } from "@/lib/analytics/costCoverage";
 
 type Props = {
   searchParams?: Promise<{
@@ -3206,6 +3207,15 @@ export default async function HomePage({ searchParams }: Props) {
   const current = summarizeDashboardRows(currentRows);
   const previous = summarizeDashboardRows(previousRows);
 
+  const costCoverageStartedAt = Date.now();
+  const costCoverage = await getCostCoverageSummary({
+    dateFrom: selectedPeriod.dateFrom,
+    dateTo: selectedPeriod.dateTo,
+    companyName: selectedCompanyName,
+    examplesLimit: 8,
+  });
+  logDashboardPerf("cost coverage", costCoverageStartedAt);
+
   const marketplaceCompanies = companiesWithMetrics.map((company) => ({
     name: company.name,
   }));
@@ -3219,6 +3229,19 @@ export default async function HomePage({ searchParams }: Props) {
   const presetPeriods = periodOptions.filter((period) => period.key !== "custom");
 
   const attentionItems = [
+    {
+      level: costCoverage.hasMissingCosts ? "danger" : "ok",
+      title: "Себестоимость",
+      text: costCoverage.hasMissingCosts
+        ? `Не загружена себестоимость по ${formatNumber(
+            costCoverage.missingItemsCount
+          )} артикулам. Прибыль может быть завышена.`
+        : `Себестоимость найдена по всем проверенным артикулам: ${formatNumber(
+            costCoverage.checkedItemsCount
+          )}.`,
+      href: "/import",
+      icon: "₽",
+    },
     {
       level: hasOrderCoverageWarning ? "warning" : "ok",
       title: "Заказы",
@@ -3426,6 +3449,16 @@ export default async function HomePage({ searchParams }: Props) {
                 </span>
               ) : null}
 
+              {costCoverage.hasMissingCosts ? (
+                <span
+                  className="inline-flex items-center gap-1.5 rounded-2xl border border-red-200 bg-red-50 px-3 py-2 text-xs font-black text-red-700 shadow-sm"
+                  title={`Нет себестоимости по ${costCoverage.missingItemsCount} артикулам`}
+                >
+                  <span>⚠</span>
+                  <span>Нет себестоимости</span>
+                </span>
+              ) : null}
+
             </div>
 
             <Link href="/import" className="primary-button w-fit gap-2 py-2.5">
@@ -3437,6 +3470,60 @@ export default async function HomePage({ searchParams }: Props) {
             Главные показатели бизнеса за выбранный период. Период и компанию можно поменять прямо в закреплённой панели.
           </div>
         </section>
+
+        {costCoverage.hasMissingCosts ? (
+          <section className="rounded-[24px] border border-red-200 bg-red-50 p-4 shadow-sm shadow-red-100/60">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+              <div>
+                <div className="text-xs font-black uppercase tracking-[0.12em] text-red-600">
+                  Требуется себестоимость
+                </div>
+                <h2 className="mt-1 text-lg font-black text-red-900">
+                  Себестоимость загружена не по всем проданным артикулам
+                </h2>
+                <p className="mt-2 max-w-4xl text-sm leading-6 text-red-800">
+                  За выбранный период нет себестоимости по {formatNumber(costCoverage.missingItemsCount)} артикулам
+                  {costCoverage.missingWbItemsCount > 0 ? ` · WB: ${formatNumber(costCoverage.missingWbItemsCount)}` : ""}
+                  {costCoverage.missingOzonItemsCount > 0 ? ` · Ozon: ${formatNumber(costCoverage.missingOzonItemsCount)}` : ""}.
+                  Пока себестоимость не загружена, прибыль по этим товарам может быть завышена.
+                </p>
+              </div>
+
+              <Link href="/import" className="secondary-button border-red-200 bg-white text-red-700 hover:bg-red-50">
+                Загрузить себестоимость
+              </Link>
+            </div>
+
+            {costCoverage.examples.length > 0 ? (
+              <div className="mt-4 grid gap-2 md:grid-cols-2 xl:grid-cols-4">
+                {costCoverage.examples.map((item) => (
+                  <div
+                    key={`${item.marketplace}-${item.companyName}-${item.vendorCode}-${item.externalId}`}
+                    className="rounded-2xl border border-red-100 bg-white/80 p-3"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-black text-red-700">
+                        {item.marketplace}
+                      </span>
+                      <span className="truncate text-[10px] font-bold text-red-500">
+                        {item.companyName}
+                      </span>
+                    </div>
+                    <div className="mt-2 truncate text-sm font-black text-slate-950" title={item.productName}>
+                      {item.productName}
+                    </div>
+                    <div className="mt-1 text-xs font-semibold leading-5 text-slate-500">
+                      Артикул: {item.vendorCode} · ID: {item.externalId}
+                    </div>
+                    <div className="mt-2 text-xs font-black text-red-700">
+                      Кол-во: {formatNumber(Math.round(item.quantity))} · Сумма: {formatCurrency(item.amount)}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+          </section>
+        ) : null}
 
         <section className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-[repeat(7,minmax(0,1fr))]">
           <MetricCard
