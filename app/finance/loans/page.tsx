@@ -416,11 +416,19 @@ export default async function LoansPage({
     (a, b) => a.currentDebt - b.currentDebt
   );
 
+  const loansByFutureInterest = [...loanRows].sort(
+    (a, b) =>
+      b.interestUntilYearEnd - a.interestUntilYearEnd ||
+      b.interestRate - a.interestRate ||
+      b.currentDebt - a.currentDebt
+  );
+
   const nextPayments = allFuturePayments.slice(0, 4);
 
   const nextPayment = allFuturePayments[0] ?? null;
   const topMonthlyBurdenLoan = loansByMonthlyBurden[0] ?? null;
-  const mostExpensiveLoan = loansByRate[0] ?? null;
+  const mostExpensiveLoan = loansByFutureInterest[0] ?? null;
+  const expensiveLoanPeriodLabel = `до 31.12.${selectedMonth.getFullYear()}`;
 
   const monthlyMap = new Map<
     string,
@@ -705,16 +713,24 @@ export default async function LoansPage({
 
             <AttentionCard
               tone="purple"
-              title="Самые дорогие кредиты"
-              subtitle={mostExpensiveLoan?.displayName ?? "нет данных"}
+              title="Самый дорогой кредит"
+              subtitle={
+                mostExpensiveLoan
+                  ? `${mostExpensiveLoan.displayName} · проценты ${expensiveLoanPeriodLabel}`
+                  : "нет данных"
+              }
               value={
                 mostExpensiveLoan
-                  ? mostExpensiveLoan.interestRate > 0
-                    ? `${formatPercent(mostExpensiveLoan.interestRate)} годовых`
-                    : `проценты ${formatMoney(mostExpensiveLoan.interestUntilYearEnd)}`
+                  ? mostExpensiveLoan.interestUntilYearEnd > 0
+                    ? formatMoney(mostExpensiveLoan.interestUntilYearEnd)
+                    : "проценты не рассчитаны"
                   : "—"
               }
-              action="Смотреть детали →"
+              action={
+                mostExpensiveLoan?.interestRate
+                  ? `ставка ${formatPercent(mostExpensiveLoan.interestRate)} годовых →`
+                  : "ставка не указана →"
+              }
               href="#all-loans"
             />
           </div>
