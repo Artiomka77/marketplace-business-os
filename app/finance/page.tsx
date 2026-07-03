@@ -552,9 +552,9 @@ function MoneyMovementChart({
   rows: { label: string; income: number; outflow: number; net: number }[];
 }) {
   const width = 760;
-  const height = 260;
+  const height = 280;
   const paddingX = 54;
-  const zeroY = 126;
+  const zeroY = 132;
   const chartHalfHeight = 82;
   const step = rows.length > 1 ? (width - paddingX * 2) / (rows.length - 1) : 0;
   const maxValue = Math.max(
@@ -574,20 +574,23 @@ function MoneyMovementChart({
     .join(" ");
 
   return (
-    <svg viewBox={`0 0 ${width} ${height}`} className="mt-4 h-[260px] w-full">
+    <svg viewBox={`0 0 ${width} ${height}`} className="mt-4 h-[280px] w-full overflow-visible">
       <defs>
         <linearGradient id="incomeBar" x1="0" x2="0" y1="0" y2="1">
-          <stop offset="0%" stopColor="#34d399" />
+          <stop offset="0%" stopColor="#10b981" />
           <stop offset="100%" stopColor="#a7f3d0" />
         </linearGradient>
         <linearGradient id="outflowBar" x1="0" x2="0" y1="0" y2="1">
           <stop offset="0%" stopColor="#fecaca" />
           <stop offset="100%" stopColor="#ef4444" />
         </linearGradient>
+        <filter id="moneyTooltipShadow" x="-20%" y="-20%" width="140%" height="140%">
+          <feDropShadow dx="0" dy="10" stdDeviation="10" floodColor="#0f172a" floodOpacity="0.14" />
+        </filter>
       </defs>
 
       {[0, 1, 2, 3, 4].map((line) => {
-        const y = 40 + line * 43;
+        const y = 46 + line * 43;
         return (
           <line
             key={line}
@@ -611,12 +614,26 @@ function MoneyMovementChart({
 
       {rows.map((row, index) => {
         const x = paddingX + index * step;
-        const incomeHeight = Math.max(4, Math.min(chartHalfHeight, (row.income / maxValue) * chartHalfHeight));
-        const outflowHeight = Math.max(4, Math.min(chartHalfHeight, (row.outflow / maxValue) * chartHalfHeight));
+        const incomeHeight = Math.max(
+          4,
+          Math.min(chartHalfHeight, (row.income / maxValue) * chartHalfHeight)
+        );
+        const outflowHeight = Math.max(
+          4,
+          Math.min(chartHalfHeight, (row.outflow / maxValue) * chartHalfHeight)
+        );
         const barWidth = 26;
 
         return (
-          <g key={row.label}>
+          <g key={row.label} className="group cursor-pointer">
+            <rect
+              x={x - Math.max(36, step / 2)}
+              y="22"
+              width={Math.max(72, step)}
+              height="226"
+              fill="transparent"
+              pointerEvents="all"
+            />
             <rect
               x={x - barWidth - 4}
               y={zeroY - incomeHeight}
@@ -624,6 +641,7 @@ function MoneyMovementChart({
               height={incomeHeight}
               rx="6"
               fill="url(#incomeBar)"
+              className="transition-opacity group-hover:opacity-90"
             />
             <rect
               x={x + 4}
@@ -632,12 +650,22 @@ function MoneyMovementChart({
               height={outflowHeight}
               rx="6"
               fill="url(#outflowBar)"
+              className="transition-opacity group-hover:opacity-90"
+            />
+            <line
+              x1={x}
+              x2={x}
+              y1="34"
+              y2="218"
+              stroke="#94a3b8"
+              strokeDasharray="4 5"
+              className="opacity-0 transition-opacity group-hover:opacity-45"
             />
             <text
               x={x}
-              y={236}
+              y={252}
               textAnchor="middle"
-              className="fill-slate-500 text-[12px] font-bold"
+              className="fill-slate-500 text-[12px] font-bold transition-colors group-hover:fill-slate-950"
             >
               {row.label}
             </text>
@@ -654,20 +682,93 @@ function MoneyMovementChart({
         strokeLinejoin="round"
       />
 
-      {graphPoints.map((point, index) => (
-        <g key={`${point.x}-${point.y}`}>
-          <circle cx={point.x} cy={point.y} r="6" fill="#ffffff" stroke="#0f2f5f" strokeWidth="3" />
-          <title>{`${rows[index].label}: ${formatMoney(rows[index].net)}`}</title>
-        </g>
-      ))}
+      {graphPoints.map((point, index) => {
+        const row = rows[index];
+        const tooltipWidth = 174;
+        const tooltipHeight = 94;
+        const tooltipX = Math.min(
+          Math.max(point.x - tooltipWidth / 2, 8),
+          width - tooltipWidth - 8
+        );
+        const tooltipY = point.y < 105 ? point.y + 18 : point.y - tooltipHeight - 18;
 
-      <text x="16" y="44" className="fill-slate-400 text-[11px] font-bold">
+        return (
+          <g key={`${point.x}-${point.y}`} className="group cursor-pointer">
+            <rect
+              x={point.x - Math.max(36, step / 2)}
+              y="22"
+              width={Math.max(72, step)}
+              height="226"
+              fill="transparent"
+              pointerEvents="all"
+            />
+            <circle
+              cx={point.x}
+              cy={point.y}
+              r="14"
+              fill="transparent"
+              pointerEvents="all"
+            />
+            <circle
+              cx={point.x}
+              cy={point.y}
+              r="6"
+              fill="#ffffff"
+              stroke="#0f2f5f"
+              strokeWidth="3"
+              className="transition-all group-hover:stroke-[4]"
+            />
+            <g
+              className="pointer-events-none opacity-0 transition-opacity duration-150 group-hover:opacity-100"
+              filter="url(#moneyTooltipShadow)"
+            >
+              <rect
+                x={tooltipX}
+                y={tooltipY}
+                width={tooltipWidth}
+                height={tooltipHeight}
+                rx="14"
+                fill="#ffffff"
+                stroke="#dbeafe"
+              />
+              <text x={tooltipX + 14} y={tooltipY + 22} className="fill-slate-950 text-[13px] font-black">
+                {row.label}
+              </text>
+              <text x={tooltipX + 14} y={tooltipY + 45} className="fill-emerald-600 text-[11px] font-black">
+                Поступления
+              </text>
+              <text x={tooltipX + tooltipWidth - 14} y={tooltipY + 45} textAnchor="end" className="fill-slate-950 text-[11px] font-black">
+                {formatMoney(row.income)}
+              </text>
+              <text x={tooltipX + 14} y={tooltipY + 64} className="fill-red-600 text-[11px] font-black">
+                Выплаты
+              </text>
+              <text x={tooltipX + tooltipWidth - 14} y={tooltipY + 64} textAnchor="end" className="fill-slate-950 text-[11px] font-black">
+                {formatMoney(row.outflow)}
+              </text>
+              <text x={tooltipX + 14} y={tooltipY + 83} className="fill-slate-700 text-[11px] font-black">
+                Чистый ДДС
+              </text>
+              <text
+                x={tooltipX + tooltipWidth - 14}
+                y={tooltipY + 83}
+                textAnchor="end"
+                className={`text-[11px] font-black ${row.net >= 0 ? "fill-emerald-600" : "fill-red-600"}`}
+              >
+                {formatMoney(row.net)}
+              </text>
+            </g>
+          </g>
+        );
+      })}
+
+      <text x="16" y="50" className="fill-slate-400 text-[11px] font-bold">
         +{formatCompactMoney(maxValue)}
       </text>
       <text x="16" y={zeroY + 4} className="fill-slate-400 text-[11px] font-bold">
         0
       </text>
-      <text x="16" y="210" className="fill-slate-400 text-[11px] font-bold">
+      <text x="16" y="216" className="fill-slate-400 text-[11px] font-bold">
         -{formatCompactMoney(maxValue)}
       </text>
     </svg>
