@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import {
   buildFinanceCategoryTreatmentIndex,
   calculateFinanceMetricsForRows,
+  getFinanceTransactionCashEffect,
   getFinanceTransactionTreatment,
 } from "@/lib/finance/financeMetrics";
 
@@ -31,6 +32,24 @@ type OperationType =
   | "FINANCING"
   | "PERSONAL";
 
+type SourceFilter = "ALL" | "MANUAL" | "TELEGRAM" | "EXCEL";
+
+type MetricKey =
+  | "cashIncome"
+  | "cashOutflow"
+  | "netCashFlow"
+  | "netProfitImpact"
+  | "ownerWithdrawals"
+  | "transferTotal"
+  | "cashOnlyTotal"
+  | "creditPrincipal"
+  | "creditInterest"
+  | "ignoredTotal";
+
+type FinanceTransactionRow = Awaited<
+  ReturnType<typeof prisma.financeTransaction.findMany>
+>[number];
+
 const ROWS_OPTIONS = [25, 50, 100, 250, 500];
 const SORTABLE_COLUMNS = [
   "operationDate",
@@ -54,33 +73,12 @@ const OPERATION_TABS: { value: OperationType; label: string }[] = [
   { value: "PERSONAL", label: "Вывод собственника" },
 ];
 
-const SOURCE_FILTER_OPTIONS = [
+const SOURCE_FILTER_OPTIONS: { value: SourceFilter; label: string }[] = [
   { value: "ALL", label: "Все источники" },
   { value: "MANUAL", label: "Вручную" },
   { value: "TELEGRAM", label: "Telegram" },
   { value: "EXCEL", label: "Excel" },
 ];
-
-type SourceFilter = "ALL" | "MANUAL" | "TELEGRAM" | "EXCEL";
-
-function normalizeSourceFilter(value?: string): SourceFilter {
-  if (value === "MANUAL") return "MANUAL";
-  if (value === "TELEGRAM") return "TELEGRAM";
-  if (value === "EXCEL") return "EXCEL";
-  return "ALL";
-}
-
-type MetricKey =
-  | "cashIncome"
-  | "cashOutflow"
-  | "netCashFlow"
-  | "netProfitImpact"
-  | "ownerWithdrawals"
-  | "transferTotal"
-  | "cashOnlyTotal"
-  | "creditPrincipal"
-  | "creditInterest"
-  | "ignoredTotal";
 
 const METRIC_DRILLDOWN_OPTIONS: {
   key: MetricKey;
@@ -100,8 +98,7 @@ const METRIC_DRILLDOWN_OPTIONS: {
   {
     key: "netCashFlow",
     title: "Чистый ДДС",
-    description:
-      "Поступления и выплаты, из которых складывается чистое движение денег.",
+    description: "Поступления и выплаты, из которых складывается чистое движение денег.",
   },
   {
     key: "netProfitImpact",
@@ -121,14 +118,12 @@ const METRIC_DRILLDOWN_OPTIONS: {
   {
     key: "cashOnlyTotal",
     title: "Только ДДС",
-    description:
-      "Расходы, которые уменьшают деньги, но не уменьшают прибыль повторно.",
+    description: "Расходы, которые уменьшают деньги, но не уменьшают прибыль повторно.",
   },
   {
     key: "creditPrincipal",
     title: "Тело кредита",
-    description:
-      "Погашение основного долга: влияет на деньги, но не на чистую прибыль.",
+    description: "Погашение основного долга: влияет на деньги, но не на чистую прибыль.",
   },
   {
     key: "creditInterest",
@@ -142,9 +137,12 @@ const METRIC_DRILLDOWN_OPTIONS: {
   },
 ];
 
-type FinanceTransactionRow = Awaited<
-  ReturnType<typeof prisma.financeTransaction.findMany>
->[number];
+function normalizeSourceFilter(value?: string): SourceFilter {
+  if (value === "MANUAL") return "MANUAL";
+  if (value === "TELEGRAM") return "TELEGRAM";
+  if (value === "EXCEL") return "EXCEL";
+  return "ALL";
+}
 
 function formatMoney(value: unknown) {
   const number = Number(value ?? 0);
@@ -213,121 +211,25 @@ function operationTypeLabel(type: string) {
 }
 
 function operationTypeClassName(type: string) {
-  if (type === "INCOME")
+  if (type === "INCOME") {
     return "bg-emerald-50 text-emerald-700 ring-emerald-100";
+  }
+
   if (type === "EXPENSE") return "bg-red-50 text-red-700 ring-red-100";
   if (type === "TRANSFER") return "bg-slate-100 text-slate-600 ring-slate-200";
   if (type === "FINANCING") return "bg-blue-50 text-blue-700 ring-blue-100";
-  if (type === "PERSONAL")
+
+  if (type === "PERSONAL") {
     return "bg-orange-50 text-orange-700 ring-orange-100";
+  }
+
   return "bg-slate-50 text-slate-700 ring-slate-200";
 }
 
-function valueClassName(value: number) {
+function amountClassName(value: number) {
   if (value > 0) return "text-emerald-600";
   if (value < 0) return "text-red-600";
   return "text-slate-900";
-}
-
-function normalizeForMoneyDirection(value: unknown) {
-  return String(value ?? "")
-    .toLowerCase()
-    .replaceAll("ё", "е")
-    .trim();
-}
-
-function getMoneyDirection(
-  row: {
-    operationType: string;
-    category: string;
-    amount: unknown;
-    isInternalTransfer?: boolean | null;
-  },
-  treatmentLabel?: string,
-) {
-  const category = normalizeForMoneyDirection(row.category);
-  const treatment = normalizeForMoneyDirection(treatmentLabel);
-
-  if (row.isInternalTransfer || row.operationType === "TRANSFER") {
-    return "neutral";
-  }
-
-  if (
-    treatment.includes("получение кредита") ||
-    treatment.includes("получение займа") ||
-    category.includes("получение кредита") ||
-    category.includes("получение займа")
-  ) {
-    return "positive";
-  }
-
-  if (
-    treatment.includes("тело кредита") ||
-    treatment.includes("проценты кредита") ||
-    treatment.includes("вывод собственника") ||
-    category.includes("тело кредита") ||
-    category.includes("проценты по кредит") ||
-    category.includes("проценты кредита") ||
-    category.includes("вывод собственника")
-  ) {
-    return "negative";
-  }
-
-  if (row.operationType === "EXPENSE" || row.operationType === "PERSONAL") {
-    return "negative";
-  }
-
-  if (row.operationType === "INCOME" || row.operationType === "FINANCING") {
-    return "positive";
-  }
-
-  return "neutral";
-}
-
-function getSignedAmount(
-  row: {
-    operationType: string;
-    category: string;
-    amount: unknown;
-    isInternalTransfer?: boolean | null;
-  },
-  treatmentLabel?: string,
-) {
-  const amount = Number(row.amount ?? 0);
-  const direction = getMoneyDirection(row, treatmentLabel);
-
-  if (direction === "negative") {
-    return -amount;
-  }
-
-  if (direction === "positive") {
-    return amount;
-  }
-
-  return 0;
-}
-
-function getAmountDisplay(
-  row: {
-    operationType: string;
-    category: string;
-    amount: unknown;
-    isInternalTransfer?: boolean | null;
-  },
-  treatmentLabel?: string,
-) {
-  const amount = Number(row.amount ?? 0);
-  const direction = getMoneyDirection(row, treatmentLabel);
-
-  if (direction === "negative") {
-    return formatSignedMoney(-amount);
-  }
-
-  if (direction === "positive") {
-    return formatSignedMoney(amount);
-  }
-
-  return formatMoney(amount);
 }
 
 function shortText(value: string | null | undefined, fallback = "—") {
@@ -384,78 +286,29 @@ function getMetricConfig(metric: string | undefined) {
   return METRIC_DRILLDOWN_OPTIONS.find((option) => option.key === metric);
 }
 
-function normalizeForMetric(value: unknown) {
-  return String(value ?? "")
-    .toLowerCase()
-    .replaceAll("ё", "е")
-    .trim();
-}
-
 function rowBelongsToMetric(
   row: FinanceTransactionRow,
   metric: MetricKey,
-  treatmentLabel: string,
+  treatment: ReturnType<typeof getFinanceTransactionTreatment>,
+  categoryIndex: ReturnType<typeof buildFinanceCategoryTreatmentIndex>,
 ) {
-  const direction = getMoneyDirection(row, treatmentLabel);
-  const treatment = normalizeForMetric(treatmentLabel);
-  const category = normalizeForMetric(row.category);
+  const cashEffect = getFinanceTransactionCashEffect(row, categoryIndex);
 
-  if (metric === "cashIncome") {
-    return direction === "positive";
-  }
-
-  if (metric === "cashOutflow") {
-    return direction === "negative";
-  }
-
-  if (metric === "netCashFlow") {
-    return direction === "positive" || direction === "negative";
-  }
-
+  if (metric === "cashIncome") return cashEffect > 0;
+  if (metric === "cashOutflow") return cashEffect < 0;
+  if (metric === "netCashFlow") return cashEffect !== 0;
   if (metric === "netProfitImpact") {
     return (
-      treatment.includes("чистая прибыль") ||
-      treatment.includes("ддс + прибыль") ||
-      treatment.includes("прибыль") ||
-      treatment.includes("проценты кредита") ||
-      category.includes("проценты по кредит") ||
-      category.includes("проценты кредита")
+      treatment.treatment === "INCLUDE_IN_NET_PROFIT" ||
+      treatment.treatment === "CREDIT_INTEREST"
     );
   }
-
-  if (metric === "ownerWithdrawals") {
-    return (
-      treatment.includes("вывод собственника") ||
-      row.operationType === "PERSONAL" ||
-      category.includes("вывод собственника")
-    );
-  }
-
-  if (metric === "transferTotal") {
-    return row.operationType === "TRANSFER" || row.isInternalTransfer;
-  }
-
-  if (metric === "cashOnlyTotal") {
-    return treatment.includes("только ддс");
-  }
-
-  if (metric === "creditPrincipal") {
-    return (
-      treatment.includes("тело кредита") || category.includes("тело кредита")
-    );
-  }
-
-  if (metric === "creditInterest") {
-    return (
-      treatment.includes("проценты кредита") ||
-      category.includes("проценты по кредит") ||
-      category.includes("проценты кредита")
-    );
-  }
-
-  if (metric === "ignoredTotal") {
-    return treatment.includes("не учитывается");
-  }
+  if (metric === "ownerWithdrawals") return treatment.treatment === "OWNER_WITHDRAWAL";
+  if (metric === "transferTotal") return row.operationType === "TRANSFER" || !!row.isInternalTransfer;
+  if (metric === "cashOnlyTotal") return treatment.treatment === "CASH_ONLY";
+  if (metric === "creditPrincipal") return treatment.treatment === "CREDIT_PRINCIPAL";
+  if (metric === "creditInterest") return treatment.treatment === "CREDIT_INTEREST";
+  if (metric === "ignoredTotal") return treatment.treatment === "IGNORE";
 
   return false;
 }
@@ -513,13 +366,7 @@ async function createFinanceTransaction(formData: FormData) {
   const operationDate = toDate(formData.get("operationDate"));
   const obligationDate = toDate(formData.get("obligationDate"));
 
-  if (
-    !companyName ||
-    !operationType ||
-    !category ||
-    !operationDate ||
-    amount <= 0
-  ) {
+  if (!companyName || !operationType || !category || !operationDate || amount <= 0) {
     return;
   }
 
@@ -537,8 +384,7 @@ async function createFinanceTransaction(formData: FormData) {
       project: String(formData.get("project") ?? "").trim() || null,
       comment: String(formData.get("comment") ?? "").trim() || null,
       isInternalTransfer:
-        operationType === "TRANSFER" ||
-        formData.get("isInternalTransfer") === "on",
+        operationType === "TRANSFER" || formData.get("isInternalTransfer") === "on",
     },
   });
 
@@ -563,102 +409,6 @@ async function deleteFinanceTransaction(formData: FormData) {
   revalidatePath("/finance/operations");
   revalidatePath("/finance");
   revalidatePath("/");
-}
-
-function KpiCard({
-  title,
-  value,
-  helper,
-  tone,
-  icon,
-}: {
-  title: string;
-  value: string;
-  helper: string;
-  tone: "emerald" | "red" | "blue" | "violet" | "orange" | "slate";
-  icon: string;
-}) {
-  const toneClass =
-    tone === "emerald"
-      ? "bg-emerald-50 text-emerald-600 ring-emerald-100"
-      : tone === "red"
-        ? "bg-red-50 text-red-600 ring-red-100"
-        : tone === "blue"
-          ? "bg-blue-50 text-blue-600 ring-blue-100"
-          : tone === "violet"
-            ? "bg-violet-50 text-violet-600 ring-violet-100"
-            : tone === "orange"
-              ? "bg-orange-50 text-orange-600 ring-orange-100"
-              : "bg-slate-100 text-slate-600 ring-slate-200";
-
-  const valueColor =
-    tone === "emerald"
-      ? "text-emerald-600"
-      : tone === "red"
-        ? "text-red-600"
-        : tone === "blue"
-          ? "text-blue-600"
-          : tone === "violet"
-            ? "text-violet-600"
-            : tone === "orange"
-              ? "text-orange-600"
-              : "text-slate-950";
-
-  return (
-    <div className="rounded-[26px] border border-slate-200 bg-white p-5 shadow-sm shadow-slate-200/50">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <div className="text-sm font-black text-slate-500">{title}</div>
-          <div
-            className={`mt-3 text-2xl font-black tracking-tight ${valueColor}`}
-          >
-            {value}
-          </div>
-        </div>
-
-        <div
-          className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl text-sm font-black ring-1 ${toneClass}`}
-        >
-          {icon}
-        </div>
-      </div>
-
-      <div className="mt-3 text-xs font-semibold leading-5 text-slate-500">
-        {helper}
-      </div>
-    </div>
-  );
-}
-
-function TreatmentInfoCard({
-  title,
-  value,
-  description,
-  tone,
-}: {
-  title: string;
-  value: string;
-  description: string;
-  tone: "cyan" | "blue" | "violet" | "slate";
-}) {
-  const className =
-    tone === "cyan"
-      ? "border-cyan-100 bg-cyan-50/80 text-cyan-800"
-      : tone === "blue"
-        ? "border-blue-100 bg-blue-50/80 text-blue-800"
-        : tone === "violet"
-          ? "border-violet-100 bg-violet-50/80 text-violet-800"
-          : "border-slate-200 bg-slate-50 text-slate-700";
-
-  return (
-    <div className={`rounded-[26px] border p-5 ${className}`}>
-      <div className="text-sm font-black">{title}</div>
-      <div className="mt-2 text-2xl font-black">{value}</div>
-      <p className="mt-2 text-sm font-semibold leading-5 opacity-80">
-        {description}
-      </p>
-    </div>
-  );
 }
 
 function buildHref(params: SearchParams, patch: Partial<SearchParams>) {
@@ -698,6 +448,138 @@ function buildHref(params: SearchParams, patch: Partial<SearchParams>) {
   return `/finance/operations?${query.toString()}`;
 }
 
+function tinyTrendPath(tone: "emerald" | "red" | "blue" | "violet" | "orange" | "slate") {
+  if (tone === "red") return "M2 24 L12 17 L20 20 L30 11 L40 14 L50 6 L62 10";
+  if (tone === "orange") return "M2 26 L12 20 L20 22 L30 14 L40 18 L50 9 L62 6";
+  if (tone === "violet") return "M2 25 L11 23 L20 16 L30 19 L39 12 L49 14 L62 5";
+  if (tone === "slate") return "M2 18 L12 18 L22 18 L32 18 L42 18 L52 18 L62 18";
+  return "M2 26 L12 20 L20 23 L30 15 L40 18 L50 9 L62 6";
+}
+
+function KpiCard({
+  title,
+  value,
+  helper,
+  tone,
+  icon,
+  href,
+  active,
+}: {
+  title: string;
+  value: string;
+  helper: string;
+  tone: "emerald" | "red" | "blue" | "violet" | "orange" | "slate";
+  icon: string;
+  href: string;
+  active?: boolean;
+}) {
+  const palette = {
+    emerald: {
+      card: "border-emerald-100 bg-emerald-50/55 hover:border-emerald-200",
+      icon: "bg-emerald-100 text-emerald-700 ring-emerald-200",
+      value: "text-emerald-600",
+      stroke: "stroke-emerald-500",
+      ring: "ring-emerald-200",
+    },
+    red: {
+      card: "border-red-100 bg-red-50/55 hover:border-red-200",
+      icon: "bg-red-100 text-red-700 ring-red-200",
+      value: "text-red-600",
+      stroke: "stroke-red-500",
+      ring: "ring-red-200",
+    },
+    blue: {
+      card: "border-blue-100 bg-blue-50/55 hover:border-blue-200",
+      icon: "bg-blue-100 text-blue-700 ring-blue-200",
+      value: "text-blue-600",
+      stroke: "stroke-blue-500",
+      ring: "ring-blue-200",
+    },
+    violet: {
+      card: "border-violet-100 bg-violet-50/55 hover:border-violet-200",
+      icon: "bg-violet-100 text-violet-700 ring-violet-200",
+      value: "text-violet-600",
+      stroke: "stroke-violet-500",
+      ring: "ring-violet-200",
+    },
+    orange: {
+      card: "border-orange-100 bg-orange-50/55 hover:border-orange-200",
+      icon: "bg-orange-100 text-orange-700 ring-orange-200",
+      value: "text-orange-600",
+      stroke: "stroke-orange-500",
+      ring: "ring-orange-200",
+    },
+    slate: {
+      card: "border-slate-200 bg-white hover:border-slate-300",
+      icon: "bg-slate-100 text-slate-600 ring-slate-200",
+      value: "text-slate-950",
+      stroke: "stroke-slate-500",
+      ring: "ring-slate-200",
+    },
+  }[tone];
+
+  return (
+    <Link
+      href={href}
+      className={`group relative block overflow-hidden rounded-[24px] border p-5 shadow-sm shadow-slate-200/60 transition hover:-translate-y-0.5 hover:shadow-md ${palette.card} ${
+        active ? `ring-2 ${palette.ring}` : ""
+      }`}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <div className="text-xs font-black text-slate-500">{title}</div>
+          <div className={`mt-3 text-2xl font-black tracking-tight ${palette.value}`}>
+            {value}
+          </div>
+        </div>
+
+        <div
+          className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl text-sm font-black ring-1 ${palette.icon}`}
+        >
+          {icon}
+        </div>
+      </div>
+
+      <div className="mt-3 text-xs font-semibold leading-5 text-slate-500">
+        {helper}
+      </div>
+
+      <svg
+        className="mt-4 h-9 w-28 opacity-80 transition group-hover:opacity-100"
+        viewBox="0 0 64 32"
+        fill="none"
+        aria-hidden="true"
+      >
+        <path
+          d={tinyTrendPath(tone)}
+          className={palette.stroke}
+          strokeWidth="2.4"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
+    </Link>
+  );
+}
+
+function compactNumber(value: number) {
+  if (Math.abs(value) >= 1_000_000) {
+    return `${(value / 1_000_000).toFixed(1).replace(".", ",")} млн ₽`;
+  }
+
+  if (Math.abs(value) >= 1_000) {
+    return `${Math.round(value / 1_000).toLocaleString("ru-RU")} тыс. ₽`;
+  }
+
+  return formatMoney(value);
+}
+
+function filterButtonClass(active: boolean) {
+  return active
+    ? "bg-violet-50 text-violet-700 ring-1 ring-violet-100"
+    : "bg-slate-50 text-slate-500 hover:bg-slate-100 hover:text-slate-800";
+}
+
 export default async function FinanceOperationsPage({
   searchParams,
 }: {
@@ -720,9 +602,7 @@ export default async function FinanceOperationsPage({
   const selectedSource = normalizeSourceFilter(params?.source);
 
   const safeRowsLimit = ROWS_OPTIONS.includes(rowsLimit) ? rowsLimit : 50;
-  const safeSortBy = SORTABLE_COLUMNS.includes(sortBy)
-    ? sortBy
-    : "operationDate";
+  const safeSortBy = SORTABLE_COLUMNS.includes(sortBy) ? sortBy : "operationDate";
   const safeSortDir = sortDir === "asc" ? "asc" : "desc";
 
   function sortHref(column: string) {
@@ -757,14 +637,7 @@ export default async function FinanceOperationsPage({
       where: {
         isActive: true,
       },
-      orderBy: [
-        {
-          companyName: "asc",
-        },
-        {
-          name: "asc",
-        },
-      ],
+      orderBy: [{ companyName: "asc" }, { name: "asc" }],
     }),
   ]);
 
@@ -772,9 +645,7 @@ export default async function FinanceOperationsPage({
     ...(company !== "ALL" ? { companyName: company } : {}),
     ...(operationType !== "ALL" ? { operationType } : {}),
     ...(selectedCategory !== "ALL" ? { category: selectedCategory } : {}),
-    ...(selectedBankAccount !== "ALL"
-      ? { bankAccount: selectedBankAccount }
-      : {}),
+    ...(selectedBankAccount !== "ALL" ? { bankAccount: selectedBankAccount } : {}),
     ...(selectedSource === "MANUAL" ? { sourceType: null } : {}),
     ...(selectedSource === "TELEGRAM" ? { sourceType: "TELEGRAM_BOT" } : {}),
     ...(selectedSource === "EXCEL"
@@ -789,9 +660,7 @@ export default async function FinanceOperationsPage({
           OR: [
             { category: { contains: search, mode: "insensitive" as const } },
             { subcategory: { contains: search, mode: "insensitive" as const } },
-            {
-              counterparty: { contains: search, mode: "insensitive" as const },
-            },
+            { counterparty: { contains: search, mode: "insensitive" as const } },
             { bankAccount: { contains: search, mode: "insensitive" as const } },
             { project: { contains: search, mode: "insensitive" as const } },
             { comment: { contains: search, mode: "insensitive" as const } },
@@ -801,16 +670,8 @@ export default async function FinanceOperationsPage({
     ...(dateFrom || dateTo
       ? {
           operationDate: {
-            ...(dateFrom
-              ? {
-                  gte: new Date(`${dateFrom}T00:00:00`),
-                }
-              : {}),
-            ...(dateTo
-              ? {
-                  lte: new Date(`${dateTo}T23:59:59`),
-                }
-              : {}),
+            ...(dateFrom ? { gte: new Date(`${dateFrom}T00:00:00`) } : {}),
+            ...(dateTo ? { lte: new Date(`${dateTo}T23:59:59`) } : {}),
           },
         }
       : {}),
@@ -841,25 +702,22 @@ export default async function FinanceOperationsPage({
   const selectedMetricConfig = getMetricConfig(selectedMetric);
   const selectedMetricRowsAll = selectedMetricConfig
     ? metricRows.filter((row) => {
-        const treatment = getFinanceTransactionTreatment(
-          row,
-          categoryTreatmentIndex,
-        );
+        const treatment = getFinanceTransactionTreatment(row, categoryTreatmentIndex);
 
         return rowBelongsToMetric(
           row,
           selectedMetricConfig.key,
-          treatment.label,
+          treatment,
+          categoryTreatmentIndex,
         );
       })
     : [];
 
   const rows = selectedMetricConfig
-    ? sortFinanceRowsInMemory(
-        selectedMetricRowsAll,
-        safeSortBy,
-        safeSortDir,
-      ).slice(0, safeRowsLimit)
+    ? sortFinanceRowsInMemory(selectedMetricRowsAll, safeSortBy, safeSortDir).slice(
+        0,
+        safeRowsLimit,
+      )
     : rawRows;
 
   const totalRowsCount = selectedMetricConfig
@@ -880,359 +738,420 @@ export default async function FinanceOperationsPage({
       ? bankAccounts
       : bankAccounts.filter((account) => account.companyName === company);
 
+  const hasActiveFilters =
+    company !== "ALL" ||
+    operationType !== "ALL" ||
+    selectedCategory !== "ALL" ||
+    selectedBankAccount !== "ALL" ||
+    selectedSource !== "ALL" ||
+    Boolean(search) ||
+    Boolean(selectedMetricConfig);
+
   return (
     <main className="page-shell">
-      <div className="page-container">
-        <section className="panel p-5 sm:p-6">
-          <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
-            <div>
-              <div className="inline-flex rounded-full bg-violet-50 px-3 py-1 text-xs font-black uppercase tracking-[0.12em] text-violet-700 ring-1 ring-violet-100">
-                Финансы
+      <div className="page-container space-y-5">
+        <section className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
+          <div>
+            <h1 className="text-3xl font-black tracking-tight text-slate-950 sm:text-4xl">
+              Финансовые операции
+            </h1>
+            <p className="mt-2 max-w-4xl text-sm leading-6 text-slate-500">
+              Все движения денег: поступления, расходы, оплаты, кредиты и переводы.
+              Контролируйте ДДС и прибыль компании.
+            </p>
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            <Link
+              href="/finance/categories"
+              className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-black text-slate-700 shadow-sm transition hover:bg-slate-50"
+            >
+              <span>▦</span>
+              Справочник статей
+            </Link>
+
+            <details className="relative">
+              <summary className="inline-flex cursor-pointer list-none items-center gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-black text-emerald-700 shadow-sm transition hover:bg-emerald-100 [&::-webkit-details-marker]:hidden">
+                <span>▣</span>
+                Импорт Excel
+                <span className="text-emerald-500">⌄</span>
+              </summary>
+
+              <div className="absolute right-0 z-20 mt-2 w-72 overflow-hidden rounded-3xl border border-slate-200 bg-white p-2 shadow-xl shadow-slate-200/70">
+                <a
+                  href="/api/templates/finance-transactions"
+                  className="flex w-full items-start gap-3 rounded-2xl px-4 py-3 text-left transition hover:bg-slate-50"
+                >
+                  <span className="mt-1 text-emerald-600">⇩</span>
+                  <span>
+                    <span className="block text-sm font-black text-slate-800">
+                      Скачать шаблон
+                    </span>
+                    <span className="mt-1 block text-xs font-semibold text-slate-500">
+                      Excel-шаблон для загрузки операций
+                    </span>
+                  </span>
+                </a>
+
+                <Link
+                  href="/import?reportType=FINANCE_TRANSACTIONS"
+                  className="flex w-full items-start gap-3 rounded-2xl px-4 py-3 text-left transition hover:bg-slate-50"
+                >
+                  <span className="mt-1 text-violet-600">⇧</span>
+                  <span>
+                    <span className="block text-sm font-black text-slate-800">
+                      Загрузить файл
+                    </span>
+                    <span className="mt-1 block text-xs font-semibold text-slate-500">
+                      Импорт операций из Excel
+                    </span>
+                  </span>
+                </Link>
               </div>
+            </details>
 
-              <h1 className="mt-3 text-3xl font-black tracking-tight text-slate-950 sm:text-4xl">
-                Финансовые операции
-              </h1>
-
-              <p className="mt-3 max-w-4xl text-sm leading-6 text-slate-500">
-                Поступления, расходы, оплаты, кредиты и внутренние переводы.
-                Роль статьи определяет влияние на ДДС, чистую прибыль и вывод
-                собственника.
-              </p>
-            </div>
-
-            <div className="flex flex-wrap gap-2">
-              <Link
-                href="/finance/categories"
-                className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-black text-slate-700 shadow-sm transition hover:bg-slate-50"
-              >
-                <span>▦</span>
-                Справочник статей
-              </Link>
-
-              <details className="relative">
-                <summary className="inline-flex cursor-pointer list-none items-center gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-black text-emerald-700 shadow-sm transition hover:bg-emerald-100 [&::-webkit-details-marker]:hidden">
-                  <span>▣</span>
-                  Импорт Excel
-                  <span className="text-emerald-500">⌄</span>
-                </summary>
-
-                <div className="absolute right-0 z-20 mt-2 w-72 overflow-hidden rounded-3xl border border-slate-200 bg-white p-2 shadow-xl shadow-slate-200/70">
-                  <a
-                    href="/api/templates/finance-transactions"
-                    className="flex w-full items-start gap-3 rounded-2xl px-4 py-3 text-left transition hover:bg-slate-50"
-                  >
-                    <span className="mt-1 text-emerald-600">⇩</span>
-                    <span>
-                      <span className="block text-sm font-black text-slate-800">
-                        Скачать шаблон
-                      </span>
-                      <span className="mt-1 block text-xs font-semibold text-slate-500">
-                        Excel-шаблон для загрузки операций
-                      </span>
-                    </span>
-                  </a>
-
-                  <Link
-                    href="/import?reportType=FINANCE_TRANSACTIONS"
-                    className="flex w-full items-start gap-3 rounded-2xl px-4 py-3 text-left transition hover:bg-slate-50"
-                  >
-                    <span className="mt-1 text-violet-600">⇧</span>
-                    <span>
-                      <span className="block text-sm font-black text-slate-800">
-                        Загрузить файл
-                      </span>
-                      <span className="mt-1 block text-xs font-semibold text-slate-500">
-                        Импорт операций из Excel
-                      </span>
-                    </span>
-                  </Link>
-                </div>
-              </details>
-
-              <a
-                href="#quick-add"
-                className="inline-flex items-center gap-2 rounded-2xl bg-slate-950 px-5 py-3 text-sm font-black text-white shadow-lg shadow-slate-300 transition hover:bg-slate-800"
-              >
-                <span>＋</span>
-                Добавить операцию
-              </a>
-            </div>
+            <a
+              href="#quick-add"
+              className="inline-flex items-center gap-2 rounded-2xl bg-slate-950 px-5 py-3 text-sm font-black text-white shadow-lg shadow-slate-300 transition hover:bg-slate-800"
+            >
+              <span>＋</span>
+              Добавить операцию
+            </a>
           </div>
         </section>
 
-        <form className="panel grid gap-4 p-5 md:grid-cols-2 xl:grid-cols-[1fr_1fr_1fr_1fr_1fr_1fr_130px_130px]">
-          <input type="hidden" name="search" value={search} />
-          <input type="hidden" name="rows" value={safeRowsLimit} />
-          <input type="hidden" name="sortBy" value={safeSortBy} />
-          <input type="hidden" name="sortDir" value={safeSortDir} />
-          <input type="hidden" name="metric" value={selectedMetric} />
+        <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-6">
+          <KpiCard
+            title="Поступления (ДДС)"
+            value={formatMoney(metrics.cashIncome)}
+            helper="Нажмите, чтобы увидеть операции"
+            tone="emerald"
+            icon="↙"
+            href={`${buildHref(params, { metric: "cashIncome" })}#journal`}
+            active={selectedMetric === "cashIncome"}
+          />
+          <KpiCard
+            title="Выплаты (ДДС)"
+            value={formatMoney(metrics.cashOutflow)}
+            helper="Нажмите, чтобы увидеть операции"
+            tone="red"
+            icon="↗"
+            href={`${buildHref(params, { metric: "cashOutflow" })}#journal`}
+            active={selectedMetric === "cashOutflow"}
+          />
+          <KpiCard
+            title="Чистый ДДС"
+            value={formatMoney(metrics.netCashFlow)}
+            helper="Поступления и выплаты"
+            tone={metrics.netCashFlow >= 0 ? "emerald" : "violet"}
+            icon="↯"
+            href={`${buildHref(params, { metric: "netCashFlow" })}#journal`}
+            active={selectedMetric === "netCashFlow"}
+          />
+          <KpiCard
+            title="Влияние на чистую прибыль"
+            value={formatMoney(metrics.netProfitImpact)}
+            helper="Операции, влияющие на P&L"
+            tone={metrics.netProfitImpact >= 0 ? "emerald" : "violet"}
+            icon="▣"
+            href={`${buildHref(params, { metric: "netProfitImpact" })}#journal`}
+            active={selectedMetric === "netProfitImpact"}
+          />
+          <KpiCard
+            title="Вывод собственника"
+            value={formatMoney(metrics.ownerWithdrawals)}
+            helper="Нажмите, чтобы увидеть выводы"
+            tone="orange"
+            icon="₽"
+            href={`${buildHref(params, { metric: "ownerWithdrawals" })}#journal`}
+            active={selectedMetric === "ownerWithdrawals"}
+          />
+          <KpiCard
+            title="Внутренние переводы"
+            value={formatMoney(metrics.transferTotal)}
+            helper="Между счетами и кассами"
+            tone="slate"
+            icon="⇄"
+            href={`${buildHref(params, { metric: "transferTotal" })}#journal`}
+            active={selectedMetric === "transferTotal"}
+          />
+        </section>
 
-          <label className="block">
-            <span className="text-xs font-black uppercase tracking-[0.12em] text-slate-400">
-              Период от
-            </span>
-            <input
-              type="date"
-              name="dateFrom"
-              defaultValue={dateFrom}
-              className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-bold text-slate-700 outline-none transition focus:border-violet-200 focus:bg-white focus:ring-4 focus:ring-violet-50"
-            />
-          </label>
+        <section className="panel p-5 sm:p-6">
+          <form className="grid gap-4 md:grid-cols-2 xl:grid-cols-[1fr_1fr_1.2fr_1fr_1fr_1fr_120px_130px] xl:items-end">
+            <input type="hidden" name="search" value={search} />
+            <input type="hidden" name="rows" value={safeRowsLimit} />
+            <input type="hidden" name="sortBy" value={safeSortBy} />
+            <input type="hidden" name="sortDir" value={safeSortDir} />
+            <input type="hidden" name="metric" value={selectedMetric} />
+            <input type="hidden" name="bankAccount" value={selectedBankAccount} />
 
-          <label className="block">
-            <span className="text-xs font-black uppercase tracking-[0.12em] text-slate-400">
-              Период до
-            </span>
-            <input
-              type="date"
-              name="dateTo"
-              defaultValue={dateTo}
-              className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-bold text-slate-700 outline-none transition focus:border-violet-200 focus:bg-white focus:ring-4 focus:ring-violet-50"
-            />
-          </label>
+            <label className="block">
+              <span className="text-xs font-black text-slate-500">Период от</span>
+              <input
+                type="date"
+                name="dateFrom"
+                defaultValue={dateFrom}
+                className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-bold text-slate-700 outline-none transition focus:border-violet-200 focus:bg-white focus:ring-4 focus:ring-violet-50"
+              />
+            </label>
 
-          <label className="block">
-            <span className="text-xs font-black uppercase tracking-[0.12em] text-slate-400">
-              Компания
-            </span>
-            <select
-              name="company"
-              defaultValue={company}
-              className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-bold text-slate-700 outline-none transition focus:border-violet-200 focus:bg-white focus:ring-4 focus:ring-violet-50"
+            <label className="block">
+              <span className="text-xs font-black text-slate-500">Период до</span>
+              <input
+                type="date"
+                name="dateTo"
+                defaultValue={dateTo}
+                className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-bold text-slate-700 outline-none transition focus:border-violet-200 focus:bg-white focus:ring-4 focus:ring-violet-50"
+              />
+            </label>
+
+            <label className="block">
+              <span className="text-xs font-black text-slate-500">Компания</span>
+              <select
+                name="company"
+                defaultValue={company}
+                className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-bold text-slate-700 outline-none transition focus:border-violet-200 focus:bg-white focus:ring-4 focus:ring-violet-50"
+              >
+                <option value="ALL">Все компании</option>
+                {companies.map((company) => (
+                  <option key={company.id} value={company.name}>
+                    {company.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="block">
+              <span className="text-xs font-black text-slate-500">Тип операции</span>
+              <select
+                name="operationType"
+                defaultValue={operationType}
+                className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-bold text-slate-700 outline-none transition focus:border-violet-200 focus:bg-white focus:ring-4 focus:ring-violet-50"
+              >
+                <option value="ALL">Все типы</option>
+                <option value="INCOME">Поступления</option>
+                <option value="EXPENSE">Расходы</option>
+                <option value="TRANSFER">Переводы</option>
+                <option value="FINANCING">Финансирование</option>
+                <option value="PERSONAL">Личные / вывод</option>
+              </select>
+            </label>
+
+            <label className="block">
+              <span className="text-xs font-black text-slate-500">Статья</span>
+              <select
+                name="category"
+                defaultValue={selectedCategory}
+                className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-bold text-slate-700 outline-none transition focus:border-violet-200 focus:bg-white focus:ring-4 focus:ring-violet-50"
+              >
+                <option value="ALL">Все статьи</option>
+                {categories.map((category) => (
+                  <option key={category.id} value={category.name}>
+                    {category.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="block">
+              <span className="text-xs font-black text-slate-500">Источник</span>
+              <select
+                name="source"
+                defaultValue={selectedSource}
+                className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-bold text-slate-700 outline-none transition focus:border-violet-200 focus:bg-white focus:ring-4 focus:ring-violet-50"
+              >
+                {SOURCE_FILTER_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <Link
+              href="/finance/operations"
+              className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-center text-sm font-black text-slate-700 transition hover:bg-slate-50"
             >
-              <option value="ALL">Все компании</option>
+              Сбросить
+            </Link>
+
+            <button className="rounded-2xl bg-slate-950 px-4 py-3 text-sm font-black text-white shadow-lg shadow-slate-300 transition hover:bg-slate-800">
+              Применить
+            </button>
+
+            <details className="md:col-span-2 xl:col-span-6">
+              <summary className="inline-flex cursor-pointer list-none items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-black text-slate-600 transition hover:bg-slate-50 [&::-webkit-details-marker]:hidden">
+                <span>≡</span>
+                Расширенные фильтры
+              </summary>
+
+              <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                <label className="block">
+                  <span className="text-xs font-black text-slate-500">Счёт / касса</span>
+                  <select
+                    name="bankAccount"
+                    defaultValue={selectedBankAccount}
+                    className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-bold text-slate-700 outline-none transition focus:border-violet-200 focus:bg-white focus:ring-4 focus:ring-violet-50"
+                  >
+                    <option value="ALL">Все счета</option>
+                    {visibleAccounts.map((account) => (
+                      <option
+                        key={`${account.companyName}-${account.name}`}
+                        value={account.name}
+                      >
+                        {account.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+            </details>
+
+            <div className="hidden text-right text-xs font-semibold text-slate-400 xl:block xl:col-span-2">
+              {hasActiveFilters ? "Фильтр применён" : "Фильтр не применён"}
+            </div>
+          </form>
+        </section>
+
+        <section id="quick-add" className="panel border-violet-100 bg-violet-50/30 p-5 sm:p-6">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+              <h2 className="text-lg font-black tracking-tight text-violet-900">
+                Быстрое добавление операции
+              </h2>
+              <p className="mt-1 text-sm leading-6 text-slate-500">
+                Добавьте поступление, расход, кредит, вывод или перевод за несколько секунд.
+              </p>
+            </div>
+
+            <Link
+              href="/finance/operations/new"
+              className="inline-flex items-center gap-2 text-sm font-black text-violet-700"
+            >
+              Открыть полную форму
+              <span>→</span>
+            </Link>
+          </div>
+
+          <form
+            action={createFinanceTransaction}
+            className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-12"
+          >
+            <input
+              type="date"
+              name="operationDate"
+              defaultValue={dateTo}
+              className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-700 outline-none focus:border-violet-200 focus:ring-4 focus:ring-violet-50 xl:col-span-2"
+            />
+
+            <select
+              name="companyName"
+              defaultValue={company !== "ALL" ? company : companies[0]?.name}
+              className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-700 outline-none focus:border-violet-200 focus:ring-4 focus:ring-violet-50 xl:col-span-2"
+            >
               {companies.map((company) => (
                 <option key={company.id} value={company.name}>
                   {company.name}
                 </option>
               ))}
             </select>
-          </label>
 
-          <label className="block">
-            <span className="text-xs font-black uppercase tracking-[0.12em] text-slate-400">
-              Тип операции
-            </span>
             <select
               name="operationType"
-              defaultValue={operationType}
-              className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-bold text-slate-700 outline-none transition focus:border-violet-200 focus:bg-white focus:ring-4 focus:ring-violet-50"
+              defaultValue={operationType !== "ALL" ? operationType : "EXPENSE"}
+              className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-700 outline-none focus:border-violet-200 focus:ring-4 focus:ring-violet-50 xl:col-span-2"
             >
-              <option value="ALL">Все типы</option>
-              <option value="INCOME">Поступления</option>
-              <option value="EXPENSE">Расходы</option>
-              <option value="TRANSFER">Переводы</option>
+              <option value="INCOME">Поступление</option>
+              <option value="EXPENSE">Расход</option>
+              <option value="TRANSFER">Перевод</option>
               <option value="FINANCING">Финансирование</option>
               <option value="PERSONAL">Личные / вывод</option>
             </select>
-          </label>
 
-          <label className="block">
-            <span className="text-xs font-black uppercase tracking-[0.12em] text-slate-400">
-              Статья
-            </span>
             <select
               name="category"
-              defaultValue={selectedCategory}
-              className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-bold text-slate-700 outline-none transition focus:border-violet-200 focus:bg-white focus:ring-4 focus:ring-violet-50"
+              defaultValue={selectedCategory !== "ALL" ? selectedCategory : ""}
+              required
+              className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-700 outline-none focus:border-violet-200 focus:ring-4 focus:ring-violet-50 xl:col-span-2"
             >
-              <option value="ALL">Все статьи</option>
+              <option value="">Выберите статью</option>
               {categories.map((category) => (
                 <option key={category.id} value={category.name}>
                   {category.name}
                 </option>
               ))}
             </select>
-          </label>
 
-          <label className="block">
-            <span className="text-xs font-black uppercase tracking-[0.12em] text-slate-400">
-              Источник
-            </span>
             <select
-              name="source"
-              defaultValue={selectedSource}
-              className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-bold text-slate-700 outline-none transition focus:border-violet-200 focus:bg-white focus:ring-4 focus:ring-violet-50"
+              name="bankAccount"
+              defaultValue={selectedBankAccount !== "ALL" ? selectedBankAccount : ""}
+              className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-700 outline-none focus:border-violet-200 focus:ring-4 focus:ring-violet-50 xl:col-span-2"
             >
-              {SOURCE_FILTER_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
+              <option value="">Счёт / касса</option>
+              {visibleAccounts.map((account) => (
+                <option key={`${account.companyName}-${account.name}`} value={account.name}>
+                  {account.name}
                 </option>
               ))}
             </select>
-          </label>
 
-          <div className="flex items-end">
-            <Link
-              href="/finance/operations"
-              className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-center text-sm font-black text-slate-700 transition hover:bg-slate-50"
-            >
-              Сбросить
-            </Link>
-          </div>
+            <input
+              name="amount"
+              inputMode="decimal"
+              placeholder="Сумма"
+              required
+              className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-700 outline-none focus:border-violet-200 focus:ring-4 focus:ring-violet-50 xl:col-span-1"
+            />
 
-          <div className="flex items-end">
-            <button className="w-full rounded-2xl bg-slate-950 px-4 py-3 text-sm font-black text-white shadow-lg shadow-slate-300 transition hover:bg-slate-800">
-              Применить
+            <input
+              name="comment"
+              placeholder="Комментарий"
+              className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-700 outline-none focus:border-violet-200 focus:ring-4 focus:ring-violet-50 xl:col-span-3"
+            />
+
+            <button className="rounded-2xl bg-violet-700 px-4 py-3 text-sm font-black text-white shadow-lg shadow-violet-200 transition hover:bg-violet-800 xl:col-span-1">
+              Сохранить
             </button>
-          </div>
-        </form>
 
-        <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-6">
-          <Link
-            href={`${buildHref(params, { metric: "cashIncome" })}#journal`}
-            className={`block rounded-[28px] transition hover:-translate-y-0.5 ${
-              selectedMetric === "cashIncome" ? "ring-2 ring-emerald-200" : ""
-            }`}
-          >
-            <KpiCard
-              title="Поступления (ДДС)"
-              value={formatMoney(metrics.cashIncome)}
-              helper="Нажмите, чтобы увидеть операции"
-              tone="emerald"
-              icon="↙"
-            />
-          </Link>
+            <details className="md:col-span-2 xl:col-span-8">
+              <summary className="inline-flex cursor-pointer list-none items-center gap-2 rounded-2xl px-1 py-2 text-sm font-black text-violet-700 [&::-webkit-details-marker]:hidden">
+                Дополнительные поля
+                <span>⌄</span>
+              </summary>
 
-          <Link
-            href={`${buildHref(params, { metric: "cashOutflow" })}#journal`}
-            className={`block rounded-[28px] transition hover:-translate-y-0.5 ${
-              selectedMetric === "cashOutflow" ? "ring-2 ring-red-200" : ""
-            }`}
-          >
-            <KpiCard
-              title="Выплаты (ДДС)"
-              value={formatMoney(metrics.cashOutflow)}
-              helper="Нажмите, чтобы увидеть операции"
-              tone="red"
-              icon="↗"
-            />
-          </Link>
+              <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+                <input
+                  type="date"
+                  name="obligationDate"
+                  className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-700 outline-none focus:border-violet-200 focus:ring-4 focus:ring-violet-50"
+                />
 
-          <Link
-            href={`${buildHref(params, { metric: "netCashFlow" })}#journal`}
-            className={`block rounded-[28px] transition hover:-translate-y-0.5 ${
-              selectedMetric === "netCashFlow" ? "ring-2 ring-emerald-200" : ""
-            }`}
-          >
-            <KpiCard
-              title="Чистый ДДС"
-              value={formatMoney(metrics.netCashFlow)}
-              helper="Поступления и выплаты"
-              tone={metrics.netCashFlow >= 0 ? "emerald" : "red"}
-              icon="⇅"
-            />
-          </Link>
+                <input
+                  name="subcategory"
+                  placeholder="Подстатья"
+                  className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-700 outline-none focus:border-violet-200 focus:ring-4 focus:ring-violet-50"
+                />
 
-          <Link
-            href={`${buildHref(params, { metric: "netProfitImpact" })}#journal`}
-            className={`block rounded-[28px] transition hover:-translate-y-0.5 ${
-              selectedMetric === "netProfitImpact"
-                ? "ring-2 ring-violet-200"
-                : ""
-            }`}
-          >
-            <KpiCard
-              title="Влияние на чистую прибыль"
-              value={formatMoney(metrics.netProfitImpact)}
-              helper="Операции, влияющие на P&L"
-              tone={metrics.netProfitImpact >= 0 ? "emerald" : "violet"}
-              icon="▣"
-            />
-          </Link>
+                <input
+                  name="counterparty"
+                  placeholder="Контрагент"
+                  className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-700 outline-none focus:border-violet-200 focus:ring-4 focus:ring-violet-50"
+                />
 
-          <Link
-            href={`${buildHref(params, { metric: "ownerWithdrawals" })}#journal`}
-            className={`block rounded-[28px] transition hover:-translate-y-0.5 ${
-              selectedMetric === "ownerWithdrawals"
-                ? "ring-2 ring-orange-200"
-                : ""
-            }`}
-          >
-            <KpiCard
-              title="Вывод собственника"
-              value={formatMoney(metrics.ownerWithdrawals)}
-              helper="Нажмите, чтобы увидеть выводы"
-              tone="orange"
-              icon="₽"
-            />
-          </Link>
+                <input
+                  name="project"
+                  placeholder="Проект"
+                  className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-700 outline-none focus:border-violet-200 focus:ring-4 focus:ring-violet-50"
+                />
 
-          <Link
-            href={`${buildHref(params, { metric: "transferTotal" })}#journal`}
-            className={`block rounded-[28px] transition hover:-translate-y-0.5 ${
-              selectedMetric === "transferTotal" ? "ring-2 ring-slate-200" : ""
-            }`}
-          >
-            <KpiCard
-              title="Внутренние переводы"
-              value={formatMoney(metrics.transferTotal)}
-              helper="Между счетами и кассами"
-              tone="slate"
-              icon="⇄"
-            />
-          </Link>
-        </section>
-
-        <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <Link
-            href={`${buildHref(params, { metric: "cashOnlyTotal" })}#journal`}
-            className={`block rounded-[28px] transition hover:-translate-y-0.5 ${
-              selectedMetric === "cashOnlyTotal" ? "ring-2 ring-cyan-200" : ""
-            }`}
-          >
-            <TreatmentInfoCard
-              title="Только ДДС"
-              value={formatMoney(metrics.cashOnlyTotal)}
-              description="Нажмите, чтобы увидеть операции этого блока."
-              tone="cyan"
-            />
-          </Link>
-
-          <Link
-            href={`${buildHref(params, { metric: "creditPrincipal" })}#journal`}
-            className={`block rounded-[28px] transition hover:-translate-y-0.5 ${
-              selectedMetric === "creditPrincipal" ? "ring-2 ring-blue-200" : ""
-            }`}
-          >
-            <TreatmentInfoCard
-              title="Тело кредита"
-              value={formatMoney(metrics.creditPrincipal)}
-              description="Нажмите, чтобы увидеть платежи по телу кредита."
-              tone="blue"
-            />
-          </Link>
-
-          <Link
-            href={`${buildHref(params, { metric: "creditInterest" })}#journal`}
-            className={`block rounded-[28px] transition hover:-translate-y-0.5 ${
-              selectedMetric === "creditInterest"
-                ? "ring-2 ring-violet-200"
-                : ""
-            }`}
-          >
-            <TreatmentInfoCard
-              title="Проценты кредита"
-              value={formatMoney(metrics.creditInterest)}
-              description="Нажмите, чтобы увидеть проценты по кредитам."
-              tone="violet"
-            />
-          </Link>
-
-          <Link
-            href={`${buildHref(params, { metric: "ignoredTotal" })}#journal`}
-            className={`block rounded-[28px] transition hover:-translate-y-0.5 ${
-              selectedMetric === "ignoredTotal" ? "ring-2 ring-slate-200" : ""
-            }`}
-          >
-            <TreatmentInfoCard
-              title="Не учитывается"
-              value={formatMoney(metrics.ignoredTotal)}
-              description="Нажмите, чтобы увидеть технические операции."
-              tone="slate"
-            />
-          </Link>
+                <label className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-700">
+                  <input type="checkbox" name="isInternalTransfer" />
+                  Внутренний перевод
+                </label>
+              </div>
+            </details>
+          </form>
         </section>
 
         {selectedMetricConfig ? (
@@ -1282,146 +1201,7 @@ export default async function FinanceOperationsPage({
           </section>
         ) : null}
 
-        <section id="quick-add" className="panel p-5 sm:p-6">
-          <div>
-            <h2 className="text-2xl font-black tracking-tight text-slate-950">
-              Быстрое добавление операции
-            </h2>
-            <p className="mt-2 text-sm leading-6 text-slate-500">
-              Добавь поступление, расход, кредит, вывод или перевод. Роль статьи
-              автоматически попадёт в финансовую модель.
-            </p>
-          </div>
-
-          <form
-            action={createFinanceTransaction}
-            className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-12"
-          >
-            <input
-              type="date"
-              name="operationDate"
-              defaultValue={dateTo}
-              className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-700 outline-none focus:border-violet-200 focus:ring-4 focus:ring-violet-50 xl:col-span-2"
-            />
-
-            <select
-              name="companyName"
-              defaultValue={company !== "ALL" ? company : companies[0]?.name}
-              className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-700 outline-none focus:border-violet-200 focus:ring-4 focus:ring-violet-50 xl:col-span-2"
-            >
-              {companies.map((company) => (
-                <option key={company.id} value={company.name}>
-                  {company.name}
-                </option>
-              ))}
-            </select>
-
-            <select
-              name="operationType"
-              defaultValue={operationType !== "ALL" ? operationType : "EXPENSE"}
-              className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-700 outline-none focus:border-violet-200 focus:ring-4 focus:ring-violet-50 xl:col-span-2"
-            >
-              <option value="INCOME">Поступление</option>
-              <option value="EXPENSE">Расход</option>
-              <option value="TRANSFER">Перевод</option>
-              <option value="FINANCING">Финансирование</option>
-              <option value="PERSONAL">Личные / вывод</option>
-            </select>
-
-            <select
-              name="category"
-              defaultValue={selectedCategory !== "ALL" ? selectedCategory : ""}
-              required
-              className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-700 outline-none focus:border-violet-200 focus:ring-4 focus:ring-violet-50 xl:col-span-3"
-            >
-              <option value="">Выберите статью</option>
-              {categories.map((category) => (
-                <option key={category.id} value={category.name}>
-                  {category.name}
-                </option>
-              ))}
-            </select>
-
-            <select
-              name="bankAccount"
-              defaultValue={
-                selectedBankAccount !== "ALL" ? selectedBankAccount : ""
-              }
-              className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-700 outline-none focus:border-violet-200 focus:ring-4 focus:ring-violet-50 xl:col-span-3"
-            >
-              <option value="">Счёт / касса</option>
-              {visibleAccounts.map((account) => (
-                <option
-                  key={`${account.companyName}-${account.name}`}
-                  value={account.name}
-                >
-                  {account.name}
-                </option>
-              ))}
-            </select>
-
-            <input
-              name="amount"
-              inputMode="decimal"
-              placeholder="Сумма"
-              required
-              className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-700 outline-none focus:border-violet-200 focus:ring-4 focus:ring-violet-50 xl:col-span-2"
-            />
-
-            <input
-              name="comment"
-              placeholder="Комментарий"
-              className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-700 outline-none focus:border-violet-200 focus:ring-4 focus:ring-violet-50 xl:col-span-8"
-            />
-
-            <button className="rounded-2xl bg-slate-950 px-4 py-3 text-sm font-black text-white shadow-lg shadow-slate-300 transition hover:bg-slate-800 xl:col-span-2">
-              Сохранить
-            </button>
-
-            <details className="md:col-span-2 xl:col-span-8">
-              <summary className="inline-flex cursor-pointer list-none items-center gap-2 rounded-2xl px-1 py-2 text-sm font-black text-violet-700 [&::-webkit-details-marker]:hidden">
-                Дополнительные поля
-                <span>⌄</span>
-              </summary>
-
-              <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
-                <input
-                  type="date"
-                  name="obligationDate"
-                  className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-700 outline-none focus:border-violet-200 focus:ring-4 focus:ring-violet-50"
-                />
-
-                <input
-                  name="subcategory"
-                  placeholder="Подстатья"
-                  className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-700 outline-none focus:border-violet-200 focus:ring-4 focus:ring-violet-50"
-                />
-
-                <input
-                  name="counterparty"
-                  placeholder="Контрагент"
-                  className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-700 outline-none focus:border-violet-200 focus:ring-4 focus:ring-violet-50"
-                />
-
-                <input
-                  name="project"
-                  placeholder="Проект"
-                  className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-700 outline-none focus:border-violet-200 focus:ring-4 focus:ring-violet-50"
-                />
-
-                <label className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-700">
-                  <input type="checkbox" name="isInternalTransfer" />
-                  Внутренний перевод
-                </label>
-              </div>
-            </details>
-          </form>
-        </section>
-
-        <section
-          className="panel overflow-hidden"
-          id={selectedMetricConfig ? undefined : "journal"}
-        >
+        <section className="panel overflow-hidden" id={selectedMetricConfig ? undefined : "journal"}>
           <div className="border-b border-slate-200 p-5 sm:p-6">
             <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
               <div>
@@ -1431,24 +1211,15 @@ export default async function FinanceOperationsPage({
                     : "Журнал операций"}
                 </h2>
                 <p className="mt-2 text-sm leading-6 text-slate-500">
-                  Показано {rows.length} из {totalRowsCount} операций по
-                  выбранным фильтрам.
+                  Показано {rows.length} из {totalRowsCount} операций по выбранным фильтрам.
                 </p>
               </div>
 
               <form className="flex flex-col gap-3 xl:flex-row xl:items-center">
                 <input type="hidden" name="company" value={company} />
-                <input
-                  type="hidden"
-                  name="operationType"
-                  value={operationType}
-                />
+                <input type="hidden" name="operationType" value={operationType} />
                 <input type="hidden" name="category" value={selectedCategory} />
-                <input
-                  type="hidden"
-                  name="bankAccount"
-                  value={selectedBankAccount}
-                />
+                <input type="hidden" name="bankAccount" value={selectedBankAccount} />
                 <input type="hidden" name="dateFrom" value={dateFrom} />
                 <input type="hidden" name="dateTo" value={dateTo} />
                 <input type="hidden" name="sortBy" value={safeSortBy} />
@@ -1484,6 +1255,15 @@ export default async function FinanceOperationsPage({
                 <button className="rounded-2xl bg-slate-950 px-5 py-3 text-sm font-black text-white shadow-lg shadow-slate-300 transition hover:bg-slate-800">
                   Найти
                 </button>
+
+                <button
+                  type="button"
+                  disabled
+                  title="Экспорт сделаем вместе с Excel-импортом"
+                  className="cursor-not-allowed rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-black text-slate-400"
+                >
+                  Экспорт
+                </button>
               </form>
             </div>
 
@@ -1498,37 +1278,19 @@ export default async function FinanceOperationsPage({
                       operationType: tab.value,
                       metric: "",
                     })}
-                    className={`rounded-2xl px-4 py-2 text-sm font-black transition ${
-                      isActive
-                        ? "bg-violet-50 text-violet-700 ring-1 ring-violet-100"
-                        : "bg-slate-50 text-slate-500 hover:bg-slate-100 hover:text-slate-800"
-                    }`}
+                    className={`rounded-2xl px-4 py-2 text-sm font-black transition ${filterButtonClass(isActive)}`}
                   >
                     {tab.label}
                   </Link>
                 );
               })}
-
-              <div className="flex-1" />
-
-              <button
-                type="button"
-                disabled
-                title="Экспорт сделаем вместе с Excel-импортом"
-                className="cursor-not-allowed rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2 text-sm font-black text-slate-400"
-              >
-                Экспорт
-              </button>
             </div>
           </div>
 
           <div className="divide-y divide-slate-100 lg:hidden">
             {rows.map((row) => {
-              const treatment = getFinanceTransactionTreatment(
-                row,
-                categoryTreatmentIndex,
-              );
-              const signedAmount = getSignedAmount(row, treatment.label);
+              const treatment = getFinanceTransactionTreatment(row, categoryTreatmentIndex);
+              const cashEffect = getFinanceTransactionCashEffect(row, categoryTreatmentIndex);
 
               return (
                 <div key={row.id} className="p-4">
@@ -1543,26 +1305,22 @@ export default async function FinanceOperationsPage({
                     </div>
 
                     <div
-                      className={`text-right text-lg font-black ${valueClassName(
-                        signedAmount,
-                      )}`}
+                      className={`text-right text-lg font-black ${amountClassName(cashEffect)}`}
                     >
-                      {getAmountDisplay(row, treatment.label)}
+                      {cashEffect === 0
+                        ? formatMoney(row.amount)
+                        : formatSignedMoney(cashEffect)}
                     </div>
                   </div>
 
                   <div className="mt-3">
                     <div
-                      className={`inline-flex rounded-full px-3 py-1 text-xs font-black ring-1 ${operationTypeClassName(
-                        row.operationType,
-                      )}`}
+                      className={`inline-flex rounded-full px-3 py-1 text-xs font-black ring-1 ${operationTypeClassName(row.operationType)}`}
                     >
                       {operationTypeLabel(row.operationType)}
                     </div>
 
-                    <div className="mt-2 font-black text-slate-950">
-                      {row.category}
-                    </div>
+                    <div className="mt-2 font-black text-slate-950">{row.category}</div>
 
                     <div
                       className={`mt-2 inline-flex rounded-full px-3 py-1 text-xs font-black ring-1 ${treatment.className}`}
@@ -1578,9 +1336,7 @@ export default async function FinanceOperationsPage({
                     <div>
                       Источник:{" "}
                       <span
-                        className={`inline-flex rounded-full px-2 py-0.5 text-xs font-black ring-1 ${sourceClassName(
-                          row.sourceType,
-                        )}`}
+                        className={`inline-flex rounded-full px-2 py-0.5 text-xs font-black ring-1 ${sourceClassName(row.sourceType)}`}
                       >
                         {sourceLabel(row.sourceType)}
                       </span>
@@ -1597,54 +1353,41 @@ export default async function FinanceOperationsPage({
             ) : null}
           </div>
 
-          <div className="hidden overflow-x-auto lg:block">
-            <table className="w-full min-w-[1520px] border-collapse text-sm">
-              <thead className="bg-slate-50 text-left text-slate-500">
+          <div className="hidden lg:block">
+            <table className="w-full border-collapse text-sm">
+              <thead className="bg-slate-50 text-left text-xs font-black uppercase tracking-[0.08em] text-slate-400">
                 <tr>
-                  <th className="px-5 py-4">
-                    <Link href={sortHref("operationDate")}>
-                      Дата {sortIcon("operationDate")}
-                    </Link>
+                  <th className="px-4 py-4">
+                    <Link href={sortHref("operationDate")}>Дата {sortIcon("operationDate")}</Link>
                   </th>
-                  <th className="px-5 py-4">
-                    <Link href={sortHref("companyName")}>
-                      Компания {sortIcon("companyName")}
-                    </Link>
+                  <th className="px-4 py-4">
+                    <Link href={sortHref("companyName")}>Компания {sortIcon("companyName")}</Link>
                   </th>
-                  <th className="px-5 py-4">
-                    <Link href={sortHref("operationType")}>
-                      Тип {sortIcon("operationType")}
-                    </Link>
+                  <th className="px-4 py-4">
+                    <Link href={sortHref("operationType")}>Тип {sortIcon("operationType")}</Link>
                   </th>
-                  <th className="px-5 py-4">
-                    <Link href={sortHref("category")}>
-                      Статья {sortIcon("category")}
-                    </Link>
+                  <th className="px-4 py-4">
+                    <Link href={sortHref("category")}>Статья {sortIcon("category")}</Link>
                   </th>
-                  <th className="px-5 py-4">Счёт</th>
-                  <th className="px-5 py-4 text-right">
-                    <Link href={sortHref("amount")}>
-                      Сумма {sortIcon("amount")}
-                    </Link>
+                  <th className="px-4 py-4">Счёт / касса</th>
+                  <th className="px-4 py-4 text-right">
+                    <Link href={sortHref("amount")}>Сумма {sortIcon("amount")}</Link>
                   </th>
-                  <th className="px-5 py-4">Роль в модели</th>
-                  <th className="px-5 py-4">Источник</th>
-                  <th className="px-5 py-4">Комментарий</th>
-                  <th className="px-5 py-4 text-center">Действия</th>
+                  <th className="px-4 py-4">Роль в модели</th>
+                  <th className="px-4 py-4">Источник</th>
+                  <th className="px-4 py-4">Комментарий</th>
+                  <th className="px-4 py-4 text-center">Действия</th>
                 </tr>
               </thead>
 
               <tbody className="divide-y divide-slate-100">
                 {rows.map((row) => {
-                  const treatment = getFinanceTransactionTreatment(
-                    row,
-                    categoryTreatmentIndex,
-                  );
-                  const signedAmount = getSignedAmount(row, treatment.label);
+                  const treatment = getFinanceTransactionTreatment(row, categoryTreatmentIndex);
+                  const cashEffect = getFinanceTransactionCashEffect(row, categoryTreatmentIndex);
 
                   return (
-                    <tr key={row.id} className="transition hover:bg-slate-50">
-                      <td className="px-5 py-4 align-top">
+                    <tr key={row.id} className="transition hover:bg-slate-50/80">
+                      <td className="px-4 py-4 align-top">
                         <div className="font-black text-slate-800">
                           {formatDate(row.operationDate)}
                         </div>
@@ -1655,24 +1398,20 @@ export default async function FinanceOperationsPage({
                         ) : null}
                       </td>
 
-                      <td className="px-5 py-4 align-top font-bold text-slate-700">
+                      <td className="px-4 py-4 align-top font-bold text-slate-700">
                         {row.companyName}
                       </td>
 
-                      <td className="px-5 py-4 align-top">
+                      <td className="px-4 py-4 align-top">
                         <span
-                          className={`inline-flex rounded-full px-3 py-1 text-xs font-black ring-1 ${operationTypeClassName(
-                            row.operationType,
-                          )}`}
+                          className={`inline-flex whitespace-nowrap rounded-full px-3 py-1 text-xs font-black ring-1 ${operationTypeClassName(row.operationType)}`}
                         >
                           {operationTypeLabel(row.operationType)}
                         </span>
                       </td>
 
-                      <td className="px-5 py-4 align-top">
-                        <div className="font-black text-slate-950">
-                          {row.category}
-                        </div>
+                      <td className="px-4 py-4 align-top">
+                        <div className="font-black text-slate-950">{row.category}</div>
                         {row.subcategory ? (
                           <div className="mt-1 text-xs font-semibold text-slate-400">
                             {row.subcategory}
@@ -1680,7 +1419,7 @@ export default async function FinanceOperationsPage({
                         ) : null}
                       </td>
 
-                      <td className="px-5 py-4 align-top">
+                      <td className="px-4 py-4 align-top">
                         <div className="font-semibold text-slate-700">
                           {shortText(row.bankAccount)}
                         </div>
@@ -1692,34 +1431,32 @@ export default async function FinanceOperationsPage({
                       </td>
 
                       <td
-                        className={`px-5 py-4 text-right align-top text-base font-black ${valueClassName(
-                          signedAmount,
-                        )}`}
+                        className={`px-4 py-4 text-right align-top text-base font-black ${amountClassName(cashEffect)}`}
                       >
-                        {getAmountDisplay(row, treatment.label)}
+                        {cashEffect === 0
+                          ? formatMoney(row.amount)
+                          : formatSignedMoney(cashEffect)}
                       </td>
 
-                      <td className="px-5 py-4 align-top">
+                      <td className="px-4 py-4 align-top">
                         <div
-                          className={`inline-flex rounded-full px-3 py-1 text-xs font-black ring-1 ${treatment.className}`}
+                          className={`inline-flex max-w-[160px] rounded-full px-3 py-1 text-xs font-black ring-1 ${treatment.className}`}
                           title={treatment.description}
                         >
-                          {treatment.label}
+                          <span className="truncate">{treatment.label}</span>
                         </div>
                       </td>
 
-                      <td className="px-5 py-4 align-top">
+                      <td className="px-4 py-4 align-top">
                         <div
-                          className={`inline-flex rounded-full px-3 py-1 text-xs font-black ring-1 ${sourceClassName(
-                            row.sourceType,
-                          )}`}
+                          className={`inline-flex whitespace-nowrap rounded-full px-3 py-1 text-xs font-black ring-1 ${sourceClassName(row.sourceType)}`}
                           title={sourceDescription(row.sourceType)}
                         >
                           {sourceLabel(row.sourceType)}
                         </div>
                       </td>
 
-                      <td className="max-w-[260px] px-5 py-4 align-top">
+                      <td className="max-w-[280px] px-4 py-4 align-top">
                         <div className="truncate font-semibold text-slate-600">
                           {shortText(row.comment)}
                         </div>
@@ -1730,7 +1467,7 @@ export default async function FinanceOperationsPage({
                         ) : null}
                       </td>
 
-                      <td className="px-5 py-4 text-center align-top">
+                      <td className="px-4 py-4 text-center align-top">
                         <details className="relative inline-block">
                           <summary className="flex h-9 w-9 cursor-pointer list-none items-center justify-center rounded-2xl bg-slate-50 text-lg font-black text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 [&::-webkit-details-marker]:hidden">
                             ⋮
@@ -1769,6 +1506,34 @@ export default async function FinanceOperationsPage({
                 ) : null}
               </tbody>
             </table>
+          </div>
+
+          <div className="flex flex-col gap-3 border-t border-slate-100 p-5 text-sm font-semibold text-slate-500 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              Показано 1–{rows.length} из {totalRowsCount} операций
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                disabled
+                className="h-9 w-9 cursor-not-allowed rounded-2xl border border-slate-200 bg-slate-50 text-slate-300"
+              >
+                ‹
+              </button>
+              <div className="flex h-9 min-w-9 items-center justify-center rounded-2xl bg-violet-700 px-3 font-black text-white shadow-sm shadow-violet-200">
+                1
+              </div>
+              <button
+                type="button"
+                disabled
+                className="h-9 w-9 cursor-not-allowed rounded-2xl border border-slate-200 bg-slate-50 text-slate-300"
+              >
+                ›
+              </button>
+              <div className="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-slate-500">
+                Страница 1
+              </div>
+            </div>
           </div>
         </section>
       </div>
