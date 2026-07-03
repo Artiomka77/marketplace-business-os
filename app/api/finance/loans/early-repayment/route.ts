@@ -160,6 +160,10 @@ export async function POST(request: NextRequest) {
 
       const currentDebt = toNumber(loan.currentDebt);
 
+      if (currentDebt <= 0 && principalAmount > 0) {
+        throw new Error("Кредит уже закрыт: текущий долг равен 0 ₽.");
+      }
+
       if (principalAmount > currentDebt + 1) {
         throw new Error(
           `Сумма тела больше текущего долга: ${Math.round(currentDebt)} ₽.`
@@ -174,6 +178,57 @@ export async function POST(request: NextRequest) {
         : Math.max(0, currentDebt - principalAmount);
 
       const baseComment = comment || `Досрочное погашение ${loan.bankName}`;
+
+      const futurePayments = isFullRepayment
+        ? await tx.loanPayment.findMany({
+            where: {
+              loanId: loan.id,
+              paymentDate: {
+                gte: operationDate,
+              },
+              paid: false,
+            },
+            select: {
+              id: true,
+            },
+          })
+        : [];
+
+      const futurePaymentIds = futurePayments.map((payment) => payment.id);
+
+      if (isFullRepayment) {
+        await tx.financeTransaction.deleteMany({
+          where: {
+            companyName: loan.companyName,
+            operationDate: {
+              gte: operationDate,
+            },
+            sourceType: {
+              in: ["LOAN_PAYMENT_PRINCIPAL", "LOAN_PAYMENT_INTEREST"],
+            },
+            OR: [
+              ...(futurePaymentIds.length > 0
+                ? [
+                    {
+                      sourceId: {
+                        in: futurePaymentIds,
+                      },
+                    },
+                  ]
+                : []),
+              { sourceId: loan.id },
+              { counterparty: loan.bankName },
+              { bankAccount: loan.bankName },
+              {
+                comment: {
+                  contains: loan.bankName,
+                  mode: "insensitive",
+                },
+              },
+            ],
+          },
+        });
+      }
 
       if (principalAmount > 0) {
         await tx.financeTransaction.create({
