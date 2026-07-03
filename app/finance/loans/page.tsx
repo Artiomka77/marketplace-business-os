@@ -44,6 +44,14 @@ function formatDate(value: Date | null | undefined) {
   return value.toLocaleDateString("ru-RU");
 }
 
+function formatDateInput(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
+}
+
 function formatMonthValue(date: Date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
 }
@@ -254,6 +262,16 @@ function buildFinanceHref(company: string | null, period: string) {
   return `/finance/loans?${query.toString()}`;
 }
 
+function buildRepaymentHref(company: string | null, period: string, loanId: string) {
+  const query = new URLSearchParams();
+
+  query.set("company", company ?? "ALL");
+  query.set("period", period);
+  query.set("repay", loanId);
+
+  return `/finance/loans?${query.toString()}#early-repayment`;
+}
+
 function getLoanDisplayName(loan: { bankName: string; contractNumber: string | null }) {
   return loan.bankName || loan.contractNumber || "Кредит";
 }
@@ -264,6 +282,8 @@ export default async function LoansPage({
   searchParams?: Promise<{
     company?: string;
     period?: string;
+    repay?: string;
+    repayment?: string;
   }>;
 }) {
   const params = searchParams ? await searchParams : {};
@@ -284,6 +304,14 @@ export default async function LoansPage({
     where "isActive" = true
     order by "name" asc
   `;
+
+  const accounts = await prisma.financeAccount.findMany({
+    where: {
+      isActive: true,
+      ...(companyName ? { companyName } : {}),
+    },
+    orderBy: [{ companyName: "asc" }, { name: "asc" }],
+  });
 
   const loans = await prisma.loan.findMany({
     where: {
@@ -585,6 +613,18 @@ export default async function LoansPage({
 
   const activeLoanIdsCount = new Set(activeLoanIds).size;
 
+  const selectedRepaymentLoan = params.repay
+    ? loanRows.find((loan) => loan.id === params.repay) ?? null
+    : null;
+
+  const selectedRepaymentPrincipal = selectedRepaymentLoan
+    ? selectedRepaymentLoan.currentDebt
+    : 0;
+  const selectedRepaymentInterest = selectedRepaymentLoan
+    ? selectedRepaymentLoan.nextPaymentInterest
+    : 0;
+  const selectedRepaymentTotal =
+    selectedRepaymentPrincipal + selectedRepaymentInterest;
 
   const debtLoadColors = [
     "#1d4ed8",
@@ -1351,6 +1391,193 @@ export default async function LoansPage({
           </div>
         </section>
 
+        {selectedRepaymentLoan ? (
+          <section
+            id="early-repayment"
+            className="rounded-[28px] border border-indigo-100 bg-white p-6 shadow-sm shadow-indigo-100/70 ring-1 ring-indigo-50"
+          >
+            <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+              <div>
+                <div className="inline-flex rounded-full bg-indigo-50 px-3 py-1 text-xs font-black uppercase tracking-[0.08em] text-indigo-700 ring-1 ring-indigo-100">
+                  Досрочное погашение
+                </div>
+
+                <h2 className="mt-3 text-2xl font-black text-slate-950">
+                  Погасить {selectedRepaymentLoan.displayName}
+                </h2>
+
+                <p className="mt-2 max-w-4xl text-sm font-medium leading-6 text-slate-500">
+                  Система создаст финансовые операции: тело кредита отдельно от
+                  процентов. Тело уменьшит долг и не испортит прибыль, проценты
+                  попадут в финансовые расходы.
+                </p>
+              </div>
+
+              <Link
+                href={buildFinanceHref(companyName, selectedMonthValue)}
+                className="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-black text-slate-700 shadow-sm transition hover:bg-slate-50"
+              >
+                Отменить
+              </Link>
+            </div>
+
+            <div className="mt-5 grid gap-5 xl:grid-cols-[0.9fr_1.1fr]">
+              <div className="rounded-[24px] border border-slate-100 bg-slate-50/70 p-5">
+                <div className="text-sm font-black text-slate-950">
+                  {selectedRepaymentLoan.companyName}
+                </div>
+
+                <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                  <div className="rounded-2xl bg-white p-4 ring-1 ring-slate-100">
+                    <div className="text-xs font-black uppercase tracking-[0.08em] text-slate-400">
+                      Текущий долг
+                    </div>
+                    <div className="mt-2 text-xl font-black text-slate-950">
+                      {formatMoney(selectedRepaymentLoan.currentDebt)}
+                    </div>
+                  </div>
+
+                  <div className="rounded-2xl bg-white p-4 ring-1 ring-slate-100">
+                    <div className="text-xs font-black uppercase tracking-[0.08em] text-slate-400">
+                      Следующий платёж
+                    </div>
+                    <div className="mt-2 text-xl font-black text-indigo-600">
+                      {formatMoney(selectedRepaymentLoan.nextPaymentTotal)}
+                    </div>
+                    <div className="mt-1 text-xs font-bold text-slate-500">
+                      {formatDate(selectedRepaymentLoan.nextPaymentDate)}
+                    </div>
+                  </div>
+
+                  <div className="rounded-2xl bg-white p-4 ring-1 ring-slate-100">
+                    <div className="text-xs font-black uppercase tracking-[0.08em] text-slate-400">
+                      Тело ближайшего платежа
+                    </div>
+                    <div className="mt-2 text-lg font-black text-slate-950">
+                      {formatMoney(selectedRepaymentLoan.nextPaymentPrincipal)}
+                    </div>
+                  </div>
+
+                  <div className="rounded-2xl bg-white p-4 ring-1 ring-slate-100">
+                    <div className="text-xs font-black uppercase tracking-[0.08em] text-slate-400">
+                      Проценты ближайшего платежа
+                    </div>
+                    <div className="mt-2 text-lg font-black text-orange-600">
+                      {formatMoney(selectedRepaymentLoan.nextPaymentInterest)}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-4 rounded-2xl bg-emerald-50 p-4 text-sm font-bold leading-6 text-emerald-800 ring-1 ring-emerald-100">
+                  При полном погашении будущие платежи по этому кредиту будут
+                  помечены как закрытые, а текущий долг станет 0 ₽.
+                </div>
+              </div>
+
+              <form
+                action="/api/finance/loans/early-repayment"
+                method="POST"
+                className="rounded-[24px] border border-slate-100 bg-white p-5 shadow-sm"
+              >
+                <input type="hidden" name="loanId" value={selectedRepaymentLoan.id} />
+                <input type="hidden" name="returnCompany" value={companyName ?? "ALL"} />
+                <input type="hidden" name="returnPeriod" value={selectedMonthValue} />
+
+                <div className="grid gap-4 md:grid-cols-2">
+                  <label className="block">
+                    <span className="mb-2 block text-xs font-black uppercase tracking-[0.08em] text-slate-400">
+                      Тип погашения
+                    </span>
+                    <select
+                      name="repaymentMode"
+                      defaultValue="FULL"
+                      className="h-11 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-900 outline-none transition focus:border-indigo-300 focus:ring-4 focus:ring-indigo-100"
+                    >
+                      <option value="FULL">Полное погашение</option>
+                      <option value="PARTIAL">Частичное погашение</option>
+                    </select>
+                  </label>
+
+                  <label className="block">
+                    <span className="mb-2 block text-xs font-black uppercase tracking-[0.08em] text-slate-400">
+                      Дата операции
+                    </span>
+                    <input
+                      type="date"
+                      name="operationDate"
+                      defaultValue={formatDateInput(today)}
+                      className="h-11 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-900 outline-none transition focus:border-indigo-300 focus:ring-4 focus:ring-indigo-100"
+                    />
+                  </label>
+
+                  <label className="block">
+                    <span className="mb-2 block text-xs font-black uppercase tracking-[0.08em] text-slate-400">
+                      Тело кредита
+                    </span>
+                    <input
+                      name="principalAmount"
+                      inputMode="decimal"
+                      defaultValue={Math.round(selectedRepaymentPrincipal)}
+                      className="h-11 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-900 outline-none transition focus:border-indigo-300 focus:ring-4 focus:ring-indigo-100"
+                    />
+                  </label>
+
+                  <label className="block">
+                    <span className="mb-2 block text-xs font-black uppercase tracking-[0.08em] text-slate-400">
+                      Проценты
+                    </span>
+                    <input
+                      name="interestAmount"
+                      inputMode="decimal"
+                      defaultValue={Math.round(selectedRepaymentInterest)}
+                      className="h-11 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-900 outline-none transition focus:border-indigo-300 focus:ring-4 focus:ring-indigo-100"
+                    />
+                  </label>
+
+                  <label className="block md:col-span-2">
+                    <span className="mb-2 block text-xs font-black uppercase tracking-[0.08em] text-slate-400">
+                      Счёт списания
+                    </span>
+                    <select
+                      name="bankAccount"
+                      defaultValue=""
+                      className="h-11 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-900 outline-none transition focus:border-indigo-300 focus:ring-4 focus:ring-indigo-100"
+                    >
+                      <option value="">Не выбран</option>
+                      {accounts.map((account) => (
+                        <option key={account.id} value={account.name}>
+                          {account.companyName} · {account.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <label className="block md:col-span-2">
+                    <span className="mb-2 block text-xs font-black uppercase tracking-[0.08em] text-slate-400">
+                      Комментарий
+                    </span>
+                    <textarea
+                      name="comment"
+                      rows={3}
+                      defaultValue={`Досрочное погашение ${selectedRepaymentLoan.displayName}`}
+                      className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-900 outline-none transition focus:border-indigo-300 focus:ring-4 focus:ring-indigo-100"
+                    />
+                  </label>
+                </div>
+
+                <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="text-sm font-bold text-slate-500">
+                    Ориентир к списанию: {formatMoney(selectedRepaymentTotal)}
+                  </div>
+                  <button className="rounded-2xl bg-slate-950 px-6 py-3 text-sm font-black text-white shadow-sm transition hover:bg-slate-800">
+                    Создать погашение
+                  </button>
+                </div>
+              </form>
+            </div>
+          </section>
+        ) : null}
+
         <section
           id="all-loans"
           className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm shadow-slate-200/70"
@@ -1453,12 +1680,12 @@ export default async function LoansPage({
 
                     <td className="px-4 py-4 text-right">
                       <div className="flex justify-end gap-2">
-                        <a
-                          href="#early-repayment"
+                        <Link
+                          href={buildRepaymentHref(companyName, selectedMonthValue, loan.id)}
                           className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-black text-slate-700 transition hover:bg-slate-50"
                         >
                           Досрочно погасить
-                        </a>
+                        </Link>
                         <Link
                           href={`/finance/loans/${loan.id}/schedule`}
                           className="rounded-xl bg-slate-950 px-3 py-2 text-xs font-black text-white transition hover:bg-slate-800"
