@@ -1490,33 +1490,32 @@ function RecommendationCard({
         {description}
       </p>
 
-      <div className="mt-4 overflow-hidden rounded-2xl bg-white/75 ring-1 ring-white">
-        <div className="grid grid-cols-[1.2fr_0.85fr_0.9fr] gap-2 px-3 py-2 text-[10px] font-black uppercase tracking-[0.08em] text-slate-400">
-          {headers.map((header) => (
-            <div key={header} className={header === headers[0] ? "" : "text-right"}>
-              {header}
-            </div>
-          ))}
-        </div>
-
-        <div className="divide-y divide-slate-100">
-          {rows.length > 0 ? (
-            rows.map((row) => (
-              <div
-                key={row.join("-")}
-                className="grid grid-cols-[1.2fr_0.85fr_0.9fr] gap-2 px-3 py-2 text-xs font-bold text-slate-700"
-              >
-                <div className="truncate text-slate-950">{row[0]}</div>
-                <div className="text-right">{row[1]}</div>
-                <div className="text-right text-emerald-600">{row[2]}</div>
+      <div className="mt-4 space-y-2">
+        {rows.length > 0 ? (
+          rows.map((row) => (
+            <div
+              key={row.join("-")}
+              className="rounded-2xl bg-white/75 px-3 py-2.5 text-xs font-bold text-slate-700 ring-1 ring-white/80"
+            >
+              <div className="truncate text-sm font-black text-slate-950" title={row[0]}>
+                {row[0]}
               </div>
-            ))
-          ) : (
-            <div className="px-3 py-4 text-xs font-bold text-slate-500">
-              Недостаточно данных.
+
+              <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] leading-4 text-slate-500">
+                <span className="whitespace-nowrap">
+                  {headers[1]}: <b className="text-slate-900">{row[1]}</b>
+                </span>
+                <span className="whitespace-nowrap">
+                  {headers[2]}: <b className="text-emerald-600">{row[2]}</b>
+                </span>
+              </div>
             </div>
-          )}
-        </div>
+          ))
+        ) : (
+          <div className="rounded-2xl bg-white/75 px-3 py-4 text-xs font-bold text-slate-500 ring-1 ring-white/80">
+            Недостаточно данных.
+          </div>
+        )}
       </div>
 
       <button className="mt-4 w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 text-xs font-black text-slate-700 transition hover:bg-slate-50">
