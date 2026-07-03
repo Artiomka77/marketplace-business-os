@@ -79,22 +79,36 @@ async function fetchOzonTransactionTotals(params: {
   dateFromText: string;
   dateToText: string;
 }) {
-  const response = await fetch("https://api-seller.ozon.ru/v3/finance/transaction/totals", {
-    method: "POST",
-    headers: {
-      "Client-Id": params.clientId,
-      "Api-Key": params.apiKey,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      date: {
-        from: `${params.dateFromText}T00:00:00.000Z`,
-        to: `${params.dateToText}T23:59:59.999Z`,
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 20_000);
+
+  let response: Response | null = null;
+
+  try {
+    response = await fetch("https://api-seller.ozon.ru/v3/finance/transaction/totals", {
+      method: "POST",
+      headers: {
+        "Client-Id": params.clientId,
+        "Api-Key": params.apiKey,
+        "Content-Type": "application/json",
       },
-      transaction_type: "all",
-    }),
-    cache: "no-store",
-  });
+      body: JSON.stringify({
+        date: {
+          from: `${params.dateFromText}T00:00:00.000Z`,
+          to: `${params.dateToText}T23:59:59.999Z`,
+        },
+        transaction_type: "all",
+      }),
+      cache: "no-store",
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timeout);
+  }
+
+  if (!response) {
+    throw new Error("Ozon transaction totals API: empty response");
+  }
 
   const text = await response.text();
 

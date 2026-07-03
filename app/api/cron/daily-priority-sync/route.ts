@@ -2,9 +2,8 @@ import { NextResponse } from "next/server";
 
 import { prisma } from "@/lib/prisma";
 import { syncMarketplaceDailyOrders } from "@/lib/marketplaceOrders/syncMarketplaceDailyOrders";
-import { syncOzonAds, syncOzonFinance, syncOzonStocks } from "@/lib/ozon/syncOzon";
+import { syncOzonFinance } from "@/lib/ozon/syncOzon";
 import { syncOzonDailyEconomicTotals } from "@/lib/ozon/syncOzonDailyEconomicTotals";
-import { syncWbStock } from "@/lib/wb/syncWbStock";
 import { syncWbDailySales } from "@/lib/wb/syncWbDailySales";
 
 export const dynamic = "force-dynamic";
@@ -17,6 +16,8 @@ type MarketplaceApiConnectionForDaily = {
     name: string;
   };
 };
+
+const STEP_TIMEOUT_MS = 25_000;
 
 function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : "Неизвестная ошибка";
@@ -61,6 +62,27 @@ function parseDateFromRequest(req: Request) {
 
 function formatDateOnly(date: Date) {
   return date.toISOString().slice(0, 10);
+}
+
+async function withStepTimeout<T>(
+  label: string,
+  promiseFactory: () => Promise<T>,
+  timeoutMs = STEP_TIMEOUT_MS
+): Promise<T> {
+  let timeoutId: ReturnType<typeof setTimeout> | null = null;
+
+  try {
+    return await Promise.race([
+      promiseFactory(),
+      new Promise<never>((_, reject) => {
+        timeoutId = setTimeout(() => {
+          reject(new Error(`${label}: timeout after ${timeoutMs} ms`));
+        }, timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
+  }
 }
 
 async function getActiveConnections() {
@@ -108,59 +130,19 @@ async function getActiveConnections() {
   });
 }
 
-async function runOzonStocks(connection: MarketplaceApiConnectionForDaily) {
-  try {
-    const result = await syncOzonStocks(connection.companyId);
-
-    return {
-      marketplace: "OZON",
-      companyName: connection.company.name,
-      dataType: "STOCK",
-      ok: true,
-      result,
-    };
-  } catch (error) {
-    return {
-      marketplace: "OZON",
-      companyName: connection.company.name,
-      dataType: "STOCK",
-      ok: false,
-      error: getErrorMessage(error),
-    };
-  }
-}
-
-async function runWbStock(connection: MarketplaceApiConnectionForDaily) {
-  try {
-    const result = await syncWbStock(connection.companyId);
-
-    return {
-      marketplace: "WB",
-      companyName: connection.company.name,
-      dataType: "STOCK",
-      ok: true,
-      result,
-    };
-  } catch (error) {
-    return {
-      marketplace: "WB",
-      companyName: connection.company.name,
-      dataType: "STOCK",
-      ok: false,
-      error: getErrorMessage(error),
-    };
-  }
-}
-
 async function runOzonDailyFinance(
   connection: MarketplaceApiConnectionForDaily,
   date: Date
 ) {
   try {
-    const result = await syncOzonFinance(connection.companyId, {
-      dateFrom: date,
-      dateTo: date,
-    });
+    const result = await withStepTimeout(
+      `Ozon Finance ${connection.company.name} ${formatDateOnly(date)}`,
+      () =>
+        syncOzonFinance(connection.companyId, {
+          dateFrom: date,
+          dateTo: date,
+        })
+    );
 
     return {
       marketplace: "OZON",
@@ -187,10 +169,14 @@ async function runOzonDailyEconomicTotals(
   date: Date
 ) {
   try {
-    const result = await syncOzonDailyEconomicTotals(connection.companyId, {
-      dateFrom: date,
-      dateTo: date,
-    });
+    const result = await withStepTimeout(
+      `Ozon Economic Totals ${connection.company.name} ${formatDateOnly(date)}`,
+      () =>
+        syncOzonDailyEconomicTotals(connection.companyId, {
+          dateFrom: date,
+          dateTo: date,
+        })
+    );
 
     return {
       marketplace: "OZON",
@@ -205,36 +191,6 @@ async function runOzonDailyEconomicTotals(
       marketplace: "OZON",
       companyName: connection.company.name,
       dataType: "ECONOMIC_TOTALS",
-      date: formatDateOnly(date),
-      ok: false,
-      error: getErrorMessage(error),
-    };
-  }
-}
-
-async function runOzonDailyAds(
-  connection: MarketplaceApiConnectionForDaily,
-  date: Date
-) {
-  try {
-    const result = await syncOzonAds(connection.companyId, {
-      dateFrom: date,
-      dateTo: date,
-    });
-
-    return {
-      marketplace: "OZON",
-      companyName: connection.company.name,
-      dataType: "ADS",
-      date: formatDateOnly(date),
-      ok: true,
-      result,
-    };
-  } catch (error) {
-    return {
-      marketplace: "OZON",
-      companyName: connection.company.name,
-      dataType: "ADS",
       date: formatDateOnly(date),
       ok: false,
       error: getErrorMessage(error),
@@ -247,9 +203,13 @@ async function runWbDailySales(
   date: Date
 ) {
   try {
-    const result = await syncWbDailySales(connection.companyId, {
-      date,
-    });
+    const result = await withStepTimeout(
+      `WB Daily Sales ${connection.company.name} ${formatDateOnly(date)}`,
+      () =>
+        syncWbDailySales(connection.companyId, {
+          date,
+        })
+    );
 
     return {
       marketplace: "WB",
@@ -297,7 +257,7 @@ async function ensureWbAdsJobForReportDate(
     return {
       marketplace: "WB",
       companyName: connection.company.name,
-      dataType: "ADS",
+      dataType: "ADS_JOB",
       ok: true,
       created: false,
       jobId: existingJob.id,
@@ -306,8 +266,6 @@ async function ensureWbAdsJobForReportDate(
       lastError: existingJob.lastError,
       dateFrom: formatDateOnly(dateFrom),
       dateTo: formatDateOnly(dateTo),
-      message:
-        "WB Ads задача уже есть. Она будет обрабатываться безопасно чанками через /api/cron/historical-sync-wb-ads.",
     };
   }
 
@@ -335,7 +293,7 @@ async function ensureWbAdsJobForReportDate(
   return {
     marketplace: "WB",
     companyName: connection.company.name,
-    dataType: "ADS",
+    dataType: "ADS_JOB",
     ok: true,
     created: true,
     jobId: job.id,
@@ -343,8 +301,78 @@ async function ensureWbAdsJobForReportDate(
     cursorOffset: job.cursorOffset,
     dateFrom: formatDateOnly(dateFrom),
     dateTo: formatDateOnly(dateTo),
-    message:
-      "WB Ads задача создана. Она будет обрабатываться безопасно чанками через /api/cron/historical-sync-wb-ads.",
+  };
+}
+
+async function ensureOzonAdsJobForReportDate(
+  connection: MarketplaceApiConnectionForDaily,
+  date: Date
+) {
+  const existingJob = await prisma.historicalSyncJob.findFirst({
+    where: {
+      companyId: connection.companyId,
+      companyName: connection.company.name,
+      marketplace: "OZON",
+      dataType: "ADS",
+      dateFrom: date,
+      dateTo: date,
+    },
+    select: {
+      id: true,
+      status: true,
+      cursorOffset: true,
+      lastError: true,
+    },
+  });
+
+  if (existingJob) {
+    return {
+      marketplace: "OZON",
+      companyName: connection.company.name,
+      dataType: "ADS_JOB",
+      ok: true,
+      created: false,
+      jobId: existingJob.id,
+      status: existingJob.status,
+      cursorOffset: existingJob.cursorOffset,
+      lastError: existingJob.lastError,
+      dateFrom: formatDateOnly(date),
+      dateTo: formatDateOnly(date),
+    };
+  }
+
+  const job = await prisma.historicalSyncJob.create({
+    data: {
+      companyId: connection.companyId,
+      companyName: connection.company.name,
+      marketplace: "OZON",
+      dataType: "ADS",
+      dateFrom: date,
+      dateTo: date,
+      cursorDate: date,
+      cursorOffset: 0,
+      status: "PENDING",
+      totalSteps: 1,
+      completedSteps: 0,
+    },
+    select: {
+      id: true,
+      status: true,
+      cursorOffset: true,
+    },
+  });
+
+  return {
+    marketplace: "OZON",
+    companyName: connection.company.name,
+    dataType: "ADS_JOB",
+    ok: true,
+    created: true,
+    jobId: job.id,
+    status: job.status,
+    cursorOffset: job.cursorOffset,
+    dateFrom: formatDateOnly(date),
+    dateTo: formatDateOnly(date),
   };
 }
 
@@ -355,23 +383,23 @@ export async function GET(req: Request) {
     const dateText = formatDateOnly(date);
     const connections = await getActiveConnections();
 
-    const orderStats = await syncMarketplaceDailyOrders({
-      dateFrom: comparisonDate,
-      dateTo: date,
-    });
+    const orderStats = await withStepTimeout(
+      `Marketplace daily orders ${formatDateOnly(comparisonDate)} - ${dateText}`,
+      () =>
+        syncMarketplaceDailyOrders({
+          dateFrom: comparisonDate,
+          dateTo: date,
+        })
+    );
 
     const results = [];
 
     for (const connection of connections) {
       if (connection.marketplace === "OZON") {
-        results.push(await runOzonStocks(connection));
-
-        // Для Telegram и Dashboard нужны одинаковые источники за сам день отчёта и день сравнения.
-        // Поэтому грузим Ozon Finance, Ozon transaction totals и Performance Ads за оба дня.
         for (const targetDate of [comparisonDate, date]) {
           results.push(await runOzonDailyFinance(connection, targetDate));
           results.push(await runOzonDailyEconomicTotals(connection, targetDate));
-          results.push(await runOzonDailyAds(connection, targetDate));
+          results.push(await ensureOzonAdsJobForReportDate(connection, targetDate));
         }
       }
 
@@ -386,7 +414,7 @@ export async function GET(req: Request) {
       date: dateText,
       comparisonDate: formatDateOnly(comparisonDate),
       purpose:
-        "Daily priority sync for Telegram, Dashboard and Ozon Profit. Orders, stocks, WB Daily Sales, Ozon Finance, Ozon transaction totals and Ozon Ads are prepared before the morning owner report.",
+        "Fast daily priority sync for Telegram, Dashboard and Ozon Profit. Heavy Ozon/WB ads are queued as historical jobs so the morning route does not hang.",
       orderStats,
       results,
       executedAt: new Date().toISOString(),
