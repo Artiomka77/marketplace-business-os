@@ -332,6 +332,10 @@ export default async function LoansPage({
 
   const paymentsUntilYearEnd = await prisma.loanPayment.findMany({
     where: {
+      loanId: {
+        in: activeLoanIds,
+      },
+      paid: false,
       paymentDate: {
         gte: selectedMonth,
         lte: yearEnd,
@@ -354,6 +358,9 @@ export default async function LoansPage({
 
   const allFuturePayments = await prisma.loanPayment.findMany({
     where: {
+      loanId: {
+        in: activeLoanIds,
+      },
       paymentDate: {
         gte: today,
       },
