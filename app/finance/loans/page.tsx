@@ -585,16 +585,16 @@ export default async function LoansPage({
 
 
   return (
-    <main className="min-h-screen bg-[#f5f7fb] px-4 py-6 sm:px-6 lg:px-8">
-      <div className="mx-auto max-w-[1600px] space-y-6">
-        <section className="rounded-[24px] border border-slate-200 bg-white/90 p-5 shadow-sm shadow-slate-200/70 backdrop-blur">
-          <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+    <main className="min-h-screen bg-[#f5f7fb] px-4 py-5 sm:px-6 lg:px-8">
+      <div className="mx-auto max-w-[1600px] space-y-5">
+        <section className="rounded-[24px] border border-slate-200 bg-white/90 p-4 shadow-sm shadow-slate-200/70 backdrop-blur">
+          <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
             <div>
-              <h1 className="text-3xl font-black tracking-tight text-slate-950">
+              <h1 className="text-2xl font-black tracking-tight text-slate-950">
                 Кредиты и займы
               </h1>
 
-              <p className="mt-2 max-w-3xl text-sm font-medium leading-5 text-slate-500">
+              <p className="mt-1.5 max-w-3xl text-sm font-medium leading-5 text-slate-500">
                 Полная картина долговой нагрузки: ближайшие платежи, проценты,
                 риски и рекомендации по досрочному погашению.
               </p>
@@ -624,7 +624,7 @@ export default async function LoansPage({
             </div>
           </div>
 
-          <form className="mt-5 flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
+          <form className="mt-4 flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
             <div className="grid flex-1 gap-3 md:grid-cols-3">
               <label className="block">
                 <span className="mb-2 block text-xs font-black uppercase tracking-[0.08em] text-slate-400">
@@ -750,86 +750,7 @@ export default async function LoansPage({
           />
         </section>
 
-        <section className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm shadow-slate-200/70">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <h2 className="text-xl font-black text-slate-950">
-                Что требует внимания
-              </h2>
-              <p className="mt-1 text-sm font-medium text-slate-500">
-                Резерв, ближайшие платежи и самые дорогие обязательства.
-              </p>
-            </div>
-
-            <Link
-              href="/finance/calendar"
-              className="text-sm font-black text-indigo-600 hover:text-indigo-500"
-            >
-              Смотреть все
-            </Link>
-          </div>
-
-          <div className="mt-5 grid gap-4 xl:grid-cols-4">
-            <AttentionCard
-              tone="green"
-              title="Резерв на ближайшие платежи"
-              subtitle={`${next14Payments.length} платежей в ближайшие 14 дней`}
-              value={formatMoney(recommendedReserve)}
-              action="Держать на счетах →"
-              href="/finance/accounts"
-            />
-
-            <AttentionCard
-              tone="orange"
-              title="Платежи в ближайшие 7 дней"
-              subtitle={`${next7Payments.length} платежей на сумму`}
-              value={formatMoney(next7Amount)}
-              action="Посмотреть календарь →"
-              href="/finance/calendar"
-            />
-
-            <AttentionCard
-              tone="amber"
-              title="Высокая ежемесячная нагрузка"
-              subtitle={topMonthlyBurdenLoan?.displayName ?? "нет данных"}
-              value={
-                topMonthlyBurdenLoan
-                  ? `${formatMoney(topMonthlyBurdenLoan.monthlyPayment)} / мес.`
-                  : "—"
-              }
-              action="Рекомендации →"
-              href="#recommendations"
-            />
-
-            <AttentionCard
-              tone="purple"
-              title="Самый дорогой кредит"
-              subtitle={
-                mostExpensiveLoan
-                  ? `${mostExpensiveLoan.displayName} · проценты ${expensiveLoanPeriodLabel}`
-                  : "нет данных"
-              }
-              value={
-                mostExpensiveLoan
-                  ? mostExpensiveLoan.interestUntilYearEnd > 0
-                    ? formatMoney(mostExpensiveLoan.interestUntilYearEnd)
-                    : "проценты не рассчитаны"
-                  : "—"
-              }
-              action={
-                mostExpensiveLoan
-                  ? formatRateActionLabel({
-                      rate: mostExpensiveLoan.calculatedAnnualRate,
-                      source: mostExpensiveLoan.rateSource,
-                    })
-                  : "ставка не рассчитана →"
-              }
-              href="#all-loans"
-            />
-          </div>
-        </section>
-
-        <section className="grid gap-6 xl:grid-cols-2">
+        <section className="grid gap-6 xl:grid-cols-[1.22fr_0.78fr]">
           <section
             id="recommendations"
             className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm shadow-slate-200/70"
@@ -846,7 +767,7 @@ export default async function LoansPage({
               </div>
 
               <span className="rounded-full bg-indigo-50 px-3 py-1 text-xs font-black text-indigo-700 ring-1 ring-indigo-100">
-                без изменения данных
+                Рекомендуемый вариант
               </span>
             </div>
 
@@ -980,7 +901,7 @@ export default async function LoansPage({
           </section>
         </section>
 
-        <section className="grid gap-6 xl:grid-cols-2">
+        <section className="grid gap-6 xl:grid-cols-[0.78fr_1.22fr]">
           <section className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm shadow-slate-200/70">
             <div className="flex items-start justify-between gap-3">
               <div>
@@ -1139,6 +1060,85 @@ export default async function LoansPage({
               Перейти в платёжный календарь →
             </Link>
           </section>
+        </section>
+
+        <section className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm shadow-slate-200/70">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <h2 className="text-xl font-black text-slate-950">
+                Что требует внимания
+              </h2>
+              <p className="mt-1 text-sm font-medium text-slate-500">
+                Резерв, ближайшие платежи и самые дорогие обязательства.
+              </p>
+            </div>
+
+            <Link
+              href="/finance/calendar"
+              className="text-sm font-black text-indigo-600 hover:text-indigo-500"
+            >
+              Смотреть все
+            </Link>
+          </div>
+
+          <div className="mt-5 grid gap-4 xl:grid-cols-4">
+            <AttentionCard
+              tone="green"
+              title="Резерв на ближайшие платежи"
+              subtitle={`${next14Payments.length} платежей в ближайшие 14 дней`}
+              value={formatMoney(recommendedReserve)}
+              action="Держать на счетах →"
+              href="/finance/accounts"
+            />
+
+            <AttentionCard
+              tone="orange"
+              title="Платежи в ближайшие 7 дней"
+              subtitle={`${next7Payments.length} платежей на сумму`}
+              value={formatMoney(next7Amount)}
+              action="Посмотреть календарь →"
+              href="/finance/calendar"
+            />
+
+            <AttentionCard
+              tone="amber"
+              title="Высокая ежемесячная нагрузка"
+              subtitle={topMonthlyBurdenLoan?.displayName ?? "нет данных"}
+              value={
+                topMonthlyBurdenLoan
+                  ? `${formatMoney(topMonthlyBurdenLoan.monthlyPayment)} / мес.`
+                  : "—"
+              }
+              action="Рекомендации →"
+              href="#recommendations"
+            />
+
+            <AttentionCard
+              tone="purple"
+              title="Самый дорогой кредит"
+              subtitle={
+                mostExpensiveLoan
+                  ? `${mostExpensiveLoan.displayName} · проценты ${expensiveLoanPeriodLabel}`
+                  : "нет данных"
+              }
+              value={
+                mostExpensiveLoan
+                  ? mostExpensiveLoan.interestUntilYearEnd > 0
+                    ? formatMoney(mostExpensiveLoan.interestUntilYearEnd)
+                    : "проценты не рассчитаны"
+                  : "—"
+              }
+              action={
+                mostExpensiveLoan
+                  ? formatRateActionLabel({
+                      rate: mostExpensiveLoan.calculatedAnnualRate,
+                      source: mostExpensiveLoan.rateSource,
+                    })
+                  : "ставка не рассчитана →"
+              }
+              href="#all-loans"
+            />
+          </div>
         </section>
 
         <section
@@ -1481,12 +1481,12 @@ function RecommendationCard({
   }[tone];
 
   return (
-    <div className={`rounded-[22px] border p-4 ${color}`}>
+    <div className={`rounded-[22px] border p-4 xl:p-5 ${color}`}>
       <div className="text-sm font-black">
         {number}. {title}
       </div>
 
-      <p className="mt-2 min-h-[42px] text-xs font-semibold leading-5 text-slate-600">
+      <p className="mt-2 min-h-[44px] text-xs font-semibold leading-5 text-slate-600">
         {description}
       </p>
 
@@ -1495,10 +1495,13 @@ function RecommendationCard({
           rows.map((row) => (
             <div
               key={row.join("-")}
-              className="rounded-2xl bg-white/75 px-3 py-2.5 text-xs font-bold text-slate-700 ring-1 ring-white/80"
+              className="group rounded-2xl bg-white/80 px-3 py-2.5 text-xs font-bold text-slate-700 ring-1 ring-white/80 transition hover:bg-white"
             >
-              <div className="truncate text-sm font-black text-slate-950" title={row[0]}>
-                {row[0]}
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0 truncate text-sm font-black text-slate-950" title={row[0]}>
+                  {row[0]}
+                </div>
+                <span className="shrink-0 text-slate-300 transition group-hover:translate-x-0.5 group-hover:text-slate-500">›</span>
               </div>
 
               <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] leading-4 text-slate-500">
