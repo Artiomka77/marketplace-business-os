@@ -24,6 +24,7 @@ export type MissingCostItem = {
   productName: string;
   quantity: number;
   amount: number;
+  issueType?: "MISSING_COST" | "MISSING_OZON_MAPPING";
 };
 
 export type CostCoverageSummary = {
@@ -38,12 +39,18 @@ export type CostCoverageSummary = {
   missingAmount: number;
   examples: MissingCostItem[];
   hasMissingCosts: boolean;
+  technicalWbItemsCount: number;
+  technicalWbQuantity: number;
+  technicalWbAmount: number;
+  unmappedOzonItemsCount: number;
 };
 
 function normalizeText(value: unknown) {
   return String(value ?? "")
     .toLowerCase()
     .replaceAll("ё", "е")
+    .replace(/[–—−]/g, "-")
+    .replace(/\s*-\s*/g, "-")
     .replace(/\s+/g, " ")
     .trim();
 }
@@ -109,26 +116,34 @@ function buildWbSupplierArticleByNmId(cards: WbProductCardRecord[]) {
   return supplierArticleByNmId;
 }
 
-function buildOzonVendorCodeBySku(products: OzonProductRecord[]) {
-  const vendorCodeBySku = new Map<string, string>();
+function buildOzonProductLookup(products: OzonProductRecord[]) {
+  const normalizedVendorCodeBySku = new Map<string, string>();
+  const displayVendorCodeBySku = new Map<string, string>();
 
   for (const product of products) {
     const sku = normalizeText(product.sku);
-    const vendorCode = normalizeText(product.vendorCode);
+    const normalizedVendorCode = normalizeText(product.vendorCode);
+    const displayVendorCode = cleanText(product.vendorCode);
 
-    if (!sku || !vendorCode || vendorCodeBySku.has(sku)) continue;
+    if (!sku || !normalizedVendorCode || normalizedVendorCodeBySku.has(sku)) {
+      continue;
+    }
 
-    vendorCodeBySku.set(sku, vendorCode);
+    normalizedVendorCodeBySku.set(sku, normalizedVendorCode);
+    displayVendorCodeBySku.set(sku, displayVendorCode || normalizedVendorCode);
   }
 
-  return vendorCodeBySku;
+  return {
+    normalizedVendorCodeBySku,
+    displayVendorCodeBySku,
+  };
 }
 
-function getOzonBaseArticle(value: unknown) {
-  const vendorCode = cleanText(value);
-  if (!vendorCode) return "";
+function getBaseArticle(value: unknown) {
+  const text = cleanText(value);
+  if (!text) return "";
 
-  return cleanText(vendorCode.split("-")[0]);
+  return cleanText(text.split("-")[0]);
 }
 
 function createCostResolvers(params: {
@@ -140,47 +155,69 @@ function createCostResolvers(params: {
   const wbSupplierArticleByNmId = buildWbSupplierArticleByNmId(
     params.wbProductCards
   );
-  const ozonVendorCodeBySku = buildOzonVendorCodeBySku(params.ozonProducts);
+  const ozonProductLookup = buildOzonProductLookup(params.ozonProducts);
+
+  function hasCostByAnyKey(keys: string[]) {
+    for (const key of keys) {
+      const normalizedKey = normalizeText(key);
+      if (!normalizedKey) continue;
+
+      if (costByVendorCode.has(normalizedKey)) return true;
+      if (costByNmId.has(normalizedKey)) return true;
+
+      const baseArticle = normalizeText(getBaseArticle(normalizedKey));
+      if (baseArticle && costByVendorCode.has(baseArticle)) return true;
+      if (baseArticle && costByNmId.has(baseArticle)) return true;
+
+      const wbSupplierArticle = wbSupplierArticleByNmId.get(normalizedKey);
+      if (wbSupplierArticle && costByVendorCode.has(wbSupplierArticle)) return true;
+
+      const wbSupplierArticleByBase = baseArticle
+        ? wbSupplierArticleByNmId.get(baseArticle)
+        : "";
+      if (wbSupplierArticleByBase && costByVendorCode.has(wbSupplierArticleByBase)) {
+        return true;
+      }
+    }
+
+    return false;
+  }
 
   function hasWbCost(row: { vendorCode: unknown; nmId: unknown }) {
     const vendorCode = normalizeText(row.vendorCode);
     const nmId = normalizeText(row.nmId);
 
-    if (vendorCode && costByVendorCode.has(vendorCode)) return true;
-    if (nmId && costByNmId.has(nmId)) return true;
-
-    const wbSupplierArticle = nmId ? wbSupplierArticleByNmId.get(nmId) ?? "" : "";
-    if (wbSupplierArticle && costByVendorCode.has(wbSupplierArticle)) return true;
-
-    return false;
+    return hasCostByAnyKey([vendorCode, nmId]);
   }
 
-  function hasOzonCost(row: { sku: unknown; vendorCode: unknown }) {
+  function resolveOzonCost(row: { sku: unknown; vendorCode: unknown }) {
     const sku = normalizeText(row.sku);
     const directVendorCode = normalizeText(row.vendorCode);
-    const mappedVendorCode = sku ? ozonVendorCodeBySku.get(sku) ?? "" : "";
-    const vendorCode = directVendorCode || mappedVendorCode || sku;
+    const mappedVendorCode = sku
+      ? ozonProductLookup.normalizedVendorCodeBySku.get(sku) ?? ""
+      : "";
+    const mappedDisplayVendorCode = sku
+      ? ozonProductLookup.displayVendorCodeBySku.get(sku) ?? ""
+      : "";
 
-    if (!vendorCode) return false;
+    const hasProductMapping = Boolean(directVendorCode || mappedVendorCode);
+    const resolvedVendorCode = directVendorCode || mappedVendorCode || sku;
+    const displayVendorCode =
+      cleanText(row.vendorCode) || mappedDisplayVendorCode || cleanText(row.sku) || "—";
 
-    if (costByVendorCode.has(vendorCode)) return true;
-    if (costByNmId.has(vendorCode)) return true;
+    const keys = [directVendorCode, mappedVendorCode, sku, getBaseArticle(resolvedVendorCode)];
 
-    const baseArticle = normalizeText(getOzonBaseArticle(vendorCode));
-    if (!baseArticle) return false;
-
-    if (costByNmId.has(baseArticle)) return true;
-    if (costByVendorCode.has(baseArticle)) return true;
-
-    const wbSupplierArticle = wbSupplierArticleByNmId.get(baseArticle);
-    if (wbSupplierArticle && costByVendorCode.has(wbSupplierArticle)) return true;
-
-    return false;
+    return {
+      hasCost: hasCostByAnyKey(keys),
+      hasProductMapping,
+      resolvedVendorCode,
+      displayVendorCode,
+    };
   }
 
   return {
     hasWbCost,
-    hasOzonCost,
+    resolveOzonCost,
   };
 }
 
@@ -191,6 +228,7 @@ function uniquePushMissingItem(
   const key = [
     item.marketplace,
     item.companyName,
+    item.issueType ?? "MISSING_COST",
     normalizeText(item.vendorCode),
     normalizeText(item.externalId),
   ].join("|");
@@ -282,7 +320,7 @@ export async function getCostCoverageSummary(params: {
     }),
   ]);
 
-  const { hasWbCost, hasOzonCost } = createCostResolvers({
+  const { hasWbCost, resolveOzonCost } = createCostResolvers({
     costs,
     wbProductCards,
     ozonProducts,
@@ -290,6 +328,10 @@ export async function getCostCoverageSummary(params: {
 
   const missingByKey = new Map<string, MissingCostItem>();
   let checkedItemsCount = 0;
+  let technicalWbItemsCount = 0;
+  let technicalWbQuantity = 0;
+  let technicalWbAmount = 0;
+  let unmappedOzonItemsCount = 0;
 
   for (const row of wbRows) {
     const vendorCode = cleanText(row.vendorCode);
@@ -301,6 +343,17 @@ export async function getCostCoverageSummary(params: {
 
     if (!vendorCode && !nmId) continue;
     if (quantity <= 0 && amount <= 0) continue;
+
+    // WB sometimes contains technical/unrecognized rows with qty but zero turnover.
+    // They should not be mixed with real missing cost because they do not overstate profit by revenue.
+    if (amount <= 0) {
+      if (!hasWbCost({ vendorCode, nmId })) {
+        technicalWbItemsCount += 1;
+        technicalWbQuantity += quantity;
+        technicalWbAmount += amount;
+      }
+      continue;
+    }
 
     checkedItemsCount += 1;
 
@@ -314,6 +367,7 @@ export async function getCostCoverageSummary(params: {
       productName: cleanText(row.productName) || vendorCode || nmId || "Без названия",
       quantity,
       amount,
+      issueType: "MISSING_COST",
     });
   }
 
@@ -321,25 +375,34 @@ export async function getCostCoverageSummary(params: {
     const vendorCode = cleanText(row.vendorCode);
     const sku = cleanText(row.sku);
     const quantity = Math.abs(toNumber(row._sum.quantity));
-    const amount = Math.abs(
-      toNumber(row._sum.salesAmount) || toNumber(row._sum.totalAmount)
-    );
+    const salesAmount = Math.abs(toNumber(row._sum.salesAmount));
+    const totalAmount = Math.abs(toNumber(row._sum.totalAmount));
+    const amount = salesAmount || totalAmount;
 
     if (!vendorCode && !sku) continue;
-    if (quantity <= 0 && amount <= 0) continue;
+
+    // Cost coverage should check product movements, not marketplace service rows.
+    if (quantity <= 0 && salesAmount <= 0) continue;
 
     checkedItemsCount += 1;
 
-    if (hasOzonCost({ vendorCode, sku })) continue;
+    const resolved = resolveOzonCost({ vendorCode, sku });
+
+    if (resolved.hasCost) continue;
+
+    if (!resolved.hasProductMapping) {
+      unmappedOzonItemsCount += 1;
+    }
 
     uniquePushMissingItem(missingByKey, {
       marketplace: "OZON",
       companyName: cleanText(row.companyName) || "Без компании",
-      vendorCode: vendorCode || "—",
+      vendorCode: vendorCode || resolved.displayVendorCode || "—",
       externalId: sku || "—",
-      productName: vendorCode || sku || "Без названия",
+      productName: vendorCode || resolved.displayVendorCode || sku || "Без названия",
       quantity,
       amount,
+      issueType: resolved.hasProductMapping ? "MISSING_COST" : "MISSING_OZON_MAPPING",
     });
   }
 
@@ -370,5 +433,9 @@ export async function getCostCoverageSummary(params: {
     missingAmount,
     examples: missingItems.slice(0, params.examplesLimit ?? 8),
     hasMissingCosts: missingItems.length > 0,
+    technicalWbItemsCount,
+    technicalWbQuantity,
+    technicalWbAmount,
+    unmappedOzonItemsCount,
   };
 }

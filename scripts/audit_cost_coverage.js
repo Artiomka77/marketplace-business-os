@@ -1,11 +1,13 @@
 /* eslint-disable no-console */
 /**
- * Cost coverage audit.
+ * Cost coverage audit v7.2.
  *
  * Safe diagnostic script:
  * - Reads DB via pg directly (no PrismaClient, so it works with Prisma 7 projects in temporary Node containers).
  * - Does not change any DB data.
  * - Checks sold WB/Ozon items for missing or zero ProductCost.
+ * - Separates technical WB zero-turnover rows from real missing cost.
+ * - Separates Ozon SKU mapping problems from true missing ProductCost.
  */
 
 const { Client } = require('pg');
@@ -20,6 +22,8 @@ function normalizeText(value) {
   return String(value ?? '')
     .toLowerCase()
     .replaceAll('ё', 'е')
+    .replace(/[–—−]/g, '-')
+    .replace(/\s*-\s*/g, '-')
     .replace(/\s+/g, ' ')
     .trim();
 }
@@ -73,10 +77,10 @@ function buildCostLookups(costs) {
   return { costByVendorCode, costByNmId };
 }
 
-function getOzonBaseArticle(value) {
-  const vendorCode = cleanText(value);
-  if (!vendorCode) return '';
-  return cleanText(vendorCode.split('-')[0]);
+function getBaseArticle(value) {
+  const text = cleanText(value);
+  if (!text) return '';
+  return cleanText(text.split('-')[0]);
 }
 
 function buildWbSupplierArticleByNmId(cards) {
@@ -93,24 +97,28 @@ function buildWbSupplierArticleByNmId(cards) {
   return result;
 }
 
-function buildOzonVendorCodeBySku(products) {
-  const result = new Map();
+function buildOzonProductLookup(products) {
+  const normalizedVendorCodeBySku = new Map();
+  const displayVendorCodeBySku = new Map();
 
   for (const product of products) {
     const sku = normalizeText(product.sku);
-    const vendorCode = normalizeText(product.vendorCode);
+    const normalizedVendorCode = normalizeText(product.vendorCode);
+    const displayVendorCode = cleanText(product.vendorCode);
 
-    if (!sku || !vendorCode || result.has(sku)) continue;
-    result.set(sku, vendorCode);
+    if (!sku || !normalizedVendorCode || normalizedVendorCodeBySku.has(sku)) continue;
+    normalizedVendorCodeBySku.set(sku, normalizedVendorCode);
+    displayVendorCodeBySku.set(sku, displayVendorCode || normalizedVendorCode);
   }
 
-  return result;
+  return { normalizedVendorCodeBySku, displayVendorCodeBySku };
 }
 
 function uniquePush(map, item) {
   const key = [
     item.marketplace,
     item.companyName,
+    item.issueType || 'MISSING_COST',
     normalizeText(item.vendorCode),
     normalizeText(item.externalId),
   ].join('|');
@@ -132,6 +140,17 @@ function money(value) {
   }).format(toNumber(value)) + ' ₽';
 }
 
+function printItems(title, items, limit = 50) {
+  if (items.length === 0) return;
+
+  console.log(title);
+  for (const item of items.slice(0, limit)) {
+    console.log(
+      `${item.marketplace}\t${item.companyName}\t${item.vendorCode}\t${item.externalId}\tqty=${Math.round(item.quantity)}\tamount=${Math.round(item.amount)}\t${item.issueType || ''}\t${item.productName}`
+    );
+  }
+}
+
 async function main() {
   const dateFromText = argValue('dateFrom', process.env.DATE_FROM || null);
   const dateToText = argValue('dateTo', process.env.DATE_TO || null);
@@ -150,104 +169,122 @@ async function main() {
   try {
     console.log('[cost-coverage] start', { dateFrom: dateFromText, dateTo: dateToText, companyName });
 
-    const [costs, wbProductCards, ozonProducts, wbRows, ozonRows] = await Promise.all([
-      query(
-        client,
-        `
-          SELECT "vendorCode", "nmId", "costPrice"
-          FROM "ProductCost"
-          ORDER BY "costDate" DESC NULLS LAST, "createdAt" DESC
-        `
-      ),
-      query(
-        client,
-        `
-          SELECT "nmId", "vendorCode"
-          FROM "WbProductCard"
-          WHERE ($1::text = 'ALL' OR "companyName" = $1::text)
-        `,
-        [companyName]
-      ),
-      query(
-        client,
-        `
-          SELECT "sku", "vendorCode"
-          FROM "OzonProduct"
-          WHERE ($1::text = 'ALL' OR "companyName" = $1::text)
-        `,
-        [companyName]
-      ),
-      query(
-        client,
-        `
-          SELECT
-            COALESCE("companyName", '') AS "companyName",
-            COALESCE("vendorCode", '') AS "vendorCode",
-            COALESCE("nmId", '') AS "nmId",
-            COALESCE("productName", '') AS "productName",
-            SUM(COALESCE("quantity", 0)) AS "quantity",
-            SUM(COALESCE("wbRealizedAmount", 0)) AS "wbRealizedAmount",
-            SUM(COALESCE("sellerPayout", 0)) AS "sellerPayout"
-          FROM "WbSale"
-          WHERE "saleDate" >= $1::timestamptz
-            AND "saleDate" < $2::timestamptz
-            AND ($3::text = 'ALL' OR "companyName" = $3::text)
-          GROUP BY "companyName", "vendorCode", "nmId", "productName"
-        `,
-        [dateFrom, dateToExclusive, companyName]
-      ),
-      query(
-        client,
-        `
-          SELECT
-            COALESCE("companyName", '') AS "companyName",
-            COALESCE("vendorCode", '') AS "vendorCode",
-            COALESCE("sku", '') AS "sku",
-            SUM(COALESCE("quantity", 0)) AS "quantity",
-            SUM(COALESCE("salesAmount", 0)) AS "salesAmount",
-            SUM(COALESCE("totalAmount", 0)) AS "totalAmount"
-          FROM "OzonFinance"
-          WHERE "accrualDate" >= $1::timestamptz
-            AND "accrualDate" < $2::timestamptz
-            AND ($3::text = 'ALL' OR "companyName" = $3::text)
-          GROUP BY "companyName", "vendorCode", "sku"
-        `,
-        [dateFrom, dateToExclusive, companyName]
-      ),
-    ]);
+    const costs = await query(
+      client,
+      `
+        SELECT "vendorCode", "nmId", "costPrice"
+        FROM "ProductCost"
+        ORDER BY "costDate" DESC NULLS LAST, "createdAt" DESC
+      `
+    );
+
+    const wbProductCards = await query(
+      client,
+      `
+        SELECT "nmId", "vendorCode"
+        FROM "WbProductCard"
+        WHERE ($1::text = 'ALL' OR "companyName" = $1::text)
+      `,
+      [companyName]
+    );
+
+    const ozonProducts = await query(
+      client,
+      `
+        SELECT "sku", "vendorCode"
+        FROM "OzonProduct"
+        WHERE ($1::text = 'ALL' OR "companyName" = $1::text)
+      `,
+      [companyName]
+    );
+
+    const wbRows = await query(
+      client,
+      `
+        SELECT
+          COALESCE("companyName", '') AS "companyName",
+          COALESCE("vendorCode", '') AS "vendorCode",
+          COALESCE("nmId", '') AS "nmId",
+          COALESCE("productName", '') AS "productName",
+          SUM(COALESCE("quantity", 0)) AS "quantity",
+          SUM(COALESCE("wbRealizedAmount", 0)) AS "wbRealizedAmount",
+          SUM(COALESCE("sellerPayout", 0)) AS "sellerPayout"
+        FROM "WbSale"
+        WHERE "saleDate" >= $1::timestamptz
+          AND "saleDate" < $2::timestamptz
+          AND ($3::text = 'ALL' OR "companyName" = $3::text)
+        GROUP BY "companyName", "vendorCode", "nmId", "productName"
+      `,
+      [dateFrom, dateToExclusive, companyName]
+    );
+
+    const ozonRows = await query(
+      client,
+      `
+        SELECT
+          COALESCE("companyName", '') AS "companyName",
+          COALESCE("vendorCode", '') AS "vendorCode",
+          COALESCE("sku", '') AS "sku",
+          SUM(COALESCE("quantity", 0)) AS "quantity",
+          SUM(COALESCE("salesAmount", 0)) AS "salesAmount",
+          SUM(COALESCE("totalAmount", 0)) AS "totalAmount"
+        FROM "OzonFinance"
+        WHERE "accrualDate" >= $1::timestamptz
+          AND "accrualDate" < $2::timestamptz
+          AND ($3::text = 'ALL' OR "companyName" = $3::text)
+        GROUP BY "companyName", "vendorCode", "sku"
+      `,
+      [dateFrom, dateToExclusive, companyName]
+    );
 
     const { costByVendorCode, costByNmId } = buildCostLookups(costs);
     const wbSupplierArticleByNmId = buildWbSupplierArticleByNmId(wbProductCards);
-    const ozonVendorCodeBySku = buildOzonVendorCodeBySku(ozonProducts);
+    const ozonProductLookup = buildOzonProductLookup(ozonProducts);
     const missing = new Map();
+    const technicalWbRows = [];
     let checked = 0;
 
-    function hasWbCost(row) {
-      const vendorCode = normalizeText(row.vendorCode);
-      const nmId = normalizeText(row.nmId);
+    function hasCostByAnyKey(keys) {
+      for (const key of keys) {
+        const normalizedKey = normalizeText(key);
+        if (!normalizedKey) continue;
 
-      if (vendorCode && costByVendorCode.has(vendorCode)) return true;
-      if (nmId && costByNmId.has(nmId)) return true;
+        if (costByVendorCode.has(normalizedKey) || costByNmId.has(normalizedKey)) return true;
 
-      const supplierArticle = nmId ? wbSupplierArticleByNmId.get(nmId) || '' : '';
-      return Boolean(supplierArticle && costByVendorCode.has(supplierArticle));
+        const baseArticle = normalizeText(getBaseArticle(normalizedKey));
+        if (baseArticle && (costByVendorCode.has(baseArticle) || costByNmId.has(baseArticle))) return true;
+
+        const supplierArticle = wbSupplierArticleByNmId.get(normalizedKey) || '';
+        if (supplierArticle && costByVendorCode.has(supplierArticle)) return true;
+
+        const supplierArticleByBase = baseArticle ? wbSupplierArticleByNmId.get(baseArticle) || '' : '';
+        if (supplierArticleByBase && costByVendorCode.has(supplierArticleByBase)) return true;
+      }
+
+      return false;
     }
 
-    function hasOzonCost(row) {
+    function hasWbCost(row) {
+      return hasCostByAnyKey([row.vendorCode, row.nmId]);
+    }
+
+    function resolveOzon(row) {
       const sku = normalizeText(row.sku);
       const directVendorCode = normalizeText(row.vendorCode);
-      const mappedVendorCode = sku ? ozonVendorCodeBySku.get(sku) || '' : '';
-      const vendorCode = directVendorCode || mappedVendorCode || sku;
+      const mappedVendorCode = sku ? ozonProductLookup.normalizedVendorCodeBySku.get(sku) || '' : '';
+      const mappedDisplayVendorCode = sku ? ozonProductLookup.displayVendorCodeBySku.get(sku) || '' : '';
+      const hasProductMapping = Boolean(directVendorCode || mappedVendorCode);
+      const resolvedVendorCode = directVendorCode || mappedVendorCode || sku;
+      const displayVendorCode = cleanText(row.vendorCode) || mappedDisplayVendorCode || cleanText(row.sku) || '—';
 
-      if (!vendorCode) return false;
-      if (costByVendorCode.has(vendorCode) || costByNmId.has(vendorCode)) return true;
+      const keys = [directVendorCode, mappedVendorCode, sku, getBaseArticle(resolvedVendorCode)];
 
-      const baseArticle = normalizeText(getOzonBaseArticle(vendorCode));
-      if (!baseArticle) return false;
-      if (costByVendorCode.has(baseArticle) || costByNmId.has(baseArticle)) return true;
-
-      const supplierArticle = wbSupplierArticleByNmId.get(baseArticle) || '';
-      return Boolean(supplierArticle && costByVendorCode.has(supplierArticle));
+      return {
+        hasCost: hasCostByAnyKey(keys),
+        hasProductMapping,
+        resolvedVendorCode,
+        displayVendorCode,
+      };
     }
 
     for (const row of wbRows) {
@@ -258,6 +295,22 @@ async function main() {
 
       if (!vendorCode && !nmId) continue;
       if (quantity <= 0 && amount <= 0) continue;
+
+      if (amount <= 0) {
+        if (!hasWbCost({ vendorCode, nmId })) {
+          technicalWbRows.push({
+            marketplace: 'WB',
+            companyName: cleanText(row.companyName) || 'Без компании',
+            vendorCode: vendorCode || '—',
+            externalId: nmId || '—',
+            productName: cleanText(row.productName) || vendorCode || nmId || 'Без названия',
+            quantity,
+            amount,
+            issueType: 'TECHNICAL_ZERO_TURNOVER',
+          });
+        }
+        continue;
+      }
 
       checked += 1;
 
@@ -271,6 +324,7 @@ async function main() {
         productName: cleanText(row.productName) || vendorCode || nmId || 'Без названия',
         quantity,
         amount,
+        issueType: 'MISSING_COST',
       });
     }
 
@@ -278,51 +332,58 @@ async function main() {
       const vendorCode = cleanText(row.vendorCode);
       const sku = cleanText(row.sku);
       const quantity = Math.abs(toNumber(row.quantity));
-      const amount = Math.abs(toNumber(row.salesAmount) || toNumber(row.totalAmount));
+      const salesAmount = Math.abs(toNumber(row.salesAmount));
+      const totalAmount = Math.abs(toNumber(row.totalAmount));
+      const amount = salesAmount || totalAmount;
 
       if (!vendorCode && !sku) continue;
-      if (quantity <= 0 && amount <= 0) continue;
+      if (quantity <= 0 && salesAmount <= 0) continue;
 
       checked += 1;
 
-      if (hasOzonCost({ vendorCode, sku })) continue;
+      const resolved = resolveOzon({ vendorCode, sku });
+      if (resolved.hasCost) continue;
 
       uniquePush(missing, {
         marketplace: 'OZON',
         companyName: cleanText(row.companyName) || 'Без компании',
-        vendorCode: vendorCode || '—',
+        vendorCode: vendorCode || resolved.displayVendorCode || '—',
         externalId: sku || '—',
-        productName: vendorCode || sku || 'Без названия',
+        productName: vendorCode || resolved.displayVendorCode || sku || 'Без названия',
         quantity,
         amount,
+        issueType: resolved.hasProductMapping ? 'MISSING_COST' : 'MISSING_OZON_MAPPING',
       });
     }
 
     const missingItems = Array.from(missing.values()).sort((a, b) => (b.amount - a.amount) || (b.quantity - a.quantity));
+    const missingCostItems = missingItems.filter((item) => item.issueType === 'MISSING_COST');
+    const missingMappingItems = missingItems.filter((item) => item.issueType === 'MISSING_OZON_MAPPING');
     const wbMissing = missingItems.filter((item) => item.marketplace === 'WB').length;
     const ozonMissing = missingItems.filter((item) => item.marketplace === 'OZON').length;
-    const quantity = missingItems.reduce((sum, item) => sum + item.quantity, 0);
-    const amount = missingItems.reduce((sum, item) => sum + item.amount, 0);
+    const missingQuantity = missingItems.reduce((sum, item) => sum + item.quantity, 0);
+    const missingAmount = missingItems.reduce((sum, item) => sum + item.amount, 0);
+    const technicalQuantity = technicalWbRows.reduce((sum, item) => sum + item.quantity, 0);
 
-    console.log('[cost-coverage] checked unique items:', checked);
-    console.log('[cost-coverage] missing unique items:', missingItems.length);
+    console.log('[cost-coverage] checked unique sold items with turnover:', checked);
+    console.log('[cost-coverage] missing cost/mapping unique items:', missingItems.length);
+    console.log('[cost-coverage] missing real cost items:', missingCostItems.length);
+    console.log('[cost-coverage] missing Ozon mapping/cost items:', missingMappingItems.length);
     console.log('[cost-coverage] missing WB:', wbMissing);
     console.log('[cost-coverage] missing Ozon:', ozonMissing);
-    console.log('[cost-coverage] missing quantity:', Math.round(quantity));
-    console.log('[cost-coverage] missing turnover:', money(amount));
+    console.log('[cost-coverage] missing quantity:', Math.round(missingQuantity));
+    console.log('[cost-coverage] missing turnover:', money(missingAmount));
+    console.log('[cost-coverage] ignored technical WB zero-turnover rows:', technicalWbRows.length);
+    console.log('[cost-coverage] ignored technical WB zero-turnover quantity:', Math.round(technicalQuantity));
 
     if (missingItems.length > 0) {
-      console.log('[cost-coverage] ATTENTION: missing cost price for sold items. Profit can be overstated.');
-      console.log('[cost-coverage] top missing items:');
-
-      for (const item of missingItems.slice(0, 50)) {
-        console.log(
-          `${item.marketplace}\t${item.companyName}\t${item.vendorCode}\t${item.externalId}\tqty=${Math.round(item.quantity)}\tamount=${Math.round(item.amount)}\t${item.productName}`
-        );
-      }
+      console.log('[cost-coverage] ATTENTION: missing cost price or Ozon SKU mapping for sold items. Profit can be overstated.');
+      printItems('[cost-coverage] top missing cost/mapping items:', missingItems);
     } else {
-      console.log('[cost-coverage] OK: cost price exists for all checked sold items');
+      console.log('[cost-coverage] OK: cost price/mapping exists for all checked sold items with turnover');
     }
+
+    printItems('[cost-coverage] ignored technical WB zero-turnover rows:', technicalWbRows, 20);
   } finally {
     await client.end();
   }

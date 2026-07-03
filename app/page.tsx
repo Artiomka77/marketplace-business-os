@@ -3233,10 +3233,10 @@ export default async function HomePage({ searchParams }: Props) {
       level: costCoverage.hasMissingCosts ? "danger" : "ok",
       title: "Себестоимость",
       text: costCoverage.hasMissingCosts
-        ? `Не загружена себестоимость по ${formatNumber(
+        ? `Нет себестоимости или сопоставления Ozon по ${formatNumber(
             costCoverage.missingItemsCount
-          )} артикулам. Прибыль может быть завышена.`
-        : `Себестоимость найдена по всем проверенным артикулам: ${formatNumber(
+          )} артикулам на ${formatCurrency(costCoverage.missingAmount)}. Прибыль может быть завышена.`
+        : `Себестоимость найдена по всем товарам с оборотом: ${formatNumber(
             costCoverage.checkedItemsCount
           )}.`,
       href: "/import",
@@ -3452,7 +3452,7 @@ export default async function HomePage({ searchParams }: Props) {
               {costCoverage.hasMissingCosts ? (
                 <span
                   className="inline-flex items-center gap-1.5 rounded-2xl border border-red-200 bg-red-50 px-3 py-2 text-xs font-black text-red-700 shadow-sm"
-                  title={`Нет себестоимости по ${costCoverage.missingItemsCount} артикулам`}
+                  title={`Нет себестоимости или сопоставления по ${costCoverage.missingItemsCount} артикулам`}
                 >
                   <span>⚠</span>
                   <span>Нет себестоимости</span>
@@ -3482,10 +3482,11 @@ export default async function HomePage({ searchParams }: Props) {
                   Себестоимость загружена не по всем проданным артикулам
                 </h2>
                 <p className="mt-2 max-w-4xl text-sm leading-6 text-red-800">
-                  За выбранный период нет себестоимости по {formatNumber(costCoverage.missingItemsCount)} артикулам
+                  За выбранный период нет себестоимости или сопоставления Ozon по {formatNumber(costCoverage.missingItemsCount)} артикулам
                   {costCoverage.missingWbItemsCount > 0 ? ` · WB: ${formatNumber(costCoverage.missingWbItemsCount)}` : ""}
-                  {costCoverage.missingOzonItemsCount > 0 ? ` · Ozon: ${formatNumber(costCoverage.missingOzonItemsCount)}` : ""}.
-                  Пока себестоимость не загружена, прибыль по этим товарам может быть завышена.
+                  {costCoverage.missingOzonItemsCount > 0 ? ` · Ozon: ${formatNumber(costCoverage.missingOzonItemsCount)}` : ""}
+                  {costCoverage.unmappedOzonItemsCount > 0 ? ` · не сопоставлено Ozon SKU: ${formatNumber(costCoverage.unmappedOzonItemsCount)}` : ""}.
+                  Оборот по этим позициям: {formatCurrency(costCoverage.missingAmount)}. Пока себестоимость или Ozon-сопоставление не исправлены, прибыль по этим товарам может быть завышена.
                 </p>
               </div>
 
@@ -3513,7 +3514,7 @@ export default async function HomePage({ searchParams }: Props) {
                       {item.productName}
                     </div>
                     <div className="mt-1 text-xs font-semibold leading-5 text-slate-500">
-                      Артикул: {item.vendorCode} · ID: {item.externalId}
+                      Артикул: {item.vendorCode} · ID: {item.externalId}{item.issueType === "MISSING_OZON_MAPPING" ? " · нет сопоставления Ozon" : ""}
                     </div>
                     <div className="mt-2 text-xs font-black text-red-700">
                       Кол-во: {formatNumber(Math.round(item.quantity))} · Сумма: {formatCurrency(item.amount)}
