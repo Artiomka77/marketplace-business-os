@@ -339,23 +339,27 @@ export default async function FinancePage({
     },
   });
 
-  const selectedLoanIds = loans.map((loan) => loan.id);
+  const activeLoans = loans.filter(
+    (loan) => Number(loan.currentDebt ?? 0) > 0
+  );
 
-  const loanPayments30Days = await prisma.loanPayment.findMany({
-    where: {
-      paymentDate: {
-        gte: today,
-        lte: in30Days,
-      },
-      ...(companyName
-        ? {
+  const selectedLoanIds = activeLoans.map((loan) => loan.id);
+
+  const loanPayments30Days =
+    selectedLoanIds.length > 0
+      ? await prisma.loanPayment.findMany({
+          where: {
+            paid: false,
             loanId: {
               in: selectedLoanIds,
             },
-          }
-        : {}),
-    },
-  });
+            paymentDate: {
+              gte: today,
+              lte: in30Days,
+            },
+          },
+        })
+      : [];
 
   const totalCash = accounts.reduce(
     (sum, account) => sum + Number(account.currentBalance ?? 0),
@@ -377,7 +381,7 @@ export default async function FinancePage({
     netCashFlowPreviousPeriod
   );
 
-  const totalDebt = loans.reduce(
+  const totalDebt = activeLoans.reduce(
     (sum, loan) => sum + Number(loan.currentDebt ?? 0),
     0
   );
