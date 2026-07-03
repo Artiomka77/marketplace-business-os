@@ -47,6 +47,8 @@ type CompanyDashboardRow = {
   profitAfterOwnerWithdrawal: number;
   cashFlowResult: number;
   adsCost: number;
+  wbAdsCost: number;
+  ozonAdsCost: number;
   drr: number | null;
   drrByOrders: number | null;
   loanPayments: number;
@@ -2255,6 +2257,14 @@ function CompanyCard({
   dateTo: string;
 }) {
   const drrText = row.drr !== null ? formatPercent(row.drr) : "—";
+  const wbDrr = getRevenuePercent(row.wbAdsCost, row.wbRevenue);
+  const ozonDrr = getRevenuePercent(row.ozonAdsCost, row.ozonRevenue);
+  const wbDrrText = wbDrr !== null ? formatPercent(wbDrr) : "—";
+  const ozonDrrText = ozonDrr !== null ? formatPercent(ozonDrr) : "—";
+  const margin = getRevenuePercent(row.operatingProfitAfterTax, row.totalRevenue);
+  const marginText = margin !== null ? formatPercent(margin) : "—";
+  const ownerResultPercent = getRevenuePercent(row.profitAfterOwnerWithdrawal, row.totalRevenue);
+  const ownerResultText = ownerResultPercent !== null ? formatPercent(ownerResultPercent) : "—";
   const openCompanyHref = buildDashboardHref({
     period: "custom",
     companyName: row.companyName,
@@ -2360,50 +2370,49 @@ function CompanyCard({
 
         <Link href="/ads-mapping" className="group min-w-0">
           <div className="flex items-center justify-between gap-2">
-            <div className="text-xs font-black text-slate-950">Реклама</div>
+            <div className="text-xs font-black text-slate-950">ДРР по маркетплейсам</div>
             <span className="text-slate-300 transition group-hover:translate-x-1 group-hover:text-indigo-500">→</span>
           </div>
           <div className="mt-3 space-y-2 text-[11px] leading-4">
             <div>
-              <div className="font-bold uppercase tracking-[0.08em] text-slate-400">Расходы</div>
-              <div className={row.adsCost > 0 ? "font-black text-red-600" : "font-black text-slate-950"}>
-                {formatCurrency(row.adsCost)}
+              <div className="font-bold uppercase tracking-[0.08em] text-slate-400">Итого</div>
+              <div className={row.drr !== null && row.drr > 12 ? "font-black text-red-600" : "font-black text-slate-950"}>
+                {drrText} · {formatCurrency(row.adsCost)}
               </div>
             </div>
-            <div>
-              <div className="font-bold uppercase tracking-[0.08em] text-slate-400">ДРР</div>
-              <div className={row.drr !== null && row.drr > 12 ? "font-black text-red-600" : "font-black text-slate-950"}>
-                {drrText}
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <div className="font-bold uppercase tracking-[0.08em] text-slate-400">WB</div>
+                <div className={wbDrr !== null && wbDrr > 12 ? "font-black text-red-600" : "font-black text-slate-950"}>
+                  {wbDrrText}
+                </div>
+              </div>
+              <div>
+                <div className="font-bold uppercase tracking-[0.08em] text-slate-400">Ozon</div>
+                <div className={ozonDrr !== null && ozonDrr > 12 ? "font-black text-red-600" : "font-black text-slate-950"}>
+                  {ozonDrrText}
+                </div>
               </div>
             </div>
           </div>
         </Link>
 
-        <Link
-          href={buildOperationsHref({
-            companyName: row.companyName,
-            dateFrom,
-            dateTo,
-            operationType: "ALL",
-            search: "кредит",
-          })}
-          className="group min-w-0"
-        >
+        <Link href="/analytics" className="group min-w-0">
           <div className="flex items-center justify-between gap-2">
-            <div className="text-xs font-black text-slate-950">Кредиты и деньги</div>
+            <div className="text-xs font-black text-slate-950">Эффективность</div>
             <span className="text-slate-300 transition group-hover:translate-x-1 group-hover:text-indigo-500">→</span>
           </div>
           <div className="mt-3 space-y-2 text-[11px] leading-4">
             <div>
-              <div className="font-bold uppercase tracking-[0.08em] text-slate-400">Кредиты</div>
-              <div className={row.loanPayments > 0 ? "font-black text-red-600" : "font-black text-slate-950"}>
-                {formatCurrency(row.loanPayments)}
+              <div className="font-bold uppercase tracking-[0.08em] text-slate-400">Маржинальность</div>
+              <div className={margin !== null && margin < 0 ? "font-black text-red-600" : "font-black text-slate-950"}>
+                {marginText}
               </div>
             </div>
             <div>
-              <div className="font-bold uppercase tracking-[0.08em] text-slate-400">Тело / проценты</div>
-              <div className="font-black text-slate-950">
-                {formatCurrency(row.creditPrincipal)} / {formatCurrency(row.creditInterest)}
+              <div className="font-bold uppercase tracking-[0.08em] text-slate-400">После собственника</div>
+              <div className={row.profitAfterOwnerWithdrawal < 0 ? "font-black text-red-600" : "font-black text-slate-950"}>
+                {formatCurrency(row.profitAfterOwnerWithdrawal)} · {ownerResultText}
               </div>
             </div>
           </div>
@@ -2721,6 +2730,8 @@ async function buildCompanyDashboardRows(params: {
         profitAfterOwnerWithdrawal,
         cashFlowResult,
         adsCost,
+        wbAdsCost,
+        ozonAdsCost,
         drr,
         drrByOrders,
         loanPayments: cash.loanPayments,
@@ -3007,24 +3018,8 @@ export default async function HomePage({ searchParams }: Props) {
   }
 
   logDashboardPerf("getDashboardDailyAnalytics current+previous", dailyAnalyticsStartedAt);
-  const currentReconciliationRows = buildReconciliationRows(marketplaceCurrent, currentDailyPoints);
-  const previousReconciliationRows = buildReconciliationRows(marketplacePrevious, previousDailyPoints);
-  const currentReconciliationProblems = currentReconciliationRows.filter((row) => !row.isOk).length;
-  const previousReconciliationProblems = previousReconciliationRows.filter((row) => !row.isOk).length;
-  const totalReconciliationProblems = currentReconciliationProblems + previousReconciliationProblems;
-  const hasDataQualityIssues = totalReconciliationProblems > 0;
   const hasOrderCoverageWarning = hasPartialOrderCoverage(current);
   const ordersCoverageText = formatOrderCoverage(current);
-
-  const debugHref = buildDashboardHref({
-    period: selectedPeriod.key,
-    companyName: selectedCompanyValue,
-    marketplaceCompanyName: selectedMarketplaceCompanyValue,
-    dateFrom: selectedPeriod.key === "custom" ? selectedPeriod.dateFrom : undefined,
-    dateTo: selectedPeriod.key === "custom" ? selectedPeriod.dateTo : undefined,
-    chartPreset: selectedChartPreset.key,
-    debug: true,
-  });
 
   const presetPeriods = periodOptions.filter((period) => period.key !== "custom");
 
@@ -3236,19 +3231,6 @@ export default async function HomePage({ searchParams }: Props) {
                 </span>
               ) : null}
 
-              {hasDataQualityIssues ? (
-                <Link
-                  href={debugHref}
-                  className="inline-flex items-center gap-1.5 rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-black text-amber-700 shadow-sm transition hover:border-amber-300 hover:bg-amber-100"
-                  title="Обнаружено расхождение между итогами периода и дневной детализацией. Нажмите, чтобы открыть техническую сверку."
-                >
-                  <span>⚠</span>
-                  <span>Данные требуют проверки</span>
-                  <span className="rounded-full bg-white/70 px-1.5 py-0.5 text-[10px] text-amber-700 ring-1 ring-amber-200">
-                    {totalReconciliationProblems}
-                  </span>
-                </Link>
-              ) : null}
             </div>
 
             <Link href="/import" className="primary-button w-fit gap-2 py-2.5">
@@ -3457,7 +3439,7 @@ export default async function HomePage({ searchParams }: Props) {
           </div>
         </section>
 
-        {showDebug && hasDataQualityIssues ? (
+        {showDebug ? (
           <DailyDataReconciliation
             currentSummary={marketplaceCurrent}
             previousSummary={marketplacePrevious}
@@ -3475,7 +3457,7 @@ export default async function HomePage({ searchParams }: Props) {
                   Разрез по компаниям
                 </h2>
                 <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">
-                  Главное по каждой компании: выручка, прибыль, ДДС, реклама, кредиты и ассортимент.
+                  Главное по каждой компании: выручка, прибыль, ДДС, каналы продаж и ДРР по маркетплейсам.
                 </p>
               </div>
 
