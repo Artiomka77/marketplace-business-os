@@ -584,6 +584,61 @@ export default async function LoansPage({
   const activeLoanIdsCount = new Set(activeLoanIds).size;
 
 
+  const debtLoadColors = [
+    "#1d4ed8",
+    "#6366f1",
+    "#f59e0b",
+    "#ef4444",
+    "#a855f7",
+    "#94a3b8",
+  ];
+
+  const debtLoadTopLoans = loansByMonthlyBurden.slice(0, 5);
+  const debtLoadTopAmount = debtLoadTopLoans.reduce(
+    (sum, loan) => sum + loan.monthlyPayment,
+    0
+  );
+  const debtLoadOtherAmount = Math.max(0, paymentInMonth - debtLoadTopAmount);
+  const debtLoadLegend = [
+    ...debtLoadTopLoans.map((loan, index) => ({
+      id: loan.id,
+      label: loan.displayName,
+      amount: loan.monthlyPayment,
+      percent: getSafeRatio(loan.monthlyPayment, paymentInMonth),
+      color: debtLoadColors[index] ?? "#94a3b8",
+    })),
+    ...(debtLoadOtherAmount > 0
+      ? [
+          {
+            id: "other",
+            label: `Другие кредиты (${Math.max(
+              0,
+              activeLoanIdsCount - debtLoadTopLoans.length
+            )})`,
+            amount: debtLoadOtherAmount,
+            percent: getSafeRatio(debtLoadOtherAmount, paymentInMonth),
+            color: debtLoadColors[5],
+          },
+        ]
+      : []),
+  ];
+
+  let debtLoadCursor = 0;
+  const debtLoadConicGradient =
+    debtLoadLegend.length > 0 && paymentInMonth > 0
+      ? `conic-gradient(${debtLoadLegend
+          .map((segment) => {
+            const start = debtLoadCursor;
+            const end = Math.min(100, start + segment.percent);
+            debtLoadCursor = end;
+            return `${segment.color} ${start.toFixed(2)}% ${end.toFixed(2)}%`;
+          })
+          .join(", ")}, #e2e8f0 ${debtLoadCursor.toFixed(2)}% 100%)`
+      : "conic-gradient(#e2e8f0 0% 100%)";
+
+  const monthlyMatrix = paymentSchedule.slice(0, 6);
+
+
   return (
     <main className="min-h-screen bg-[#f5f7fb] px-4 py-5 sm:px-6 lg:px-8">
       <div className="mx-auto max-w-[1600px] space-y-5">
@@ -750,10 +805,10 @@ export default async function LoansPage({
           />
         </section>
 
-        <section className="grid gap-6 xl:grid-cols-[1.22fr_0.78fr]">
+        <section className="grid gap-5 xl:grid-cols-[1.28fr_1fr]">
           <section
             id="recommendations"
-            className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm shadow-slate-200/70"
+            className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm shadow-slate-200/70"
           >
             <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
               <div>
@@ -766,18 +821,18 @@ export default async function LoansPage({
                 </p>
               </div>
 
-              <span className="rounded-full bg-indigo-50 px-3 py-1 text-xs font-black text-indigo-700 ring-1 ring-indigo-100">
+              <span className="shrink-0 rounded-full bg-indigo-50 px-3 py-1 text-xs font-black text-indigo-700 ring-1 ring-indigo-100">
                 Рекомендуемый вариант
               </span>
             </div>
 
-            <div className="mt-5 grid gap-4 lg:grid-cols-3">
+            <div className="mt-4 grid gap-3 lg:grid-cols-3">
               <RecommendationCard
                 number="1"
                 tone="green"
                 title="Снизить ежемесячный платёж"
                 description="Гасите кредиты с самым большим платежом в месяц."
-                headers={["Кредит", "Платёж/мес", "Потенциал"]}
+                headers={["Кредит", "Платёж в мес.", "Потенциал"]}
                 rows={loansByMonthlyBurden.slice(0, 3).map((loan) => [
                   loan.displayName,
                   formatMoney(loan.monthlyPayment),
@@ -808,7 +863,7 @@ export default async function LoansPage({
                 tone="purple"
                 title="Быстро закрыть мелкие кредиты"
                 description="Закрывайте небольшие долги, чтобы снизить число обязательств."
-                headers={["Кредит", "Долг", "Платёж/мес"]}
+                headers={["Кредит", "Долг", "Платёж в мес."]}
                 rows={loansBySmallDebt.slice(0, 3).map((loan) => [
                   loan.displayName,
                   formatMoney(loan.currentDebt),
@@ -819,7 +874,7 @@ export default async function LoansPage({
             </div>
           </section>
 
-          <section className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm shadow-slate-200/70">
+          <section className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm shadow-slate-200/70">
             <div className="flex items-start justify-between gap-3">
               <div>
                 <h2 className="text-xl font-black text-slate-950">
@@ -838,58 +893,64 @@ export default async function LoansPage({
               </Link>
             </div>
 
-            <div className="mt-5 divide-y divide-slate-100 overflow-hidden rounded-2xl border border-slate-100">
-              {nextPayments.map((payment) => (
-                <div
-                  key={payment.id}
-                  className="grid grid-cols-[58px_1fr_auto] items-center gap-4 bg-white p-4"
-                >
-                  <div className="rounded-2xl bg-slate-50 px-2 py-2 text-center ring-1 ring-slate-100">
-                    <div className="text-lg font-black text-slate-950">
-                      {formatDay(payment.paymentDate)}
-                    </div>
-                    <div className="text-[10px] font-black uppercase tracking-[0.08em] text-slate-400">
-                      {formatShortMonth(payment.paymentDate)}
-                    </div>
-                  </div>
+            <div className="mt-4 overflow-hidden rounded-2xl border border-slate-100">
+              <div className="hidden grid-cols-[64px_1fr_96px_90px_96px] gap-3 bg-slate-50 px-4 py-3 text-[11px] font-black uppercase tracking-[0.08em] text-slate-400 lg:grid">
+                <div>Дата</div>
+                <div>Кредит</div>
+                <div className="text-right">Тело</div>
+                <div className="text-right">Проценты</div>
+                <div className="text-right">Всего</div>
+              </div>
 
-                  <div className="min-w-0">
-                    <div className="truncate text-sm font-black text-slate-950">
+              <div className="divide-y divide-slate-100">
+                {nextPayments.map((payment) => (
+                  <div
+                    key={payment.id}
+                    className="grid gap-3 bg-white px-4 py-3 lg:grid-cols-[64px_1fr_96px_90px_96px] lg:items-center"
+                  >
+                    <div className="flex items-center gap-3 lg:block">
+                      <div className="flex h-12 w-12 shrink-0 flex-col items-center justify-center rounded-2xl bg-slate-50 ring-1 ring-slate-100">
+                        <div className="text-base font-black text-slate-950">
+                          {formatDay(payment.paymentDate)}
+                        </div>
+                        <div className="text-[10px] font-black uppercase tracking-[0.08em] text-slate-400">
+                          {formatShortMonth(payment.paymentDate)}
+                        </div>
+                      </div>
+                      <div className="min-w-0 lg:hidden">
+                        <div className="truncate text-sm font-black text-slate-950">
+                          {getLoanDisplayName(payment.loan)}
+                        </div>
+                        <div className="mt-1 text-xs font-bold text-slate-500">
+                          Тело {formatMoney(getPaymentPrincipal(payment))} · проценты {formatMoney(getPaymentInterest(payment))}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="hidden min-w-0 truncate text-sm font-black text-slate-950 lg:block">
                       {getLoanDisplayName(payment.loan)}
                     </div>
 
-                    <div className="mt-1 grid gap-1 text-xs font-bold text-slate-500 sm:grid-cols-2">
-                      <span>
-                        Тело{" "}
-                        <b className="text-slate-900">
-                          {formatMoney(getPaymentPrincipal(payment))}
-                        </b>
-                      </span>
-                      <span>
-                        Проценты{" "}
-                        <b className="text-amber-600">
-                          {formatMoney(getPaymentInterest(payment))}
-                        </b>
-                      </span>
+                    <div className="hidden text-right text-sm font-bold text-slate-900 lg:block">
+                      {formatMoney(getPaymentPrincipal(payment))}
                     </div>
-                  </div>
 
-                  <div className="text-right">
-                    <div className="text-[10px] font-black uppercase tracking-[0.08em] text-slate-400">
-                      Всего
+                    <div className="hidden text-right text-sm font-bold text-orange-600 lg:block">
+                      {formatMoney(getPaymentInterest(payment))}
                     </div>
-                    <div className="mt-1 text-base font-black text-red-600">
+
+                    <div className="text-right text-base font-black text-red-600 lg:text-sm">
                       {formatMoney(getPaymentTotal(payment))}
                     </div>
                   </div>
-                </div>
-              ))}
+                ))}
 
-              {nextPayments.length === 0 && (
-                <div className="bg-slate-50 p-8 text-center text-sm font-bold text-slate-500">
-                  Ближайших платежей пока нет.
-                </div>
-              )}
+                {nextPayments.length === 0 && (
+                  <div className="bg-slate-50 p-8 text-center text-sm font-bold text-slate-500">
+                    Ближайших платежей пока нет.
+                  </div>
+                )}
+              </div>
             </div>
 
             <Link
@@ -901,15 +962,15 @@ export default async function LoansPage({
           </section>
         </section>
 
-        <section className="grid gap-6 xl:grid-cols-[0.78fr_1.22fr]">
-          <section className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm shadow-slate-200/70">
+        <section className="grid gap-5 xl:grid-cols-[0.72fr_1.28fr]">
+          <section className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm shadow-slate-200/70">
             <div className="flex items-start justify-between gap-3">
               <div>
                 <h2 className="text-xl font-black text-slate-950">
                   Карта долговой нагрузки
                 </h2>
                 <p className="mt-1 text-sm font-medium text-slate-500">
-                  Топ кредитов по величине ежемесячного платежа.
+                  Доля кредитов в ежемесячном платеже.
                 </p>
               </div>
 
@@ -918,73 +979,68 @@ export default async function LoansPage({
               </span>
             </div>
 
-            <div className="mt-6 space-y-5">
-              {loansByMonthlyBurden.slice(0, 5).map((loan, index) => (
-                <div key={loan.id}>
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="min-w-0">
-                      <div className="truncate text-sm font-black text-slate-950">
-                        {loan.displayName}
-                      </div>
-                      <div className="mt-1 text-xs font-bold text-slate-500">
-                        Тело: {formatMoney(loan.currentDebt)} · Ставка: {formatRateLabel({
-                          rate: loan.calculatedAnnualRate,
-                          source: loan.rateSource,
-                        })}
-                      </div>
-                    </div>
-
-                    <div className="text-right">
-                      <div
-                        className={`text-sm font-black ${
-                          index === 0
-                            ? "text-red-600"
-                            : index <= 2
-                              ? "text-orange-600"
-                              : "text-amber-600"
-                        }`}
-                      >
-                        {formatMoney(loan.monthlyPayment)} / мес.
-                      </div>
-                      <div className="mt-1 text-xs font-black text-slate-500">
-                        {loan.burdenPercent.toFixed(1)}%
-                      </div>
-                    </div>
+            <div className="mt-5 grid gap-5 md:grid-cols-[190px_1fr] md:items-center xl:grid-cols-1 2xl:grid-cols-[190px_1fr]">
+              <div className="mx-auto flex h-[180px] w-[180px] items-center justify-center rounded-full p-6 shadow-inner shadow-slate-200"
+                style={{ background: debtLoadConicGradient }}
+              >
+                <div className="flex h-[112px] w-[112px] flex-col items-center justify-center rounded-full bg-white text-center shadow-sm">
+                  <div className="text-lg font-black text-slate-950">
+                    {formatMoney(paymentInMonth)}
                   </div>
-
-                  <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-100">
-                    <div
-                      className={`h-full rounded-full ${
-                        index === 0
-                          ? "bg-red-500"
-                          : index <= 2
-                            ? "bg-orange-400"
-                            : "bg-amber-400"
-                      }`}
-                      style={{
-                        width: `${Math.min(100, Math.max(6, loan.burdenPercent))}%`,
-                      }}
-                    />
+                  <div className="mt-1 text-[11px] font-black uppercase tracking-[0.08em] text-slate-400">
+                    в месяц
                   </div>
                 </div>
-              ))}
+              </div>
 
-              {loansByMonthlyBurden.length === 0 && (
-                <div className="rounded-2xl bg-slate-50 p-8 text-center text-sm font-bold text-slate-500">
-                  Активных кредитов пока нет.
-                </div>
-              )}
+              <div className="space-y-3">
+                {debtLoadLegend.map((segment) => (
+                  <div
+                    key={segment.id}
+                    className="grid grid-cols-[1fr_auto_auto] items-center gap-3 text-sm"
+                  >
+                    <div className="flex min-w-0 items-center gap-2">
+                      <span
+                        className="h-2.5 w-2.5 shrink-0 rounded-full"
+                        style={{ backgroundColor: segment.color }}
+                      />
+                      <span className="truncate font-bold text-slate-700">
+                        {segment.label}
+                      </span>
+                    </div>
+                    <span className="font-black text-slate-950">
+                      {segment.percent.toFixed(1)}%
+                    </span>
+                    <span className="w-[88px] text-right font-bold text-slate-600">
+                      {formatMoney(segment.amount)}
+                    </span>
+                  </div>
+                ))}
+
+                {debtLoadLegend.length === 0 && (
+                  <div className="rounded-2xl bg-slate-50 p-8 text-center text-sm font-bold text-slate-500">
+                    Активных кредитов пока нет.
+                  </div>
+                )}
+              </div>
             </div>
+
+            <a
+              href="#all-loans"
+              className="mt-5 inline-flex text-sm font-black text-indigo-600 hover:text-indigo-500"
+            >
+              Подробнее о нагрузке →
+            </a>
           </section>
 
-          <section className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm shadow-slate-200/70">
+          <section className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm shadow-slate-200/70">
             <div className="flex items-start justify-between gap-3">
               <div>
                 <h2 className="text-xl font-black text-slate-950">
                   План платежей по месяцам
                 </h2>
                 <p className="mt-1 text-sm font-medium text-slate-500">
-                  Плановые платежи по телу и процентам до конца года.
+                  Матрица тела, процентов и общей нагрузки.
                 </p>
               </div>
 
@@ -994,55 +1050,60 @@ export default async function LoansPage({
             </div>
 
             <div className="mt-5 overflow-x-auto">
-              <table className="w-full min-w-[640px] text-sm">
+              <table className="w-full min-w-[760px] text-sm">
                 <thead>
                   <tr className="bg-slate-50 text-left text-xs font-black uppercase tracking-[0.08em] text-slate-400">
                     <th className="rounded-l-2xl px-4 py-3">Месяц</th>
-                    <th className="px-4 py-3 text-right">Платёж всего</th>
-                    <th className="px-4 py-3 text-right">Тело</th>
-                    <th className="px-4 py-3 text-right">Проценты</th>
-                    <th className="rounded-r-2xl px-4 py-3 text-right">
-                      Кредиты
-                    </th>
+                    {monthlyMatrix.map((row, index) => (
+                      <th
+                        key={row.monthDate.toISOString()}
+                        className={`px-4 py-3 text-right ${
+                          index === monthlyMatrix.length - 1 ? "rounded-r-2xl" : ""
+                        }`}
+                      >
+                        {formatShortMonthLabel(row.monthDate)}
+                      </th>
+                    ))}
                   </tr>
                 </thead>
 
                 <tbody>
-                  {paymentSchedule.map((row) => {
-                    const isPeak =
-                      peakMonth &&
-                      monthKey(peakMonth.monthDate) === monthKey(row.monthDate);
+                  <tr className="border-b border-slate-100">
+                    <td className="px-4 py-3 font-bold text-slate-600">Основной долг</td>
+                    {monthlyMatrix.map((row) => (
+                      <td key={`principal-${row.monthDate.toISOString()}`} className="px-4 py-3 text-right font-bold text-slate-900">
+                        {formatMoney(row.principalAmount)}
+                      </td>
+                    ))}
+                  </tr>
 
-                    return (
-                      <tr
-                        key={row.monthDate.toISOString()}
-                        className={`border-b border-slate-100 ${
-                          isPeak ? "bg-indigo-50/50" : ""
+                  <tr className="border-b border-slate-100">
+                    <td className="px-4 py-3 font-bold text-slate-600">Проценты</td>
+                    {monthlyMatrix.map((row) => (
+                      <td key={`interest-${row.monthDate.toISOString()}`} className="px-4 py-3 text-right font-bold text-slate-700">
+                        {formatMoney(row.interestAmount)}
+                      </td>
+                    ))}
+                  </tr>
+
+                  <tr className="bg-slate-50/70">
+                    <td className="rounded-l-2xl px-4 py-3 font-black text-slate-950">Всего платежей</td>
+                    {monthlyMatrix.map((row, index) => (
+                      <td
+                        key={`total-${row.monthDate.toISOString()}`}
+                        className={`px-4 py-3 text-right font-black text-slate-950 ${
+                          index === monthlyMatrix.length - 1 ? "rounded-r-2xl" : ""
                         }`}
                       >
-                        <td className="px-4 py-3 font-black text-slate-950">
-                          {formatShortMonthLabel(row.monthDate)}
-                        </td>
-                        <td className="px-4 py-3 text-right font-black text-red-600">
-                          {formatMoney(row.totalAmount)}
-                        </td>
-                        <td className="px-4 py-3 text-right font-bold text-slate-900">
-                          {formatMoney(row.principalAmount)}
-                        </td>
-                        <td className="px-4 py-3 text-right font-bold text-orange-600">
-                          {formatMoney(row.interestAmount)}
-                        </td>
-                        <td className="px-4 py-3 text-right font-bold text-slate-700">
-                          {row.loansCountNumber}
-                        </td>
-                      </tr>
-                    );
-                  })}
+                        {formatMoney(row.totalAmount)}
+                      </td>
+                    ))}
+                  </tr>
 
-                  {paymentSchedule.length === 0 && (
+                  {monthlyMatrix.length === 0 && (
                     <tr>
                       <td
-                        colSpan={5}
+                        colSpan={7}
                         className="px-4 py-8 text-center text-sm font-bold text-slate-500"
                       >
                         Платежей пока нет.
@@ -1053,12 +1114,21 @@ export default async function LoansPage({
               </table>
             </div>
 
-            <Link
-              href="/finance/calendar"
-              className="mt-4 inline-flex text-sm font-black text-indigo-600 hover:text-indigo-500"
-            >
-              Перейти в платёжный календарь →
-            </Link>
+            <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <Link
+                href="/finance/calendar"
+                className="inline-flex text-sm font-black text-indigo-600 hover:text-indigo-500"
+              >
+                Показать полный график →
+              </Link>
+
+              <div className="flex items-center gap-3 text-sm font-bold text-slate-600">
+                <span>Показывать план до погашения</span>
+                <span className="relative inline-flex h-6 w-11 items-center rounded-full bg-slate-950">
+                  <span className="ml-auto mr-1 h-4 w-4 rounded-full bg-white" />
+                </span>
+              </div>
+            </div>
           </section>
         </section>
 
@@ -1481,36 +1551,35 @@ function RecommendationCard({
   }[tone];
 
   return (
-    <div className={`rounded-[22px] border p-4 xl:p-5 ${color}`}>
-      <div className="text-sm font-black">
+    <div className={`rounded-[22px] border p-3.5 ${color}`}>
+      <div className="text-sm font-black leading-5">
         {number}. {title}
       </div>
 
-      <p className="mt-2 min-h-[44px] text-xs font-semibold leading-5 text-slate-600">
+      <p className="mt-2 min-h-[38px] text-[11px] font-semibold leading-5 text-slate-600">
         {description}
       </p>
 
-      <div className="mt-4 space-y-2">
+      <div className="mt-3 space-y-2">
         {rows.length > 0 ? (
           rows.map((row) => (
             <div
               key={row.join("-")}
-              className="group rounded-2xl bg-white/80 px-3 py-2.5 text-xs font-bold text-slate-700 ring-1 ring-white/80 transition hover:bg-white"
+              className="group rounded-2xl bg-white/85 px-3 py-2 text-xs font-bold text-slate-700 ring-1 ring-white/80 transition hover:bg-white"
             >
-              <div className="flex items-start justify-between gap-2">
+              <div className="flex items-center justify-between gap-2">
                 <div className="min-w-0 truncate text-sm font-black text-slate-950" title={row[0]}>
                   {row[0]}
                 </div>
                 <span className="shrink-0 text-slate-300 transition group-hover:translate-x-0.5 group-hover:text-slate-500">›</span>
               </div>
 
-              <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] leading-4 text-slate-500">
-                <span className="whitespace-nowrap">
-                  {headers[1]}: <b className="text-slate-900">{row[1]}</b>
-                </span>
-                <span className="whitespace-nowrap">
-                  {headers[2]}: <b className="text-emerald-600">{row[2]}</b>
-                </span>
+              <div className="mt-1 text-[11px] leading-4 text-slate-500">
+                <span className="font-bold text-slate-500">{headers[1]}: </span>
+                <b className="text-slate-900">{row[1]}</b>
+                <span className="mx-1.5 text-slate-300">·</span>
+                <span className="font-bold text-slate-500">{headers[2]}: </span>
+                <b className="text-emerald-600">{row[2]}</b>
               </div>
             </div>
           ))
@@ -1521,7 +1590,7 @@ function RecommendationCard({
         )}
       </div>
 
-      <button className="mt-4 w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 text-xs font-black text-slate-700 transition hover:bg-slate-50">
+      <button className="mt-3 w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 text-xs font-black text-slate-700 transition hover:bg-slate-50">
         {action}
       </button>
     </div>
