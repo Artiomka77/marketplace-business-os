@@ -152,6 +152,97 @@ function getSafeRatio(numerator: number, denominator: number) {
   return denominator > 0 ? (numerator / denominator) * 100 : 0;
 }
 
+
+type LoanSchedulePaymentForRate = {
+  paymentDate: Date;
+  totalAmount: unknown;
+  principalAmount: unknown;
+  interestAmount: unknown;
+  paid?: boolean | null;
+};
+
+function daysBetween(from: Date, to: Date) {
+  const oneDay = 24 * 60 * 60 * 1000;
+  return Math.max(1, Math.ceil((startOfDay(to).getTime() - startOfDay(from).getTime()) / oneDay));
+}
+
+function estimateAnnualRateFromSchedule(params: {
+  currentDebt: number;
+  payments: LoanSchedulePaymentForRate[];
+  today: Date;
+  explicitRate?: number;
+}) {
+  const sortedPayments = [...params.payments]
+    .filter((payment) => !payment.paid && payment.paymentDate >= params.today)
+    .sort((a, b) => a.paymentDate.getTime() - b.paymentDate.getTime());
+
+  let debt = Math.max(0, params.currentDebt);
+  let previousDate = params.today;
+  let totalInterest = 0;
+  let debtDays = 0;
+
+  for (const payment of sortedPayments) {
+    if (debt <= 0) break;
+
+    const interest = getPaymentInterest(payment);
+    const principal = getPaymentPrincipal(payment);
+    const days = daysBetween(previousDate, payment.paymentDate);
+
+    debtDays += debt * days;
+    totalInterest += interest;
+    debt = Math.max(0, debt - principal);
+    previousDate = payment.paymentDate;
+  }
+
+  if (totalInterest > 0 && debtDays > 0) {
+    const annualRate = (totalInterest * 365 * 100) / debtDays;
+
+    if (Number.isFinite(annualRate) && annualRate > 0 && annualRate < 300) {
+      return {
+        rate: annualRate,
+        source: "calculated" as const,
+      };
+    }
+  }
+
+  const nextPayment = sortedPayments.find((payment) => getPaymentInterest(payment) > 0);
+
+  if (nextPayment && params.currentDebt > 0) {
+    const monthlyRate = (getPaymentInterest(nextPayment) / params.currentDebt) * 12 * 100;
+
+    if (Number.isFinite(monthlyRate) && monthlyRate > 0 && monthlyRate < 300) {
+      return {
+        rate: monthlyRate,
+        source: "estimated" as const,
+      };
+    }
+  }
+
+  if (params.explicitRate && params.explicitRate > 0) {
+    return {
+      rate: params.explicitRate,
+      source: "manual" as const,
+    };
+  }
+
+  return {
+    rate: 0,
+    source: "missing" as const,
+  };
+}
+
+function formatRateLabel(rateInfo: { rate: number; source: string }) {
+  if (!rateInfo.rate) return "—";
+  return `${formatPercent(rateInfo.rate)} годовых`;
+}
+
+function formatRateActionLabel(rateInfo: { rate: number; source: string }) {
+  if (!rateInfo.rate) return "ставка не рассчитана →";
+  if (rateInfo.source === "manual") return `ставка ${formatPercent(rateInfo.rate)} годовых →`;
+  if (rateInfo.source === "estimated") return `оценочная ставка ${formatPercent(rateInfo.rate)} годовых →`;
+  return `расчётная ставка ${formatPercent(rateInfo.rate)} годовых →`;
+}
+
 function buildFinanceHref(company: string | null, period: string) {
   const query = new URLSearchParams();
 
@@ -324,15 +415,6 @@ export default async function LoansPage({
   const totalPaymentsUntilYearEnd =
     totalPrincipalUntilYearEnd + totalInterestUntilYearEnd;
 
-  const weightedRate =
-    totalDebt > 0
-      ? activeLoans.reduce(
-          (sum, loan) =>
-            sum + toNumber(loan.interestRate) * toNumber(loan.currentDebt),
-          0
-        ) / totalDebt
-      : 0;
-
   const loanRows = activeLoans.map((loan) => {
     const futurePayments = loan.payments.filter(
       (payment) => payment.paymentDate >= today && !payment.paid
@@ -370,6 +452,12 @@ export default async function LoansPage({
     const nextPaymentTotal = nextPayment ? getPaymentTotal(nextPayment) : monthlyPayment;
 
     const remainingMonths = monthsBetween(today, loan.endDate);
+    const rateInfo = estimateAnnualRateFromSchedule({
+      currentDebt: toNumber(loan.currentDebt),
+      payments: futurePayments,
+      today,
+      explicitRate: toNumber(loan.interestRate),
+    });
 
     return {
       id: loan.id,
@@ -380,6 +468,8 @@ export default async function LoansPage({
       currentDebt: toNumber(loan.currentDebt),
       monthlyPayment,
       interestRate: toNumber(loan.interestRate),
+      calculatedAnnualRate: rateInfo.rate,
+      rateSource: rateInfo.source,
       creditLimit: toNumber(loan.creditLimit),
       endDate: loan.endDate,
       paymentFrequency: loan.paymentFrequency,
@@ -401,13 +491,13 @@ export default async function LoansPage({
   );
 
   const loansByRate = [...loanRows].sort((a, b) => {
-    const aHasRate = a.interestRate > 0;
-    const bHasRate = b.interestRate > 0;
+    const aHasRate = a.calculatedAnnualRate > 0;
+    const bHasRate = b.calculatedAnnualRate > 0;
 
     if (aHasRate !== bHasRate) return aHasRate ? -1 : 1;
 
     return (
-      b.interestRate - a.interestRate ||
+      b.calculatedAnnualRate - a.calculatedAnnualRate ||
       b.interestUntilYearEnd - a.interestUntilYearEnd
     );
   });
@@ -419,7 +509,7 @@ export default async function LoansPage({
   const loansByFutureInterest = [...loanRows].sort(
     (a, b) =>
       b.interestUntilYearEnd - a.interestUntilYearEnd ||
-      b.interestRate - a.interestRate ||
+      b.calculatedAnnualRate - a.calculatedAnnualRate ||
       b.currentDebt - a.currentDebt
   );
 
@@ -727,9 +817,12 @@ export default async function LoansPage({
                   : "—"
               }
               action={
-                mostExpensiveLoan?.interestRate
-                  ? `ставка ${formatPercent(mostExpensiveLoan.interestRate)} годовых →`
-                  : "ставка не указана →"
+                mostExpensiveLoan
+                  ? formatRateActionLabel({
+                      rate: mostExpensiveLoan.calculatedAnnualRate,
+                      source: mostExpensiveLoan.rateSource,
+                    })
+                  : "ставка не рассчитана →"
               }
               href="#all-loans"
             />
@@ -780,7 +873,10 @@ export default async function LoansPage({
                 headers={["Кредит", "Ставка", "Проценты"]}
                 rows={loansByRate.slice(0, 3).map((loan) => [
                   loan.displayName,
-                  formatPercent(loan.interestRate),
+                  formatRateLabel({
+                    rate: loan.calculatedAnnualRate,
+                    source: loan.rateSource,
+                  }),
                   formatMoney(loan.interestUntilYearEnd),
                 ])}
                 action="Рассчитать погашение"
@@ -910,8 +1006,10 @@ export default async function LoansPage({
                         {loan.displayName}
                       </div>
                       <div className="mt-1 text-xs font-bold text-slate-500">
-                        Тело: {formatMoney(loan.currentDebt)} · Ставка:{" "}
-                        {formatPercent(loan.interestRate)}
+                        Тело: {formatMoney(loan.currentDebt)} · Ставка: {formatRateLabel({
+                          rate: loan.calculatedAnnualRate,
+                          source: loan.rateSource,
+                        })}
                       </div>
                     </div>
 
@@ -1131,7 +1229,10 @@ export default async function LoansPage({
                     </td>
 
                     <td className="px-4 py-4 text-right font-bold text-slate-700">
-                      {formatPercent(loan.interestRate)}
+                      {formatRateLabel({
+                        rate: loan.calculatedAnnualRate,
+                        source: loan.rateSource,
+                      })}
                     </td>
 
                     <td className="px-4 py-4">
