@@ -640,13 +640,10 @@ export default async function LoansPage({
     const angle = (middle / debtLoadCircumference) * Math.PI * 2 - Math.PI / 2;
     const pointX = 90 + Math.cos(angle) * 76;
     const pointY = 90 + Math.sin(angle) * 76;
-    const tooltipWidth = 142;
-    const tooltipHeight = 56;
-    const tooltipX = Math.min(
-      180 - tooltipWidth - 8,
-      Math.max(8, pointX - tooltipWidth / 2)
-    );
-    const tooltipY = pointY < 90 ? 118 : 8;
+    const tooltipWidth = 168;
+    const tooltipHeight = 74;
+    const tooltipX = pointX >= 90 ? 194 : -182;
+    const tooltipY = Math.min(108, Math.max(8, pointY - tooltipHeight / 2));
 
     return {
       ...segment,
@@ -1007,7 +1004,7 @@ export default async function LoansPage({
               <div className="relative mx-auto h-[180px] w-[180px]">
                 <svg
                   viewBox="0 0 180 180"
-                  className="h-full w-full overflow-visible"
+                  className="relative z-20 h-full w-full overflow-visible"
                   role="img"
                   aria-label="Карта долговой нагрузки по кредитам"
                 >
@@ -1044,23 +1041,23 @@ export default async function LoansPage({
                         height={segment.tooltipHeight}
                         className="pointer-events-none opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100"
                       >
-                        <div className="h-full rounded-2xl border border-slate-200 bg-white px-3 py-2 text-left shadow-xl shadow-slate-300/50">
+                        <div className="h-full rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-left shadow-2xl shadow-slate-300/70 ring-1 ring-white">
                           <div className="flex items-center gap-2">
                             <span
                               className="h-2.5 w-2.5 shrink-0 rounded-full"
                               style={{ backgroundColor: segment.color }}
                             />
-                            <div className="min-w-0 truncate text-[10px] font-black text-slate-950">
+                            <div className="min-w-0 truncate text-[11px] font-black text-slate-950">
                               {segment.label}
                             </div>
                           </div>
-                          <div className="mt-1 grid grid-cols-2 gap-1 text-[9px] font-bold text-slate-500">
+                          <div className="mt-1.5 grid grid-cols-2 gap-x-2 gap-y-1 text-[10px] font-bold text-slate-500">
                             <span>Платёж</span>
-                            <span className="text-right text-slate-900">
+                            <span className="text-right text-slate-950">
                               {formatMoney(segment.amount)}
                             </span>
                             <span>Нагрузка</span>
-                            <span className="text-right text-slate-900">
+                            <span className="text-right text-slate-950">
                               {segment.percent.toFixed(1)}%
                             </span>
                           </div>
@@ -1070,7 +1067,7 @@ export default async function LoansPage({
                   ))}
                 </svg>
 
-                <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+                <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center">
                   <div className="flex h-[112px] w-[112px] flex-col items-center justify-center rounded-full bg-white text-center shadow-sm">
                     <div className="text-lg font-black text-slate-950">
                       {formatMoney(paymentInMonth)}
