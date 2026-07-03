@@ -72,22 +72,38 @@ async function ensureFinanceCategory(params: {
   });
 }
 
-function buildRedirectUrl(request: NextRequest, params: {
+function buildRedirectPath(params: {
   company: string;
   period: string;
   status: "created" | "error";
   message?: string;
 }) {
-  const redirectUrl = new URL("/finance/loans", request.url);
+  const searchParams = new URLSearchParams();
 
-  redirectUrl.searchParams.set("company", params.company || "ALL");
-  if (params.period) redirectUrl.searchParams.set("period", params.period);
-  redirectUrl.searchParams.set("repayment", params.status);
-  if (params.message) redirectUrl.searchParams.set("message", params.message.slice(0, 220));
+  searchParams.set("company", params.company || "ALL");
+  if (params.period) searchParams.set("period", params.period);
+  searchParams.set("repayment", params.status);
+  if (params.message) {
+    searchParams.set("message", params.message.slice(0, 220));
+  }
 
-  redirectUrl.hash = params.status === "created" ? "all-loans" : "early-repayment";
+  const hash = params.status === "created" ? "all-loans" : "early-repayment";
 
-  return redirectUrl;
+  return `/finance/loans?${searchParams.toString()}#${hash}`;
+}
+
+function redirectToLoans(params: {
+  company: string;
+  period: string;
+  status: "created" | "error";
+  message?: string;
+}) {
+  return new NextResponse(null, {
+    status: 303,
+    headers: {
+      Location: buildRedirectPath(params),
+    },
+  });
 }
 
 export async function POST(request: NextRequest) {
@@ -229,23 +245,19 @@ export async function POST(request: NextRequest) {
     revalidatePath("/finance");
     revalidatePath("/");
 
-    return NextResponse.redirect(
-      buildRedirectUrl(request, {
-        company: returnCompany,
-        period: returnPeriod,
-        status: "created",
-      })
-    );
+    return redirectToLoans({
+      company: returnCompany,
+      period: returnPeriod,
+      status: "created",
+    });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Неизвестная ошибка";
 
-    return NextResponse.redirect(
-      buildRedirectUrl(request, {
-        company: returnCompany,
-        period: returnPeriod,
-        status: "error",
-        message,
-      })
-    );
+    return redirectToLoans({
+      company: returnCompany,
+      period: returnPeriod,
+      status: "error",
+      message,
+    });
   }
 }
