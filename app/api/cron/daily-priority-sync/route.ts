@@ -2,10 +2,10 @@ import { NextResponse } from "next/server";
 
 import { prisma } from "@/lib/prisma";
 import { syncMarketplaceDailyOrders } from "@/lib/marketplaceOrders/syncMarketplaceDailyOrders";
-import { syncOzonStocks } from "@/lib/ozon/syncOzon";
+import { syncOzonAds, syncOzonFinance, syncOzonStocks } from "@/lib/ozon/syncOzon";
+import { syncOzonDailyEconomicTotals } from "@/lib/ozon/syncOzonDailyEconomicTotals";
 import { syncWbStock } from "@/lib/wb/syncWbStock";
 import { syncWbDailySales } from "@/lib/wb/syncWbDailySales";
-import { syncOzonFinance } from "@/lib/ozon/syncOzon";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -23,9 +23,7 @@ function getErrorMessage(error: unknown) {
 }
 
 function startOfUtcDay(date: Date) {
-  return new Date(
-    Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate())
-  );
+  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
 }
 
 function addUtcDays(date: Date, days: number) {
@@ -110,9 +108,7 @@ async function getActiveConnections() {
   });
 }
 
-async function runOzonStocks(
-  connection: MarketplaceApiConnectionForDaily
-) {
+async function runOzonStocks(connection: MarketplaceApiConnectionForDaily) {
   try {
     const result = await syncOzonStocks(connection.companyId);
 
@@ -134,9 +130,7 @@ async function runOzonStocks(
   }
 }
 
-async function runWbStock(
-  connection: MarketplaceApiConnectionForDaily
-) {
+async function runWbStock(connection: MarketplaceApiConnectionForDaily) {
   try {
     const result = await syncWbStock(connection.companyId);
 
@@ -172,6 +166,7 @@ async function runOzonDailyFinance(
       marketplace: "OZON",
       companyName: connection.company.name,
       dataType: "FINANCE",
+      date: formatDateOnly(date),
       ok: true,
       result,
     };
@@ -180,6 +175,67 @@ async function runOzonDailyFinance(
       marketplace: "OZON",
       companyName: connection.company.name,
       dataType: "FINANCE",
+      date: formatDateOnly(date),
+      ok: false,
+      error: getErrorMessage(error),
+    };
+  }
+}
+
+async function runOzonDailyEconomicTotals(
+  connection: MarketplaceApiConnectionForDaily,
+  date: Date
+) {
+  try {
+    const result = await syncOzonDailyEconomicTotals(connection.companyId, {
+      dateFrom: date,
+      dateTo: date,
+    });
+
+    return {
+      marketplace: "OZON",
+      companyName: connection.company.name,
+      dataType: "ECONOMIC_TOTALS",
+      date: formatDateOnly(date),
+      ok: true,
+      result,
+    };
+  } catch (error) {
+    return {
+      marketplace: "OZON",
+      companyName: connection.company.name,
+      dataType: "ECONOMIC_TOTALS",
+      date: formatDateOnly(date),
+      ok: false,
+      error: getErrorMessage(error),
+    };
+  }
+}
+
+async function runOzonDailyAds(
+  connection: MarketplaceApiConnectionForDaily,
+  date: Date
+) {
+  try {
+    const result = await syncOzonAds(connection.companyId, {
+      dateFrom: date,
+      dateTo: date,
+    });
+
+    return {
+      marketplace: "OZON",
+      companyName: connection.company.name,
+      dataType: "ADS",
+      date: formatDateOnly(date),
+      ok: true,
+      result,
+    };
+  } catch (error) {
+    return {
+      marketplace: "OZON",
+      companyName: connection.company.name,
+      dataType: "ADS",
+      date: formatDateOnly(date),
       ok: false,
       error: getErrorMessage(error),
     };
@@ -295,11 +351,12 @@ async function ensureWbAdsJobForReportDate(
 export async function GET(req: Request) {
   try {
     const date = parseDateFromRequest(req);
+    const comparisonDate = addUtcDays(date, -1);
     const dateText = formatDateOnly(date);
     const connections = await getActiveConnections();
 
     const orderStats = await syncMarketplaceDailyOrders({
-      dateFrom: date,
+      dateFrom: comparisonDate,
       dateTo: date,
     });
 
@@ -307,21 +364,19 @@ export async function GET(req: Request) {
 
     for (const connection of connections) {
       if (connection.marketplace === "OZON") {
-        // Для ежедневного отчёта основной безопасный источник рекламных расходов Ozon —
-        // Ozon Finance. Performance Ads не ставим в срочную очередь: он часто работает
-        // дольше лимита Vercel и не должен ломать утренний отчёт.
         results.push(await runOzonStocks(connection));
-        results.push(await runOzonDailyFinance(connection, date));
+
+        // Для Telegram и Dashboard нужны одинаковые источники за сам день отчёта и день сравнения.
+        // Поэтому грузим Ozon Finance, Ozon transaction totals и Performance Ads за оба дня.
+        for (const targetDate of [comparisonDate, date]) {
+          results.push(await runOzonDailyFinance(connection, targetDate));
+          results.push(await runOzonDailyEconomicTotals(connection, targetDate));
+          results.push(await runOzonDailyAds(connection, targetDate));
+        }
       }
 
       if (connection.marketplace === "WB") {
-        // WB Daily Sales — короткий оперативный источник продаж/возвратов.
-        // Он нужен, чтобы утренний отчёт не оставался без WB продаж до недельного финального отчёта.
         results.push(await runWbDailySales(connection, date));
-
-        // WB Ads не запускаем напрямую в FULL-режиме.
-        // Здесь только гарантируем свежую задачу, а загрузку делает отдельный
-        // route historical-sync-wb-ads безопасным темпом.
         results.push(await ensureWbAdsJobForReportDate(connection, date));
       }
     }
@@ -329,8 +384,9 @@ export async function GET(req: Request) {
     return NextResponse.json({
       ok: true,
       date: dateText,
+      comparisonDate: formatDateOnly(comparisonDate),
       purpose:
-        "Daily priority sync for Telegram owner report. Orders, stocks, WB Daily Sales and Ozon Finance run directly. WB Ads is queued and processed by a separate cron route to avoid Vercel timeout. Ozon Ads Performance is not required for the morning report because Ozon ad expenses come from Ozon Finance.",
+        "Daily priority sync for Telegram, Dashboard and Ozon Profit. Orders, stocks, WB Daily Sales, Ozon Finance, Ozon transaction totals and Ozon Ads are prepared before the morning owner report.",
       orderStats,
       results,
       executedAt: new Date().toISOString(),

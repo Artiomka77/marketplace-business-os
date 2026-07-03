@@ -1318,7 +1318,7 @@ async function findOzonRealizationSummaryByPeriod(params?: {
 }): Promise<OzonRealizationSummaryRecord | null> {
   if (!params?.dateFrom || !params?.dateTo) return null;
 
-  const rows = params.companyName
+  const exactRows = params.companyName
     ? await prisma.$queryRaw<OzonRealizationSummaryRecord[]>`
         SELECT
           COALESCE(SUM("realizedAmount"), 0) AS "realizedAmount",
@@ -1341,9 +1341,50 @@ async function findOzonRealizationSummaryByPeriod(params?: {
           AND "dateTo"::date = CAST(${params.dateTo} AS date)
       `;
 
-  const summary = rows[0];
+  const exactSummary = exactRows[0];
+  const exactAmount =
+    Math.abs(toNumber(exactSummary?.realizedAmount)) +
+    Math.abs(toNumber(exactSummary?.returnedAmount)) +
+    Math.abs(toNumber(exactSummary?.taxableRevenue)) +
+    Math.abs(toNumber(exactSummary?.partnerProgramsAmount));
 
-  return summary && toNumber(summary.taxableRevenue) > 0 ? summary : null;
+  if (exactSummary && exactAmount > 0.005) {
+    return exactSummary;
+  }
+
+  // Для ежедневных и смешанных периодов Ozon realization может храниться дневными строками.
+  // Если точного summary за весь диапазон нет, агрегируем все summary внутри выбранного периода.
+  const aggregateRows = params.companyName
+    ? await prisma.$queryRaw<OzonRealizationSummaryRecord[]>`
+        SELECT
+          COALESCE(SUM("realizedAmount"), 0) AS "realizedAmount",
+          COALESCE(SUM("returnedAmount"), 0) AS "returnedAmount",
+          COALESCE(SUM("taxableRevenue"), 0) AS "taxableRevenue",
+          COALESCE(SUM("partnerProgramsAmount"), 0) AS "partnerProgramsAmount"
+        FROM "OzonRealizationSummary"
+        WHERE "dateFrom"::date >= CAST(${params.dateFrom} AS date)
+          AND "dateTo"::date <= CAST(${params.dateTo} AS date)
+          AND "companyName" = ${params.companyName}
+      `
+    : await prisma.$queryRaw<OzonRealizationSummaryRecord[]>`
+        SELECT
+          COALESCE(SUM("realizedAmount"), 0) AS "realizedAmount",
+          COALESCE(SUM("returnedAmount"), 0) AS "returnedAmount",
+          COALESCE(SUM("taxableRevenue"), 0) AS "taxableRevenue",
+          COALESCE(SUM("partnerProgramsAmount"), 0) AS "partnerProgramsAmount"
+        FROM "OzonRealizationSummary"
+        WHERE "dateFrom"::date >= CAST(${params.dateFrom} AS date)
+          AND "dateTo"::date <= CAST(${params.dateTo} AS date)
+      `;
+
+  const aggregateSummary = aggregateRows[0];
+  const aggregateAmount =
+    Math.abs(toNumber(aggregateSummary?.realizedAmount)) +
+    Math.abs(toNumber(aggregateSummary?.returnedAmount)) +
+    Math.abs(toNumber(aggregateSummary?.taxableRevenue)) +
+    Math.abs(toNumber(aggregateSummary?.partnerProgramsAmount));
+
+  return aggregateSummary && aggregateAmount > 0.005 ? aggregateSummary : null;
 }
 
 async function findOzonRealizationSummaryByDatePeriod(params?: {
@@ -1367,7 +1408,7 @@ async function findOzonDiscountPointsSummaryByPeriod(params?: {
 }): Promise<OzonDiscountPointsSummaryRecord | null> {
   if (!params?.dateFrom || !params?.dateTo) return null;
 
-  const rows = params.companyName
+  const exactRows = params.companyName
     ? await prisma.$queryRaw<OzonDiscountPointsSummaryRecord[]>`
         SELECT
           COALESCE(SUM("pointsAccrued"), 0) AS "pointsAccrued",
@@ -1388,13 +1429,45 @@ async function findOzonDiscountPointsSummaryByPeriod(params?: {
           AND "dateTo"::date = CAST(${params.dateTo} AS date)
       `;
 
-  const summary = rows[0];
-  const amount =
-    toNumber(summary?.totalPaidByPoints) ||
-    toNumber(summary?.pointsWrittenOff) ||
-    toNumber(summary?.pointsAccrued);
+  const exactSummary = exactRows[0];
+  const exactAmount =
+    toNumber(exactSummary?.totalPaidByPoints) ||
+    toNumber(exactSummary?.pointsWrittenOff) ||
+    toNumber(exactSummary?.pointsAccrued);
 
-  return summary && amount > 0 ? summary : null;
+  if (exactSummary && Math.abs(exactAmount) > 0.005) {
+    return exactSummary;
+  }
+
+  // Если точного summary нет, агрегируем дневные/помесячные записи внутри выбранного периода.
+  const aggregateRows = params.companyName
+    ? await prisma.$queryRaw<OzonDiscountPointsSummaryRecord[]>`
+        SELECT
+          COALESCE(SUM("pointsAccrued"), 0) AS "pointsAccrued",
+          COALESCE(SUM("pointsWrittenOff"), 0) AS "pointsWrittenOff",
+          COALESCE(SUM("totalPaidByPoints"), 0) AS "totalPaidByPoints"
+        FROM "OzonDiscountPointsSummary"
+        WHERE "dateFrom"::date >= CAST(${params.dateFrom} AS date)
+          AND "dateTo"::date <= CAST(${params.dateTo} AS date)
+          AND "companyName" = ${params.companyName}
+      `
+    : await prisma.$queryRaw<OzonDiscountPointsSummaryRecord[]>`
+        SELECT
+          COALESCE(SUM("pointsAccrued"), 0) AS "pointsAccrued",
+          COALESCE(SUM("pointsWrittenOff"), 0) AS "pointsWrittenOff",
+          COALESCE(SUM("totalPaidByPoints"), 0) AS "totalPaidByPoints"
+        FROM "OzonDiscountPointsSummary"
+        WHERE "dateFrom"::date >= CAST(${params.dateFrom} AS date)
+          AND "dateTo"::date <= CAST(${params.dateTo} AS date)
+      `;
+
+  const aggregateSummary = aggregateRows[0];
+  const aggregateAmount =
+    toNumber(aggregateSummary?.totalPaidByPoints) ||
+    toNumber(aggregateSummary?.pointsWrittenOff) ||
+    toNumber(aggregateSummary?.pointsAccrued);
+
+  return aggregateSummary && Math.abs(aggregateAmount) > 0.005 ? aggregateSummary : null;
 }
 
 async function findOzonDiscountPointsSummaryByDatePeriod(params?: {
