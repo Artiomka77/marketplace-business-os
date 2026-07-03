@@ -1802,9 +1802,9 @@ export default async function ProfitOzonPage({
                       {formatMoney(orderAdsCost)} · {formatPercent(orderAdsShareOfAds)}
                     </span>
                   </div>
-                  {Math.abs(otherAdsCost) > 0.5 ? (
+                  {otherAdsCost > 0.5 ? (
                     <div className="flex items-center justify-between gap-2">
-                      <span>Прочее</span>
+                      <span>Интернет/прочее</span>
                       <span className="text-right text-slate-700">
                         {formatMoney(otherAdsCost)} · {formatPercent(otherAdsShareOfAds)}
                       </span>
@@ -1894,6 +1894,7 @@ export default async function ProfitOzonPage({
                   </div>
                 </div>
 
+                {Math.abs(excludedLoansFactoringAmount) > 0.5 ? (
                 <div className="grid grid-cols-[minmax(0,1fr)_105px_62px] items-center gap-3">
                   <div className="font-black text-emerald-600">
                     Исключено из прибыли: займы / факторинг
@@ -1905,6 +1906,7 @@ export default async function ProfitOzonPage({
                     {formatPercent(shareBase > 0 ? (excludedLoansFactoringAmount / shareBase) * 100 : 0)}
                   </div>
                 </div>
+                ) : null}
 
                 <div className="grid grid-cols-[minmax(0,1fr)_105px_62px] items-center gap-3 border-t border-slate-100 pt-4">
                   <div className="font-black text-emerald-600">

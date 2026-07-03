@@ -336,6 +336,9 @@ type OzonDiscountPointsSummaryRecord = {
 type OzonFinancialCategoryFactRecord = {
   category: string | null;
   amount: unknown;
+  sourceOperationType?: string | null;
+  sourceOperationCode?: string | null;
+  sourceServiceName?: string | null;
 };
 
 type OzonProductRecord = {
@@ -454,8 +457,56 @@ function applyOzonFinancialCategoryFactsToTotals(
   totals.logisticsCost = delivery + fbo;
 
   totals.adsCost = advertising;
-  totals.otherAdsCost =
-    advertising - totals.clickAdsCost - totals.orderAdsCost;
+
+  const financeClickAdsFromFacts = facts.reduce((sum, fact) => {
+    const operationType = normalizeText(fact.sourceOperationType);
+    const operationCode = normalizeText(fact.sourceOperationCode);
+
+    if (
+      fact.category === "OZON_ADVERTISING" &&
+      (operationCode.includes("operationmarketplacecostperclick") ||
+        operationType.includes("оплата за клик"))
+    ) {
+      return sum + toNumber(fact.amount);
+    }
+
+    return sum;
+  }, 0);
+
+  const financeOrderAdsFromFacts = facts.reduce((sum, fact) => {
+    const operationType = normalizeText(fact.sourceOperationType);
+    const operationCode = normalizeText(fact.sourceOperationCode);
+
+    if (
+      fact.category === "OZON_ADVERTISING" &&
+      (operationCode.includes("operationpromotionwithcostperorder") ||
+        operationType.includes("продвижение с оплатой за заказ"))
+    ) {
+      return sum + toNumber(fact.amount);
+    }
+
+    return sum;
+  }, 0);
+
+  const financeOtherAdsFromFacts = Math.max(
+    0,
+    advertising - financeClickAdsFromFacts - financeOrderAdsFromFacts
+  );
+
+  const hasFinanceAdDetails =
+    advertising > 0 &&
+    financeClickAdsFromFacts + financeOrderAdsFromFacts + financeOtherAdsFromFacts > 0;
+
+  if (hasFinanceAdDetails) {
+    totals.clickAdsCost = financeClickAdsFromFacts;
+    totals.orderAdsCost = financeOrderAdsFromFacts;
+    totals.otherAdsCost = financeOtherAdsFromFacts;
+  } else {
+    totals.otherAdsCost = Math.max(
+      0,
+      advertising - totals.clickAdsCost - totals.orderAdsCost
+    );
+  }
 
   totals.partnerServicesCost = partnerServices;
   totals.otherServicesCost = otherServices;
@@ -1857,4 +1908,5 @@ export async function getProfitAnalyticsOzon(params?: {
     comparison,
   };
 }
+
 
