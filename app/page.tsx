@@ -1,5 +1,5 @@
 import Link from "next/link";
-import type { ReactNode } from "react";
+import { Suspense, type ReactNode } from "react";
 
 import { prisma } from "@/lib/prisma";
 import {
@@ -2041,6 +2041,230 @@ function DailyDataReconciliation({
   );
 }
 
+function DashboardDynamicsSkeleton({
+  selectedChartPreset,
+  selectedPeriod,
+  selectedCompanyValue,
+  selectedMarketplaceCompanyValue,
+}: {
+  selectedChartPreset: ChartPresetConfig;
+  selectedPeriod: PeriodOption;
+  selectedCompanyValue: string;
+  selectedMarketplaceCompanyValue: string;
+}) {
+  return (
+    <section className="grid items-stretch gap-4 2xl:grid-cols-[repeat(6,minmax(0,1fr))]">
+      <section className="panel h-full min-w-0 p-4 2xl:col-span-4">
+        <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
+          <div>
+            <h3 className="text-xl font-black tracking-tight text-slate-950">
+              Динамика: {selectedChartPreset.title}
+            </h3>
+            <p className="mt-2 text-sm leading-6 text-slate-500">
+              Загружаем график отдельно, чтобы основная страница открывалась быстрее.
+            </p>
+          </div>
+          <Link
+            href="/analytics"
+            className="rounded-2xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-indigo-600 transition hover:bg-indigo-50"
+          >
+            Открыть аналитику →
+          </Link>
+        </div>
+
+        <div className="mt-3 flex flex-wrap gap-2">
+          {chartPresets.map((preset) => (
+            <ChartPresetLink
+              key={preset.key}
+              preset={preset}
+              selectedPreset={selectedChartPreset}
+              href={buildDashboardHref({
+                period: selectedPeriod.key,
+                companyName: selectedCompanyValue,
+                marketplaceCompanyName: selectedMarketplaceCompanyValue,
+                dateFrom:
+                  selectedPeriod.key === "custom"
+                    ? selectedPeriod.dateFrom
+                    : undefined,
+                dateTo:
+                  selectedPeriod.key === "custom"
+                    ? selectedPeriod.dateTo
+                    : undefined,
+                chartPreset: preset.key,
+              })}
+            />
+          ))}
+        </div>
+
+        <div className="mt-4 rounded-[24px] border border-slate-200 bg-white p-4">
+          <div className="animate-pulse space-y-4">
+            <div className="flex items-center justify-between gap-4">
+              <div className="h-4 w-36 rounded-full bg-slate-100" />
+              <div className="h-4 w-28 rounded-full bg-slate-100" />
+            </div>
+            <div className="grid h-[240px] grid-cols-12 items-end gap-2 rounded-2xl bg-slate-50 p-4 ring-1 ring-slate-100">
+              {Array.from({ length: 12 }, (_, index) => (
+                <div
+                  key={index}
+                  className="rounded-t-xl bg-slate-200"
+                  style={{ height: `${28 + ((index * 17) % 62)}%` }}
+                />
+              ))}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <div className="min-w-0 2xl:col-span-2">
+        <section className="panel h-full p-5 sm:p-6">
+          <div className="animate-pulse space-y-4">
+            <div>
+              <div className="h-3 w-32 rounded-full bg-slate-100" />
+              <div className="mt-3 h-6 w-52 rounded-full bg-slate-100" />
+            </div>
+            <div className="grid gap-3">
+              {Array.from({ length: 4 }, (_, index) => (
+                <div key={index} className="rounded-2xl border border-slate-200 bg-white p-4">
+                  <div className="h-3 w-24 rounded-full bg-slate-100" />
+                  <div className="mt-3 h-5 w-32 rounded-full bg-slate-100" />
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+      </div>
+    </section>
+  );
+}
+
+async function DashboardDynamicsSection({
+  selectedChartPreset,
+  selectedPeriod,
+  previousPeriod,
+  selectedCompanyValue,
+  selectedMarketplaceCompanyValue,
+  selectedCompanyName,
+  marketplaceCurrent,
+  marketplacePrevious,
+  useLargePeriodStabilityMode,
+  showDebug,
+}: {
+  selectedChartPreset: ChartPresetConfig;
+  selectedPeriod: PeriodOption;
+  previousPeriod: { dateFrom: string; dateTo: string; description: string };
+  selectedCompanyValue: string;
+  selectedMarketplaceCompanyValue: string;
+  selectedCompanyName: string | null;
+  marketplaceCurrent: DashboardSummary;
+  marketplacePrevious: DashboardSummary;
+  useLargePeriodStabilityMode: boolean;
+  showDebug: boolean;
+}) {
+  const logDashboardPerf = (label: string, startedAt: number) => {
+    if (!showDebug) return;
+
+    console.log(`[dashboard-perf] ${label}: ${Date.now() - startedAt}ms`);
+  };
+
+  const dailyAnalyticsStartedAt = Date.now();
+  const currentDailyPoints = await getDashboardDailyAnalytics({
+    dateFrom: selectedPeriod.dateFrom,
+    dateTo: selectedPeriod.dateTo,
+    companyName: selectedCompanyName,
+    expectedTotals: createDailyExpectedTotals(marketplaceCurrent),
+  });
+  logDashboardPerf("getDashboardDailyAnalytics current", dailyAnalyticsStartedAt);
+
+  let previousDailyPoints: DashboardDailyPoint[] = [];
+
+  if (useLargePeriodStabilityMode) {
+    logDashboardPerf(
+      "getDashboardDailyAnalytics previous skipped for large period",
+      dailyAnalyticsStartedAt
+    );
+  } else {
+    const previousDailyAnalyticsStartedAt = Date.now();
+    previousDailyPoints = await getDashboardDailyAnalytics({
+      dateFrom: previousPeriod.dateFrom,
+      dateTo: previousPeriod.dateTo,
+      companyName: selectedCompanyName,
+      expectedTotals: createDailyExpectedTotals(marketplacePrevious),
+    });
+    logDashboardPerf("getDashboardDailyAnalytics previous", previousDailyAnalyticsStartedAt);
+  }
+
+  logDashboardPerf("getDashboardDailyAnalytics current+previous", dailyAnalyticsStartedAt);
+
+  return (
+    <>
+      <section className="grid items-stretch gap-4 2xl:grid-cols-[repeat(6,minmax(0,1fr))]">
+        <section className="panel h-full min-w-0 p-4 2xl:col-span-4">
+          <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
+            <div>
+              <h3 className="text-xl font-black tracking-tight text-slate-950">
+                Динамика: {selectedChartPreset.title}
+              </h3>
+            </div>
+            <Link
+              href="/analytics"
+              className="rounded-2xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-indigo-600 transition hover:bg-indigo-50"
+            >
+              Открыть аналитику →
+            </Link>
+          </div>
+
+          <div className="mt-3 flex flex-wrap gap-2">
+            {chartPresets.map((preset) => (
+              <ChartPresetLink
+                key={preset.key}
+                preset={preset}
+                selectedPreset={selectedChartPreset}
+                href={buildDashboardHref({
+                  period: selectedPeriod.key,
+                  companyName: selectedCompanyValue,
+                  marketplaceCompanyName: selectedMarketplaceCompanyValue,
+                  dateFrom:
+                    selectedPeriod.key === "custom"
+                      ? selectedPeriod.dateFrom
+                      : undefined,
+                  dateTo:
+                    selectedPeriod.key === "custom"
+                      ? selectedPeriod.dateTo
+                      : undefined,
+                  chartPreset: preset.key,
+                })}
+              />
+            ))}
+          </div>
+
+          <InteractiveTrendChart
+            preset={selectedChartPreset}
+            currentPoints={currentDailyPoints}
+            previousPoints={previousDailyPoints}
+          />
+        </section>
+
+        <div className="min-w-0 2xl:col-span-2">
+          <DynamicInsights
+            preset={selectedChartPreset}
+            currentPoints={currentDailyPoints}
+            previousPoints={previousDailyPoints}
+          />
+        </div>
+      </section>
+
+      {showDebug ? (
+        <DailyDataReconciliation
+          currentSummary={marketplaceCurrent}
+          previousSummary={marketplacePrevious}
+          currentPoints={currentDailyPoints}
+          previousPoints={previousDailyPoints}
+        />
+      ) : null}
+    </>
+  );
+}
+
 function MarketplaceShare({
   wbRevenue,
   ozonRevenue,
@@ -2989,35 +3213,6 @@ export default async function HomePage({ searchParams }: Props) {
   const marketplaceCurrent = current;
   const marketplacePrevious = previous;
   const selectedChartPreset = getChartPreset(params.chartPreset);
-  const dailyCompanyName = selectedCompanyName;
-  const dailyAnalyticsStartedAt = Date.now();
-  const currentDailyPoints = await getDashboardDailyAnalytics({
-    dateFrom: selectedPeriod.dateFrom,
-    dateTo: selectedPeriod.dateTo,
-    companyName: dailyCompanyName,
-    expectedTotals: createDailyExpectedTotals(marketplaceCurrent),
-  });
-  logDashboardPerf("getDashboardDailyAnalytics current", dailyAnalyticsStartedAt);
-
-  let previousDailyPoints: DashboardDailyPoint[] = [];
-
-  if (useLargePeriodStabilityMode) {
-    logDashboardPerf(
-      "getDashboardDailyAnalytics previous skipped for large period",
-      dailyAnalyticsStartedAt
-    );
-  } else {
-    const previousDailyAnalyticsStartedAt = Date.now();
-    previousDailyPoints = await getDashboardDailyAnalytics({
-      dateFrom: previousPeriod.dateFrom,
-      dateTo: previousPeriod.dateTo,
-      companyName: dailyCompanyName,
-      expectedTotals: createDailyExpectedTotals(marketplacePrevious),
-    });
-    logDashboardPerf("getDashboardDailyAnalytics previous", previousDailyAnalyticsStartedAt);
-  }
-
-  logDashboardPerf("getDashboardDailyAnalytics current+previous", dailyAnalyticsStartedAt);
   const hasOrderCoverageWarning = hasPartialOrderCoverage(current);
   const ordersCoverageText = formatOrderCoverage(current);
 
@@ -3383,70 +3578,29 @@ export default async function HomePage({ searchParams }: Props) {
           </section>
         </section>
 
-        <section className="grid items-stretch gap-4 2xl:grid-cols-[repeat(6,minmax(0,1fr))]">
-          <section className="panel h-full min-w-0 p-4 2xl:col-span-4">
-            <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
-              <div>
-                <h3 className="text-xl font-black tracking-tight text-slate-950">
-                  Динамика: {selectedChartPreset.title}
-                </h3>
-              </div>
-              <Link
-                href="/analytics"
-                className="rounded-2xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-indigo-600 transition hover:bg-indigo-50"
-              >
-                Открыть аналитику →
-              </Link>
-            </div>
-
-            <div className="mt-3 flex flex-wrap gap-2">
-              {chartPresets.map((preset) => (
-                <ChartPresetLink
-                  key={preset.key}
-                  preset={preset}
-                  selectedPreset={selectedChartPreset}
-                  href={buildDashboardHref({
-                    period: selectedPeriod.key,
-                    companyName: selectedCompanyValue,
-                    marketplaceCompanyName: selectedMarketplaceCompanyValue,
-                    dateFrom:
-                      selectedPeriod.key === "custom"
-                        ? selectedPeriod.dateFrom
-                        : undefined,
-                    dateTo:
-                      selectedPeriod.key === "custom"
-                        ? selectedPeriod.dateTo
-                        : undefined,
-                    chartPreset: preset.key,
-                  })}
-                />
-              ))}
-            </div>
-
-            <InteractiveTrendChart
-              preset={selectedChartPreset}
-              currentPoints={currentDailyPoints}
-              previousPoints={previousDailyPoints}
+        <Suspense
+          fallback={
+            <DashboardDynamicsSkeleton
+              selectedChartPreset={selectedChartPreset}
+              selectedPeriod={selectedPeriod}
+              selectedCompanyValue={selectedCompanyValue}
+              selectedMarketplaceCompanyValue={selectedMarketplaceCompanyValue}
             />
-          </section>
-
-          <div className="min-w-0 2xl:col-span-2">
-            <DynamicInsights
-              preset={selectedChartPreset}
-              currentPoints={currentDailyPoints}
-              previousPoints={previousDailyPoints}
-            />
-          </div>
-        </section>
-
-        {showDebug ? (
-          <DailyDataReconciliation
-            currentSummary={marketplaceCurrent}
-            previousSummary={marketplacePrevious}
-            currentPoints={currentDailyPoints}
-            previousPoints={previousDailyPoints}
+          }
+        >
+          <DashboardDynamicsSection
+            selectedChartPreset={selectedChartPreset}
+            selectedPeriod={selectedPeriod}
+            previousPeriod={previousPeriod}
+            selectedCompanyValue={selectedCompanyValue}
+            selectedMarketplaceCompanyValue={selectedMarketplaceCompanyValue}
+            selectedCompanyName={selectedCompanyName}
+            marketplaceCurrent={marketplaceCurrent}
+            marketplacePrevious={marketplacePrevious}
+            useLargePeriodStabilityMode={useLargePeriodStabilityMode}
+            showDebug={showDebug}
           />
-        ) : null}
+        </Suspense>
 
         <section className="grid gap-5">
           <section className="panel h-full p-5 sm:p-6">
