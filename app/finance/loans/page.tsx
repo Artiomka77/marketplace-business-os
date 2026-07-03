@@ -623,18 +623,26 @@ export default async function LoansPage({
       : []),
   ];
 
+  const debtLoadRadius = 68;
+  const debtLoadStrokeWidth = 26;
+  const debtLoadCircumference = 2 * Math.PI * debtLoadRadius;
+
   let debtLoadCursor = 0;
-  const debtLoadConicGradient =
-    debtLoadLegend.length > 0 && paymentInMonth > 0
-      ? `conic-gradient(${debtLoadLegend
-          .map((segment) => {
-            const start = debtLoadCursor;
-            const end = Math.min(100, start + segment.percent);
-            debtLoadCursor = end;
-            return `${segment.color} ${start.toFixed(2)}% ${end.toFixed(2)}%`;
-          })
-          .join(", ")}, #e2e8f0 ${debtLoadCursor.toFixed(2)}% 100%)`
-      : "conic-gradient(#e2e8f0 0% 100%)";
+  const debtLoadSvgSegments = debtLoadLegend.map((segment) => {
+    const dashLength = Math.max(
+      0,
+      (segment.percent / 100) * debtLoadCircumference
+    );
+    const offset = debtLoadCursor;
+    debtLoadCursor += dashLength;
+
+    return {
+      ...segment,
+      dashLength,
+      dashGap: Math.max(0, debtLoadCircumference - dashLength),
+      dashOffset: -offset,
+    };
+  });
 
   const monthlyMatrix = paymentSchedule.slice(0, 6);
 
@@ -980,15 +988,72 @@ export default async function LoansPage({
             </div>
 
             <div className="mt-5 grid gap-5 md:grid-cols-[190px_1fr] md:items-center xl:grid-cols-1 2xl:grid-cols-[190px_1fr]">
-              <div className="mx-auto flex h-[180px] w-[180px] items-center justify-center rounded-full p-6 shadow-inner shadow-slate-200"
-                style={{ background: debtLoadConicGradient }}
-              >
-                <div className="flex h-[112px] w-[112px] flex-col items-center justify-center rounded-full bg-white text-center shadow-sm">
-                  <div className="text-lg font-black text-slate-950">
-                    {formatMoney(paymentInMonth)}
-                  </div>
-                  <div className="mt-1 text-[11px] font-black uppercase tracking-[0.08em] text-slate-400">
-                    в месяц
+              <div className="relative mx-auto h-[180px] w-[180px]">
+                <svg
+                  viewBox="0 0 180 180"
+                  className="h-full w-full overflow-visible"
+                  role="img"
+                  aria-label="Карта долговой нагрузки по кредитам"
+                >
+                  <circle
+                    cx="90"
+                    cy="90"
+                    r={debtLoadRadius}
+                    fill="none"
+                    stroke="#e2e8f0"
+                    strokeWidth={debtLoadStrokeWidth}
+                  />
+
+                  {debtLoadSvgSegments.map((segment) => (
+                    <g key={segment.id} className="group outline-none">
+                      <circle
+                        cx="90"
+                        cy="90"
+                        r={debtLoadRadius}
+                        fill="none"
+                        stroke={segment.color}
+                        strokeWidth={debtLoadStrokeWidth}
+                        strokeDasharray={`${segment.dashLength} ${segment.dashGap}`}
+                        strokeDashoffset={segment.dashOffset}
+                        strokeLinecap="butt"
+                        transform="rotate(-90 90 90)"
+                        className="cursor-pointer opacity-95 transition-opacity duration-150 hover:opacity-80 focus:opacity-80"
+                        tabIndex={0}
+                      >
+                        <title>{`${segment.label}: ${formatMoney(segment.amount)} в месяц, ${segment.percent.toFixed(1)}% нагрузки`}</title>
+                      </circle>
+
+                      <foreignObject
+                        x="8"
+                        y="8"
+                        width="164"
+                        height="76"
+                        className="pointer-events-none opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100"
+                      >
+                        <div className="rounded-2xl border border-slate-200 bg-white/95 px-3 py-2 text-left shadow-xl shadow-slate-300/40 backdrop-blur">
+                          <div className="truncate text-[11px] font-black text-slate-950">
+                            {segment.label}
+                          </div>
+                          <div className="mt-1 text-[10px] font-bold text-slate-500">
+                            Платёж: {formatMoney(segment.amount)} / мес.
+                          </div>
+                          <div className="mt-0.5 text-[10px] font-black text-slate-700">
+                            Доля нагрузки: {segment.percent.toFixed(1)}%
+                          </div>
+                        </div>
+                      </foreignObject>
+                    </g>
+                  ))}
+                </svg>
+
+                <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+                  <div className="flex h-[112px] w-[112px] flex-col items-center justify-center rounded-full bg-white text-center shadow-sm">
+                    <div className="text-lg font-black text-slate-950">
+                      {formatMoney(paymentInMonth)}
+                    </div>
+                    <div className="mt-1 text-[11px] font-black uppercase tracking-[0.08em] text-slate-400">
+                      в месяц
+                    </div>
                   </div>
                 </div>
               </div>
