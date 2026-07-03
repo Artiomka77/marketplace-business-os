@@ -7,7 +7,7 @@ import { syncOzonDailyEconomicTotals } from "@/lib/ozon/syncOzonDailyEconomicTot
 import { syncWbDailySales } from "@/lib/wb/syncWbDailySales";
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 60;
+export const maxDuration = 180;
 
 type MarketplaceApiConnectionForDaily = {
   companyId: string;
@@ -17,7 +17,9 @@ type MarketplaceApiConnectionForDaily = {
   };
 };
 
-const STEP_TIMEOUT_MS = 25_000;
+const DEFAULT_STEP_TIMEOUT_MS = 30_000;
+const ORDER_SYNC_TIMEOUT_MS = 60_000;
+const OZON_FINANCE_TIMEOUT_MS = 120_000;
 
 function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : "Неизвестная ошибка";
@@ -67,7 +69,7 @@ function formatDateOnly(date: Date) {
 async function withStepTimeout<T>(
   label: string,
   promiseFactory: () => Promise<T>,
-  timeoutMs = STEP_TIMEOUT_MS
+  timeoutMs = DEFAULT_STEP_TIMEOUT_MS
 ): Promise<T> {
   let timeoutId: ReturnType<typeof setTimeout> | null = null;
 
@@ -141,7 +143,8 @@ async function runOzonDailyFinance(
         syncOzonFinance(connection.companyId, {
           dateFrom: date,
           dateTo: date,
-        })
+        }),
+      OZON_FINANCE_TIMEOUT_MS
     );
 
     return {
@@ -318,7 +321,8 @@ export async function GET(req: Request) {
         syncMarketplaceDailyOrders({
           dateFrom: date,
           dateTo: date,
-        })
+        }),
+      ORDER_SYNC_TIMEOUT_MS
     );
 
     const results = [];
@@ -337,13 +341,16 @@ export async function GET(req: Request) {
       }
     }
 
+    const failedResults = results.filter((item) => item && item.ok === false);
+
     return NextResponse.json({
-      ok: true,
+      ok: failedResults.length === 0,
       date: dateText,
       purpose:
         "Fast daily priority sync for Telegram, Dashboard and Ozon Profit. Runs only the requested date. Ozon ads Performance is not queued here because daily owner metrics use Ozon Finance/category facts and Performance has strict active-report limits.",
       orderStats,
       results,
+      failedResults,
       executedAt: new Date().toISOString(),
     });
   } catch (error) {
