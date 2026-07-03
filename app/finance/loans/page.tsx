@@ -253,27 +253,6 @@ export default async function LoansPage({
     },
   });
 
-  const overduePayments = await prisma.loanPayment.findMany({
-    where: {
-      paymentDate: {
-        lt: today,
-      },
-      paid: false,
-      ...(companyName
-        ? {
-            loan: {
-              companyName,
-            },
-          }
-        : {}),
-    },
-    include: {
-      loan: true,
-    },
-    orderBy: {
-      paymentDate: "asc",
-    },
-  });
 
   const currentMonthPayments = paymentsUntilYearEnd.filter(
     (payment) =>
@@ -324,10 +303,8 @@ export default async function LoansPage({
     0
   );
 
-  const overdueAmount = overduePayments.reduce(
-    (sum, payment) => sum + getPaymentTotal(payment),
-    0
-  );
+  const recommendedReserve = Math.ceil((next14Amount * 1.1) / 1000) * 1000;
+
 
   const next7Amount = next7Payments.reduce(
     (sum, payment) => sum + getPaymentTotal(payment),
@@ -423,11 +400,17 @@ export default async function LoansPage({
     (a, b) => b.monthlyPayment - a.monthlyPayment
   );
 
-  const loansByRate = [...loanRows].sort(
-    (a, b) =>
+  const loansByRate = [...loanRows].sort((a, b) => {
+    const aHasRate = a.interestRate > 0;
+    const bHasRate = b.interestRate > 0;
+
+    if (aHasRate !== bHasRate) return aHasRate ? -1 : 1;
+
+    return (
       b.interestRate - a.interestRate ||
       b.interestUntilYearEnd - a.interestUntilYearEnd
-  );
+    );
+  });
 
   const loansBySmallDebt = [...loanRows].sort(
     (a, b) => a.currentDebt - b.currentDebt
@@ -502,52 +485,49 @@ export default async function LoansPage({
 
   const activeLoanIdsCount = new Set(activeLoanIds).size;
 
-  const monthlyRevenuePlaceholder = 0;
-  const monthlyBurdenPercent = getSafeRatio(paymentInMonth, monthlyRevenuePlaceholder);
 
   return (
     <main className="min-h-screen bg-[#f5f7fb] px-4 py-6 sm:px-6 lg:px-8">
       <div className="mx-auto max-w-[1600px] space-y-6">
-        <section className="rounded-[28px] border border-slate-200 bg-white/80 p-6 shadow-sm shadow-slate-200/70 backdrop-blur xl:p-8">
-          <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
+        <section className="rounded-[24px] border border-slate-200 bg-white/90 p-5 shadow-sm shadow-slate-200/70 backdrop-blur">
+          <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
             <div>
-              <h1 className="text-4xl font-black tracking-tight text-slate-950">
+              <h1 className="text-3xl font-black tracking-tight text-slate-950">
                 Кредиты и займы
               </h1>
 
-              <p className="mt-3 max-w-3xl text-sm font-medium leading-6 text-slate-500">
-                Полная картина долговой нагрузки и оптимальные решения по
-                кредитному портфелю: ближайшие платежи, проценты, риски и
-                рекомендации по досрочному погашению.
+              <p className="mt-2 max-w-3xl text-sm font-medium leading-5 text-slate-500">
+                Полная картина долговой нагрузки: ближайшие платежи, проценты,
+                риски и рекомендации по досрочному погашению.
               </p>
             </div>
 
             <div className="flex flex-wrap gap-3">
               <Link
                 href="/finance/cashflow"
-                className="rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-black text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50"
+                className="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-black text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50"
               >
                 ОДДС
               </Link>
 
               <Link
                 href="/finance/calendar"
-                className="rounded-2xl bg-slate-950 px-5 py-3 text-sm font-black text-white shadow-sm shadow-slate-300 transition hover:bg-slate-800"
+                className="rounded-2xl bg-slate-950 px-4 py-2 text-sm font-black text-white shadow-sm shadow-slate-300 transition hover:bg-slate-800"
               >
                 Платёжный календарь
               </Link>
 
               <Link
                 href="/finance/accounts"
-                className="rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-black text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50"
+                className="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-black text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50"
               >
                 Счета
               </Link>
             </div>
           </div>
 
-          <form className="mt-7 flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
-            <div className="grid flex-1 gap-4 md:grid-cols-3">
+          <form className="mt-5 flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
+            <div className="grid flex-1 gap-3 md:grid-cols-3">
               <label className="block">
                 <span className="mb-2 block text-xs font-black uppercase tracking-[0.08em] text-slate-400">
                   Компания
@@ -556,7 +536,7 @@ export default async function LoansPage({
                 <select
                   name="company"
                   defaultValue={params.company ?? "ALL"}
-                  className="h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-900 shadow-sm outline-none transition focus:border-indigo-300 focus:ring-4 focus:ring-indigo-100"
+                  className="h-11 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-900 shadow-sm outline-none transition focus:border-indigo-300 focus:ring-4 focus:ring-indigo-100"
                 >
                   <option value="ALL">Все компании</option>
 
@@ -577,12 +557,12 @@ export default async function LoansPage({
                   type="month"
                   name="period"
                   defaultValue={selectedMonthValue}
-                  className="h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-900 shadow-sm outline-none transition focus:border-indigo-300 focus:ring-4 focus:ring-indigo-100"
+                  className="h-11 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-900 shadow-sm outline-none transition focus:border-indigo-300 focus:ring-4 focus:ring-indigo-100"
                 />
               </label>
 
               <div className="flex items-end">
-                <div className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                <div className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2.5">
                   <div className="text-xs font-black uppercase tracking-[0.08em] text-slate-400">
                     Обновлено
                   </div>
@@ -598,13 +578,13 @@ export default async function LoansPage({
             </div>
 
             <div className="flex flex-wrap gap-3">
-              <button className="h-12 rounded-2xl bg-slate-950 px-6 text-sm font-black text-white shadow-sm shadow-slate-300 transition hover:bg-slate-800">
+              <button className="h-11 rounded-2xl bg-slate-950 px-6 text-sm font-black text-white shadow-sm shadow-slate-300 transition hover:bg-slate-800">
                 Применить
               </button>
 
               <a
                 href="#all-loans"
-                className="inline-flex h-12 items-center justify-center rounded-2xl border border-slate-200 bg-white px-6 text-sm font-black text-slate-700 shadow-sm transition hover:bg-slate-50"
+                className="inline-flex h-11 items-center justify-center rounded-2xl border border-slate-200 bg-white px-6 text-sm font-black text-slate-700 shadow-sm transition hover:bg-slate-50"
               >
                 Все кредиты
               </a>
@@ -622,7 +602,7 @@ export default async function LoansPage({
           />
 
           <MetricCard
-            label="Платежи 30 дней"
+            label="Резерв 14 дней"
             value={formatMoney(next14Amount)}
             hint={`${next14Payments.length} платежей в ближайшие 14 дней`}
             accent="blue"
@@ -679,7 +659,7 @@ export default async function LoansPage({
                 Что требует внимания
               </h2>
               <p className="mt-1 text-sm font-medium text-slate-500">
-                Риски, ближайшие платежи и самые дорогие обязательства.
+                Резерв, ближайшие платежи и самые дорогие обязательства.
               </p>
             </div>
 
@@ -693,12 +673,12 @@ export default async function LoansPage({
 
           <div className="mt-5 grid gap-4 xl:grid-cols-4">
             <AttentionCard
-              tone="red"
-              title="Просроченные платежи"
-              subtitle={`${overduePayments.length} платежей на сумму`}
-              value={formatMoney(overdueAmount)}
-              action="Перейти к платежам →"
-              href="/finance/calendar"
+              tone="green"
+              title="Резерв на ближайшие платежи"
+              subtitle={`${next14Payments.length} платежей в ближайшие 14 дней`}
+              value={formatMoney(recommendedReserve)}
+              action="Держать на счетах →"
+              href="/finance/accounts"
             />
 
             <AttentionCard
@@ -729,7 +709,9 @@ export default async function LoansPage({
               subtitle={mostExpensiveLoan?.displayName ?? "нет данных"}
               value={
                 mostExpensiveLoan
-                  ? `${formatPercent(mostExpensiveLoan.interestRate)} годовых`
+                  ? mostExpensiveLoan.interestRate > 0
+                    ? `${formatPercent(mostExpensiveLoan.interestRate)} годовых`
+                    : `проценты ${formatMoney(mostExpensiveLoan.interestUntilYearEnd)}`
                   : "—"
               }
               action="Смотреть детали →"
@@ -738,7 +720,7 @@ export default async function LoansPage({
           </div>
         </section>
 
-        <section className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
+        <section className="grid gap-6 xl:grid-cols-2">
           <section
             id="recommendations"
             className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm shadow-slate-200/70"
@@ -886,7 +868,7 @@ export default async function LoansPage({
           </section>
         </section>
 
-        <section className="grid gap-6 xl:grid-cols-[1fr_0.95fr]">
+        <section className="grid gap-6 xl:grid-cols-2">
           <section className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm shadow-slate-200/70">
             <div className="flex items-start justify-between gap-3">
               <div>
@@ -1330,7 +1312,7 @@ function AttentionCard({
   action,
   href,
 }: {
-  tone: "red" | "orange" | "amber" | "purple";
+  tone: "red" | "orange" | "amber" | "purple" | "green";
   title: string;
   subtitle: string;
   value: string;
@@ -1342,6 +1324,7 @@ function AttentionCard({
     orange: "border-orange-100 bg-orange-50/60 text-orange-600",
     amber: "border-amber-100 bg-amber-50/60 text-amber-600",
     purple: "border-purple-100 bg-purple-50/60 text-purple-600",
+    green: "border-emerald-100 bg-emerald-50/60 text-emerald-600",
   }[tone];
 
   return (
