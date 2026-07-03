@@ -636,11 +636,27 @@ export default async function LoansPage({
     const offset = debtLoadCursor;
     debtLoadCursor += dashLength;
 
+    const middle = offset + dashLength / 2;
+    const angle = (middle / debtLoadCircumference) * Math.PI * 2 - Math.PI / 2;
+    const pointX = 90 + Math.cos(angle) * 76;
+    const pointY = 90 + Math.sin(angle) * 76;
+    const tooltipWidth = 142;
+    const tooltipHeight = 56;
+    const tooltipX = Math.min(
+      180 - tooltipWidth - 8,
+      Math.max(8, pointX - tooltipWidth / 2)
+    );
+    const tooltipY = pointY < 90 ? 118 : 8;
+
     return {
       ...segment,
       dashLength,
       dashGap: Math.max(0, debtLoadCircumference - dashLength),
       dashOffset: -offset,
+      tooltipX,
+      tooltipY,
+      tooltipWidth,
+      tooltipHeight,
     };
   });
 
@@ -1019,26 +1035,34 @@ export default async function LoansPage({
                         transform="rotate(-90 90 90)"
                         className="cursor-pointer opacity-95 transition-opacity duration-150 hover:opacity-80 focus:opacity-80"
                         tabIndex={0}
-                      >
-                        <title>{`${segment.label}: ${formatMoney(segment.amount)} в месяц, ${segment.percent.toFixed(1)}% нагрузки`}</title>
-                      </circle>
+                      />
 
                       <foreignObject
-                        x="8"
-                        y="8"
-                        width="164"
-                        height="76"
+                        x={segment.tooltipX}
+                        y={segment.tooltipY}
+                        width={segment.tooltipWidth}
+                        height={segment.tooltipHeight}
                         className="pointer-events-none opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100"
                       >
-                        <div className="rounded-2xl border border-slate-200 bg-white/95 px-3 py-2 text-left shadow-xl shadow-slate-300/40 backdrop-blur">
-                          <div className="truncate text-[11px] font-black text-slate-950">
-                            {segment.label}
+                        <div className="h-full rounded-2xl border border-slate-200 bg-white px-3 py-2 text-left shadow-xl shadow-slate-300/50">
+                          <div className="flex items-center gap-2">
+                            <span
+                              className="h-2.5 w-2.5 shrink-0 rounded-full"
+                              style={{ backgroundColor: segment.color }}
+                            />
+                            <div className="min-w-0 truncate text-[10px] font-black text-slate-950">
+                              {segment.label}
+                            </div>
                           </div>
-                          <div className="mt-1 text-[10px] font-bold text-slate-500">
-                            Платёж: {formatMoney(segment.amount)} / мес.
-                          </div>
-                          <div className="mt-0.5 text-[10px] font-black text-slate-700">
-                            Доля нагрузки: {segment.percent.toFixed(1)}%
+                          <div className="mt-1 grid grid-cols-2 gap-1 text-[9px] font-bold text-slate-500">
+                            <span>Платёж</span>
+                            <span className="text-right text-slate-900">
+                              {formatMoney(segment.amount)}
+                            </span>
+                            <span>Нагрузка</span>
+                            <span className="text-right text-slate-900">
+                              {segment.percent.toFixed(1)}%
+                            </span>
                           </div>
                         </div>
                       </foreignObject>
