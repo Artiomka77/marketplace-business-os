@@ -56,10 +56,12 @@ function formatMonthLabel(date: Date) {
 }
 
 function formatShortMonthLabel(date: Date) {
-  return date.toLocaleDateString("ru-RU", {
-    month: "short",
-    year: "numeric",
-  });
+  const month = date
+    .toLocaleDateString("ru-RU", { month: "short" })
+    .replace(".", "")
+    .toUpperCase();
+
+  return `${month} ${date.getFullYear()}`;
 }
 
 function formatDay(value: Date) {
@@ -658,6 +660,17 @@ export default async function LoansPage({
   });
 
   const monthlyMatrix = paymentSchedule.slice(0, 6);
+  const monthlyMatrixPeakKey = monthlyMatrix.reduce<string | null>((currentKey, row) => {
+    if (!currentKey) return monthKey(row.monthDate);
+
+    const current = monthlyMatrix.find(
+      (item) => monthKey(item.monthDate) === currentKey
+    );
+
+    return !current || row.totalAmount > current.totalAmount
+      ? monthKey(row.monthDate)
+      : currentKey;
+  }, null);
 
 
   return (
@@ -1119,7 +1132,7 @@ export default async function LoansPage({
             </a>
           </section>
 
-          <section className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm shadow-slate-200/70">
+          <section className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm shadow-slate-200/70 ring-1 ring-slate-100">
             <div className="flex items-start justify-between gap-3">
               <div>
                 <h2 className="text-xl font-black text-slate-950">
@@ -1130,60 +1143,101 @@ export default async function LoansPage({
                 </p>
               </div>
 
-              <span className="rounded-full bg-slate-950 px-3 py-1 text-xs font-black text-white">
-                Таблица
-              </span>
+              <div className="flex flex-wrap items-center justify-end gap-2">
+                {peakMonth ? (
+                  <span className="rounded-full bg-orange-50 px-3 py-1 text-xs font-black text-orange-700 ring-1 ring-orange-100">
+                    Пик: {formatShortMonthLabel(peakMonth.monthDate)} · {formatMoney(peakMonth.totalAmount)}
+                  </span>
+                ) : null}
+                <span className="rounded-full bg-slate-950 px-3 py-1 text-xs font-black text-white">
+                  Таблица
+                </span>
+              </div>
             </div>
 
-            <div className="mt-5 overflow-x-auto">
-              <table className="w-full min-w-[760px] text-sm">
+            <div className="mt-5 overflow-x-auto rounded-[22px] border border-slate-100 bg-slate-50/70 p-2">
+              <table className="w-full min-w-[760px] border-separate border-spacing-0 text-sm">
                 <thead>
-                  <tr className="bg-slate-50 text-left text-xs font-black uppercase tracking-[0.08em] text-slate-400">
-                    <th className="rounded-l-2xl px-4 py-3">Месяц</th>
-                    {monthlyMatrix.map((row, index) => (
-                      <th
-                        key={row.monthDate.toISOString()}
-                        className={`px-4 py-3 text-right ${
-                          index === monthlyMatrix.length - 1 ? "rounded-r-2xl" : ""
-                        }`}
-                      >
-                        {formatShortMonthLabel(row.monthDate)}
-                      </th>
-                    ))}
+                  <tr className="text-left text-xs font-black uppercase tracking-[0.08em] text-slate-500">
+                    <th className="rounded-l-2xl bg-white px-4 py-3 shadow-sm">Месяц</th>
+                    {monthlyMatrix.map((row, index) => {
+                      const isPeak = monthlyMatrixPeakKey === monthKey(row.monthDate);
+
+                      return (
+                        <th
+                          key={row.monthDate.toISOString()}
+                          className={`whitespace-nowrap px-4 py-3 text-right shadow-sm ${
+                            isPeak
+                              ? "bg-orange-50 text-orange-700 ring-1 ring-orange-100"
+                              : "bg-white text-slate-500"
+                          } ${
+                            index === monthlyMatrix.length - 1 ? "rounded-r-2xl" : ""
+                          }`}
+                        >
+                          {formatShortMonthLabel(row.monthDate)}
+                        </th>
+                      );
+                    })}
                   </tr>
                 </thead>
 
                 <tbody>
-                  <tr className="border-b border-slate-100">
-                    <td className="px-4 py-3 font-bold text-slate-600">Основной долг</td>
-                    {monthlyMatrix.map((row) => (
-                      <td key={`principal-${row.monthDate.toISOString()}`} className="px-4 py-3 text-right font-bold text-slate-900">
-                        {formatMoney(row.principalAmount)}
-                      </td>
-                    ))}
+                  <tr>
+                    <td className="border-b border-slate-100 bg-white px-4 py-3 font-bold text-slate-600">Основной долг</td>
+                    {monthlyMatrix.map((row) => {
+                      const isPeak = monthlyMatrixPeakKey === monthKey(row.monthDate);
+
+                      return (
+                        <td
+                          key={`principal-${row.monthDate.toISOString()}`}
+                          className={`border-b border-slate-100 px-4 py-3 text-right font-black ${
+                            isPeak ? "bg-orange-50/50 text-slate-950" : "bg-white text-slate-900"
+                          }`}
+                        >
+                          {formatMoney(row.principalAmount)}
+                        </td>
+                      );
+                    })}
                   </tr>
 
-                  <tr className="border-b border-slate-100">
-                    <td className="px-4 py-3 font-bold text-slate-600">Проценты</td>
-                    {monthlyMatrix.map((row) => (
-                      <td key={`interest-${row.monthDate.toISOString()}`} className="px-4 py-3 text-right font-bold text-slate-700">
-                        {formatMoney(row.interestAmount)}
-                      </td>
-                    ))}
+                  <tr>
+                    <td className="border-b border-slate-100 bg-white px-4 py-3 font-bold text-slate-600">Проценты</td>
+                    {monthlyMatrix.map((row) => {
+                      const isPeak = monthlyMatrixPeakKey === monthKey(row.monthDate);
+
+                      return (
+                        <td
+                          key={`interest-${row.monthDate.toISOString()}`}
+                          className={`border-b border-slate-100 px-4 py-3 text-right font-black ${
+                            isPeak ? "bg-orange-50/50 text-orange-700" : "bg-white text-orange-600"
+                          }`}
+                        >
+                          {formatMoney(row.interestAmount)}
+                        </td>
+                      );
+                    })}
                   </tr>
 
-                  <tr className="bg-slate-50/70">
-                    <td className="rounded-l-2xl px-4 py-3 font-black text-slate-950">Всего платежей</td>
-                    {monthlyMatrix.map((row, index) => (
-                      <td
-                        key={`total-${row.monthDate.toISOString()}`}
-                        className={`px-4 py-3 text-right font-black text-slate-950 ${
-                          index === monthlyMatrix.length - 1 ? "rounded-r-2xl" : ""
-                        }`}
-                      >
-                        {formatMoney(row.totalAmount)}
-                      </td>
-                    ))}
+                  <tr>
+                    <td className="rounded-l-2xl bg-slate-100 px-4 py-4 font-black text-slate-950">Всего платежей</td>
+                    {monthlyMatrix.map((row, index) => {
+                      const isPeak = monthlyMatrixPeakKey === monthKey(row.monthDate);
+
+                      return (
+                        <td
+                          key={`total-${row.monthDate.toISOString()}`}
+                          className={`px-4 py-4 text-right text-base font-black ${
+                            isPeak
+                              ? "bg-orange-100 text-orange-700 ring-1 ring-orange-200"
+                              : "bg-slate-100 text-red-600"
+                          } ${
+                            index === monthlyMatrix.length - 1 ? "rounded-r-2xl" : ""
+                          }`}
+                        >
+                          {formatMoney(row.totalAmount)}
+                        </td>
+                      );
+                    })}
                   </tr>
 
                   {monthlyMatrix.length === 0 && (
