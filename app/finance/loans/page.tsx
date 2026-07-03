@@ -625,6 +625,18 @@ export default async function LoansPage({
     : 0;
   const selectedRepaymentTotal =
     selectedRepaymentPrincipal + selectedRepaymentInterest;
+  const selectedRepaymentRate = selectedRepaymentLoan
+    ? selectedRepaymentLoan.calculatedAnnualRate || selectedRepaymentLoan.interestRate
+    : 0;
+  const selectedRepaymentNextDateInput = selectedRepaymentLoan?.nextPaymentDate
+    ? formatDateInput(selectedRepaymentLoan.nextPaymentDate)
+    : formatDateInput(addDays(today, 1));
+  const selectedRepaymentEndDateInput = selectedRepaymentLoan?.endDate
+    ? formatDateInput(selectedRepaymentLoan.endDate)
+    : selectedRepaymentNextDateInput;
+  const selectedRepaymentRegularPayment = selectedRepaymentLoan
+    ? selectedRepaymentLoan.nextPaymentTotal || selectedRepaymentLoan.monthlyPayment
+    : 0;
 
   const debtLoadColors = [
     "#1d4ed8",
@@ -1468,9 +1480,18 @@ export default async function LoansPage({
                   </div>
                 </div>
 
-                <div className="mt-4 rounded-2xl bg-emerald-50 p-4 text-sm font-bold leading-6 text-emerald-800 ring-1 ring-emerald-100">
-                  При полном погашении будущие платежи по этому кредиту будут
-                  помечены как закрытые, а текущий долг станет 0 ₽.
+                <div className="mt-4 space-y-3">
+                  <div className="rounded-2xl bg-emerald-50 p-4 text-sm font-bold leading-6 text-emerald-800 ring-1 ring-emerald-100">
+                    При полном погашении будущие платежи по этому кредиту будут
+                    помечены как закрытые, будущие плановые операции будут удалены,
+                    а текущий долг станет 0 ₽.
+                  </div>
+
+                  <div className="rounded-2xl bg-amber-50 p-4 text-sm font-bold leading-6 text-amber-900 ring-1 ring-amber-100">
+                    При частичном погашении система закроет старый будущий график и
+                    создаст новый: с новым телом, процентами, датами платежей и
+                    новой долговой нагрузкой.
+                  </div>
                 </div>
               </div>
 
@@ -1533,6 +1554,100 @@ export default async function LoansPage({
                       className="h-11 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-900 outline-none transition focus:border-indigo-300 focus:ring-4 focus:ring-indigo-100"
                     />
                   </label>
+
+                  <div className="md:col-span-2 rounded-[22px] border border-indigo-100 bg-indigo-50/60 p-4 ring-1 ring-indigo-50">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                      <div>
+                        <div className="text-xs font-black uppercase tracking-[0.08em] text-indigo-700">
+                          Новый график для частичного погашения
+                        </div>
+                        <p className="mt-1 text-sm font-bold leading-6 text-slate-600">
+                          Заполняется только при выборе “Частичное погашение”.
+                          Система закроет старые будущие платежи и создаст новый
+                          график по этим настройкам.
+                        </p>
+                      </div>
+                      <span className="rounded-full bg-white px-3 py-1 text-xs font-black text-indigo-700 ring-1 ring-indigo-100">
+                        Пересчёт
+                      </span>
+                    </div>
+
+                    <div className="mt-4 grid gap-4 md:grid-cols-2">
+                      <label className="block">
+                        <span className="mb-2 block text-xs font-black uppercase tracking-[0.08em] text-slate-400">
+                          Как пересчитать
+                        </span>
+                        <select
+                          name="scheduleStrategy"
+                          defaultValue="REDUCE_PAYMENT"
+                          className="h-11 w-full rounded-2xl border border-indigo-100 bg-white px-4 text-sm font-bold text-slate-900 outline-none transition focus:border-indigo-300 focus:ring-4 focus:ring-indigo-100"
+                        >
+                          <option value="REDUCE_PAYMENT">Уменьшить платёж, срок оставить</option>
+                          <option value="SHORTEN_TERM">Платёж оставить, сократить срок</option>
+                        </select>
+                      </label>
+
+                      <label className="block">
+                        <span className="mb-2 block text-xs font-black uppercase tracking-[0.08em] text-slate-400">
+                          Первый платёж нового графика
+                        </span>
+                        <input
+                          type="date"
+                          name="firstNewPaymentDate"
+                          defaultValue={selectedRepaymentNextDateInput}
+                          className="h-11 w-full rounded-2xl border border-indigo-100 bg-white px-4 text-sm font-bold text-slate-900 outline-none transition focus:border-indigo-300 focus:ring-4 focus:ring-indigo-100"
+                        />
+                      </label>
+
+                      <label className="block">
+                        <span className="mb-2 block text-xs font-black uppercase tracking-[0.08em] text-slate-400">
+                          Ставка для пересчёта, % годовых
+                        </span>
+                        <input
+                          name="scheduleAnnualRate"
+                          inputMode="decimal"
+                          defaultValue={
+                            selectedRepaymentRate > 0
+                              ? selectedRepaymentRate.toFixed(2)
+                              : ""
+                          }
+                          placeholder="Например 24"
+                          className="h-11 w-full rounded-2xl border border-indigo-100 bg-white px-4 text-sm font-bold text-slate-900 outline-none transition focus:border-indigo-300 focus:ring-4 focus:ring-indigo-100"
+                        />
+                      </label>
+
+                      <label className="block">
+                        <span className="mb-2 block text-xs font-black uppercase tracking-[0.08em] text-slate-400">
+                          Дата окончания при уменьшении платежа
+                        </span>
+                        <input
+                          type="date"
+                          name="scheduleEndDate"
+                          defaultValue={selectedRepaymentEndDateInput}
+                          className="h-11 w-full rounded-2xl border border-indigo-100 bg-white px-4 text-sm font-bold text-slate-900 outline-none transition focus:border-indigo-300 focus:ring-4 focus:ring-indigo-100"
+                        />
+                      </label>
+
+                      <label className="block md:col-span-2">
+                        <span className="mb-2 block text-xs font-black uppercase tracking-[0.08em] text-slate-400">
+                          Регулярный платёж при сокращении срока
+                        </span>
+                        <input
+                          name="newRegularPayment"
+                          inputMode="decimal"
+                          defaultValue={Math.round(selectedRepaymentRegularPayment)}
+                          placeholder="Сумма одного платежа"
+                          className="h-11 w-full rounded-2xl border border-indigo-100 bg-white px-4 text-sm font-bold text-slate-900 outline-none transition focus:border-indigo-300 focus:ring-4 focus:ring-indigo-100"
+                        />
+                      </label>
+                    </div>
+
+                    <div className="mt-4 rounded-2xl bg-white p-4 text-sm font-bold leading-6 text-slate-600 ring-1 ring-indigo-100">
+                      Для частичного погашения сумма в поле “Тело кредита” должна
+                      быть меньше текущего долга. Если закрываешь кредит полностью —
+                      выбирай “Полное погашение”.
+                    </div>
+                  </div>
 
                   <label className="block md:col-span-2">
                     <span className="mb-2 block text-xs font-black uppercase tracking-[0.08em] text-slate-400">
