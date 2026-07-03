@@ -643,6 +643,10 @@ function getPreviousPeriod(dateFrom: string, dateTo: string) {
   };
 }
 
+function shouldUseLargePeriodStabilityMode(dateFrom: string, dateTo: string) {
+  return getInclusiveDays(dateFrom, dateTo) > 62;
+}
+
 function createPeriodOptions(): PeriodOption[] {
   const now = new Date();
   const today = makeUtcDate(
@@ -2974,6 +2978,10 @@ export default async function HomePage({ searchParams }: Props) {
     selectedPeriod.dateFrom,
     selectedPeriod.dateTo
   );
+  const useLargePeriodStabilityMode = shouldUseLargePeriodStabilityMode(
+    selectedPeriod.dateFrom,
+    selectedPeriod.dateTo
+  );
 
   const companiesStartedAt = Date.now();
   const companies = await prisma.company.findMany({
@@ -2992,14 +3000,24 @@ export default async function HomePage({ searchParams }: Props) {
   });
   logDashboardPerf("buildCompanyDashboardRows current", dashboardRowsStartedAt);
 
-  const previousDashboardRowsStartedAt = Date.now();
-  const allPreviousRows = await buildCompanyDashboardRows({
-    companies,
-    dateFrom: previousPeriod.dateFrom,
-    dateTo: previousPeriod.dateTo,
-    debug: showDebug,
-  });
-  logDashboardPerf("buildCompanyDashboardRows previous", previousDashboardRowsStartedAt);
+  let allPreviousRows: CompanyDashboardRow[] = [];
+
+  if (useLargePeriodStabilityMode) {
+    logDashboardPerf(
+      "buildCompanyDashboardRows previous skipped for large period",
+      dashboardRowsStartedAt
+    );
+  } else {
+    const previousDashboardRowsStartedAt = Date.now();
+    allPreviousRows = await buildCompanyDashboardRows({
+      companies,
+      dateFrom: previousPeriod.dateFrom,
+      dateTo: previousPeriod.dateTo,
+      debug: showDebug,
+    });
+    logDashboardPerf("buildCompanyDashboardRows previous", previousDashboardRowsStartedAt);
+  }
+
   logDashboardPerf("buildCompanyDashboardRows current+previous", dashboardRowsStartedAt);
 
   const companyRowsWithMetrics = allCurrentRows.filter(hasAnyCompanyMetric);
@@ -3052,14 +3070,24 @@ export default async function HomePage({ searchParams }: Props) {
   });
   logDashboardPerf("getDashboardDailyAnalytics current", dailyAnalyticsStartedAt);
 
-  const previousDailyAnalyticsStartedAt = Date.now();
-  const previousDailyPoints = await getDashboardDailyAnalytics({
-    dateFrom: previousPeriod.dateFrom,
-    dateTo: previousPeriod.dateTo,
-    companyName: dailyCompanyName,
-    expectedTotals: createDailyExpectedTotals(marketplacePrevious),
-  });
-  logDashboardPerf("getDashboardDailyAnalytics previous", previousDailyAnalyticsStartedAt);
+  let previousDailyPoints: DashboardDailyPoint[] = [];
+
+  if (useLargePeriodStabilityMode) {
+    logDashboardPerf(
+      "getDashboardDailyAnalytics previous skipped for large period",
+      dailyAnalyticsStartedAt
+    );
+  } else {
+    const previousDailyAnalyticsStartedAt = Date.now();
+    previousDailyPoints = await getDashboardDailyAnalytics({
+      dateFrom: previousPeriod.dateFrom,
+      dateTo: previousPeriod.dateTo,
+      companyName: dailyCompanyName,
+      expectedTotals: createDailyExpectedTotals(marketplacePrevious),
+    });
+    logDashboardPerf("getDashboardDailyAnalytics previous", previousDailyAnalyticsStartedAt);
+  }
+
   logDashboardPerf("getDashboardDailyAnalytics current+previous", dailyAnalyticsStartedAt);
   const currentReconciliationRows = buildReconciliationRows(marketplaceCurrent, currentDailyPoints);
   const previousReconciliationRows = buildReconciliationRows(marketplacePrevious, previousDailyPoints);
