@@ -4,7 +4,6 @@ import { getProfitAnalytics } from "@/lib/analytics/profitAnalytics";
 import { getProfitAnalyticsOzon } from "@/lib/analytics/profitAnalyticsOzon";
 import {
   getDataReadinessSummary,
-  getDataReadinessWarnings,
   type DataReadinessSummary,
 } from "@/lib/analytics/dataReadiness";
 
@@ -1913,10 +1912,7 @@ export async function buildDailyReport(params?: {
   });
 
   report.dataReadiness = dataReadiness;
-  report.warnings = [
-    ...getDataReadinessWarnings(dataReadiness),
-    ...buildWarnings(report),
-  ];
+  report.warnings = buildWarnings(report);
 
   if (!params?.skipComparison) {
     const previousRange = getPreviousComparableRange(range);
@@ -2119,10 +2115,6 @@ function getProfitConclusion(report: DailyReport) {
 
 function buildOwnerConclusion(report: DailyReport) {
   const lines: string[] = ["Вывод по периоду:"];
-
-  if (report.dataReadiness && !report.dataReadiness.isFinal) {
-    lines.push("Период отмечен как предварительный: управленческие выводы нужно подтверждать после дозагрузки источников.");
-  }
 
   lines.push(
     `Оборот заказов: ${formatMoney(report.totals.ordersAmount)} при остатках ${formatNumber(
@@ -2341,7 +2333,7 @@ export function formatDailyReportForTelegram(report: DailyReport) {
     report.totals.netProfitImpact - report.totals.ownerWithdrawals;
 
   const dataReadinessText = report.dataReadiness && !report.dataReadiness.isFinal
-    ? `⚠️ Статус данных: ${report.dataReadiness.shortText}. Финансовый результат предварительный.`
+    ? `⚠️ ${report.dataReadiness.shortText}: финансовый результат предварительный.`
     : "";
 
   const lines: string[] = [

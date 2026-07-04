@@ -3355,13 +3355,6 @@ export default async function HomePage({ searchParams }: Props) {
 
   const attentionItems = [
     {
-      level: dataReadiness.status === "complete" ? "ok" : dataReadiness.status === "incomplete" ? "danger" : "warning",
-      title: dataReadiness.shortText,
-      text: dataReadiness.summaryText,
-      href: "/import",
-      icon: "◷",
-    },
-    {
       level: costCoverage.hasMissingCosts ? "danger" : "ok",
       title: costCoverage.hasMissingCosts ? costCoverageIssueLabel : "Себестоимость",
       text: costCoverageIssueText,
@@ -3606,34 +3599,21 @@ export default async function HomePage({ searchParams }: Props) {
         </section>
 
         {dataReadiness.status !== "complete" ? (
-          <section className={`rounded-[24px] border p-4 shadow-sm ${dataReadinessTone.panelClassName}`}>
-            <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-              <div>
-                <div className="text-xs font-black uppercase tracking-[0.12em]">
-                  Статус данных периода
-                </div>
-                <h2 className="mt-1 text-lg font-black">
-                  {dataReadiness.title}
-                </h2>
-                <p className="mt-2 max-w-4xl text-sm leading-6">
-                  {dataReadiness.summaryText}
-                </p>
+          <section
+            className={`flex flex-col gap-2 rounded-2xl border px-4 py-3 text-sm shadow-sm sm:flex-row sm:items-center sm:justify-between ${dataReadinessTone.panelClassName}`}
+            title={dataReadiness.summaryText}
+          >
+            <div className="flex min-w-0 items-start gap-2 sm:items-center">
+              <span className="mt-0.5 shrink-0 text-base sm:mt-0">{dataReadinessTone.icon}</span>
+              <div className="min-w-0">
+                <span className="font-black">{dataReadiness.shortText}</span>
+                <span className="mx-1 text-slate-400">—</span>
+                <span>финансовый результат предварительный, пока источники не закрыты.</span>
               </div>
-              <Link href="/import" className="secondary-button bg-white">
-                Проверить загрузки
-              </Link>
             </div>
-
-            {dataReadiness.issues.length > 0 ? (
-              <div className="mt-4 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
-                {dataReadiness.issues.map((issue) => (
-                  <div key={issue.kind} className="rounded-2xl border border-white/60 bg-white/70 p-3">
-                    <div className="text-sm font-black">{issue.title}</div>
-                    <p className="mt-1 text-xs leading-5">{issue.text}</p>
-                  </div>
-                ))}
-              </div>
-            ) : null}
+            <Link href="/import" className="shrink-0 text-xs font-black text-indigo-600 hover:text-indigo-700">
+              Проверить загрузки →
+            </Link>
           </section>
         ) : null}
 
