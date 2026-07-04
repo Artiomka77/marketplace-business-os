@@ -3097,6 +3097,86 @@ function summarizeDashboardRows(rows: CompanyDashboardRow[]): DashboardSummary {
   };
 }
 
+
+function buildCostCoverageManualFixRedirect(params: {
+  period: string;
+  companyName?: string | null;
+  marketplaceCompanyName?: string | null;
+  dateFrom?: string;
+  dateTo?: string;
+  chartPreset?: string;
+}) {
+  return buildDashboardHref({
+    period: params.period,
+    companyName: params.companyName,
+    marketplaceCompanyName: params.marketplaceCompanyName,
+    dateFrom: params.dateFrom,
+    dateTo: params.dateTo,
+    chartPreset: params.chartPreset,
+  });
+}
+
+function CostCoverageManualFixForm({
+  item,
+  redirectTo,
+}: {
+  item: {
+    marketplace: "WB" | "OZON";
+    companyName: string;
+    vendorCode: string;
+    externalId: string;
+    productName: string;
+    issueType?: "MISSING_COST" | "MISSING_OZON_MAPPING";
+  };
+  redirectTo: string;
+}) {
+  const isOzonMappingIssue = item.issueType === "MISSING_OZON_MAPPING";
+
+  return (
+    <form
+      action="/api/cost-coverage/manual-fix"
+      method="post"
+      className="mt-3 space-y-2 rounded-xl border border-red-100 bg-red-50/70 p-2"
+    >
+      <input type="hidden" name="redirectTo" value={redirectTo} />
+      <input type="hidden" name="marketplace" value={item.marketplace} />
+      <input type="hidden" name="companyName" value={item.companyName} />
+      <input type="hidden" name="externalId" value={item.externalId} />
+      <input type="hidden" name="currentVendorCode" value={item.vendorCode} />
+      <input type="hidden" name="productName" value={item.productName} />
+      <input type="hidden" name="issueType" value={item.issueType ?? "MISSING_COST"} />
+
+      {isOzonMappingIssue ? (
+        <label className="block text-[11px] font-black text-red-700">
+          Артикул продавца для связи Ozon SKU
+          <input
+            name="sellerVendorCode"
+            placeholder="например 914803449-140"
+            className="mt-1 w-full rounded-lg border border-red-200 bg-white px-2 py-1.5 text-xs font-bold text-slate-900 outline-none focus:border-red-400"
+          />
+        </label>
+      ) : null}
+
+      <label className="block text-[11px] font-black text-red-700">
+        Себестоимость, ₽ {isOzonMappingIssue ? "(если по артикулу ещё нет)" : ""}
+        <input
+          name="costPrice"
+          inputMode="decimal"
+          placeholder="например 650"
+          className="mt-1 w-full rounded-lg border border-red-200 bg-white px-2 py-1.5 text-xs font-bold text-slate-900 outline-none focus:border-red-400"
+        />
+      </label>
+
+      <button
+        type="submit"
+        className="w-full rounded-lg bg-red-600 px-3 py-2 text-xs font-black text-white transition hover:bg-red-700"
+      >
+        {isOzonMappingIssue ? "Сохранить связь / себестоимость" : "Сохранить себестоимость"}
+      </button>
+    </form>
+  );
+}
+
 export default async function HomePage({ searchParams }: Props) {
   const dashboardPerfStartedAt = Date.now();
   const params = searchParams ? await searchParams : {};
@@ -3246,6 +3326,15 @@ export default async function HomePage({ searchParams }: Props) {
         }. Оборот риска: ${formatCurrency(costCoverage.missingAmount)}. Прибыль может быть завышена.`
       : `Нет сопоставления Ozon SKU с артикулами по ${formatNumber(costCoverage.unmappedOzonItemsCount)} позициям. Оборот риска: ${formatCurrency(costCoverage.missingAmount)}. Себестоимость в файле может быть загружена, но без Ozon-связи система не может применить её к продажам.`
     : `Себестоимость найдена по всем товарам с оборотом: ${formatNumber(costCoverage.checkedItemsCount)}.`;
+
+  const costCoverageManualFixRedirect = buildCostCoverageManualFixRedirect({
+    period: selectedPeriod.key,
+    companyName: selectedCompanyValue,
+    marketplaceCompanyName: selectedMarketplaceCompanyValue,
+    dateFrom: selectedPeriod.key === "custom" ? selectedPeriod.dateFrom : undefined,
+    dateTo: selectedPeriod.key === "custom" ? selectedPeriod.dateTo : undefined,
+    chartPreset: selectedChartPreset.key,
+  });
 
   const presetPeriods = periodOptions.filter((period) => period.key !== "custom");
 
@@ -3532,6 +3621,10 @@ export default async function HomePage({ searchParams }: Props) {
                     <div className="mt-2 text-xs font-black text-red-700">
                       Кол-во: {formatNumber(Math.round(item.quantity))} · Сумма: {formatCurrency(item.amount)}
                     </div>
+                    <CostCoverageManualFixForm
+                      item={item}
+                      redirectTo={costCoverageManualFixRedirect}
+                    />
                   </div>
                 ))}
               </div>
