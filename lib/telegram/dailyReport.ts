@@ -1736,25 +1736,30 @@ function createReportComparison(
 
 function buildWarnings(report: DailyReport) {
   const warnings: string[] = [];
+  const suppressReadinessWarnings = Boolean(
+    report.dataReadiness && !report.dataReadiness.isFinal
+  );
 
-  if (report.totals.ordersQty <= 0 && report.totals.ordersAmount <= 0) {
-    warnings.push("нет заказов за период");
-  }
+  if (!suppressReadinessWarnings) {
+    if (report.totals.ordersQty <= 0 && report.totals.ordersAmount <= 0) {
+      warnings.push("нет заказов за период");
+    }
 
-  if (hasIncompleteOrderData(report)) {
-    warnings.push(
-      `заказы загружены не за весь выбранный период: ${report.totals.orderDataLoadedDays} из ${report.totals.orderDataExpectedDays} дневных срезов. ДРР от заказов может быть завышен`
-    );
-  }
+    if (hasIncompleteOrderData(report)) {
+      warnings.push(
+        `заказы загружены не за весь выбранный период: ${report.totals.orderDataLoadedDays} из ${report.totals.orderDataExpectedDays} дневных срезов. ДРР от заказов может быть завышен`
+      );
+    }
 
-  if (report.totals.salesQty <= 0 && report.totals.salesAmount <= 0) {
-    warnings.push("нет продаж/начислений за период");
-  }
+    if (report.totals.salesQty <= 0 && report.totals.salesAmount <= 0) {
+      warnings.push("нет продаж/начислений за период");
+    }
 
-  if (report.totals.drrByOrders > 20) {
-    warnings.push(
-      `ДРР от заказов выше 20%: ${formatPercent(report.totals.drrByOrders)}`
-    );
+    if (report.totals.drrByOrders > 20) {
+      warnings.push(
+        `ДРР от заказов выше 20%: ${formatPercent(report.totals.drrByOrders)}`
+      );
+    }
   }
 
   if (report.totals.netCashFlow < 0) {
@@ -1769,41 +1774,43 @@ function buildWarnings(report: DailyReport) {
     );
   }
 
-  for (const company of report.companies) {
-    if (company.wb.ordersDataMissing) {
-      warnings.push(`${company.companyName} WB: заказы ещё не загружены`);
-    } else if (company.wb.ordersDataIncomplete) {
-      warnings.push(
-        `${company.companyName} WB: заказы загружены частично (${company.wb.orderDataLoadedDays} из ${company.wb.orderDataExpectedDays} дней)`
-      );
-    }
+  if (!suppressReadinessWarnings) {
+    for (const company of report.companies) {
+      if (company.wb.ordersDataMissing) {
+        warnings.push(`${company.companyName} WB: заказы ещё не загружены`);
+      } else if (company.wb.ordersDataIncomplete) {
+        warnings.push(
+          `${company.companyName} WB: заказы загружены частично (${company.wb.orderDataLoadedDays} из ${company.wb.orderDataExpectedDays} дней)`
+        );
+      }
 
-    if (company.ozon.ordersDataMissing) {
-      warnings.push(`${company.companyName} Ozon: заказы ещё не загружены`);
-    } else if (company.ozon.ordersDataIncomplete) {
-      warnings.push(
-        `${company.companyName} Ozon: заказы загружены частично (${company.ozon.orderDataLoadedDays} из ${company.ozon.orderDataExpectedDays} дней)`
-      );
-    }
+      if (company.ozon.ordersDataMissing) {
+        warnings.push(`${company.companyName} Ozon: заказы ещё не загружены`);
+      } else if (company.ozon.ordersDataIncomplete) {
+        warnings.push(
+          `${company.companyName} Ozon: заказы загружены частично (${company.ozon.orderDataLoadedDays} из ${company.ozon.orderDataExpectedDays} дней)`
+        );
+      }
 
-    if (company.wb.adDataMissing) {
-      warnings.push(`${company.companyName} WB: реклама ещё не загружена`);
-    }
+      if (company.wb.adDataMissing) {
+        warnings.push(`${company.companyName} WB: реклама ещё не загружена`);
+      }
 
-    if (company.ozon.adDataMissing) {
-      warnings.push(`${company.companyName} Ozon: реклама ещё не загружена`);
-    }
+      if (company.ozon.adDataMissing) {
+        warnings.push(`${company.companyName} Ozon: реклама ещё не загружена`);
+      }
 
-    if (company.wb.salesDataMissing) {
-      warnings.push(
-        `${company.companyName} WB: продажи/выкупы ещё не загружены`
-      );
-    }
+      if (company.wb.salesDataMissing) {
+        warnings.push(
+          `${company.companyName} WB: продажи/выкупы ещё не загружены`
+        );
+      }
 
-    if (company.ozon.salesDataMissing) {
-      warnings.push(
-        `${company.companyName} Ozon: продажи/начисления ещё не загружены`
-      );
+      if (company.ozon.salesDataMissing) {
+        warnings.push(
+          `${company.companyName} Ozon: продажи/начисления ещё не загружены`
+        );
+      }
     }
   }
 
@@ -2181,7 +2188,7 @@ function getSalesGapAction(report: DailyReport) {
 function buildOwnerActions(report: DailyReport) {
   const actions: string[] = [];
 
-  if (hasIncompleteOrderData(report)) {
+  if (hasIncompleteOrderData(report) && (!report.dataReadiness || report.dataReadiness.isFinal)) {
     actions.push(
       "Не делать окончательные выводы по ДРР от заказов, пока заказы не накопятся за весь период. Сейчас главный ориентир — ДРР от продаж/начислений."
     );
@@ -2225,17 +2232,6 @@ function buildOwnerActions(report: DailyReport) {
 function marketplaceLine(label: string, metrics: MarketplaceDailyMetrics) {
   const lines = [`${label}`, marketplaceOrdersLine(metrics), marketplaceSalesLine(metrics)];
 
-  if (metrics.ordersDataMissingReason) {
-    lines.push(`Источник заказов: ${metrics.ordersDataMissingReason}`);
-  }
-
-  if (metrics.salesDataMissingReason) {
-    lines.push(`Источник продаж: ${metrics.salesDataMissingReason}`);
-  }
-
-  if (metrics.adDataMissingReason) {
-    lines.push(`Источник рекламы: ${metrics.adDataMissingReason}`);
-  }
 
   lines.push(marketplaceAdLine(metrics));
 

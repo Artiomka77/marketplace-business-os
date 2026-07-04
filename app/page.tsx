@@ -3340,7 +3340,7 @@ export default async function HomePage({ searchParams }: Props) {
     : `Себестоимость найдена по всем товарам с оборотом: ${formatNumber(costCoverage.checkedItemsCount)}.`;
 
   const dataReadinessTone = getDataReadinessTone(dataReadiness.status);
-  const financialMetricSuffix = dataReadiness.isFinal ? "" : " · предварительно";
+  const financialMetricSuffix = "";
 
   const costCoverageManualFixRedirect = buildCostCoverageManualFixRedirect({
     period: selectedPeriod.key,
@@ -3558,16 +3558,6 @@ export default async function HomePage({ searchParams }: Props) {
                 </div>
               </details>
 
-              {hasOrderCoverageWarning ? (
-                <span
-                  className="inline-flex items-center gap-1.5 rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-black text-amber-700 shadow-sm"
-                  title={ordersCoverageText}
-                >
-                  <span>⚠</span>
-                  <span>Заказы загружены частично</span>
-                </span>
-              ) : null}
-
               {costCoverage.hasMissingCosts ? (
                 <span
                   className="inline-flex items-center gap-1.5 rounded-2xl border border-red-200 bg-red-50 px-3 py-2 text-xs font-black text-red-700 shadow-sm"
@@ -3583,7 +3573,7 @@ export default async function HomePage({ searchParams }: Props) {
                 title={dataReadiness.summaryText}
               >
                 <span>{dataReadinessTone.icon}</span>
-                <span>{dataReadiness.shortText}</span>
+                <span>{dataReadiness.isFinal ? dataReadiness.shortText : hasOrderCoverageWarning ? `${dataReadiness.shortText} · загружены частично` : dataReadiness.shortText}</span>
               </span>
 
             </div>
@@ -3598,24 +3588,6 @@ export default async function HomePage({ searchParams }: Props) {
           </div>
         </section>
 
-        {dataReadiness.status !== "complete" ? (
-          <section
-            className={`flex flex-col gap-2 rounded-2xl border px-4 py-3 text-sm shadow-sm sm:flex-row sm:items-center sm:justify-between ${dataReadinessTone.panelClassName}`}
-            title={dataReadiness.summaryText}
-          >
-            <div className="flex min-w-0 items-start gap-2 sm:items-center">
-              <span className="mt-0.5 shrink-0 text-base sm:mt-0">{dataReadinessTone.icon}</span>
-              <div className="min-w-0">
-                <span className="font-black">{dataReadiness.shortText}</span>
-                <span className="mx-1 text-slate-400">—</span>
-                <span>финансовый результат предварительный, пока источники не закрыты.</span>
-              </div>
-            </div>
-            <Link href="/import" className="shrink-0 text-xs font-black text-indigo-600 hover:text-indigo-700">
-              Проверить загрузки →
-            </Link>
-          </section>
-        ) : null}
 
         {costCoverage.hasMissingCosts ? (
           <section className="rounded-[24px] border border-red-200 bg-red-50 p-4 shadow-sm shadow-red-100/60">
