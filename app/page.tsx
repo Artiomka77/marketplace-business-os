@@ -3148,7 +3148,7 @@ function CostCoverageManualFixForm({
 
       {isOzonMappingIssue ? (
         <label className="block text-[11px] font-black text-red-700">
-          Артикул продавца для связи Ozon SKU
+          Артикул продавца, если это обычный товар. Для уценки Ozon можно оставить пустым
           <input
             name="sellerVendorCode"
             placeholder="например 914803449-140"
@@ -3158,7 +3158,7 @@ function CostCoverageManualFixForm({
       ) : null}
 
       <label className="block text-[11px] font-black text-red-700">
-        Себестоимость, ₽ {isOzonMappingIssue ? "(если по артикулу ещё нет)" : ""}
+        {isOzonMappingIssue ? "Себестоимость для этого Ozon SKU, ₽" : "Себестоимость, ₽"}
         <input
           name="costPrice"
           inputMode="decimal"
