@@ -9,6 +9,10 @@ import {
 import { calculateFinanceMetricsForRows } from "@/lib/finance/financeMetrics";
 import { buildDailyReport } from "@/lib/telegram/dailyReport";
 import { getCostCoverageSummary } from "@/lib/analytics/costCoverage";
+import {
+  getDataReadinessSummary,
+  getDataReadinessTone,
+} from "@/lib/analytics/dataReadiness";
 
 type Props = {
   searchParams?: Promise<{
@@ -3287,6 +3291,14 @@ export default async function HomePage({ searchParams }: Props) {
   const current = summarizeDashboardRows(currentRows);
   const previous = summarizeDashboardRows(previousRows);
 
+  const dataReadinessStartedAt = Date.now();
+  const dataReadiness = await getDataReadinessSummary({
+    dateFrom: selectedPeriod.dateFrom,
+    dateTo: selectedPeriod.dateTo,
+    companyName: selectedCompanyName,
+  });
+  logDashboardPerf("data readiness", dataReadinessStartedAt);
+
   const costCoverageStartedAt = Date.now();
   const costCoverage = await getCostCoverageSummary({
     dateFrom: selectedPeriod.dateFrom,
@@ -3327,6 +3339,9 @@ export default async function HomePage({ searchParams }: Props) {
       : `Нет сопоставления Ozon SKU с артикулами по ${formatNumber(costCoverage.unmappedOzonItemsCount)} позициям. Оборот риска: ${formatCurrency(costCoverage.missingAmount)}. Себестоимость в файле может быть загружена, но без Ozon-связи система не может применить её к продажам.`
     : `Себестоимость найдена по всем товарам с оборотом: ${formatNumber(costCoverage.checkedItemsCount)}.`;
 
+  const dataReadinessTone = getDataReadinessTone(dataReadiness.status);
+  const financialMetricSuffix = dataReadiness.isFinal ? "" : " · предварительно";
+
   const costCoverageManualFixRedirect = buildCostCoverageManualFixRedirect({
     period: selectedPeriod.key,
     companyName: selectedCompanyValue,
@@ -3339,6 +3354,13 @@ export default async function HomePage({ searchParams }: Props) {
   const presetPeriods = periodOptions.filter((period) => period.key !== "custom");
 
   const attentionItems = [
+    {
+      level: dataReadiness.status === "complete" ? "ok" : dataReadiness.status === "incomplete" ? "danger" : "warning",
+      title: dataReadiness.shortText,
+      text: dataReadiness.summaryText,
+      href: "/import",
+      icon: "◷",
+    },
     {
       level: costCoverage.hasMissingCosts ? "danger" : "ok",
       title: costCoverage.hasMissingCosts ? costCoverageIssueLabel : "Себестоимость",
@@ -3563,6 +3585,14 @@ export default async function HomePage({ searchParams }: Props) {
                 </span>
               ) : null}
 
+              <span
+                className={`inline-flex items-center gap-1.5 rounded-2xl border px-3 py-2 text-xs font-black shadow-sm ${dataReadinessTone.badgeClassName}`}
+                title={dataReadiness.summaryText}
+              >
+                <span>{dataReadinessTone.icon}</span>
+                <span>{dataReadiness.shortText}</span>
+              </span>
+
             </div>
 
             <Link href="/import" className="primary-button w-fit gap-2 py-2.5">
@@ -3574,6 +3604,38 @@ export default async function HomePage({ searchParams }: Props) {
             Главные показатели бизнеса за выбранный период. Период и компанию можно поменять прямо в закреплённой панели.
           </div>
         </section>
+
+        {dataReadiness.status !== "complete" ? (
+          <section className={`rounded-[24px] border p-4 shadow-sm ${dataReadinessTone.panelClassName}`}>
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+              <div>
+                <div className="text-xs font-black uppercase tracking-[0.12em]">
+                  Статус данных периода
+                </div>
+                <h2 className="mt-1 text-lg font-black">
+                  {dataReadiness.title}
+                </h2>
+                <p className="mt-2 max-w-4xl text-sm leading-6">
+                  {dataReadiness.summaryText}
+                </p>
+              </div>
+              <Link href="/import" className="secondary-button bg-white">
+                Проверить загрузки
+              </Link>
+            </div>
+
+            {dataReadiness.issues.length > 0 ? (
+              <div className="mt-4 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+                {dataReadiness.issues.map((issue) => (
+                  <div key={issue.kind} className="rounded-2xl border border-white/60 bg-white/70 p-3">
+                    <div className="text-sm font-black">{issue.title}</div>
+                    <p className="mt-1 text-xs leading-5">{issue.text}</p>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+          </section>
+        ) : null}
 
         {costCoverage.hasMissingCosts ? (
           <section className="rounded-[24px] border border-red-200 bg-red-50 p-4 shadow-sm shadow-red-100/60">
@@ -3657,7 +3719,7 @@ export default async function HomePage({ searchParams }: Props) {
           <MetricCard
             title="Операционная прибыль"
             value={formatCurrency(current.operatingProfitAfterTax)}
-            subtitle={`После себестоимости, рекламы, логистики и налогов · ${formatRevenuePercent(current.operatingProfitAfterTax, current.totalRevenue)}`}
+            subtitle={`После себестоимости, рекламы, логистики и налогов · ${formatRevenuePercent(current.operatingProfitAfterTax, current.totalRevenue)}${financialMetricSuffix}`}
             icon="↗"
             accent="bg-emerald-50 text-emerald-700"
             valueClassName={valueColor(current.operatingProfitAfterTax)}
@@ -3668,7 +3730,7 @@ export default async function HomePage({ searchParams }: Props) {
           <MetricCard
             title="Чистая прибыль"
             value={formatCurrency(current.netProfit)}
-            subtitle={`Опер. прибыль ± финансовые статьи · ${formatRevenuePercent(current.netProfit, current.totalRevenue)}`}
+            subtitle={`Опер. прибыль ± финансовые статьи · ${formatRevenuePercent(current.netProfit, current.totalRevenue)}${financialMetricSuffix}`}
             icon="₽"
             accent="bg-red-50 text-red-700"
             valueClassName={valueColor(current.netProfit)}
@@ -3679,7 +3741,7 @@ export default async function HomePage({ searchParams }: Props) {
           <MetricCard
             title="После вывода собственника"
             value={formatCurrency(current.profitAfterOwnerWithdrawal)}
-            subtitle={`Чистая прибыль минус личные расходы: ${formatCurrency(current.personalExpenses)} · ${formatRevenuePercent(current.profitAfterOwnerWithdrawal, current.totalRevenue)}`}
+            subtitle={`Чистая прибыль минус личные расходы: ${formatCurrency(current.personalExpenses)} · ${formatRevenuePercent(current.profitAfterOwnerWithdrawal, current.totalRevenue)}${financialMetricSuffix}`}
             icon="●"
             accent="bg-blue-50 text-blue-700"
             valueClassName={valueColor(current.profitAfterOwnerWithdrawal)}
@@ -3690,7 +3752,7 @@ export default async function HomePage({ searchParams }: Props) {
           <MetricCard
             title="Денежный поток"
             value={formatCurrency(current.cashFlowResult)}
-            subtitle={`ДДС: поступления минус фактические выплаты · ${formatRevenuePercent(current.cashFlowResult, current.totalRevenue)}`}
+            subtitle={`ДДС: поступления минус фактические выплаты · ${formatRevenuePercent(current.cashFlowResult, current.totalRevenue)}${financialMetricSuffix}`}
             icon="⇄"
             accent="bg-cyan-50 text-cyan-700"
             valueClassName={valueColor(current.cashFlowResult)}
@@ -3703,10 +3765,10 @@ export default async function HomePage({ searchParams }: Props) {
             value={current.drr !== null ? formatPercent(current.drr) : "Нет данных"}
             subtitle={`Реклама всего: ${formatCurrency(current.adsCost)} · ДРР от заказов: ${
               current.drrByOrders !== null ? formatPercent(current.drrByOrders) : "—"
-            }`}
+            }${financialMetricSuffix}`}
             icon="↗"
             accent="bg-orange-50 text-orange-700"
-            valueClassName={current.drr !== null && current.drr > 12 ? "text-red-600" : "text-slate-950"}
+            valueClassName={dataReadiness.isFinal ? (current.drr !== null && current.drr > 12 ? "text-red-600" : "text-slate-950") : "text-amber-700"}
             href="/ads-mapping"
             trend={buildPercentTrend({ current: current.drr, previous: previous.drr, goodWhen: "down" })}
           />

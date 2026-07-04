@@ -2,6 +2,11 @@ import { prisma } from "@/lib/prisma";
 import { calculateFinanceMetricsForRows } from "@/lib/finance/financeMetrics";
 import { getProfitAnalytics } from "@/lib/analytics/profitAnalytics";
 import { getProfitAnalyticsOzon } from "@/lib/analytics/profitAnalyticsOzon";
+import {
+  getDataReadinessSummary,
+  getDataReadinessWarnings,
+  type DataReadinessSummary,
+} from "@/lib/analytics/dataReadiness";
 
 export type DailyReportPeriodPreset =
   | "today"
@@ -112,6 +117,7 @@ type DailyReport = {
     ownerWithdrawals: number;
   };
   warnings: string[];
+  dataReadiness: DataReadinessSummary | null;
   comparison?: DailyReportComparison | null;
 };
 
@@ -1852,6 +1858,7 @@ export async function buildDailyReport(params?: {
       ownerWithdrawals: 0,
     },
     warnings: [],
+    dataReadiness: null,
     comparison: null,
   };
 
@@ -1899,7 +1906,17 @@ export async function buildDailyReport(params?: {
     report.totals.salesAmount
   );
 
-  report.warnings = buildWarnings(report);
+  const dataReadiness = await getDataReadinessSummary({
+    dateFrom: getMoscowDateInput(range.dateFrom),
+    dateTo: getMoscowDateInput(getInclusiveDateTo(range.dateToExclusive)),
+    companyName: null,
+  });
+
+  report.dataReadiness = dataReadiness;
+  report.warnings = [
+    ...getDataReadinessWarnings(dataReadiness),
+    ...buildWarnings(report),
+  ];
 
   if (!params?.skipComparison) {
     const previousRange = getPreviousComparableRange(range);
@@ -2102,6 +2119,10 @@ function getProfitConclusion(report: DailyReport) {
 
 function buildOwnerConclusion(report: DailyReport) {
   const lines: string[] = ["Вывод по периоду:"];
+
+  if (report.dataReadiness && !report.dataReadiness.isFinal) {
+    lines.push("Период отмечен как предварительный: управленческие выводы нужно подтверждать после дозагрузки источников.");
+  }
 
   lines.push(
     `Оборот заказов: ${formatMoney(report.totals.ordersAmount)} при остатках ${formatNumber(
@@ -2319,6 +2340,10 @@ export function formatDailyReportForTelegram(report: DailyReport) {
   const profitAfterOwnerWithdrawal =
     report.totals.netProfitImpact - report.totals.ownerWithdrawals;
 
+  const dataReadinessText = report.dataReadiness && !report.dataReadiness.isFinal
+    ? `⚠️ Статус данных: ${report.dataReadiness.shortText}. Финансовый результат предварительный.`
+    : "";
+
   const lines: string[] = [
     `📊 AvoroFin — сводка собственника`,
     `Период: ${report.periodLabel}`,
@@ -2326,6 +2351,7 @@ export function formatDailyReportForTelegram(report: DailyReport) {
     report.comparison
       ? `Сравнение: ${report.comparison.dateLabel}`
       : "",
+    dataReadinessText,
     "",
     "ИТОГО ПО БИЗНЕСУ",
     `Заказы: ${formatNumber(report.totals.ordersQty)} шт / ${formatMoney(
