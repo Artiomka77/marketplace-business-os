@@ -2301,6 +2301,8 @@ function inlinePointDiff(value: number | null, inverse = true) {
 
 export function formatDailyReportForTelegram(report: DailyReport) {
   const comparison = report.comparison?.totals ?? null;
+  const profitAfterOwnerWithdrawal =
+    report.totals.netProfitImpact - report.totals.ownerWithdrawals;
 
   const lines: string[] = [
     `📊 AvoroFin — сводка собственника`,
@@ -2334,6 +2336,9 @@ export function formatDailyReportForTelegram(report: DailyReport) {
       comparison?.netProfitImpactPercent ?? null
     )}`,
     `Вывод собственника: ${formatMoney(report.totals.ownerWithdrawals)}`,
+    `Прибыль после вывода собственника: ${formatMoney(
+      profitAfterOwnerWithdrawal
+    )}`,
     `Остатки: ${formatNumber(report.totals.stockQty)} шт`,
   ].filter(Boolean);
 
@@ -2346,6 +2351,9 @@ export function formatDailyReportForTelegram(report: DailyReport) {
   lines.push("", ...buildOwnerActions(report));
 
   for (const company of report.companies) {
+    const companyProfitAfterOwnerWithdrawal =
+      company.finance.netProfitImpact - company.finance.ownerWithdrawals;
+
     lines.push(
       "",
       `━━━━━━━━━━━━━━`,
@@ -2358,7 +2366,10 @@ export function formatDailyReportForTelegram(report: DailyReport) {
       `Финансы:`,
       `ДДС: ${formatMoney(company.finance.netCashFlow)}`,
       `Чистая прибыль: ${formatMoney(company.finance.netProfitImpact)}`,
-      `Вывод собственника: ${formatMoney(company.finance.ownerWithdrawals)}`
+      `Вывод собственника: ${formatMoney(company.finance.ownerWithdrawals)}`,
+      `Прибыль после вывода собственника: ${formatMoney(
+        companyProfitAfterOwnerWithdrawal
+      )}`
     );
   }
 
