@@ -1,4 +1,4 @@
-﻿import { prisma } from "@/lib/prisma";
+import { prisma } from "@/lib/prisma";
 
 function toNumber(value: unknown): number {
   if (value === null || value === undefined) return 0;
@@ -342,8 +342,8 @@ type OzonFinancialCategoryFactRecord = {
 };
 
 type OzonProductRecord = {
-  vendorCode: string;
-  sku: string;
+  vendorCode: string | null;
+  sku: string | null;
 };
 
 function buildCostByVendorCode(costs: CostRecord[]) {
@@ -1778,15 +1778,31 @@ export async function getProfitAnalyticsOzon(params?: {
     },
   });
 
-  const ozonProducts = await prisma.ozonProduct.findMany({
-    where: {
-      ...(companyName ? { companyName } : {}),
-    },
-    select: {
-      vendorCode: true,
-      sku: true,
-    },
-  });
+  const [ozonProducts, ozonStockMappings] = await Promise.all([
+    prisma.ozonProduct.findMany({
+      where: {
+        ...(companyName ? { companyName } : {}),
+      },
+      select: {
+        vendorCode: true,
+        sku: true,
+      },
+    }),
+    // Fallback-маппинг: иногда Ozon Finance отдаёт SKU, которого нет в OzonProduct,
+    // но он есть в остатках Ozon вместе с vendorCode. Используем это только как
+    // справочник соответствия SKU -> артикул, не меняя сами финансовые формулы.
+    prisma.ozonStock.findMany({
+      where: {
+        ...(companyName ? { companyName } : {}),
+      },
+      select: {
+        vendorCode: true,
+        sku: true,
+      },
+    }),
+  ]);
+
+  const ozonProductMappings = [...ozonProducts, ...ozonStockMappings];
 
   const currentFinanceRows = await findLatestOzonFinanceRowsByPeriod({
     dateFrom: params?.dateFrom,
@@ -1875,7 +1891,7 @@ export async function getProfitAnalyticsOzon(params?: {
       financeRows: currentFinanceRows,
       adsRows: currentAdsRows,
       costs,
-      ozonProducts,
+      ozonProducts: ozonProductMappings,
       usnRate,
       vatRate,
     }),
@@ -1891,7 +1907,7 @@ export async function getProfitAnalyticsOzon(params?: {
       financeRows: previousFinanceRows,
       adsRows: previousAdsRows,
       costs,
-      ozonProducts,
+      ozonProducts: ozonProductMappings,
       usnRate,
       vatRate,
     }),

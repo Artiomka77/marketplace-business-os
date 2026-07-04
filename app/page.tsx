@@ -3225,20 +3225,35 @@ export default async function HomePage({ searchParams }: Props) {
   const selectedChartPreset = getChartPreset(params.chartPreset);
   const hasOrderCoverageWarning = hasPartialOrderCoverage(current);
   const ordersCoverageText = formatOrderCoverage(current);
+  const costCoverageIssueLabel =
+    costCoverage.missingRealCostItemsCount > 0
+      ? "Нет себестоимости"
+      : costCoverage.unmappedOzonItemsCount > 0
+        ? "Нет Ozon-связи"
+        : "Себестоимость OK";
+  const costCoverageIssueTitle =
+    costCoverage.missingRealCostItemsCount > 0
+      ? "Себестоимость загружена не по всем проданным артикулам"
+      : costCoverage.unmappedOzonItemsCount > 0
+        ? "Не все Ozon SKU сопоставлены с артикулами"
+        : "Себестоимость найдена по всем товарам с оборотом";
+  const costCoverageIssueText = costCoverage.hasMissingCosts
+    ? costCoverage.missingRealCostItemsCount > 0
+      ? `Нет себестоимости по ${formatNumber(costCoverage.missingRealCostItemsCount)} артикулам${
+          costCoverage.unmappedOzonItemsCount > 0
+            ? ` · не сопоставлено Ozon SKU: ${formatNumber(costCoverage.unmappedOzonItemsCount)}`
+            : ""
+        }. Оборот риска: ${formatCurrency(costCoverage.missingAmount)}. Прибыль может быть завышена.`
+      : `Нет сопоставления Ozon SKU с артикулами по ${formatNumber(costCoverage.unmappedOzonItemsCount)} позициям. Оборот риска: ${formatCurrency(costCoverage.missingAmount)}. Себестоимость в файле может быть загружена, но без Ozon-связи система не может применить её к продажам.`
+    : `Себестоимость найдена по всем товарам с оборотом: ${formatNumber(costCoverage.checkedItemsCount)}.`;
 
   const presetPeriods = periodOptions.filter((period) => period.key !== "custom");
 
   const attentionItems = [
     {
       level: costCoverage.hasMissingCosts ? "danger" : "ok",
-      title: "Себестоимость",
-      text: costCoverage.hasMissingCosts
-        ? `Нет себестоимости или сопоставления Ozon по ${formatNumber(
-            costCoverage.missingItemsCount
-          )} артикулам на ${formatCurrency(costCoverage.missingAmount)}. Прибыль может быть завышена.`
-        : `Себестоимость найдена по всем товарам с оборотом: ${formatNumber(
-            costCoverage.checkedItemsCount
-          )}.`,
+      title: costCoverage.hasMissingCosts ? costCoverageIssueLabel : "Себестоимость",
+      text: costCoverageIssueText,
       href: "/import",
       icon: "₽",
     },
@@ -3452,10 +3467,10 @@ export default async function HomePage({ searchParams }: Props) {
               {costCoverage.hasMissingCosts ? (
                 <span
                   className="inline-flex items-center gap-1.5 rounded-2xl border border-red-200 bg-red-50 px-3 py-2 text-xs font-black text-red-700 shadow-sm"
-                  title={`Нет себестоимости или сопоставления по ${costCoverage.missingItemsCount} артикулам`}
+                  title={costCoverageIssueText}
                 >
                   <span>⚠</span>
-                  <span>Нет себестоимости</span>
+                  <span>{costCoverageIssueLabel}</span>
                 </span>
               ) : null}
 
@@ -3476,22 +3491,20 @@ export default async function HomePage({ searchParams }: Props) {
             <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
               <div>
                 <div className="text-xs font-black uppercase tracking-[0.12em] text-red-600">
-                  Требуется себестоимость
+                  {costCoverageIssueLabel}
                 </div>
                 <h2 className="mt-1 text-lg font-black text-red-900">
-                  Себестоимость загружена не по всем проданным артикулам
+                  {costCoverageIssueTitle}
                 </h2>
                 <p className="mt-2 max-w-4xl text-sm leading-6 text-red-800">
-                  За выбранный период нет себестоимости или сопоставления Ozon по {formatNumber(costCoverage.missingItemsCount)} артикулам
-                  {costCoverage.missingWbItemsCount > 0 ? ` · WB: ${formatNumber(costCoverage.missingWbItemsCount)}` : ""}
-                  {costCoverage.missingOzonItemsCount > 0 ? ` · Ozon: ${formatNumber(costCoverage.missingOzonItemsCount)}` : ""}
-                  {costCoverage.unmappedOzonItemsCount > 0 ? ` · не сопоставлено Ozon SKU: ${formatNumber(costCoverage.unmappedOzonItemsCount)}` : ""}.
-                  Оборот по этим позициям: {formatCurrency(costCoverage.missingAmount)}. Пока себестоимость или Ozon-сопоставление не исправлены, прибыль по этим товарам может быть завышена.
+                  {costCoverageIssueText}
                 </p>
               </div>
 
               <Link href="/import" className="secondary-button border-red-200 bg-white text-red-700 hover:bg-red-50">
-                Загрузить себестоимость
+                {costCoverage.unmappedOzonItemsCount > 0 && costCoverage.missingRealCostItemsCount === 0
+                  ? "Обновить товары Ozon"
+                  : "Загрузить себестоимость"}
               </Link>
             </div>
 

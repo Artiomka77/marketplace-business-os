@@ -198,6 +198,16 @@ async function main() {
       [companyName]
     );
 
+    const ozonStockMappings = await query(
+      client,
+      `
+        SELECT "sku", "vendorCode"
+        FROM "OzonStock"
+        WHERE ($1::text = 'ALL' OR "companyName" = $1::text)
+      `,
+      [companyName]
+    );
+
     const wbRows = await query(
       client,
       `
@@ -239,7 +249,7 @@ async function main() {
 
     const { costByVendorCode, costByNmId } = buildCostLookups(costs);
     const wbSupplierArticleByNmId = buildWbSupplierArticleByNmId(wbProductCards);
-    const ozonProductLookup = buildOzonProductLookup(ozonProducts);
+    const ozonProductLookup = buildOzonProductLookup([...ozonProducts, ...ozonStockMappings]);
     const missing = new Map();
     const technicalWbRows = [];
     let checked = 0;

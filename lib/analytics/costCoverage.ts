@@ -12,8 +12,8 @@ type WbProductCardRecord = {
 };
 
 type OzonProductRecord = {
-  sku: string;
-  vendorCode: string;
+  sku: string | null;
+  vendorCode: string | null;
 };
 
 export type MissingCostItem = {
@@ -43,6 +43,7 @@ export type CostCoverageSummary = {
   technicalWbQuantity: number;
   technicalWbAmount: number;
   unmappedOzonItemsCount: number;
+  missingRealCostItemsCount: number;
 };
 
 function normalizeText(value: unknown) {
@@ -258,7 +259,7 @@ export async function getCostCoverageSummary(params: {
       }
     : {};
 
-  const [costs, wbProductCards, ozonProducts, wbRows, ozonRows] = await Promise.all([
+  const [costs, wbProductCards, ozonProducts, ozonStockMappings, wbRows, ozonRows] = await Promise.all([
     prisma.productCost.findMany({
       select: {
         vendorCode: true,
@@ -282,6 +283,13 @@ export async function getCostCoverageSummary(params: {
       },
     }),
     prisma.ozonProduct.findMany({
+      where: companyFilter,
+      select: {
+        sku: true,
+        vendorCode: true,
+      },
+    }),
+    prisma.ozonStock.findMany({
       where: companyFilter,
       select: {
         sku: true,
@@ -323,7 +331,7 @@ export async function getCostCoverageSummary(params: {
   const { hasWbCost, resolveOzonCost } = createCostResolvers({
     costs,
     wbProductCards,
-    ozonProducts,
+    ozonProducts: [...ozonProducts, ...ozonStockMappings],
   });
 
   const missingByKey = new Map<string, MissingCostItem>();
@@ -418,6 +426,9 @@ export async function getCostCoverageSummary(params: {
   const missingOzonItemsCount = missingItems.filter(
     (item) => item.marketplace === "OZON"
   ).length;
+  const missingRealCostItemsCount = missingItems.filter(
+    (item) => item.issueType !== "MISSING_OZON_MAPPING"
+  ).length;
   const missingQuantity = missingItems.reduce((sum, item) => sum + item.quantity, 0);
   const missingAmount = missingItems.reduce((sum, item) => sum + item.amount, 0);
 
@@ -437,5 +448,6 @@ export async function getCostCoverageSummary(params: {
     technicalWbQuantity,
     technicalWbAmount,
     unmappedOzonItemsCount,
+    missingRealCostItemsCount,
   };
 }

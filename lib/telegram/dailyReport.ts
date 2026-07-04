@@ -1570,9 +1570,20 @@ async function getOzonMetrics(companyName: string, range: DateRange) {
       ? profitTotals.economicTurnover
       : profitTotals.revenue
     : salesAmount;
-  const finalAdSpend = profitAnalyticsHasOzonData ? profitTotals.adsCost : adSpend;
+  // Защита от ситуации, когда Ozon Finance уже содержит рекламные списания,
+  // но управленческая аналитика ещё не подтянула их в totals.adsCost.
+  // Для отчёта собственника реклама не должна занижаться: берём больший из двух
+  // проверенных источников и корректируем прибыль на разницу, чтобы не завысить результат.
+  const profitAnalyticsAdSpend = profitAnalyticsHasOzonData ? profitTotals.adsCost : 0;
+  const finalAdSpend = profitAnalyticsHasOzonData
+    ? Math.max(profitAnalyticsAdSpend, adSpend)
+    : adSpend;
+  const extraAdSpendNotInProfit =
+    profitAnalyticsHasOzonData && finalAdSpend > profitAnalyticsAdSpend
+      ? finalAdSpend - profitAnalyticsAdSpend
+      : 0;
   const finalNetProfitAfterTax = profitAnalyticsHasOzonData
-    ? profitTotals.netProfitAfterTax
+    ? profitTotals.netProfitAfterTax - extraAdSpendNotInProfit
     : fallbackNetProfitAfterTax;
 
   const ordersDataMissing = orderStats.rowsCount === 0;
@@ -1610,7 +1621,11 @@ async function getOzonMetrics(companyName: string, range: DateRange) {
     salesDataMissing: false,
     salesDataMissingReason: null,
     adSpend: finalAdSpend,
-    adSpendSource: profitAnalyticsHasOzonData ? "Ozon Finance / реализация" : adSpendSource,
+    adSpendSource: profitAnalyticsHasOzonData
+      ? extraAdSpendNotInProfit > 0
+        ? "Ozon Finance Ads / реализация"
+        : "Ozon Finance / реализация"
+      : adSpendSource,
     adDataMissing,
     adDataMissingReason,
     drrByOrders: ordersDataMissing ? 0 : calculateDrr(finalAdSpend, orderStats.ordersAmount),
