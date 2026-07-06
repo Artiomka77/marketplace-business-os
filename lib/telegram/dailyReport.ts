@@ -63,6 +63,7 @@ type MarketplaceDailyMetrics = {
   taxableRevenue?: number;
   economicTurnover?: number;
   discountPointsAmount?: number;
+  partnerProgramsAmount?: number;
   grossOzonExpenses?: number;
   netOzonExpenses?: number;
   excludedLoansFactoringAmount?: number;
@@ -1646,6 +1647,9 @@ async function getOzonMetrics(companyName: string, range: DateRange) {
     discountPointsAmount: profitAnalyticsHasOzonData
       ? profitTotals.discountPointsAmount
       : undefined,
+    partnerProgramsAmount: profitAnalyticsHasOzonData
+      ? profitTotals.partnerProgramsAmount
+      : undefined,
     grossOzonExpenses: profitAnalyticsHasOzonData
       ? profitTotals.grossOzonExpenses
       : undefined,
@@ -1962,13 +1966,30 @@ function marketplaceSalesLine(metrics: MarketplaceDailyMetrics) {
 
   if (metrics.marketplace === "OZON" && metrics.economicTurnover !== undefined) {
     const details: string[] = [];
+    const taxableRevenue = metrics.taxableRevenue ?? 0;
+    const discountPointsAmount = metrics.discountPointsAmount ?? 0;
+    const partnerProgramsAmount = metrics.partnerProgramsAmount ?? 0;
 
     if (metrics.taxableRevenue !== undefined) {
-      details.push(`налоговая выручка ${formatMoney(metrics.taxableRevenue)}`);
+      details.push(`налоговая выручка ${formatMoney(taxableRevenue)}`);
     }
 
-    if (metrics.discountPointsAmount !== undefined && Math.abs(metrics.discountPointsAmount) > 0.5) {
-      details.push(`баллы ${formatMoney(metrics.discountPointsAmount)}`);
+    if (metrics.discountPointsAmount !== undefined && Math.abs(discountPointsAmount) > 0.5) {
+      details.push(`баллы ${formatMoney(discountPointsAmount)}`);
+    }
+
+    if (metrics.partnerProgramsAmount !== undefined && Math.abs(partnerProgramsAmount) > 0.5) {
+      details.push(`программы партнёров ${formatMoney(partnerProgramsAmount)}`);
+    }
+
+    const knownEconomicParts =
+      (metrics.taxableRevenue !== undefined ? taxableRevenue : 0) +
+      (metrics.discountPointsAmount !== undefined ? discountPointsAmount : 0) +
+      (metrics.partnerProgramsAmount !== undefined ? partnerProgramsAmount : 0);
+    const unclassifiedEconomicPart = metrics.economicTurnover - knownEconomicParts;
+
+    if (details.length > 0 && Math.abs(unclassifiedEconomicPart) > 0.5) {
+      details.push(`неразнесённая часть ${formatMoney(unclassifiedEconomicPart)}`);
     }
 
     return `${metrics.salesLabel}: ${formatMoney(metrics.economicTurnover)}${
@@ -2098,7 +2119,7 @@ function getCashFlowConclusion(report: DailyReport) {
   if (report.totals.netCashFlow > 0) {
     return `Денежный поток положительный: ${formatMoney(
       report.totals.netCashFlow
-    )}. По кассе день прошёл устойчиво.`;
+    )}. За период касса прошла устойчиво.`;
   }
 
   return "Денежный поток около нуля: касса без запаса прочности.";
@@ -2137,7 +2158,7 @@ function buildOwnerConclusion(report: DailyReport) {
     lines.push(
       `Вывод собственника ${formatMoney(
         report.totals.ownerWithdrawals
-      )} усилил кассовый разрыв в этот день.`
+      )} усилил кассовый разрыв за период.`
     );
   }
 
@@ -2179,7 +2200,7 @@ function getSalesGapAction(report: DailyReport) {
   if (salesToOrdersRatio < 55) {
     return `Проверить разрыв заказов и продаж/начислений: сейчас продажи/начисления ≈ ${formatPercent(
       salesToOrdersRatio
-    )} от суммы заказов. Для одного дня это может быть нормальной задержкой, но тренд нужно смотреть за 3–7 дней.`;
+    )} от суммы заказов. Для выбранного периода это может быть нормальной задержкой, но тренд нужно смотреть в динамике.`;
   }
 
   return null;
@@ -2196,13 +2217,13 @@ function buildOwnerActions(report: DailyReport) {
 
   if (report.totals.netCashFlow < 0) {
     actions.push(
-      "Проверить крупные расходы дня и отделить обязательные платежи от тех, что можно перенести."
+      "Проверить крупные расходы периода и отделить обязательные платежи от тех, что можно перенести."
     );
   }
 
   if (report.totals.ownerWithdrawals > 0 && report.totals.netCashFlow < 0) {
     actions.push(
-      "На дни с минусовым ДДС не увеличивать вывод собственника без проверки ближайших платежей."
+      "В периоды с минусовым ДДС не увеличивать вывод собственника без проверки ближайших платежей."
     );
   }
 
@@ -2226,7 +2247,7 @@ function buildOwnerActions(report: DailyReport) {
     );
   }
 
-  return ["Что сделать сегодня:", ...actions.slice(0, 4).map((action, index) => `${index + 1}. ${action}`)];
+  return ["Что сделать дальше:", ...actions.slice(0, 4).map((action, index) => `${index + 1}. ${action}`)];
 }
 
 function marketplaceLine(label: string, metrics: MarketplaceDailyMetrics) {
