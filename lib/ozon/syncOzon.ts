@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { normalizeOzonFinance } from "@/lib/import/normalizers/ozonFinanceNormalizer";
+import { syncOzonDailyEconomicTotalsRange } from "@/lib/ozon/syncOzonDailyEconomicTotals";
 
 type CompanyRow = { id: string; name: string };
 
@@ -845,6 +846,11 @@ export async function syncOzonFinance(
     dateTo,
   });
 
+  const dailyEconomicTotals = await syncOzonDailyEconomicTotalsRange(company.id, {
+    dateFrom,
+    dateTo: startOfUtcDay(dateTo),
+  });
+
   await prisma.importSession.update({
     where: { id: importSession.id },
     data: {
@@ -852,6 +858,7 @@ export async function syncOzonFinance(
       previewJson: {
         financeRows: rows.slice(0, 10),
         financialCategoryFactsCount,
+        dailyEconomicTotals,
       } as any,
     },
   });
@@ -861,6 +868,7 @@ export async function syncOzonFinance(
     rows: normalizeResult.savedRows,
     dateFrom: dateFromText,
     dateTo: dateToText,
+    dailyEconomicTotals,
   };
 }
 

@@ -1586,6 +1586,13 @@ export default async function ProfitOzonPage({
     totals.wbCommission + totals.logisticsCost + totals.adsCost + otherDeductions;
   const netOzonExpenses =
     totals.netOzonExpenses ?? grossOzonExpenses - discountPointsAmount;
+  const taxRevenueCoverageComplete = totals.taxRevenueCoverageComplete !== false;
+  const discountPointsCoverageComplete =
+    totals.discountPointsCoverageComplete !== false;
+  const missingTaxRevenueDays = totals.taxRevenueMissingDays ?? [];
+  const missingDiscountPointsDays = totals.discountPointsMissingDays ?? [];
+  const hasOzonEconomicSourceWarning =
+    !taxRevenueCoverageComplete || !discountPointsCoverageComplete;
 
   const lossRows = rows.filter((row) => row.netProfitAfterTax < 0);
   const highDrrRows = rows.filter((row) => row.drrPercent > 20);
@@ -1735,11 +1742,34 @@ export default async function ProfitOzonPage({
           </div>
         </section>
 
+        {hasOzonEconomicSourceWarning ? (
+          <section className="rounded-[28px] border border-amber-200 bg-amber-50 px-5 py-4 text-sm font-bold leading-6 text-amber-900 shadow-sm">
+            <div className="font-black">Данные Ozon по налоговой выручке / баллам неполные</div>
+            <div className="mt-1 text-amber-800">
+              Экономический оборот и расходы считаются по Ozon Finance. Налоговая выручка и баллы за скидки используются только при полном покрытии выбранного периода.
+            </div>
+            {missingTaxRevenueDays.length > 0 ? (
+              <div className="mt-1 text-xs text-amber-700">
+                Нет налоговой выручки за дни: {missingTaxRevenueDays.join(", ")}
+              </div>
+            ) : null}
+            {missingDiscountPointsDays.length > 0 ? (
+              <div className="mt-1 text-xs text-amber-700">
+                Нет данных по баллам за дни: {missingDiscountPointsDays.join(", ")}
+              </div>
+            ) : null}
+          </section>
+        ) : null}
+
         <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-7">
           <KpiCard
-            title="Налоговая выручка"
+            title={taxRevenueCoverageComplete ? "Налоговая выручка" : "Выручка Ozon"}
             value={formatMoney(totals.revenue)}
-            helper="сумма после баллов Ozon"
+            helper={
+              taxRevenueCoverageComplete
+                ? "сумма после баллов Ozon"
+                : "налоговая база Ozon неполная"
+            }
             delta={comparison.revenue.diffPercent}
             sparkTone="indigo"
             sparkPoints={[10, 12, 18, 14, 14, 21, 19, 28]}

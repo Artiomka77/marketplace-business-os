@@ -170,6 +170,33 @@ function createDateWhereFromDates(
   };
 }
 
+function formatDateKey(date: Date) {
+  return date.toISOString().slice(0, 10);
+}
+
+function expectedDateKeys(dateFrom: string, dateTo: string) {
+  const result: string[] = [];
+  const current = startOfDay(dateFrom);
+  const end = startOfDay(dateTo);
+
+  while (current.getTime() <= end.getTime()) {
+    result.push(formatDateKey(current));
+    current.setDate(current.getDate() + 1);
+  }
+
+  return result;
+}
+
+function findMissingDateKeys(expected: string[], actual: Set<string>) {
+  return expected.filter((dateKey) => !actual.has(dateKey));
+}
+
+function signedOzonExpenseAmount(value: unknown) {
+  // Ozon charges usually come with a negative sign. Refunds/cancellations are positive.
+  // Management expense must be signed: charge => positive expense, reversal => negative expense.
+  return -toNumber(value);
+}
+
 export type OzonProfitAnalyticsRow = {
   nmId: string;
   vendorCode: string;
@@ -227,6 +254,12 @@ export type OzonProfitTotals = {
   discountPointsAmount: number;
   economicTurnover: number;
   expenseShareBase: number;
+  taxRevenueSource: string;
+  taxRevenueCoverageComplete: boolean;
+  taxRevenueMissingDays: string[];
+  discountPointsSource: string;
+  discountPointsCoverageComplete: boolean;
+  discountPointsMissingDays: string[];
 
   sellerPayout: number;
 
@@ -329,12 +362,20 @@ type OzonRealizationSummaryRecord = {
   returnedAmount: unknown;
   taxableRevenue: unknown;
   partnerProgramsAmount: unknown;
+  source?: string;
+  coverageComplete?: boolean;
+  missingDays?: string[];
+  rows?: number;
 };
 
 type OzonDiscountPointsSummaryRecord = {
   pointsAccrued: unknown;
   pointsWrittenOff: unknown;
   totalPaidByPoints: unknown;
+  source?: string;
+  coverageComplete?: boolean;
+  missingDays?: string[];
+  rows?: number;
 };
 
 type OzonFinancialCategoryFactRecord = {
@@ -739,16 +780,36 @@ function applyOzonEconomicModel(
   usnRate: number,
   vatRate: number,
 ) {
-  const taxableRevenue = toNumber(realizationSummary?.taxableRevenue);
-  const realizedAmount = toNumber(realizationSummary?.realizedAmount);
-  const returnedAmount = toNumber(realizationSummary?.returnedAmount);
-  const partnerProgramsAmount = toNumber(
-    realizationSummary?.partnerProgramsAmount,
-  );
-  const discountPointsAmount =
-    toNumber(discountPointsSummary?.totalPaidByPoints) ||
-    toNumber(discountPointsSummary?.pointsWrittenOff) ||
-    toNumber(discountPointsSummary?.pointsAccrued);
+  const realizationCoverageComplete =
+    realizationSummary?.coverageComplete !== false;
+  const discountCoverageComplete =
+    discountPointsSummary?.coverageComplete !== false;
+
+  const taxableRevenue = realizationCoverageComplete
+    ? toNumber(realizationSummary?.taxableRevenue)
+    : 0;
+  const realizedAmount = realizationCoverageComplete
+    ? toNumber(realizationSummary?.realizedAmount)
+    : 0;
+  const returnedAmount = realizationCoverageComplete
+    ? toNumber(realizationSummary?.returnedAmount)
+    : 0;
+  const partnerProgramsAmount = realizationCoverageComplete
+    ? toNumber(realizationSummary?.partnerProgramsAmount)
+    : 0;
+  const discountPointsAmount = discountCoverageComplete
+    ? toNumber(discountPointsSummary?.totalPaidByPoints) ||
+      toNumber(discountPointsSummary?.pointsWrittenOff) ||
+      toNumber(discountPointsSummary?.pointsAccrued)
+    : 0;
+
+  result.totals.taxRevenueSource =
+    realizationSummary?.source ?? "OZON_FINANCE_FALLBACK";
+  result.totals.taxRevenueCoverageComplete = realizationCoverageComplete;
+  result.totals.taxRevenueMissingDays = realizationSummary?.missingDays ?? [];
+  result.totals.discountPointsSource = discountPointsSummary?.source ?? "NONE";
+  result.totals.discountPointsCoverageComplete = discountCoverageComplete;
+  result.totals.discountPointsMissingDays = discountPointsSummary?.missingDays ?? [];
 
   const oldTotalRevenue = result.totals.revenue;
 
@@ -765,7 +826,9 @@ function applyOzonEconomicModel(
     result.totals.returnedAmount = returnedAmount;
     result.totals.partnerProgramsAmount = partnerProgramsAmount;
   } else {
-    result.totals.taxableRevenue = result.totals.revenue;
+    // Нет полного источника налоговой выручки за выбранный период.
+    // Не подменяем налоговую выручку экономическим оборотом: это разные показатели.
+    result.totals.taxableRevenue = 0;
   }
 
   result.totals.discountPointsAmount = discountPointsAmount;
@@ -856,6 +919,12 @@ function createEmptyTotals(
     discountPointsAmount: 0,
     economicTurnover: 0,
     expenseShareBase: 0,
+    taxRevenueSource: "OZON_FINANCE_FALLBACK",
+    taxRevenueCoverageComplete: true,
+    taxRevenueMissingDays: [],
+    discountPointsSource: "NONE",
+    discountPointsCoverageComplete: true,
+    discountPointsMissingDays: [],
 
     sellerPayout: 0,
 
@@ -983,7 +1052,28 @@ function mergeOzonTotals(
     for (const key of keys) {
       result[key] = (toNumber(result[key]) + toNumber(totals[key])) as never;
     }
+
+    result.taxRevenueCoverageComplete =
+      result.taxRevenueCoverageComplete && totals.taxRevenueCoverageComplete;
+    result.discountPointsCoverageComplete =
+      result.discountPointsCoverageComplete && totals.discountPointsCoverageComplete;
+    result.taxRevenueMissingDays = Array.from(
+      new Set([...result.taxRevenueMissingDays, ...totals.taxRevenueMissingDays]),
+    );
+    result.discountPointsMissingDays = Array.from(
+      new Set([
+        ...result.discountPointsMissingDays,
+        ...totals.discountPointsMissingDays,
+      ]),
+    );
   }
+
+  result.taxRevenueSource = result.taxRevenueCoverageComplete
+    ? "MERGED_COMPLETE"
+    : "MERGED_INCOMPLETE";
+  result.discountPointsSource = result.discountPointsCoverageComplete
+    ? "MERGED_COMPLETE"
+    : "MERGED_INCOMPLETE";
 
   return finalizeOzonTotals(result);
 }
@@ -1322,10 +1412,10 @@ function calculateRowsAndTotals({
     current.revenue += salesAmount;
     current.sellerPayout += totalAmount;
 
-    const commission = Math.abs(toNumber(financeRow.ozonCommission));
-    const directLogistics = Math.abs(toNumber(financeRow.logisticsCost));
-    const reverseLogistics = Math.abs(
-      toNumber(financeRow.reverseLogisticsCost),
+    const commission = signedOzonExpenseAmount(financeRow.ozonCommission);
+    const directLogistics = signedOzonExpenseAmount(financeRow.logisticsCost);
+    const reverseLogistics = signedOzonExpenseAmount(
+      financeRow.reverseLogisticsCost,
     );
     const logistics = directLogistics + reverseLogistics;
 
@@ -1512,13 +1602,16 @@ async function findOzonRealizationSummaryByPeriod(params?: {
 }): Promise<OzonRealizationSummaryRecord | null> {
   if (!params?.dateFrom || !params?.dateTo) return null;
 
+  const expected = expectedDateKeys(params.dateFrom, params.dateTo);
+
   const exactRows = params.companyName
     ? await prisma.$queryRaw<OzonRealizationSummaryRecord[]>`
         SELECT
           COALESCE(SUM("realizedAmount"), 0) AS "realizedAmount",
           COALESCE(SUM("returnedAmount"), 0) AS "returnedAmount",
           COALESCE(SUM("taxableRevenue"), 0) AS "taxableRevenue",
-          COALESCE(SUM("partnerProgramsAmount"), 0) AS "partnerProgramsAmount"
+          COALESCE(SUM("partnerProgramsAmount"), 0) AS "partnerProgramsAmount",
+          COUNT(*)::int AS "rows"
         FROM "OzonRealizationSummary"
         WHERE "dateFrom"::date = CAST(${params.dateFrom} AS date)
           AND "dateTo"::date = CAST(${params.dateTo} AS date)
@@ -1529,7 +1622,8 @@ async function findOzonRealizationSummaryByPeriod(params?: {
           COALESCE(SUM("realizedAmount"), 0) AS "realizedAmount",
           COALESCE(SUM("returnedAmount"), 0) AS "returnedAmount",
           COALESCE(SUM("taxableRevenue"), 0) AS "taxableRevenue",
-          COALESCE(SUM("partnerProgramsAmount"), 0) AS "partnerProgramsAmount"
+          COALESCE(SUM("partnerProgramsAmount"), 0) AS "partnerProgramsAmount",
+          COUNT(*)::int AS "rows"
         FROM "OzonRealizationSummary"
         WHERE "dateFrom"::date = CAST(${params.dateFrom} AS date)
           AND "dateTo"::date = CAST(${params.dateTo} AS date)
@@ -1543,42 +1637,101 @@ async function findOzonRealizationSummaryByPeriod(params?: {
     Math.abs(toNumber(exactSummary?.partnerProgramsAmount));
 
   if (exactSummary && exactAmount > 0.005) {
-    return exactSummary;
+    return {
+      ...exactSummary,
+      source: "exact-period",
+      coverageComplete: true,
+      missingDays: [],
+    };
   }
 
-  // Для ежедневных и смешанных периодов Ozon realization может храниться дневными строками.
-  // Если точного summary за весь диапазон нет, агрегируем все summary внутри выбранного периода.
-  const aggregateRows = params.companyName
-    ? await prisma.$queryRaw<OzonRealizationSummaryRecord[]>`
+  type DailyRealizationSummary = OzonRealizationSummaryRecord & {
+    dateKey: Date | string;
+  };
+
+  const dailyRows = params.companyName
+    ? await prisma.$queryRaw<DailyRealizationSummary[]>`
         SELECT
+          "dateFrom"::date AS "dateKey",
           COALESCE(SUM("realizedAmount"), 0) AS "realizedAmount",
           COALESCE(SUM("returnedAmount"), 0) AS "returnedAmount",
           COALESCE(SUM("taxableRevenue"), 0) AS "taxableRevenue",
-          COALESCE(SUM("partnerProgramsAmount"), 0) AS "partnerProgramsAmount"
+          COALESCE(SUM("partnerProgramsAmount"), 0) AS "partnerProgramsAmount",
+          COUNT(*)::int AS "rows"
         FROM "OzonRealizationSummary"
         WHERE "dateFrom"::date >= CAST(${params.dateFrom} AS date)
           AND "dateTo"::date <= CAST(${params.dateTo} AS date)
           AND "companyName" = ${params.companyName}
+        GROUP BY "dateFrom"::date
       `
-    : await prisma.$queryRaw<OzonRealizationSummaryRecord[]>`
+    : await prisma.$queryRaw<DailyRealizationSummary[]>`
         SELECT
+          "dateFrom"::date AS "dateKey",
           COALESCE(SUM("realizedAmount"), 0) AS "realizedAmount",
           COALESCE(SUM("returnedAmount"), 0) AS "returnedAmount",
           COALESCE(SUM("taxableRevenue"), 0) AS "taxableRevenue",
-          COALESCE(SUM("partnerProgramsAmount"), 0) AS "partnerProgramsAmount"
+          COALESCE(SUM("partnerProgramsAmount"), 0) AS "partnerProgramsAmount",
+          COUNT(*)::int AS "rows"
         FROM "OzonRealizationSummary"
         WHERE "dateFrom"::date >= CAST(${params.dateFrom} AS date)
           AND "dateTo"::date <= CAST(${params.dateTo} AS date)
+        GROUP BY "dateFrom"::date
       `;
 
-  const aggregateSummary = aggregateRows[0];
-  const aggregateAmount =
-    Math.abs(toNumber(aggregateSummary?.realizedAmount)) +
-    Math.abs(toNumber(aggregateSummary?.returnedAmount)) +
-    Math.abs(toNumber(aggregateSummary?.taxableRevenue)) +
-    Math.abs(toNumber(aggregateSummary?.partnerProgramsAmount));
+  const actual = new Set(
+    dailyRows.map((row) =>
+      row.dateKey instanceof Date
+        ? formatDateKey(row.dateKey)
+        : String(row.dateKey).slice(0, 10),
+    ),
+  );
+  const missingDays = findMissingDateKeys(expected, actual);
 
-  return aggregateSummary && aggregateAmount > 0.005 ? aggregateSummary : null;
+  if (missingDays.length > 0) {
+    return {
+      realizedAmount: 0,
+      returnedAmount: 0,
+      taxableRevenue: 0,
+      partnerProgramsAmount: 0,
+      source: "inside-period-incomplete",
+      coverageComplete: false,
+      missingDays,
+      rows: dailyRows.length,
+    };
+  }
+
+  const aggregateSummary = dailyRows.reduce(
+    (acc, row) => {
+      acc.realizedAmount += toNumber(row.realizedAmount);
+      acc.returnedAmount += toNumber(row.returnedAmount);
+      acc.taxableRevenue += toNumber(row.taxableRevenue);
+      acc.partnerProgramsAmount += toNumber(row.partnerProgramsAmount);
+      acc.rows += toNumber(row.rows);
+      return acc;
+    },
+    {
+      realizedAmount: 0,
+      returnedAmount: 0,
+      taxableRevenue: 0,
+      partnerProgramsAmount: 0,
+      rows: 0,
+    },
+  );
+
+  const aggregateAmount =
+    Math.abs(aggregateSummary.realizedAmount) +
+    Math.abs(aggregateSummary.returnedAmount) +
+    Math.abs(aggregateSummary.taxableRevenue) +
+    Math.abs(aggregateSummary.partnerProgramsAmount);
+
+  return aggregateAmount > 0.005
+    ? {
+        ...aggregateSummary,
+        source: "inside-period-complete",
+        coverageComplete: true,
+        missingDays: [],
+      }
+    : null;
 }
 
 async function findOzonRealizationSummaryByDatePeriod(params?: {
@@ -1602,12 +1755,15 @@ async function findOzonDiscountPointsSummaryByPeriod(params?: {
 }): Promise<OzonDiscountPointsSummaryRecord | null> {
   if (!params?.dateFrom || !params?.dateTo) return null;
 
+  const expected = expectedDateKeys(params.dateFrom, params.dateTo);
+
   const exactRows = params.companyName
     ? await prisma.$queryRaw<OzonDiscountPointsSummaryRecord[]>`
         SELECT
           COALESCE(SUM("pointsAccrued"), 0) AS "pointsAccrued",
           COALESCE(SUM("pointsWrittenOff"), 0) AS "pointsWrittenOff",
-          COALESCE(SUM("totalPaidByPoints"), 0) AS "totalPaidByPoints"
+          COALESCE(SUM("totalPaidByPoints"), 0) AS "totalPaidByPoints",
+          COUNT(*)::int AS "rows"
         FROM "OzonDiscountPointsSummary"
         WHERE "dateFrom"::date = CAST(${params.dateFrom} AS date)
           AND "dateTo"::date = CAST(${params.dateTo} AS date)
@@ -1617,7 +1773,8 @@ async function findOzonDiscountPointsSummaryByPeriod(params?: {
         SELECT
           COALESCE(SUM("pointsAccrued"), 0) AS "pointsAccrued",
           COALESCE(SUM("pointsWrittenOff"), 0) AS "pointsWrittenOff",
-          COALESCE(SUM("totalPaidByPoints"), 0) AS "totalPaidByPoints"
+          COALESCE(SUM("totalPaidByPoints"), 0) AS "totalPaidByPoints",
+          COUNT(*)::int AS "rows"
         FROM "OzonDiscountPointsSummary"
         WHERE "dateFrom"::date = CAST(${params.dateFrom} AS date)
           AND "dateTo"::date = CAST(${params.dateTo} AS date)
@@ -1630,39 +1787,94 @@ async function findOzonDiscountPointsSummaryByPeriod(params?: {
     toNumber(exactSummary?.pointsAccrued);
 
   if (exactSummary && Math.abs(exactAmount) > 0.005) {
-    return exactSummary;
+    return {
+      ...exactSummary,
+      source: "exact-period",
+      coverageComplete: true,
+      missingDays: [],
+    };
   }
 
-  // Если точного summary нет, агрегируем дневные/помесячные записи внутри выбранного периода.
-  const aggregateRows = params.companyName
-    ? await prisma.$queryRaw<OzonDiscountPointsSummaryRecord[]>`
+  type DailyDiscountSummary = OzonDiscountPointsSummaryRecord & {
+    dateKey: Date | string;
+  };
+
+  const dailyRows = params.companyName
+    ? await prisma.$queryRaw<DailyDiscountSummary[]>`
         SELECT
+          "dateFrom"::date AS "dateKey",
           COALESCE(SUM("pointsAccrued"), 0) AS "pointsAccrued",
           COALESCE(SUM("pointsWrittenOff"), 0) AS "pointsWrittenOff",
-          COALESCE(SUM("totalPaidByPoints"), 0) AS "totalPaidByPoints"
+          COALESCE(SUM("totalPaidByPoints"), 0) AS "totalPaidByPoints",
+          COUNT(*)::int AS "rows"
         FROM "OzonDiscountPointsSummary"
         WHERE "dateFrom"::date >= CAST(${params.dateFrom} AS date)
           AND "dateTo"::date <= CAST(${params.dateTo} AS date)
           AND "companyName" = ${params.companyName}
+        GROUP BY "dateFrom"::date
       `
-    : await prisma.$queryRaw<OzonDiscountPointsSummaryRecord[]>`
+    : await prisma.$queryRaw<DailyDiscountSummary[]>`
         SELECT
+          "dateFrom"::date AS "dateKey",
           COALESCE(SUM("pointsAccrued"), 0) AS "pointsAccrued",
           COALESCE(SUM("pointsWrittenOff"), 0) AS "pointsWrittenOff",
-          COALESCE(SUM("totalPaidByPoints"), 0) AS "totalPaidByPoints"
+          COALESCE(SUM("totalPaidByPoints"), 0) AS "totalPaidByPoints",
+          COUNT(*)::int AS "rows"
         FROM "OzonDiscountPointsSummary"
         WHERE "dateFrom"::date >= CAST(${params.dateFrom} AS date)
           AND "dateTo"::date <= CAST(${params.dateTo} AS date)
+        GROUP BY "dateFrom"::date
       `;
 
-  const aggregateSummary = aggregateRows[0];
-  const aggregateAmount =
-    toNumber(aggregateSummary?.totalPaidByPoints) ||
-    toNumber(aggregateSummary?.pointsWrittenOff) ||
-    toNumber(aggregateSummary?.pointsAccrued);
+  const actual = new Set(
+    dailyRows.map((row) =>
+      row.dateKey instanceof Date
+        ? formatDateKey(row.dateKey)
+        : String(row.dateKey).slice(0, 10),
+    ),
+  );
+  const missingDays = findMissingDateKeys(expected, actual);
 
-  return aggregateSummary && Math.abs(aggregateAmount) > 0.005
-    ? aggregateSummary
+  if (missingDays.length > 0) {
+    return {
+      pointsAccrued: 0,
+      pointsWrittenOff: 0,
+      totalPaidByPoints: 0,
+      source: "inside-period-incomplete",
+      coverageComplete: false,
+      missingDays,
+      rows: dailyRows.length,
+    };
+  }
+
+  const aggregateSummary = dailyRows.reduce(
+    (acc, row) => {
+      acc.pointsAccrued += toNumber(row.pointsAccrued);
+      acc.pointsWrittenOff += toNumber(row.pointsWrittenOff);
+      acc.totalPaidByPoints += toNumber(row.totalPaidByPoints);
+      acc.rows += toNumber(row.rows);
+      return acc;
+    },
+    {
+      pointsAccrued: 0,
+      pointsWrittenOff: 0,
+      totalPaidByPoints: 0,
+      rows: 0,
+    },
+  );
+
+  const aggregateAmount =
+    toNumber(aggregateSummary.totalPaidByPoints) ||
+    toNumber(aggregateSummary.pointsWrittenOff) ||
+    toNumber(aggregateSummary.pointsAccrued);
+
+  return Math.abs(aggregateAmount) > 0.005
+    ? {
+        ...aggregateSummary,
+        source: "inside-period-complete",
+        coverageComplete: true,
+        missingDays: [],
+      }
     : null;
 }
 
