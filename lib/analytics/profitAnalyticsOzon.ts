@@ -436,6 +436,60 @@ function getOzonCategoryAmount(
   );
 }
 
+
+const OZON_FACTS_PARTIAL_GUARD_MIN_RATIO = 0.5;
+
+function isOzonFactSuspiciouslyLowerThanPeriodTotal(
+  factAmount: number,
+  periodAmount: number,
+) {
+  const fact = Math.abs(factAmount);
+  const period = Math.abs(periodAmount);
+
+  if (period <= 0.005 || fact <= 0.005) return false;
+
+  return fact < period * OZON_FACTS_PARTIAL_GUARD_MIN_RATIO;
+}
+
+function areOzonFinancialCategoryFactsLikelyPartial(
+  totals: OzonProfitTotals,
+  facts: OzonFinancialCategoryFactRecord[],
+) {
+  const commission = getOzonCategoryAmount(facts, "OZON_COMMISSION");
+  const delivery = getOzonCategoryAmount(facts, "OZON_DELIVERY");
+  const fbo = getOzonCategoryAmount(facts, "OZON_FBO");
+  const advertising = getOzonCategoryAmount(facts, "OZON_ADVERTISING");
+
+  const checks = [
+    {
+      hasFacts: hasOzonCategoryFact(facts, "OZON_COMMISSION"),
+      factAmount: commission,
+      periodAmount: totals.wbCommission,
+    },
+    {
+      hasFacts:
+        hasOzonCategoryFact(facts, "OZON_DELIVERY") ||
+        hasOzonCategoryFact(facts, "OZON_FBO"),
+      factAmount: delivery + fbo,
+      periodAmount: totals.logisticsCost,
+    },
+    {
+      hasFacts: hasOzonCategoryFact(facts, "OZON_ADVERTISING"),
+      factAmount: advertising,
+      periodAmount: totals.adsCost,
+    },
+  ];
+
+  return checks.some(
+    (check) =>
+      check.hasFacts &&
+      isOzonFactSuspiciouslyLowerThanPeriodTotal(
+        check.factAmount,
+        check.periodAmount,
+      ),
+  );
+}
+
 function hasOzonFinancialCategoryFacts(
   facts: OzonFinancialCategoryFactRecord[],
 ) {
@@ -457,6 +511,12 @@ function applyOzonFinancialCategoryFactsToTotals(
   facts: OzonFinancialCategoryFactRecord[],
 ) {
   if (!hasOzonFinancialCategoryFacts(facts)) return false;
+
+  // OzonFinancialCategoryFact может оказаться не просто частичным по категориям,
+  // а частичным по датам: например, в таблицу попал только последний день периода.
+  // В таком случае нельзя перезаписывать недельные суммы из OzonFinance дневными facts,
+  // иначе комиссия, логистика, реклама и прибыль будут сильно искажены.
+  if (areOzonFinancialCategoryFactsLikelyPartial(totals, facts)) return false;
 
   const hasCommissionFacts = hasOzonCategoryFact(facts, "OZON_COMMISSION");
   const hasDeliveryFacts = hasOzonCategoryFact(facts, "OZON_DELIVERY");
