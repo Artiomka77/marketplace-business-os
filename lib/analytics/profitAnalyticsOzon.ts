@@ -780,10 +780,14 @@ function applyOzonEconomicModel(
   usnRate: number,
   vatRate: number,
 ) {
-  const realizationCoverageComplete =
-    realizationSummary?.coverageComplete !== false;
-  const discountCoverageComplete =
-    discountPointsSummary?.coverageComplete !== false;
+  const oldTotalRevenue = result.totals.revenue;
+  const hasOzonEconomicActivity = Math.abs(oldTotalRevenue) > 0.005;
+  const realizationCoverageComplete = hasOzonEconomicActivity
+    ? Boolean(realizationSummary) && realizationSummary?.coverageComplete !== false
+    : true;
+  const discountCoverageComplete = hasOzonEconomicActivity
+    ? Boolean(discountPointsSummary) && discountPointsSummary?.coverageComplete !== false
+    : true;
 
   const taxableRevenue = realizationCoverageComplete
     ? toNumber(realizationSummary?.taxableRevenue)
@@ -803,15 +807,16 @@ function applyOzonEconomicModel(
       toNumber(discountPointsSummary?.pointsAccrued)
     : 0;
 
-  result.totals.taxRevenueSource =
-    realizationSummary?.source ?? "OZON_FINANCE_FALLBACK";
+  result.totals.taxRevenueSource = realizationCoverageComplete
+    ? realizationSummary?.source ?? "NONE"
+    : realizationSummary?.source ?? "MISSING_OZON_ACCRUALS_REPORT";
   result.totals.taxRevenueCoverageComplete = realizationCoverageComplete;
   result.totals.taxRevenueMissingDays = realizationSummary?.missingDays ?? [];
-  result.totals.discountPointsSource = discountPointsSummary?.source ?? "NONE";
+  result.totals.discountPointsSource = discountCoverageComplete
+    ? discountPointsSummary?.source ?? "NONE"
+    : discountPointsSummary?.source ?? "MISSING_OZON_ACCRUALS_REPORT";
   result.totals.discountPointsCoverageComplete = discountCoverageComplete;
   result.totals.discountPointsMissingDays = discountPointsSummary?.missingDays ?? [];
-
-  const oldTotalRevenue = result.totals.revenue;
 
   if (taxableRevenue > 0) {
     const ratio = oldTotalRevenue > 0 ? taxableRevenue / oldTotalRevenue : 0;
@@ -1661,6 +1666,7 @@ async function findOzonRealizationSummaryByPeriod(params?: {
         FROM "OzonRealizationSummary"
         WHERE "dateFrom"::date >= CAST(${params.dateFrom} AS date)
           AND "dateTo"::date <= CAST(${params.dateTo} AS date)
+          AND "dateFrom"::date = "dateTo"::date
           AND "companyName" = ${params.companyName}
         GROUP BY "dateFrom"::date
       `
@@ -1675,6 +1681,7 @@ async function findOzonRealizationSummaryByPeriod(params?: {
         FROM "OzonRealizationSummary"
         WHERE "dateFrom"::date >= CAST(${params.dateFrom} AS date)
           AND "dateTo"::date <= CAST(${params.dateTo} AS date)
+          AND "dateFrom"::date = "dateTo"::date
         GROUP BY "dateFrom"::date
       `;
 
@@ -1810,6 +1817,7 @@ async function findOzonDiscountPointsSummaryByPeriod(params?: {
         FROM "OzonDiscountPointsSummary"
         WHERE "dateFrom"::date >= CAST(${params.dateFrom} AS date)
           AND "dateTo"::date <= CAST(${params.dateTo} AS date)
+          AND "dateFrom"::date = "dateTo"::date
           AND "companyName" = ${params.companyName}
         GROUP BY "dateFrom"::date
       `
@@ -1823,6 +1831,7 @@ async function findOzonDiscountPointsSummaryByPeriod(params?: {
         FROM "OzonDiscountPointsSummary"
         WHERE "dateFrom"::date >= CAST(${params.dateFrom} AS date)
           AND "dateTo"::date <= CAST(${params.dateTo} AS date)
+          AND "dateFrom"::date = "dateTo"::date
         GROUP BY "dateFrom"::date
       `;
 

@@ -67,6 +67,11 @@ type MarketplaceDailyMetrics = {
   grossOzonExpenses?: number;
   netOzonExpenses?: number;
   excludedLoansFactoringAmount?: number;
+  taxRevenueCoverageComplete?: boolean;
+  discountPointsCoverageComplete?: boolean;
+  taxRevenueMissingDays?: string[];
+  discountPointsMissingDays?: string[];
+  ozonEconomicsWarning?: string | null;
 };
 
 type CompanyDailyReport = {
@@ -1411,6 +1416,22 @@ async function getWbMetrics(companyName: string, range: DateRange) {
   };
 }
 
+function profitAnalyticsHasOzonEconomicActivity(totals: {
+  revenue: number;
+  economicTurnover: number;
+  discountPointsAmount: number;
+  adsCost: number;
+  netProfitAfterTax: number;
+}) {
+  return (
+    Math.abs(totals.revenue) > 0.5 ||
+    Math.abs(totals.economicTurnover) > 0.5 ||
+    Math.abs(totals.discountPointsAmount) > 0.5 ||
+    Math.abs(totals.adsCost) > 0.5 ||
+    Math.abs(totals.netProfitAfterTax) > 0.5
+  );
+}
+
 async function getOzonMetrics(companyName: string, range: DateRange) {
   const [
     orderStats,
@@ -1562,6 +1583,14 @@ async function getOzonMetrics(companyName: string, range: DateRange) {
   });
 
   const profitTotals = ozonProfitAnalytics.totals;
+  const taxRevenueCoverageComplete = profitTotals.taxRevenueCoverageComplete !== false;
+  const discountPointsCoverageComplete = profitTotals.discountPointsCoverageComplete !== false;
+  const ozonEconomicsIncomplete =
+    profitAnalyticsHasOzonEconomicActivity(profitTotals) &&
+    (!taxRevenueCoverageComplete || !discountPointsCoverageComplete);
+  const ozonEconomicsWarning = ozonEconomicsIncomplete
+    ? "налоговая выручка / баллы Ozon неполные — загрузите отчёт начислений Ozon"
+    : null;
   const profitAnalyticsHasOzonData =
     ozonProfitAnalytics.rows.length > 0 ||
     profitTotals.revenue !== 0 ||
@@ -1638,8 +1667,8 @@ async function getOzonMetrics(companyName: string, range: DateRange) {
     drrBySales: calculateDrr(finalAdSpend, finalSalesAmount),
     stockQty,
     netProfitAfterTax: finalNetProfitAfterTax,
-    taxableRevenue: profitAnalyticsHasOzonData
-      ? profitTotals.taxableRevenue || profitTotals.revenue
+    taxableRevenue: profitAnalyticsHasOzonData && taxRevenueCoverageComplete
+      ? profitTotals.taxableRevenue
       : undefined,
     economicTurnover: profitAnalyticsHasOzonData
       ? profitTotals.economicTurnover || finalSalesAmount
@@ -1659,6 +1688,11 @@ async function getOzonMetrics(companyName: string, range: DateRange) {
     excludedLoansFactoringAmount: profitAnalyticsHasOzonData
       ? profitTotals.excludedLoansFactoringAmount
       : undefined,
+    taxRevenueCoverageComplete,
+    discountPointsCoverageComplete,
+    taxRevenueMissingDays: profitTotals.taxRevenueMissingDays ?? [],
+    discountPointsMissingDays: profitTotals.discountPointsMissingDays ?? [],
+    ozonEconomicsWarning,
   };
 }
 
@@ -1815,6 +1849,18 @@ function buildWarnings(report: DailyReport) {
           `${company.companyName} Ozon: продажи/начисления ещё не загружены`
         );
       }
+
+      if (company.ozon.ozonEconomicsWarning) {
+        const missingTaxDays = company.ozon.taxRevenueMissingDays?.length
+          ? ` Нет налоговой выручки за дни: ${company.ozon.taxRevenueMissingDays.join(", ")}.`
+          : "";
+        const missingPointDays = company.ozon.discountPointsMissingDays?.length
+          ? ` Нет баллов за дни: ${company.ozon.discountPointsMissingDays.join(", ")}.`
+          : "";
+        warnings.push(
+          `${company.companyName} Ozon: ${company.ozon.ozonEconomicsWarning}.${missingTaxDays}${missingPointDays}`
+        );
+      }
     }
   }
 
@@ -1965,6 +2011,10 @@ function marketplaceSalesLine(metrics: MarketplaceDailyMetrics) {
   }
 
   if (metrics.marketplace === "OZON" && metrics.economicTurnover !== undefined) {
+    if (metrics.ozonEconomicsWarning) {
+      return `${metrics.salesLabel}: ${formatMoney(metrics.economicTurnover)} (${metrics.ozonEconomicsWarning})`;
+    }
+
     const details: string[] = [];
     const taxableRevenue = metrics.taxableRevenue ?? 0;
     const discountPointsAmount = metrics.discountPointsAmount ?? 0;
