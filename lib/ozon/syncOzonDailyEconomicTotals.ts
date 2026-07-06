@@ -1,3 +1,5 @@
+import { randomUUID } from "crypto";
+
 import { prisma } from "@/lib/prisma";
 
 type SyncOzonDailyEconomicTotalsOptions = {
@@ -5,17 +7,18 @@ type SyncOzonDailyEconomicTotalsOptions = {
   dateTo: Date;
 };
 
-type OzonTotalsResponse = {
-  result?: {
-    accruals_for_sale?: number;
-    sale_commission?: number;
-    processing_and_delivery?: number;
-    refunds_and_cancellations?: number;
-    services_amount?: number;
-    compensation_amount?: number;
-    money_transfer?: number;
-    others_amount?: number;
-  };
+type DailyEconomicComponents = {
+  companyName: string;
+  dateFrom: Date;
+  dateTo: Date;
+  financeRows: number;
+  economicTurnover: number;
+  taxableRevenue: number;
+  realizedAmount: number;
+  returnedAmount: number;
+  discountPointsAmount: number;
+  partnerProgramsAmount: number;
+  unclassifiedSalesAmount: number;
 };
 
 function toNumber(value: unknown): number {
@@ -31,7 +34,7 @@ function toNumber(value: unknown): number {
     String(value)
       .replace(/\s/g, "")
       .replace(",", ".")
-      .replace(/[^\d.-]/g, "")
+      .replace(/[^\d.-]/g, ""),
   );
 
   return Number.isFinite(number) ? number : 0;
@@ -42,8 +45,27 @@ function normalizeText(value: unknown) {
     .toLowerCase()
     .replaceAll("ё", "е")
     .replace(/[–—−]/g, "-")
+    .replace(/[_-]+/g, " ")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function startOfUtcDay(date: Date) {
+  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+}
+
+function addUtcDays(date: Date, days: number) {
+  const result = new Date(date);
+  result.setUTCDate(result.getUTCDate() + days);
+  return result;
+}
+
+function formatDateOnly(date: Date) {
+  return date.toISOString().slice(0, 10);
+}
+
+function createId(prefix: string) {
+  return `${prefix}_${Date.now().toString(36)}_${randomUUID().replace(/-/g, "").slice(0, 16)}`;
 }
 
 function isOzonFinanceAdOperation(operationType: string | null | undefined) {
@@ -52,6 +74,7 @@ function isOzonFinanceAdOperation(operationType: string | null | undefined) {
   return (
     value.includes("оплата за клик") ||
     value.includes("продвижение с оплатой за заказ") ||
+    value.includes("реклама оплата за заказ") ||
     value.includes("продвижение") ||
     value.includes("реклама") ||
     value.includes("реклам") ||
@@ -61,77 +84,62 @@ function isOzonFinanceAdOperation(operationType: string | null | undefined) {
   );
 }
 
-function startOfUtcDay(date: Date) {
-  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+function isOzonNonOperatingFinanceOperation(operationType: string | null | undefined) {
+  const value = normalizeText(operationType);
+
+  return (
+    value.includes("займ") ||
+    value.includes("заем") ||
+    value.includes("фактор") ||
+    value.includes("кредит") ||
+    value.includes("финансирован") ||
+    value.includes("loan") ||
+    value.includes("factor")
+  );
 }
 
-function formatDateOnly(date: Date) {
-  return date.toISOString().slice(0, 10);
+function isDiscountPointsOperation(operationType: string | null | undefined) {
+  const value = normalizeText(operationType);
+  return value.includes("балл") && value.includes("скид");
 }
 
-function createId(prefix: string) {
-  return `${prefix}_${crypto.randomUUID().replace(/-/g, "")}`;
+function isPartnerProgramOperation(operationType: string | null | undefined) {
+  const value = normalizeText(operationType);
+  return value.includes("программ") && value.includes("партнер");
 }
 
-async function fetchOzonTransactionTotals(params: {
-  clientId: string;
-  apiKey: string;
-  dateFromText: string;
-  dateToText: string;
-}) {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 20_000);
+function isTaxableRevenueOperation(operationType: string | null | undefined) {
+  const value = normalizeText(operationType);
 
-  let response: Response | null = null;
-
-  try {
-    response = await fetch("https://api-seller.ozon.ru/v3/finance/transaction/totals", {
-      method: "POST",
-      headers: {
-        "Client-Id": params.clientId,
-        "Api-Key": params.apiKey,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        date: {
-          from: `${params.dateFromText}T00:00:00.000Z`,
-          to: `${params.dateToText}T23:59:59.999Z`,
-        },
-        transaction_type: "all",
-      }),
-      cache: "no-store",
-      signal: controller.signal,
-    });
-  } finally {
-    clearTimeout(timeout);
-  }
-
-  if (!response) {
-    throw new Error("Ozon transaction totals API: empty response");
-  }
-
-  const text = await response.text();
-
-  let json: OzonTotalsResponse | null = null;
-
-  try {
-    json = text ? (JSON.parse(text) as OzonTotalsResponse) : null;
-  } catch {
-    json = null;
-  }
-
-  if (!response.ok) {
-    throw new Error(`Ozon transaction totals API: ${response.status} ${text.slice(0, 800)}`);
-  }
-
-  return json?.result ?? {};
+  return (
+    value.includes("выручк") &&
+    !isDiscountPointsOperation(operationType) &&
+    !isPartnerProgramOperation(operationType)
+  );
 }
 
-async function getTaxableRevenueFromOzonFinance(params: {
+function hasMeaningfulAmount(value: number) {
+  return Math.abs(value) > 0.005;
+}
+
+async function findCompanyName(companyId: string) {
+  const company = await prisma.company.findUnique({
+    where: { id: companyId },
+    select: { name: true },
+  });
+
+  if (!company?.name) {
+    throw new Error("Компания не найдена");
+  }
+
+  return company.name;
+}
+
+async function calculateDailyEconomicComponents(params: {
   companyName: string;
   dateFrom: Date;
   dateToExclusive: Date;
-}) {
+}): Promise<DailyEconomicComponents> {
   const rows = await prisma.ozonFinance.findMany({
     where: {
       companyName: params.companyName,
@@ -146,92 +154,180 @@ async function getTaxableRevenueFromOzonFinance(params: {
     },
   });
 
-  return rows.reduce((sum, row) => {
-    if (isOzonFinanceAdOperation(row.operationType)) return sum;
-    return sum + toNumber(row.salesAmount);
-  }, 0);
+  let economicTurnover = 0;
+  let taxableRevenue = 0;
+  let realizedAmount = 0;
+  let returnedAmount = 0;
+  let discountPointsAmount = 0;
+  let partnerProgramsAmount = 0;
+
+  for (const row of rows) {
+    const operationType = row.operationType;
+    const salesAmount = toNumber(row.salesAmount);
+
+    if (
+      isOzonFinanceAdOperation(operationType) ||
+      isOzonNonOperatingFinanceOperation(operationType)
+    ) {
+      continue;
+    }
+
+    economicTurnover += salesAmount;
+
+    if (isTaxableRevenueOperation(operationType)) {
+      taxableRevenue += salesAmount;
+
+      if (salesAmount >= 0) {
+        realizedAmount += salesAmount;
+      } else {
+        returnedAmount += Math.abs(salesAmount);
+      }
+
+      continue;
+    }
+
+    if (isDiscountPointsOperation(operationType)) {
+      discountPointsAmount += salesAmount;
+      continue;
+    }
+
+    if (isPartnerProgramOperation(operationType)) {
+      partnerProgramsAmount += salesAmount;
+    }
+  }
+
+  const unclassifiedSalesAmount =
+    economicTurnover - taxableRevenue - discountPointsAmount - partnerProgramsAmount;
+
+  return {
+    companyName: params.companyName,
+    dateFrom: params.dateFrom,
+    dateTo: addUtcDays(params.dateToExclusive, -1),
+    financeRows: rows.length,
+    economicTurnover,
+    taxableRevenue,
+    realizedAmount,
+    returnedAmount,
+    discountPointsAmount,
+    partnerProgramsAmount,
+    unclassifiedSalesAmount,
+  };
 }
 
-async function upsertDailySummaries(params: {
-  companyName: string;
-  dateFrom: Date;
-  dateTo: Date;
-  taxableRevenue: number;
-  economicTurnover: number;
-  discountAndCoinvestmentAmount: number;
-}) {
-  const dateFromText = formatDateOnly(params.dateFrom);
-  const dateToText = formatDateOnly(params.dateTo);
+async function upsertDailySummaries(components: DailyEconomicComponents) {
+  const dateFromText = formatDateOnly(components.dateFrom);
+  const dateToText = formatDateOnly(components.dateTo);
   const realizationSummaryId = createId("ozrday");
   const pointsSummaryId = createId("ozpday");
-  const sourceName = `Ozon API transaction totals ${dateFromText} - ${dateToText}`;
+  const importSessionId = createId("impozeco");
+  const sourceName = `Ozon Finance detailed accruals ${components.companyName} ${dateFromText} - ${dateToText}`;
 
   await prisma.$transaction(async (tx) => {
+    await tx.importSession.create({
+      data: {
+        id: importSessionId,
+        fileName: sourceName,
+        reportType: "OZON_DAILY_ECONOMIC_TOTALS",
+        marketplace: "OZON",
+        companyName: components.companyName,
+        rowsCount: components.financeRows,
+        previewJson: {
+          source: "OzonFinance",
+          economicTurnover: components.economicTurnover,
+          taxableRevenue: components.taxableRevenue,
+          discountPointsAmount: components.discountPointsAmount,
+          partnerProgramsAmount: components.partnerProgramsAmount,
+          unclassifiedSalesAmount: components.unclassifiedSalesAmount,
+        } as any,
+        sheetName: "OzonFinance derived daily economics",
+        headerRow: 1,
+        status: hasMeaningfulAmount(components.unclassifiedSalesAmount)
+          ? "WARNING"
+          : "SUCCESS",
+      },
+    });
+
     await tx.$executeRaw`
       DELETE FROM "OzonRealizationRow"
-      WHERE "companyName" = ${params.companyName}
+      WHERE "companyName" = ${components.companyName}
         AND "dateFrom"::date = CAST(${dateFromText} AS date)
         AND "dateTo"::date = CAST(${dateToText} AS date)
     `;
 
     await tx.$executeRaw`
       DELETE FROM "OzonRealizationSummary"
-      WHERE "companyName" = ${params.companyName}
+      WHERE "companyName" = ${components.companyName}
         AND "dateFrom"::date = CAST(${dateFromText} AS date)
         AND "dateTo"::date = CAST(${dateToText} AS date)
     `;
 
     await tx.$executeRaw`
       DELETE FROM "OzonDiscountPointsRow"
-      WHERE "companyName" = ${params.companyName}
+      WHERE "companyName" = ${components.companyName}
         AND "dateFrom"::date = CAST(${dateFromText} AS date)
         AND "dateTo"::date = CAST(${dateToText} AS date)
     `;
 
     await tx.$executeRaw`
       DELETE FROM "OzonDiscountPointsSummary"
-      WHERE "companyName" = ${params.companyName}
+      WHERE "companyName" = ${components.companyName}
         AND "dateFrom"::date = CAST(${dateFromText} AS date)
         AND "dateTo"::date = CAST(${dateToText} AS date)
     `;
 
     await tx.$executeRaw`
       INSERT INTO "OzonRealizationSummary" (
-        "id", "companyName", "dateFrom", "dateTo", "contractNumber", "sourceFileName",
+        "id", "importSessionId", "companyName", "dateFrom", "dateTo", "contractNumber", "sourceFileName",
         "realizedAmount", "returnedAmount", "taxableRevenue", "partnerProgramsAmount", "rowsCount"
       )
       VALUES (
-        ${realizationSummaryId}, ${params.companyName}, CAST(${dateFromText} AS date), CAST(${dateToText} AS date),
-        ${"DAILY_TRANSACTION_TOTALS"}, ${sourceName},
-        ${params.taxableRevenue}, ${0}, ${params.taxableRevenue}, ${0}, ${1}
+        ${realizationSummaryId}, ${importSessionId}, ${components.companyName}, CAST(${dateFromText} AS date), CAST(${dateToText} AS date),
+        ${"DAILY_OZON_FINANCE"}, ${sourceName},
+        ${components.realizedAmount}, ${components.returnedAmount}, ${components.taxableRevenue}, ${components.partnerProgramsAmount}, ${components.financeRows}
+      )
+    `;
+
+    await tx.$executeRaw`
+      INSERT INTO "OzonRealizationRow" (
+        "id", "summaryId", "importSessionId", "companyName", "dateFrom", "dateTo", "operationDate",
+        "sku", "vendorCode", "productName",
+        "realizedQty", "returnedQty", "netQty",
+        "realizedAmount", "returnedAmount", "taxableRevenue", "partnerProgramsAmount"
+      )
+      VALUES (
+        ${createId("ozrrday")}, ${realizationSummaryId}, ${importSessionId}, ${components.companyName},
+        CAST(${dateFromText} AS date), CAST(${dateToText} AS date), CAST(${dateFromText} AS date),
+        ${null}, ${null}, ${"Итого по дню из Ozon Finance"},
+        ${0}, ${0}, ${0},
+        ${components.realizedAmount}, ${components.returnedAmount}, ${components.taxableRevenue}, ${components.partnerProgramsAmount}
       )
     `;
 
     await tx.$executeRaw`
       INSERT INTO "OzonDiscountPointsSummary" (
-        "id", "companyName", "dateFrom", "dateTo", "sourceFileName",
+        "id", "importSessionId", "companyName", "dateFrom", "dateTo", "sourceFileName",
         "pointsAccrued", "pointsWrittenOff",
         "commissionPaidByPoints", "logisticsPaidByPoints", "fboPaidByPoints",
         "advertisingPaidByPoints", "otherPaidByPoints", "totalPaidByPoints"
       )
       VALUES (
-        ${pointsSummaryId}, ${params.companyName}, CAST(${dateFromText} AS date), CAST(${dateToText} AS date), ${sourceName},
-        ${params.discountAndCoinvestmentAmount}, ${params.discountAndCoinvestmentAmount},
+        ${pointsSummaryId}, ${importSessionId}, ${components.companyName}, CAST(${dateFromText} AS date), CAST(${dateToText} AS date), ${sourceName},
+        ${components.discountPointsAmount}, ${components.discountPointsAmount},
         ${0}, ${0}, ${0},
-        ${0}, ${params.discountAndCoinvestmentAmount}, ${params.discountAndCoinvestmentAmount}
+        ${0}, ${components.discountPointsAmount}, ${components.discountPointsAmount}
       )
     `;
 
-    if (Math.abs(params.discountAndCoinvestmentAmount) > 0.005) {
+    if (hasMeaningfulAmount(components.discountPointsAmount)) {
       await tx.$executeRaw`
         INSERT INTO "OzonDiscountPointsRow" (
-          "id", "summaryId", "companyName", "dateFrom", "dateTo", "category", "name", "amount"
+          "id", "summaryId", "importSessionId", "companyName", "dateFrom", "dateTo", "category", "name", "amount"
         )
         VALUES (
-          ${createId("ozprday")}, ${pointsSummaryId}, ${params.companyName},
+          ${createId("ozprday")}, ${pointsSummaryId}, ${importSessionId}, ${components.companyName},
           CAST(${dateFromText} AS date), CAST(${dateToText} AS date),
-          ${"DAILY_ESTIMATE"}, ${"Баллы и соинвест Ozon по transaction totals, предварительно"},
-          ${params.discountAndCoinvestmentAmount}
+          ${"DISCOUNT_POINTS"}, ${"Баллы за скидки Ozon из отчёта начислений"},
+          ${components.discountPointsAmount}
         )
       `;
     }
@@ -240,93 +336,85 @@ async function upsertDailySummaries(params: {
 
 export async function syncOzonDailyEconomicTotals(
   companyId: string,
-  options: SyncOzonDailyEconomicTotalsOptions
+  options: SyncOzonDailyEconomicTotalsOptions,
 ) {
+  const companyName = await findCompanyName(companyId);
   const dateFrom = startOfUtcDay(options.dateFrom);
   const dateTo = startOfUtcDay(options.dateTo);
-  const dateToExclusive = new Date(dateTo);
-  dateToExclusive.setUTCDate(dateToExclusive.getUTCDate() + 1);
+  const dateToExclusive = addUtcDays(dateTo, 1);
 
-  const connection = await prisma.marketplaceApiConnection.findUnique({
-    where: {
-      companyId_marketplace: {
-        companyId,
-        marketplace: "OZON",
-      },
-    },
-    select: {
-      ozonClientId: true,
-      ozonApiKey: true,
-      company: {
-        select: {
-          name: true,
-        },
-      },
-    },
+  const components = await calculateDailyEconomicComponents({
+    companyName,
+    dateFrom,
+    dateToExclusive,
   });
 
-  if (!connection?.ozonClientId || !connection.ozonApiKey) {
-    throw new Error("Ozon Client-Id или Api-Key не сохранены");
-  }
+  const hasFinanceRows = components.financeRows > 0;
+  const hasClassifiedEconomicData =
+    hasMeaningfulAmount(components.taxableRevenue) ||
+    hasMeaningfulAmount(components.discountPointsAmount) ||
+    hasMeaningfulAmount(components.partnerProgramsAmount);
 
-  const companyName = connection.company?.name ?? "Без компании";
-  const dateFromText = formatDateOnly(dateFrom);
-  const dateToText = formatDateOnly(dateTo);
-
-  const [totals, taxableRevenue] = await Promise.all([
-    fetchOzonTransactionTotals({
-      clientId: connection.ozonClientId,
-      apiKey: connection.ozonApiKey,
-      dateFromText,
-      dateToText,
-    }),
-    getTaxableRevenueFromOzonFinance({
-      companyName,
-      dateFrom,
-      dateToExclusive,
-    }),
-  ]);
-
-  const economicTurnover = toNumber(totals.accruals_for_sale);
-  const discountAndCoinvestmentAmount = Math.max(0, economicTurnover - taxableRevenue);
-
-  const hasData =
-    Math.abs(economicTurnover) > 0.005 ||
-    Math.abs(taxableRevenue) > 0.005 ||
-    Math.abs(discountAndCoinvestmentAmount) > 0.005;
-
-  if (!hasData) {
+  if (!hasFinanceRows || !hasClassifiedEconomicData) {
     return {
+      ...components,
       name: "Ozon Daily Economic Totals",
       companyName,
-      dateFrom: dateFromText,
-      dateTo: dateToText,
+      dateFrom: formatDateOnly(dateFrom),
+      dateTo: formatDateOnly(dateTo),
       skipped: true,
-      reason: "NO_TRANSACTION_TOTALS",
-      economicTurnover,
-      taxableRevenue,
-      discountAndCoinvestmentAmount,
+      reason: !hasFinanceRows ? "NO_OZON_FINANCE_ROWS" : "NO_REVENUE_COMPONENTS_IN_OZON_FINANCE",
     };
   }
 
-  await upsertDailySummaries({
-    companyName,
-    dateFrom,
-    dateTo,
-    taxableRevenue,
-    economicTurnover,
-    discountAndCoinvestmentAmount,
-  });
+  await upsertDailySummaries(components);
 
   return {
+    ...components,
     name: "Ozon Daily Economic Totals",
     companyName,
-    dateFrom: dateFromText,
-    dateTo: dateToText,
+    dateFrom: formatDateOnly(dateFrom),
+    dateTo: formatDateOnly(dateTo),
     skipped: false,
-    economicTurnover,
-    taxableRevenue,
-    discountAndCoinvestmentAmount,
-    source: "/v3/finance/transaction/totals",
+    reason: null,
+    source: "OzonFinance detailed accruals",
+  };
+}
+
+export async function syncOzonDailyEconomicTotalsRange(
+  companyId: string,
+  options: SyncOzonDailyEconomicTotalsOptions,
+) {
+  const dateFrom = startOfUtcDay(options.dateFrom);
+  const dateTo = startOfUtcDay(options.dateTo);
+  const results = [];
+
+  for (let day = new Date(dateFrom); day.getTime() <= dateTo.getTime(); day = addUtcDays(day, 1)) {
+    results.push(
+      await syncOzonDailyEconomicTotals(companyId, {
+        dateFrom: day,
+        dateTo: day,
+      }),
+    );
+  }
+
+  return {
+    name: "Ozon Daily Economic Totals Range",
+    dateFrom: formatDateOnly(dateFrom),
+    dateTo: formatDateOnly(dateTo),
+    days: results.length,
+    savedDays: results.filter((result) => !result.skipped).length,
+    skippedDays: results.filter((result) => result.skipped).length,
+    results: results.map((result) => ({
+      dateFrom: result.dateFrom,
+      dateTo: result.dateTo,
+      skipped: result.skipped,
+      reason: result.skipped ? result.reason : null,
+      economicTurnover: result.economicTurnover,
+      taxableRevenue: result.taxableRevenue,
+      discountPointsAmount: result.discountPointsAmount,
+      partnerProgramsAmount: result.partnerProgramsAmount,
+      unclassifiedSalesAmount: result.unclassifiedSalesAmount,
+    })),
   };
 }
