@@ -92,6 +92,134 @@ function listDays(dateFrom, dateTo) {
   return days;
 }
 
+
+function decodeXmlText(value) {
+  return String(value ?? '')
+    .replace(/&#x([0-9a-fA-F]+);/g, (_, hex) => String.fromCodePoint(parseInt(hex, 16)))
+    .replace(/&#(\d+);/g, (_, dec) => String.fromCodePoint(parseInt(dec, 10)))
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&');
+}
+
+function zipFileContentToText(fileObject) {
+  if (!fileObject) return '';
+
+  const raw = fileObject.content ?? fileObject.data ?? fileObject;
+  if (typeof raw === 'string') return raw;
+  if (Buffer.isBuffer(raw)) return raw.toString('utf8');
+  if (raw instanceof Uint8Array) return Buffer.from(raw).toString('utf8');
+  if (Array.isArray(raw)) return Buffer.from(raw).toString('utf8');
+
+  if (typeof fileObject.asNodeBuffer === 'function') {
+    const buffer = fileObject.asNodeBuffer();
+    return Buffer.isBuffer(buffer) ? buffer.toString('utf8') : String(buffer ?? '');
+  }
+
+  if (typeof fileObject.asBinary === 'function') {
+    return Buffer.from(fileObject.asBinary(), 'binary').toString('utf8');
+  }
+
+  if (typeof fileObject.toString === 'function') {
+    const text = fileObject.toString();
+    if (text && text !== '[object Object]') return text;
+  }
+
+  return '';
+}
+
+function getWorkbookFileText(workbook, fileName) {
+  if (!workbook || !workbook.files) return '';
+
+  const direct = workbook.files[fileName] || workbook.files[`/${fileName}`];
+  const directText = zipFileContentToText(direct);
+  if (directText) return directText;
+
+  const key = Object.keys(workbook.files).find((item) => item.replace(/^\//, '') === fileName);
+  return key ? zipFileContentToText(workbook.files[key]) : '';
+}
+
+function parseSharedStringsXml(xml) {
+  if (!xml) return [];
+  const strings = [];
+  const siRegex = /<si\b[\s\S]*?<\/si>/g;
+  const tRegex = /<t(?:\s[^>]*)?>([\s\S]*?)<\/t>/g;
+  const siMatches = xml.match(siRegex) || [];
+
+  for (const si of siMatches) {
+    const pieces = [];
+    let match;
+    while ((match = tRegex.exec(si))) {
+      pieces.push(decodeXmlText(match[1]));
+    }
+    strings.push(pieces.join(''));
+  }
+
+  return strings;
+}
+
+function parseCellValueFromXml(cellXml, sharedStrings) {
+  const typeMatch = cellXml.match(/\bt="([^"]+)"/);
+  const cellType = typeMatch ? typeMatch[1] : '';
+  const valueMatch = cellXml.match(/<v(?:\s[^>]*)?>([\s\S]*?)<\/v>/);
+  const inlineMatch = cellXml.match(/<is\b[\s\S]*?<t(?:\s[^>]*)?>([\s\S]*?)<\/t>[\s\S]*?<\/is>/);
+  const rawValue = valueMatch ? decodeXmlText(valueMatch[1]) : inlineMatch ? decodeXmlText(inlineMatch[1]) : null;
+
+  if (rawValue === null) return null;
+
+  if (cellType === 's') return sharedStrings[toNumber(rawValue)] ?? '';
+  if (cellType === 'str' || cellType === 'inlineStr') return rawValue;
+
+  const parsed = Number(rawValue);
+  return Number.isFinite(parsed) ? parsed : rawValue;
+}
+
+function parseWorksheetXmlToMatrix(sheetXml, sharedStrings) {
+  const matrix = [];
+  if (!sheetXml) return matrix;
+
+  const rowRegex = /<row\b[^>]*>([\s\S]*?)<\/row>/g;
+  const cellRegex = /<c\b[^>]*>([\s\S]*?)<\/c>/g;
+  let rowMatch;
+
+  while ((rowMatch = rowRegex.exec(sheetXml))) {
+    const rowBody = rowMatch[1];
+    const row = [];
+    let cellMatch;
+
+    while ((cellMatch = cellRegex.exec(rowBody))) {
+      row.push(parseCellValueFromXml(cellMatch[0], sharedStrings));
+    }
+
+    if (row.some((cell) => cell !== null && cell !== undefined && String(cell).trim() !== '')) {
+      matrix.push(row);
+    }
+  }
+
+  return matrix;
+}
+
+function parseReportMatrixFromWorkbook(workbook, firstSheetName) {
+  const sheet = workbook.Sheets[firstSheetName];
+  let matrix = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: null });
+
+  if (findHeader(matrix) >= 0) return matrix;
+
+  // Some Ozon XLSX reports contain worksheet cells without A1 references.
+  // SheetJS may then return an empty matrix. In that case parse the raw sheet XML by cell order.
+  const firstSheetKey = (workbook.keys || []).find((key) => /^xl\/worksheets\/sheet\d+\.xml$/i.test(String(key).replace(/^\//, '')));
+  const sheetXml = getWorkbookFileText(workbook, firstSheetKey || 'xl/worksheets/sheet1.xml');
+  const sharedXml = getWorkbookFileText(workbook, 'xl/sharedStrings.xml');
+  const xmlMatrix = parseWorksheetXmlToMatrix(sheetXml, parseSharedStringsXml(sharedXml));
+
+  if (findHeader(xmlMatrix) >= 0) return xmlMatrix;
+
+  return matrix;
+}
+
+
 function findHeader(matrix) {
   for (let i = 0; i < matrix.length; i += 1) {
     const cells = matrix[i].map(normalizeText);
@@ -182,15 +310,15 @@ function addComponent(acc, groupRaw, typeRaw, amount) {
 }
 
 function parseReport(filePath, dateFrom, dateTo) {
-  const workbook = XLSX.readFile(filePath, { cellDates: true });
+  const workbook = XLSX.readFile(filePath, { cellDates: true, bookFiles: true });
   const firstSheetName = workbook.SheetNames[0];
   if (!firstSheetName) throw new Error('В Excel-файле нет листов');
 
   const sheet = workbook.Sheets[firstSheetName];
-  const matrix = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: null });
+  const matrix = parseReportMatrixFromWorkbook(workbook, firstSheetName);
   const headerIndex = findHeader(matrix);
   if (headerIndex < 0) {
-    throw new Error('Не найдена строка заголовков отчёта начислений Ozon. Нужны колонки: Дата начисления, Группа услуг, Тип начисления, Сумма итого, руб.');
+    throw new Error(`Не найдена строка заголовков отчёта начислений Ozon. Нужны колонки: Дата начисления, Группа услуг, Тип начисления, Сумма итого, руб. Первые строки: ${JSON.stringify(matrix.slice(0, 5))}`);
   }
 
   const headers = matrix[headerIndex];
