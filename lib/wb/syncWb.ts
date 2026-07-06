@@ -762,6 +762,23 @@ export async function syncWbFinanceMissingReports(
     )
   );
 
+  if (apiReportNumbers.length === 0) {
+    return {
+      name: "WB Finance Missing Reports",
+      rows: 0,
+      financeRows: 0,
+      skipped: true,
+      reason: "NO_FINANCE_REPORTS_FROM_API",
+      message:
+        "WB Finance API не вернул еженедельные финансовые отчёты за проверяемый период. Если период уже закрыт в кабинете WB, синхронизация должна повторяться позже.",
+      dateFrom: financeResult.dateFrom,
+      dateTo: financeResult.dateTo,
+      apiReports: 0,
+      existingReports: 0,
+      missingReports: 0,
+    };
+  }
+
   const existingReportNumbers = await getExistingWbFinanceReportNumbers(
     company.name,
     apiReportNumbers

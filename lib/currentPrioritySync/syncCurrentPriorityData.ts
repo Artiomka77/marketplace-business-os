@@ -40,6 +40,22 @@ type CurrentSalesJob = {
   retryCount: number;
 };
 
+type CompletedWeekRange = {
+  dateFrom: Date;
+  dateTo: Date;
+  dateFromText: string | null;
+  dateToText: string | null;
+};
+
+type MissingExpectedFinanceWeek = {
+  companyId: string;
+  companyName: string;
+  dateFrom: Date;
+  dateTo: Date;
+  dateFromText: string | null;
+  dateToText: string | null;
+};
+
 const DEFAULT_PRIORITY_WEEKS = 8;
 const DEFAULT_RECHECK_WEEKS = 12;
 const DEFAULT_MAX_SALES_JOBS = 1;
@@ -106,6 +122,40 @@ function getCompletedWeeksWindow(weeks: number) {
     dateFromText: formatDateOnly(dateFrom),
     dateToText: formatDateOnly(dateTo),
     currentWeekStartText: formatDateOnly(currentWeekStart),
+  };
+}
+
+function getCompletedWeekRanges(window: ReturnType<typeof getCompletedWeeksWindow>) {
+  const ranges: CompletedWeekRange[] = [];
+
+  for (let index = 0; index < window.weeks; index += 1) {
+    const dateFrom = addUtcDays(window.dateFrom, index * 7);
+    const dateTo = addUtcDays(dateFrom, 6);
+
+    if (dateTo.getTime() > window.dateTo.getTime()) {
+      continue;
+    }
+
+    ranges.push({
+      dateFrom,
+      dateTo,
+      dateFromText: formatDateOnly(dateFrom),
+      dateToText: formatDateOnly(dateTo),
+    });
+  }
+
+  return ranges;
+}
+
+function financeWeekKey(companyName: string, dateFrom: Date, dateTo: Date) {
+  return `${companyName}::${formatDateOnly(dateFrom)}::${formatDateOnly(dateTo)}`;
+}
+
+function serializeMissingFinanceWeek(week: MissingExpectedFinanceWeek) {
+  return {
+    companyName: week.companyName,
+    dateFrom: week.dateFromText,
+    dateTo: week.dateToText,
   };
 }
 
@@ -260,6 +310,132 @@ async function syncMissingWbFinanceReports(params: {
   }
 
   return results;
+}
+
+async function getMissingExpectedWbFinanceWeeks(params: {
+  connections: ActiveWbConnection[];
+  weeks: CompletedWeekRange[];
+}) {
+  if (params.connections.length === 0 || params.weeks.length === 0) {
+    return [];
+  }
+
+  const companyNames = params.connections.map(
+    (connection) => connection.company.name
+  );
+  const dateFromMin = params.weeks[0].dateFrom;
+  const dateToMax = params.weeks[params.weeks.length - 1].dateTo;
+
+  const rows = await prisma.wbFinance.findMany({
+    where: {
+      companyName: {
+        in: companyNames,
+      },
+      dateFrom: {
+        gte: dateFromMin,
+      },
+      dateTo: {
+        lte: dateToMax,
+      },
+      reportNumber: {
+        not: null,
+      },
+    },
+    select: {
+      companyName: true,
+      dateFrom: true,
+      dateTo: true,
+    },
+  });
+
+  const loadedWeekKeys = new Set(
+    rows
+      .filter(
+        (row): row is { companyName: string; dateFrom: Date; dateTo: Date } =>
+          Boolean(row.companyName && row.dateFrom && row.dateTo)
+      )
+      .map((row) => financeWeekKey(row.companyName, row.dateFrom, row.dateTo))
+  );
+
+  const missing: MissingExpectedFinanceWeek[] = [];
+
+  for (const connection of params.connections) {
+    for (const week of params.weeks) {
+      const key = financeWeekKey(
+        connection.company.name,
+        week.dateFrom,
+        week.dateTo
+      );
+
+      if (loadedWeekKeys.has(key)) {
+        continue;
+      }
+
+      missing.push({
+        companyId: connection.companyId,
+        companyName: connection.company.name,
+        dateFrom: week.dateFrom,
+        dateTo: week.dateTo,
+        dateFromText: week.dateFromText,
+        dateToText: week.dateToText,
+      });
+    }
+  }
+
+  return missing;
+}
+
+async function syncMissingExpectedWbFinanceWeeks(params: {
+  connections: ActiveWbConnection[];
+  weeks: CompletedWeekRange[];
+}) {
+  const missingBefore = await getMissingExpectedWbFinanceWeeks(params);
+  const results = [];
+
+  for (const week of missingBefore) {
+    try {
+      const result = await syncWbFinanceMissingReports(week.companyId, {
+        dateFrom: week.dateFrom,
+        dateTo: week.dateTo,
+      });
+
+      results.push({
+        marketplace: "WB",
+        companyId: week.companyId,
+        companyName: week.companyName,
+        dataType: "FINANCE",
+        dateFrom: week.dateFromText,
+        dateTo: week.dateToText,
+        ok: true,
+        result,
+      });
+    } catch (error) {
+      results.push({
+        marketplace: "WB",
+        companyId: week.companyId,
+        companyName: week.companyName,
+        dataType: "FINANCE",
+        dateFrom: week.dateFromText,
+        dateTo: week.dateToText,
+        ok: false,
+        error: getErrorMessage(error),
+        isRateLimit: isRateLimitError(error),
+      });
+    }
+  }
+
+  const missingAfter = await getMissingExpectedWbFinanceWeeks(params);
+
+  return {
+    checkedWeeks: params.weeks.map((week) => ({
+      dateFrom: week.dateFromText,
+      dateTo: week.dateToText,
+    })),
+    missingBefore: missingBefore.map(serializeMissingFinanceWeek),
+    exactResults: results,
+    missingAfter: missingAfter.map(serializeMissingFinanceWeek),
+    stillMissing: missingAfter.length,
+  };
 }
 
 async function getCurrentFinanceReportsForSales(params: {
@@ -865,6 +1041,7 @@ export async function runCurrentPrioritySync(
   const syncFinance = options.syncFinance !== false;
   const ensureSalesJobs = options.ensureSalesJobs !== false;
   const window = getCompletedWeeksWindow(weeks);
+  const completedWeeks = getCompletedWeekRanges(window);
   const connections = await getActiveWbConnections();
 
   const pausedHistorical =
@@ -880,6 +1057,12 @@ export async function runCurrentPrioritySync(
         dateTo: window.dateTo,
       })
     : [];
+  const expectedFinanceWeeks = syncFinance
+    ? await syncMissingExpectedWbFinanceWeeks({
+        connections,
+        weeks: completedWeeks,
+      })
+    : null;
   const salesJobs = ensureSalesJobs
     ? await ensureCurrentWbSalesJobs({
         connections,
@@ -895,9 +1078,18 @@ export async function runCurrentPrioritySync(
     dateTo: window.dateTo,
   });
 
+  const financeOk = financeResults.every((result) => result.ok || result.isRateLimit);
+  const exactFinanceOk =
+    !expectedFinanceWeeks ||
+    expectedFinanceWeeks.exactResults.every(
+      (result) => result.ok || result.isRateLimit
+    );
+
   return {
     ok:
-      financeResults.every((result) => result.ok || result.isRateLimit) &&
+      financeOk &&
+      exactFinanceOk &&
+      (expectedFinanceWeeks?.stillMissing ?? 0) === 0 &&
       salesResults.every((result) => result.ok || result.isRateLimit),
     purpose:
       "Current priority sync: only full completed WB weeks. Existing WbFinance/WbSale reportNumber values are not reloaded.",
@@ -916,6 +1108,7 @@ export async function runCurrentPrioritySync(
     pausedHistorical,
     resetStuckCurrentJobs,
     financeResults,
+    expectedFinanceWeeks,
     salesJobs,
     salesResults,
     coverage,
