@@ -110,38 +110,23 @@ function monthEnd(year: number, monthIndexZeroBased: number) {
 }
 
 function buildPeriods(now = new Date()) {
-  const today = startOfUtcDay(now);
-  const currentYear = today.getUTCFullYear();
-  const currentMonthIndex = today.getUTCMonth();
-  const currentDay = today.getUTCDate();
+  const currentYear = now.getUTCFullYear();
+  const currentMonthIndex = now.getUTCMonth();
 
-  const currentMonth: PeriodToSync = {
-    label: "current-month-to-date",
-    year: currentYear,
-    month: currentMonthIndex + 1,
-    dateFrom: toDateText(monthStart(currentYear, currentMonthIndex)),
-    dateTo: toDateText(today),
-    isCurrentMonth: true,
-  };
+  const previousMonthDate = monthStart(currentYear, currentMonthIndex - 1);
+  const previousYear = previousMonthDate.getUTCFullYear();
+  const previousMonthIndex = previousMonthDate.getUTCMonth();
 
-  const periods = [currentMonth];
-
-  if (currentDay <= 10) {
-    const previousMonthDate = monthStart(currentYear, currentMonthIndex - 1);
-    const previousYear = previousMonthDate.getUTCFullYear();
-    const previousMonthIndex = previousMonthDate.getUTCMonth();
-
-    periods.push({
+  return [
+    {
       label: "previous-month-finalization",
       year: previousYear,
       month: previousMonthIndex + 1,
       dateFrom: toDateText(monthStart(previousYear, previousMonthIndex)),
       dateTo: toDateText(monthEnd(previousYear, previousMonthIndex)),
       isCurrentMonth: false,
-    });
-  }
-
-  return periods;
+    },
+  ];
 }
 
 function getErrorMessage(error: unknown) {
