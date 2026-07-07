@@ -2,6 +2,7 @@ import Link from "next/link";
 import { revalidatePath } from "next/cache";
 
 import { prisma } from "@/lib/prisma";
+import QuickAddFinanceHelper from "./QuickAddFinanceHelper";
 import {
   buildFinanceCategoryTreatmentIndex,
   calculateFinanceMetricsForRows,
@@ -1012,6 +1013,8 @@ export default async function FinanceOperationsPage({
               {hasActiveFilters ? "Фильтр применён" : "Фильтр не применён"}
             </div>
           </form>
+
+          <QuickAddFinanceHelper />
         </section>
 
         <section id="quick-add" className="panel border-violet-100 bg-violet-50/30 p-5 sm:p-6">
@@ -1159,80 +1162,7 @@ export default async function FinanceOperationsPage({
               </div>
             </details>
           </form>
-
-          <script
-            id="quick-add-helper-script"
-            dangerouslySetInnerHTML={{
-              __html: \`
-                (function () {
-                  var operationType = document.getElementById("quick-operation-type");
-                  var category = document.getElementById("quick-category");
-                  var amount = document.getElementById("quick-amount");
-
-                  function syncCategories() {
-                    if (!operationType || !category) return;
-
-                    var selectedType = operationType.value;
-                    var selectedOption = category.options[category.selectedIndex];
-
-                    Array.prototype.forEach.call(category.options, function (option) {
-                      if (!option.value) {
-                        option.hidden = false;
-                        option.disabled = false;
-                        return;
-                      }
-
-                      var categoryType = option.getAttribute("data-category-type");
-                      var isVisible = categoryType === selectedType;
-
-                      option.hidden = !isVisible;
-                      option.disabled = !isVisible;
-                    });
-
-                    if (
-                      selectedOption &&
-                      selectedOption.value &&
-                      selectedOption.getAttribute("data-category-type") !== selectedType
-                    ) {
-                      category.value = "";
-                    }
-                  }
-
-                  function formatAmount(value) {
-                    var normalized = String(value || "")
-                      .replace(/\\u00A0/g, " ")
-                      .replace(/[^0-9,.]/g, "")
-                      .replace(/\\./g, ",");
-
-                    var hasComma = normalized.indexOf(",") >= 0;
-                    var parts = normalized.split(",");
-                    var integer = (parts[0] || "").replace(/^0+(?=\\d)/, "");
-                    var decimals = parts.slice(1).join("").slice(0, 2);
-
-                    integer = integer.replace(/\\B(?=(\\d{3})+(?!\\d))/g, " ");
-
-                    if (hasComma) {
-                      return (integer || "0") + "," + decimals;
-                    }
-
-                    return integer;
-                  }
-
-                  if (operationType) {
-                    operationType.addEventListener("change", syncCategories);
-                    syncCategories();
-                  }
-
-                  if (amount) {
-                    amount.addEventListener("input", function () {
-                      amount.value = formatAmount(amount.value);
-                    });
-                  }
-                })();
-              \`,
-            }}
-          />
-        </section>
+</section>
 
         {selectedMetricConfig ? (
           <section className="panel p-5 sm:p-6" id="journal">
