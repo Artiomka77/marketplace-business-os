@@ -1974,7 +1974,7 @@ export default async function LoansPage({
                 href="#add-loan"
                 className="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-black text-slate-700 shadow-sm transition hover:bg-slate-50"
               >
-                Добавить кредит
+                Добавить обязательство
               </a>
               <Link
                 href="/finance/calendar"
@@ -2152,97 +2152,256 @@ export default async function LoansPage({
           className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm shadow-slate-200/70"
         >
           <summary className="cursor-pointer list-none text-xl font-black text-slate-950">
-            Добавить кредит
+            Добавить обязательство
           </summary>
 
-          <form
-            action="/api/finance/loans"
-            method="POST"
-            className="mt-6 grid gap-4 md:grid-cols-4"
-          >
-            <select
-              name="companyName"
-              className="h-12 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-900"
-              defaultValue={companies[0]?.name ?? ""}
-            >
-              {companies.map((company) => (
-                <option key={company.id} value={company.name}>
-                  {company.name}
-                </option>
-              ))}
-            </select>
+          <div className="mt-3 text-sm font-medium leading-6 text-slate-500">
+            Выберите тип: обычный кредит с графиком платежей или кредитную карту
+            с лимитом, минимальным платежом и льготным периодом.
+          </div>
 
+          <div className="mt-6">
             <input
-              name="bankName"
-              required
-              placeholder="Название кредита / банка"
-              className="h-12 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-900"
+              id="add-obligation-loan"
+              type="radio"
+              name="add-obligation-type"
+              defaultChecked
+              className="peer/loan sr-only"
+            />
+            <input
+              id="add-obligation-card"
+              type="radio"
+              name="add-obligation-type"
+              className="peer/card sr-only"
             />
 
-            <input
-              name="contractNumber"
-              placeholder="Номер договора"
-              className="h-12 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-900"
-            />
+            <div className="grid gap-3 sm:grid-cols-2 lg:w-[680px]">
+              <label
+                htmlFor="add-obligation-loan"
+                className="cursor-pointer rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm transition hover:bg-slate-50 peer-checked/loan:border-slate-950 peer-checked/loan:bg-slate-950 peer-checked/loan:text-white"
+              >
+                <div className="text-sm font-black">Кредит / заём</div>
+                <div className="mt-1 text-xs font-bold opacity-70">
+                  Фиксированный график, ставка, тело и проценты.
+                </div>
+              </label>
 
-            <select
-              name="paymentFrequency"
-              defaultValue="MONTHLY"
-              className="h-12 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-900"
-            >
-              <option value="MONTHLY">Ежемесячно</option>
-              <option value="WEEKLY">Еженедельно</option>
-              <option value="BIWEEKLY">Раз в 2 недели</option>
-              <option value="TWICE_MONTHLY_15_25">15 и 25 числа</option>
-              <option value="CUSTOM">Ручной график</option>
-            </select>
+              <label
+                htmlFor="add-obligation-card"
+                className="cursor-pointer rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm transition hover:bg-slate-50 peer-checked/card:border-indigo-600 peer-checked/card:bg-indigo-600 peer-checked/card:text-white"
+              >
+                <div className="text-sm font-black">Кредитная карта</div>
+                <div className="mt-1 text-xs font-bold opacity-70">
+                  Лимит, минимальный платёж и льготный период.
+                </div>
+              </label>
+            </div>
 
-            <input
-              name="interestRate"
-              placeholder="Ставка %"
-              className="h-12 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-900"
-            />
+            <div className="mt-6 block peer-checked/card:hidden">
+              <div className="mb-4 rounded-2xl bg-slate-50 p-4 text-sm font-bold leading-6 text-slate-600 ring-1 ring-slate-100">
+                Для обычного кредита указываем ставку, долг, платёж и даты. После
+                добавления график можно будет открыть и уточнить отдельно.
+              </div>
 
-            <input
-              name="creditLimit"
-              placeholder="Лимит кредита"
-              className="h-12 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-900"
-            />
+              <form
+                action="/api/finance/loans"
+                method="POST"
+                className="grid gap-4 md:grid-cols-4"
+              >
+                <select
+                  name="companyName"
+                  className="h-12 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-900"
+                  defaultValue={companies[0]?.name ?? ""}
+                >
+                  {companies.map((company) => (
+                    <option key={company.id} value={company.name}>
+                      {company.name}
+                    </option>
+                  ))}
+                </select>
 
-            <input
-              name="currentDebt"
-              placeholder="Текущий долг"
-              className="h-12 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-900"
-            />
+                <input
+                  name="bankName"
+                  required
+                  placeholder="Название кредита / банка"
+                  className="h-12 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-900"
+                />
 
-            <input
-              name="monthlyPayment"
-              placeholder="Платёж в месяц"
-              className="h-12 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-900"
-            />
+                <input
+                  name="contractNumber"
+                  placeholder="Номер договора"
+                  className="h-12 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-900"
+                />
 
-            <input
-              type="date"
-              name="startDate"
-              className="h-12 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-900"
-            />
+                <select
+                  name="paymentFrequency"
+                  defaultValue="MONTHLY"
+                  className="h-12 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-900"
+                >
+                  <option value="MONTHLY">Ежемесячно</option>
+                  <option value="WEEKLY">Еженедельно</option>
+                  <option value="BIWEEKLY">Раз в 2 недели</option>
+                  <option value="TWICE_MONTHLY_15_25">15 и 25 числа</option>
+                  <option value="CUSTOM">Ручной график</option>
+                </select>
 
-            <input
-              type="date"
-              name="endDate"
-              className="h-12 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-900"
-            />
+                <input
+                  name="interestRate"
+                  placeholder="Ставка %"
+                  className="h-12 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-900"
+                />
 
-            <button className="h-12 rounded-2xl bg-slate-950 px-4 text-sm font-black text-white">
-              Добавить кредит
-            </button>
-          </form>
+                <input
+                  name="creditLimit"
+                  placeholder="Лимит кредита"
+                  className="h-12 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-900"
+                />
 
-          <p className="mt-4 text-sm font-medium text-slate-500">
-            Для досрочного погашения следующим этапом добавим отдельную форму:
-            она будет создавать финансовую операцию, уменьшать остаток долга и
-            пересчитывать будущий график платежей.
-          </p>
+                <input
+                  name="currentDebt"
+                  placeholder="Текущий долг"
+                  className="h-12 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-900"
+                />
+
+                <input
+                  name="monthlyPayment"
+                  placeholder="Платёж в месяц"
+                  className="h-12 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-900"
+                />
+
+                <input
+                  type="date"
+                  name="startDate"
+                  className="h-12 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-900"
+                />
+
+                <input
+                  type="date"
+                  name="endDate"
+                  className="h-12 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-900"
+                />
+
+                <button className="h-12 rounded-2xl bg-slate-950 px-4 text-sm font-black text-white transition hover:bg-slate-800">
+                  Добавить кредит
+                </button>
+              </form>
+            </div>
+
+            <div className="mt-6 hidden peer-checked/card:block">
+              <div className="mb-4 rounded-2xl bg-indigo-50 p-4 text-sm font-bold leading-6 text-indigo-900 ring-1 ring-indigo-100">
+                Для кредитной карты фиксированный график тела и процентов не
+                создаём. В календарь попадёт ближайший минимальный платёж, а
+                льготный период будет отображаться как риск и рекомендация.
+              </div>
+
+              <form
+                action="/api/finance/loans/credit-card/create"
+                method="POST"
+                className="grid gap-4 md:grid-cols-4"
+              >
+                <input
+                  type="hidden"
+                  name="returnCompany"
+                  value={companyName ?? "ALL"}
+                />
+                <input
+                  type="hidden"
+                  name="returnPeriod"
+                  value={selectedMonthValue}
+                />
+
+                <select
+                  name="companyName"
+                  className="h-12 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-900"
+                  defaultValue={companies[0]?.name ?? ""}
+                >
+                  {companies.map((company) => (
+                    <option key={company.id} value={company.name}>
+                      {company.name}
+                    </option>
+                  ))}
+                </select>
+
+                <input
+                  name="bankName"
+                  required
+                  placeholder="Название карты / банк"
+                  className="h-12 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-900"
+                />
+
+                <input
+                  name="contractNumber"
+                  placeholder="Последние 4 цифры / номер"
+                  className="h-12 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-900"
+                />
+
+                <input
+                  name="creditLimit"
+                  placeholder="Кредитный лимит"
+                  className="h-12 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-900"
+                />
+
+                <input
+                  name="currentDebt"
+                  placeholder="Текущий долг"
+                  className="h-12 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-900"
+                />
+
+                <input
+                  name="minimumPayment"
+                  placeholder="Минимальный платёж, ₽"
+                  className="h-12 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-900"
+                />
+
+                <input
+                  name="minimumPaymentPercent"
+                  placeholder="Мин. платёж, % от долга"
+                  className="h-12 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-900"
+                />
+
+                <select
+                  name="paymentFrequency"
+                  defaultValue="MONTHLY"
+                  className="h-12 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-900"
+                >
+                  <option value="MONTHLY">Минимальный платёж ежемесячно</option>
+                  <option value="CUSTOM">Ручной контроль</option>
+                </select>
+
+                <label className="block">
+                  <span className="mb-2 block text-xs font-black uppercase tracking-[0.08em] text-slate-400">
+                    Дата минимального платежа
+                  </span>
+                  <input
+                    type="date"
+                    name="minimumPaymentDate"
+                    className="h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-900"
+                  />
+                </label>
+
+                <label className="block">
+                  <span className="mb-2 block text-xs font-black uppercase tracking-[0.08em] text-slate-400">
+                    Конец льготного периода
+                  </span>
+                  <input
+                    type="date"
+                    name="gracePeriodDate"
+                    className="h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-900"
+                  />
+                </label>
+
+                <input
+                  name="interestRate"
+                  placeholder="Ставка после льготы, %"
+                  className="h-12 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-900"
+                />
+
+                <button className="h-12 rounded-2xl bg-indigo-600 px-4 text-sm font-black text-white transition hover:bg-indigo-700 md:col-span-2">
+                  Добавить кредитную карту
+                </button>
+              </form>
+            </div>
+          </div>
         </details>
       </div>
     </main>
