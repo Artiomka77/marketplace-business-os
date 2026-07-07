@@ -149,7 +149,10 @@ function getPaymentTotal(payment: {
   );
 }
 
-function getPaymentPrincipal(payment: { principalAmount: unknown; totalAmount: unknown }) {
+function getPaymentPrincipal(payment: {
+  principalAmount: unknown;
+  totalAmount: unknown;
+}) {
   const principal = toNumber(payment.principalAmount);
   return principal || getPaymentTotal({ ...payment, interestAmount: 0 });
 }
@@ -162,7 +165,6 @@ function getSafeRatio(numerator: number, denominator: number) {
   return denominator > 0 ? (numerator / denominator) * 100 : 0;
 }
 
-
 type LoanSchedulePaymentForRate = {
   paymentDate: Date;
   totalAmount: unknown;
@@ -173,7 +175,10 @@ type LoanSchedulePaymentForRate = {
 
 function daysBetween(from: Date, to: Date) {
   const oneDay = 24 * 60 * 60 * 1000;
-  return Math.max(1, Math.ceil((startOfDay(to).getTime() - startOfDay(from).getTime()) / oneDay));
+  return Math.max(
+    1,
+    Math.ceil((startOfDay(to).getTime() - startOfDay(from).getTime()) / oneDay),
+  );
 }
 
 function estimateAnnualRateFromSchedule(params: {
@@ -215,10 +220,13 @@ function estimateAnnualRateFromSchedule(params: {
     }
   }
 
-  const nextPayment = sortedPayments.find((payment) => getPaymentInterest(payment) > 0);
+  const nextPayment = sortedPayments.find(
+    (payment) => getPaymentInterest(payment) > 0,
+  );
 
   if (nextPayment && params.currentDebt > 0) {
-    const monthlyRate = (getPaymentInterest(nextPayment) / params.currentDebt) * 12 * 100;
+    const monthlyRate =
+      (getPaymentInterest(nextPayment) / params.currentDebt) * 12 * 100;
 
     if (Number.isFinite(monthlyRate) && monthlyRate > 0 && monthlyRate < 300) {
       return {
@@ -248,8 +256,10 @@ function formatRateLabel(rateInfo: { rate: number; source: string }) {
 
 function formatRateActionLabel(rateInfo: { rate: number; source: string }) {
   if (!rateInfo.rate) return "ставка не рассчитана →";
-  if (rateInfo.source === "manual") return `ставка ${formatPercent(rateInfo.rate)} годовых →`;
-  if (rateInfo.source === "estimated") return `оценочная ставка ${formatPercent(rateInfo.rate)} годовых →`;
+  if (rateInfo.source === "manual")
+    return `ставка ${formatPercent(rateInfo.rate)} годовых →`;
+  if (rateInfo.source === "estimated")
+    return `оценочная ставка ${formatPercent(rateInfo.rate)} годовых →`;
   return `расчётная ставка ${formatPercent(rateInfo.rate)} годовых →`;
 }
 
@@ -262,7 +272,11 @@ function buildFinanceHref(company: string | null, period: string) {
   return `/finance/loans?${query.toString()}`;
 }
 
-function buildRepaymentHref(company: string | null, period: string, loanId: string) {
+function buildRepaymentHref(
+  company: string | null,
+  period: string,
+  loanId: string,
+) {
   const query = new URLSearchParams();
 
   query.set("company", company ?? "ALL");
@@ -272,10 +286,26 @@ function buildRepaymentHref(company: string | null, period: string, loanId: stri
   return `/finance/loans?${query.toString()}#early-repayment`;
 }
 
-function getLoanDisplayName(loan: { bankName: string; contractNumber: string | null }) {
-  return loan.bankName || loan.contractNumber || "Кредит";
+function buildCreditCardEditHref(
+  company: string | null,
+  period: string,
+  loanId: string,
+) {
+  const query = new URLSearchParams();
+
+  query.set("company", company ?? "ALL");
+  query.set("period", period);
+  query.set("card", loanId);
+
+  return `/finance/loans?${query.toString()}#credit-card-editor`;
 }
 
+function getLoanDisplayName(loan: {
+  bankName: string;
+  contractNumber: string | null;
+}) {
+  return loan.bankName || loan.contractNumber || "Кредит";
+}
 
 type CreditCardRiskTone = "high" | "medium" | "low" | "missing";
 
@@ -289,6 +319,7 @@ type CreditCardView = {
   availableLimit: number;
   utilizationPercent: number;
   minimumPayment: number;
+  minimumPaymentPercent: number;
   minimumPaymentDate: Date | null;
   gracePeriodDate: Date | null;
   graceDaysLeft: number | null;
@@ -312,7 +343,7 @@ function getDaysLeft(from: Date, to: Date | null | undefined) {
 
   return Math.ceil(
     (startOfDay(to).getTime() - startOfDay(from).getTime()) /
-      (24 * 60 * 60 * 1000)
+      (24 * 60 * 60 * 1000),
   );
 }
 
@@ -330,7 +361,11 @@ function getCreditCardRiskTone(params: {
   minimumPayment: number;
   minimumPaymentDate: Date | null;
 }) {
-  if (params.minimumPayment <= 0 && !params.minimumPaymentDate && params.graceDaysLeft === null) {
+  if (
+    params.minimumPayment <= 0 &&
+    !params.minimumPaymentDate &&
+    params.graceDaysLeft === null
+  ) {
     return "missing" as const;
   }
 
@@ -389,6 +424,7 @@ export default async function LoansPage({
     period?: string;
     repay?: string;
     repayment?: string;
+    card?: string;
   }>;
 }) {
   const params = searchParams ? await searchParams : {};
@@ -486,41 +522,41 @@ export default async function LoansPage({
     },
   });
 
-
   const currentMonthPayments = paymentsUntilYearEnd.filter(
     (payment) =>
-      payment.paymentDate >= selectedMonth && payment.paymentDate <= selectedMonthEnd
+      payment.paymentDate >= selectedMonth &&
+      payment.paymentDate <= selectedMonthEnd,
   );
 
   const next14DaysEnd = addDays(today, 14);
 
   const next14Payments = allFuturePayments.filter(
-    (payment) => payment.paymentDate <= next14DaysEnd
+    (payment) => payment.paymentDate <= next14DaysEnd,
   );
 
   const totalDebt = activeLoans.reduce(
     (sum, loan) => sum + toNumber(loan.currentDebt),
-    0
+    0,
   );
 
   const selectedMonthPayment = currentMonthPayments.reduce(
     (sum, payment) => sum + getPaymentTotal(payment),
-    0
+    0,
   );
 
   const currentMonthPrincipal = currentMonthPayments.reduce(
     (sum, payment) => sum + getPaymentPrincipal(payment),
-    0
+    0,
   );
 
   const currentMonthInterest = currentMonthPayments.reduce(
     (sum, payment) => sum + getPaymentInterest(payment),
-    0
+    0,
   );
 
   const monthlyPaymentFromLoans = activeLoans.reduce(
     (sum, loan) => sum + toNumber(loan.monthlyPayment),
-    0
+    0,
   );
 
   const paymentInMonth =
@@ -528,17 +564,17 @@ export default async function LoansPage({
 
   const next14Amount = next14Payments.reduce(
     (sum, payment) => sum + getPaymentTotal(payment),
-    0
+    0,
   );
 
   const totalPrincipalUntilYearEnd = paymentsUntilYearEnd.reduce(
     (sum, payment) => sum + getPaymentPrincipal(payment),
-    0
+    0,
   );
 
   const totalInterestUntilYearEnd = paymentsUntilYearEnd.reduce(
     (sum, payment) => sum + getPaymentInterest(payment),
-    0
+    0,
   );
 
   const totalPaymentsUntilYearEnd =
@@ -546,21 +582,21 @@ export default async function LoansPage({
 
   const loanRows = activeLoans.map((loan) => {
     const futurePayments = loan.payments.filter(
-      (payment) => payment.paymentDate >= today && !payment.paid
+      (payment) => payment.paymentDate >= today && !payment.paid,
     );
 
     const monthPayments = loan.payments.filter(
       (payment) =>
         payment.paymentDate >= selectedMonth &&
         payment.paymentDate <= selectedMonthEnd &&
-        !payment.paid
+        !payment.paid,
     );
 
     const nextPayment = futurePayments[0] ?? null;
 
     const monthlyPaymentBySchedule = monthPayments.reduce(
       (sum, payment) => sum + getPaymentTotal(payment),
-      0
+      0,
     );
 
     const monthlyPayment =
@@ -576,9 +612,15 @@ export default async function LoansPage({
       .filter((payment) => payment.paymentDate <= yearEnd)
       .reduce((sum, payment) => sum + getPaymentInterest(payment), 0);
 
-    const nextPaymentPrincipal = nextPayment ? getPaymentPrincipal(nextPayment) : 0;
-    const nextPaymentInterest = nextPayment ? getPaymentInterest(nextPayment) : 0;
-    const nextPaymentTotal = nextPayment ? getPaymentTotal(nextPayment) : monthlyPayment;
+    const nextPaymentPrincipal = nextPayment
+      ? getPaymentPrincipal(nextPayment)
+      : 0;
+    const nextPaymentInterest = nextPayment
+      ? getPaymentInterest(nextPayment)
+      : 0;
+    const nextPaymentTotal = nextPayment
+      ? getPaymentTotal(nextPayment)
+      : monthlyPayment;
 
     const remainingMonths = monthsBetween(today, loan.endDate);
     const rateInfo = estimateAnnualRateFromSchedule({
@@ -615,13 +657,19 @@ export default async function LoansPage({
     };
   });
 
-
   const creditCardRows: CreditCardView[] = loanRows
     .filter((loan) => isCreditCardLoan(loan))
     .map((loan) => {
       const availableLimit = Math.max(0, loan.creditLimit - loan.currentDebt);
-      const utilizationPercent = getSafeRatio(loan.currentDebt, loan.creditLimit);
+      const utilizationPercent = getSafeRatio(
+        loan.currentDebt,
+        loan.creditLimit,
+      );
       const minimumPayment = loan.nextPaymentTotal || loan.monthlyPayment;
+      const minimumPaymentPercent = getSafeRatio(
+        minimumPayment,
+        loan.currentDebt,
+      );
       const minimumPaymentDate = loan.nextPaymentDate;
       const gracePeriodDate = loan.endDate ?? loan.nextPaymentDate ?? null;
       const graceDaysLeft = getDaysLeft(today, gracePeriodDate);
@@ -629,6 +677,7 @@ export default async function LoansPage({
         graceDaysLeft,
         utilizationPercent,
         minimumPayment,
+        minimumPaymentPercent,
         minimumPaymentDate,
       });
       const riskCopy = getCreditCardRiskCopy(riskTone);
@@ -643,6 +692,7 @@ export default async function LoansPage({
         availableLimit,
         utilizationPercent,
         minimumPayment,
+        minimumPaymentPercent,
         minimumPaymentDate,
         gracePeriodDate,
         graceDaysLeft,
@@ -663,18 +713,18 @@ export default async function LoansPage({
 
   const creditCardsTotalDebt = creditCardRows.reduce(
     (sum, card) => sum + card.currentDebt,
-    0
+    0,
   );
   const creditCardsMinimumPayment = creditCardRows.reduce(
     (sum, card) => sum + card.minimumPayment,
-    0
+    0,
   );
   const creditCardsHighRiskCount = creditCardRows.filter(
-    (card) => card.riskTone === "high"
+    (card) => card.riskTone === "high",
   ).length;
 
   const loansByMonthlyBurden = [...loanRows].sort(
-    (a, b) => b.monthlyPayment - a.monthlyPayment
+    (a, b) => b.monthlyPayment - a.monthlyPayment,
   );
 
   const loansByRate = [...loanRows].sort((a, b) => {
@@ -690,7 +740,7 @@ export default async function LoansPage({
   });
 
   const loansBySmallDebt = [...loanRows].sort(
-    (a, b) => a.currentDebt - b.currentDebt
+    (a, b) => a.currentDebt - b.currentDebt,
   );
 
   const nextPayments = allFuturePayments.slice(0, 4);
@@ -711,20 +761,18 @@ export default async function LoansPage({
   for (const payment of paymentsUntilYearEnd) {
     const key = monthKey(payment.paymentDate);
 
-    const current =
-      monthlyMap.get(key) ??
-      {
-        monthDate: new Date(
-          payment.paymentDate.getFullYear(),
-          payment.paymentDate.getMonth(),
-          1
-        ),
-        totalAmount: 0,
-        principalAmount: 0,
-        interestAmount: 0,
-        loansCount: new Set<string>(),
-        paymentsCount: 0,
-      };
+    const current = monthlyMap.get(key) ?? {
+      monthDate: new Date(
+        payment.paymentDate.getFullYear(),
+        payment.paymentDate.getMonth(),
+        1,
+      ),
+      totalAmount: 0,
+      principalAmount: 0,
+      interestAmount: 0,
+      loansCount: new Set<string>(),
+      paymentsCount: 0,
+    };
 
     current.totalAmount += getPaymentTotal(payment);
     current.principalAmount += getPaymentPrincipal(payment);
@@ -742,17 +790,14 @@ export default async function LoansPage({
       loansCountNumber: row.loansCount.size,
     }));
 
-  const peakMonth = paymentSchedule.reduce<
-    | {
-        monthDate: Date;
-        totalAmount: number;
-        principalAmount: number;
-        interestAmount: number;
-        loansCountNumber: number;
-        paymentsCount: number;
-      }
-    | null
-  >((current, row) => {
+  const peakMonth = paymentSchedule.reduce<{
+    monthDate: Date;
+    totalAmount: number;
+    principalAmount: number;
+    interestAmount: number;
+    loansCountNumber: number;
+    paymentsCount: number;
+  } | null>((current, row) => {
     if (!current || row.totalAmount > current.totalAmount) return row;
     return current;
   }, null);
@@ -760,7 +805,13 @@ export default async function LoansPage({
   const activeLoanIdsCount = new Set(activeLoanIds).size;
 
   const selectedRepaymentLoan = params.repay
-    ? loanRows.find((loan) => loan.id === params.repay) ?? null
+    ? (loanRows.find(
+        (loan) => loan.id === params.repay && !isCreditCardLoan(loan),
+      ) ?? null)
+    : null;
+
+  const selectedCreditCard = params.card
+    ? (creditCardRows.find((card) => card.id === params.card) ?? null)
     : null;
 
   const selectedRepaymentPrincipal = selectedRepaymentLoan
@@ -772,7 +823,8 @@ export default async function LoansPage({
   const selectedRepaymentTotal =
     selectedRepaymentPrincipal + selectedRepaymentInterest;
   const selectedRepaymentRate = selectedRepaymentLoan
-    ? selectedRepaymentLoan.calculatedAnnualRate || selectedRepaymentLoan.interestRate
+    ? selectedRepaymentLoan.calculatedAnnualRate ||
+      selectedRepaymentLoan.interestRate
     : 0;
   const selectedRepaymentNextDateInput = selectedRepaymentLoan?.nextPaymentDate
     ? formatDateInput(selectedRepaymentLoan.nextPaymentDate)
@@ -781,7 +833,8 @@ export default async function LoansPage({
     ? formatDateInput(selectedRepaymentLoan.endDate)
     : selectedRepaymentNextDateInput;
   const selectedRepaymentRegularPayment = selectedRepaymentLoan
-    ? selectedRepaymentLoan.nextPaymentTotal || selectedRepaymentLoan.monthlyPayment
+    ? selectedRepaymentLoan.nextPaymentTotal ||
+      selectedRepaymentLoan.monthlyPayment
     : 0;
 
   const debtLoadColors = [
@@ -796,7 +849,7 @@ export default async function LoansPage({
   const debtLoadTopLoans = loansByMonthlyBurden.slice(0, 5);
   const debtLoadTopAmount = debtLoadTopLoans.reduce(
     (sum, loan) => sum + loan.monthlyPayment,
-    0
+    0,
   );
   const debtLoadOtherAmount = Math.max(0, paymentInMonth - debtLoadTopAmount);
   const debtLoadLegend = [
@@ -813,7 +866,7 @@ export default async function LoansPage({
             id: "other",
             label: `Другие кредиты (${Math.max(
               0,
-              activeLoanIdsCount - debtLoadTopLoans.length
+              activeLoanIdsCount - debtLoadTopLoans.length,
             )})`,
             amount: debtLoadOtherAmount,
             percent: getSafeRatio(debtLoadOtherAmount, paymentInMonth),
@@ -831,7 +884,7 @@ export default async function LoansPage({
   const debtLoadSvgSegments = debtLoadLegend.map((segment) => {
     const dashLength = Math.max(
       0,
-      (segment.percent / 100) * debtLoadCircumference
+      (segment.percent / 100) * debtLoadCircumference,
     );
     const offset = debtLoadCursor;
     debtLoadCursor += dashLength;
@@ -858,18 +911,20 @@ export default async function LoansPage({
   });
 
   const monthlyMatrix = paymentSchedule.slice(0, 6);
-  const monthlyMatrixPeakKey = monthlyMatrix.reduce<string | null>((currentKey, row) => {
-    if (!currentKey) return monthKey(row.monthDate);
+  const monthlyMatrixPeakKey = monthlyMatrix.reduce<string | null>(
+    (currentKey, row) => {
+      if (!currentKey) return monthKey(row.monthDate);
 
-    const current = monthlyMatrix.find(
-      (item) => monthKey(item.monthDate) === currentKey
-    );
+      const current = monthlyMatrix.find(
+        (item) => monthKey(item.monthDate) === currentKey,
+      );
 
-    return !current || row.totalAmount > current.totalAmount
-      ? monthKey(row.monthDate)
-      : currentKey;
-  }, null);
-
+      return !current || row.totalAmount > current.totalAmount
+        ? monthKey(row.monthDate)
+        : currentKey;
+    },
+    null,
+  );
 
   return (
     <main className="min-h-screen bg-[#f5f7fb] px-4 py-5 sm:px-6 lg:px-8">
@@ -946,20 +1001,19 @@ export default async function LoansPage({
                 />
               </label>
 
-              <div className="flex items-end">
-                <div className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2.5">
-                  <div className="text-xs font-black uppercase tracking-[0.08em] text-slate-400">
-                    Обновлено
-                  </div>
-                  <div className="mt-1 text-sm font-black text-slate-900">
-                    {formatDate(now)},{" "}
-                    {now.toLocaleTimeString("ru-RU", {
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })}
-                  </div>
+              <label className="block">
+                <span className="mb-2 block text-xs font-black uppercase tracking-[0.08em] text-slate-400">
+                  Обновлено
+                </span>
+
+                <div className="flex h-11 w-full items-center rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm font-black text-slate-900 shadow-sm">
+                  {formatDate(now)},{" "}
+                  {now.toLocaleTimeString("ru-RU", {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })}
                 </div>
-              </div>
+              </label>
             </div>
 
             <div className="flex flex-wrap gap-3">
@@ -998,7 +1052,7 @@ export default async function LoansPage({
             label="Платёж в текущем месяце"
             value={formatMoney(paymentInMonth)}
             hint={`тело ${formatMoney(currentMonthPrincipal)} · проценты ${formatMoney(
-              currentMonthInterest
+              currentMonthInterest,
             )}`}
             accent="orange"
             icon="↗"
@@ -1006,11 +1060,13 @@ export default async function LoansPage({
 
           <MetricCard
             label="Ближайший платёж"
-            value={nextPayment ? formatMoney(getPaymentTotal(nextPayment)) : "—"}
+            value={
+              nextPayment ? formatMoney(getPaymentTotal(nextPayment)) : "—"
+            }
             hint={
               nextPayment
                 ? `${formatDate(nextPayment.paymentDate)} · ${getLoanDisplayName(
-                    nextPayment.loan
+                    nextPayment.loan,
                   )}`
                 : "платежей нет"
             }
@@ -1021,9 +1077,10 @@ export default async function LoansPage({
           <MetricCard
             label="Проценты до конца года"
             value={formatMoney(totalInterestUntilYearEnd)}
-            hint={`${getSafeRatio(totalInterestUntilYearEnd, totalPaymentsUntilYearEnd).toFixed(
-              1
-            )}% от выплат`}
+            hint={`${getSafeRatio(
+              totalInterestUntilYearEnd,
+              totalPaymentsUntilYearEnd,
+            ).toFixed(1)}% от выплат`}
             accent="amber"
             icon="%"
           />
@@ -1187,7 +1244,8 @@ export default async function LoansPage({
               <div className="flex flex-wrap items-center justify-end gap-2">
                 {peakMonth ? (
                   <span className="rounded-full bg-orange-50 px-3 py-1 text-xs font-black text-orange-700 ring-1 ring-orange-100">
-                    Пик: {formatShortMonthLabel(peakMonth.monthDate)} · {formatMoney(peakMonth.totalAmount)}
+                    Пик: {formatShortMonthLabel(peakMonth.monthDate)} ·{" "}
+                    {formatMoney(peakMonth.totalAmount)}
                   </span>
                 ) : null}
                 <span className="rounded-full bg-slate-950 px-3 py-1 text-xs font-black text-white">
@@ -1200,9 +1258,12 @@ export default async function LoansPage({
               <table className="w-full min-w-[760px] border-separate border-spacing-0 text-sm">
                 <thead>
                   <tr className="text-left text-xs font-black uppercase tracking-[0.08em] text-slate-500">
-                    <th className="rounded-l-2xl bg-white px-4 py-3 shadow-sm">Месяц</th>
+                    <th className="rounded-l-2xl bg-white px-4 py-3 shadow-sm">
+                      Месяц
+                    </th>
                     {monthlyMatrix.map((row, index) => {
-                      const isPeak = monthlyMatrixPeakKey === monthKey(row.monthDate);
+                      const isPeak =
+                        monthlyMatrixPeakKey === monthKey(row.monthDate);
 
                       return (
                         <th
@@ -1212,7 +1273,9 @@ export default async function LoansPage({
                               ? "bg-orange-50 text-orange-700 ring-1 ring-orange-100"
                               : "bg-white text-slate-500"
                           } ${
-                            index === monthlyMatrix.length - 1 ? "rounded-r-2xl" : ""
+                            index === monthlyMatrix.length - 1
+                              ? "rounded-r-2xl"
+                              : ""
                           }`}
                         >
                           {formatShortMonthLabel(row.monthDate)}
@@ -1224,15 +1287,20 @@ export default async function LoansPage({
 
                 <tbody>
                   <tr>
-                    <td className="border-b border-slate-100 bg-white px-4 py-3 font-bold text-slate-600">Основной долг</td>
+                    <td className="border-b border-slate-100 bg-white px-4 py-3 font-bold text-slate-600">
+                      Основной долг
+                    </td>
                     {monthlyMatrix.map((row) => {
-                      const isPeak = monthlyMatrixPeakKey === monthKey(row.monthDate);
+                      const isPeak =
+                        monthlyMatrixPeakKey === monthKey(row.monthDate);
 
                       return (
                         <td
                           key={`principal-${row.monthDate.toISOString()}`}
                           className={`border-b border-slate-100 px-4 py-3 text-right font-black ${
-                            isPeak ? "bg-orange-50/50 text-slate-950" : "bg-white text-slate-900"
+                            isPeak
+                              ? "bg-orange-50/50 text-slate-950"
+                              : "bg-white text-slate-900"
                           }`}
                         >
                           {formatMoney(row.principalAmount)}
@@ -1242,15 +1310,20 @@ export default async function LoansPage({
                   </tr>
 
                   <tr>
-                    <td className="border-b border-slate-100 bg-white px-4 py-3 font-bold text-slate-600">Проценты</td>
+                    <td className="border-b border-slate-100 bg-white px-4 py-3 font-bold text-slate-600">
+                      Проценты
+                    </td>
                     {monthlyMatrix.map((row) => {
-                      const isPeak = monthlyMatrixPeakKey === monthKey(row.monthDate);
+                      const isPeak =
+                        monthlyMatrixPeakKey === monthKey(row.monthDate);
 
                       return (
                         <td
                           key={`interest-${row.monthDate.toISOString()}`}
                           className={`border-b border-slate-100 px-4 py-3 text-right font-black ${
-                            isPeak ? "bg-orange-50/50 text-orange-700" : "bg-white text-orange-600"
+                            isPeak
+                              ? "bg-orange-50/50 text-orange-700"
+                              : "bg-white text-orange-600"
                           }`}
                         >
                           {formatMoney(row.interestAmount)}
@@ -1260,9 +1333,12 @@ export default async function LoansPage({
                   </tr>
 
                   <tr>
-                    <td className="rounded-l-2xl bg-slate-100 px-4 py-4 font-black text-slate-950">Всего платежей</td>
+                    <td className="rounded-l-2xl bg-slate-100 px-4 py-4 font-black text-slate-950">
+                      Всего платежей
+                    </td>
                     {monthlyMatrix.map((row, index) => {
-                      const isPeak = monthlyMatrixPeakKey === monthKey(row.monthDate);
+                      const isPeak =
+                        monthlyMatrixPeakKey === monthKey(row.monthDate);
 
                       return (
                         <td
@@ -1272,7 +1348,9 @@ export default async function LoansPage({
                               ? "bg-orange-100 text-orange-700 ring-1 ring-orange-200"
                               : "bg-slate-100 text-red-600"
                           } ${
-                            index === monthlyMatrix.length - 1 ? "rounded-r-2xl" : ""
+                            index === monthlyMatrix.length - 1
+                              ? "rounded-r-2xl"
+                              : ""
                           }`}
                         >
                           {formatMoney(row.totalAmount)}
@@ -1341,11 +1419,13 @@ export default async function LoansPage({
                 title="Снизить ежемесячный платёж"
                 description="Гасите кредиты с самым большим платежом в месяц."
                 headers={["Кредит", "Платёж в мес.", "Потенциал"]}
-                rows={loansByMonthlyBurden.slice(0, 3).map((loan) => [
-                  loan.displayName,
-                  formatMoney(loan.monthlyPayment),
-                  `−${formatMoney(loan.monthlyPayment)}`,
-                ])}
+                rows={loansByMonthlyBurden
+                  .slice(0, 3)
+                  .map((loan) => [
+                    loan.displayName,
+                    formatMoney(loan.monthlyPayment),
+                    `−${formatMoney(loan.monthlyPayment)}`,
+                  ])}
                 action="Показать варианты"
               />
 
@@ -1372,11 +1452,13 @@ export default async function LoansPage({
                 title="Быстро закрыть мелкие кредиты"
                 description="Закрывайте небольшие долги, чтобы снизить число обязательств."
                 headers={["Кредит", "Долг", "Платёж в мес."]}
-                rows={loansBySmallDebt.slice(0, 3).map((loan) => [
-                  loan.displayName,
-                  formatMoney(loan.currentDebt),
-                  formatMoney(loan.monthlyPayment),
-                ])}
+                rows={loansBySmallDebt
+                  .slice(0, 3)
+                  .map((loan) => [
+                    loan.displayName,
+                    formatMoney(loan.currentDebt),
+                    formatMoney(loan.monthlyPayment),
+                  ])}
                 action="Закрыть мелкие кредиты"
               />
             </div>
@@ -1389,7 +1471,8 @@ export default async function LoansPage({
                       Риск по кредитным картам
                     </div>
                     <p className="mt-1 text-xs font-bold leading-5 text-orange-800/80">
-                      Минимальные платежи, льготные периоды и использование лимита контролируем отдельно от обычных кредитов.
+                      Минимальные платежи, льготные периоды и использование
+                      лимита контролируем отдельно от обычных кредитов.
                     </p>
                   </div>
 
@@ -1474,7 +1557,8 @@ export default async function LoansPage({
                           {getLoanDisplayName(payment.loan)}
                         </div>
                         <div className="mt-1 text-xs font-bold text-slate-500">
-                          Тело {formatMoney(getPaymentPrincipal(payment))} · проценты {formatMoney(getPaymentInterest(payment))}
+                          Тело {formatMoney(getPaymentPrincipal(payment))} ·
+                          проценты {formatMoney(getPaymentInterest(payment))}
                         </div>
                       </div>
                     </div>
@@ -1514,8 +1598,6 @@ export default async function LoansPage({
           </section>
         </section>
 
-        
-
         {creditCardRows.length > 0 ? (
           <section className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm shadow-slate-200/70">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -1529,7 +1611,8 @@ export default async function LoansPage({
                   </span>
                 </div>
                 <p className="mt-1 text-sm font-medium text-slate-500">
-                  Льготный период, минимальный платёж, использование лимита и риск по каждой карте.
+                  Льготный период, минимальный платёж, использование лимита и
+                  риск по каждой карте.
                 </p>
               </div>
 
@@ -1543,12 +1626,29 @@ export default async function LoansPage({
 
             <div className="mt-4 grid gap-4 xl:grid-cols-3">
               {creditCardRows.slice(0, 3).map((card) => (
-                <CreditCardPanel key={card.id} card={card} />
+                <CreditCardPanel
+                  key={card.id}
+                  card={card}
+                  editHref={buildCreditCardEditHref(
+                    companyName,
+                    selectedMonthValue,
+                    card.id,
+                  )}
+                />
               ))}
             </div>
           </section>
         ) : null}
-{selectedRepaymentLoan ? (
+
+        {selectedCreditCard ? (
+          <CreditCardEditForm
+            card={selectedCreditCard}
+            companyName={companyName}
+            selectedMonthValue={selectedMonthValue}
+          />
+        ) : null}
+
+        {selectedRepaymentLoan ? (
           <section
             id="early-repayment"
             className="rounded-[28px] border border-indigo-100 bg-white p-6 shadow-sm shadow-indigo-100/70 ring-1 ring-indigo-50"
@@ -1628,14 +1728,14 @@ export default async function LoansPage({
                 <div className="mt-4 space-y-3">
                   <div className="rounded-2xl bg-emerald-50 p-4 text-sm font-bold leading-6 text-emerald-800 ring-1 ring-emerald-100">
                     При полном погашении будущие платежи по этому кредиту будут
-                    помечены как закрытые, будущие плановые операции будут удалены,
-                    а текущий долг станет 0 ₽.
+                    помечены как закрытые, будущие плановые операции будут
+                    удалены, а текущий долг станет 0 ₽.
                   </div>
 
                   <div className="rounded-2xl bg-amber-50 p-4 text-sm font-bold leading-6 text-amber-900 ring-1 ring-amber-100">
-                    При частичном погашении система закроет старый будущий график и
-                    создаст новый: с новым телом, процентами, датами платежей и
-                    новой долговой нагрузкой.
+                    При частичном погашении система закроет старый будущий
+                    график и создаст новый: с новым телом, процентами, датами
+                    платежей и новой долговой нагрузкой.
                   </div>
                 </div>
               </div>
@@ -1645,9 +1745,21 @@ export default async function LoansPage({
                 method="POST"
                 className="rounded-[24px] border border-slate-100 bg-white p-5 shadow-sm"
               >
-                <input type="hidden" name="loanId" value={selectedRepaymentLoan.id} />
-                <input type="hidden" name="returnCompany" value={companyName ?? "ALL"} />
-                <input type="hidden" name="returnPeriod" value={selectedMonthValue} />
+                <input
+                  type="hidden"
+                  name="loanId"
+                  value={selectedRepaymentLoan.id}
+                />
+                <input
+                  type="hidden"
+                  name="returnCompany"
+                  value={companyName ?? "ALL"}
+                />
+                <input
+                  type="hidden"
+                  name="returnPeriod"
+                  value={selectedMonthValue}
+                />
 
                 <div className="grid gap-4 md:grid-cols-2">
                   <label className="block">
@@ -1727,8 +1839,12 @@ export default async function LoansPage({
                           defaultValue="REDUCE_PAYMENT"
                           className="h-11 w-full rounded-2xl border border-indigo-100 bg-white px-4 text-sm font-bold text-slate-900 outline-none transition focus:border-indigo-300 focus:ring-4 focus:ring-indigo-100"
                         >
-                          <option value="REDUCE_PAYMENT">Уменьшить платёж, срок оставить</option>
-                          <option value="SHORTEN_TERM">Платёж оставить, сократить срок</option>
+                          <option value="REDUCE_PAYMENT">
+                            Уменьшить платёж, срок оставить
+                          </option>
+                          <option value="SHORTEN_TERM">
+                            Платёж оставить, сократить срок
+                          </option>
                         </select>
                       </label>
 
@@ -1780,7 +1896,9 @@ export default async function LoansPage({
                         <input
                           name="newRegularPayment"
                           inputMode="decimal"
-                          defaultValue={Math.round(selectedRepaymentRegularPayment)}
+                          defaultValue={Math.round(
+                            selectedRepaymentRegularPayment,
+                          )}
                           placeholder="Сумма одного платежа"
                           className="h-11 w-full rounded-2xl border border-indigo-100 bg-white px-4 text-sm font-bold text-slate-900 outline-none transition focus:border-indigo-300 focus:ring-4 focus:ring-indigo-100"
                         />
@@ -1788,9 +1906,9 @@ export default async function LoansPage({
                     </div>
 
                     <div className="mt-4 rounded-2xl bg-white p-4 text-sm font-bold leading-6 text-slate-600 ring-1 ring-indigo-100">
-                      Для частичного погашения сумма в поле “Тело кредита” должна
-                      быть меньше текущего долга. Если закрываешь кредит полностью —
-                      выбирай “Полное погашение”.
+                      Для частичного погашения сумма в поле “Тело кредита”
+                      должна быть меньше текущего долга. Если закрываешь кредит
+                      полностью — выбирай “Полное погашение”.
                     </div>
                   </div>
 
@@ -1886,82 +2004,130 @@ export default async function LoansPage({
 
               <tbody>
                 {loanRows.map((loan) => {
-                  const creditCard = creditCardRows.find((card) => card.id === loan.id) ?? null;
+                  const creditCard =
+                    creditCardRows.find((card) => card.id === loan.id) ?? null;
 
                   return (
-                  <tr key={loan.id} className="border-b border-slate-100">
-                    <td className="px-4 py-4">
-                      <div className="font-black text-slate-950">
-                        {loan.displayName}
-                      </div>
-                      <div className="mt-1 text-xs font-bold text-slate-400">
-                        {loan.contractNumber || frequencyLabel(loan.paymentFrequency)}
-                      </div>
-                    </td>
+                    <tr key={loan.id} className="border-b border-slate-100">
+                      <td className="px-4 py-4">
+                        <div className="font-black text-slate-950">
+                          {loan.displayName}
+                        </div>
+                        <div className="mt-1 text-xs font-bold text-slate-400">
+                          {loan.contractNumber ||
+                            frequencyLabel(loan.paymentFrequency)}
+                        </div>
+                      </td>
 
-                    <td className="px-4 py-4 font-bold text-slate-700">
-                      {loan.companyName}
-                    </td>
+                      <td className="px-4 py-4 font-bold text-slate-700">
+                        {loan.companyName}
+                      </td>
 
-                    <td className="px-4 py-4 text-right font-black text-slate-950">
-                      {formatMoney(loan.currentDebt)}
-                    </td>
+                      <td className="px-4 py-4 text-right font-black text-slate-950">
+                        {formatMoney(loan.currentDebt)}
+                      </td>
 
-                    <td className="px-4 py-4 text-right font-black text-orange-600">
-                      {formatMoney(loan.monthlyPayment)}
-                    </td>
+                      <td className="px-4 py-4 text-right font-black text-orange-600">
+                        {formatMoney(loan.monthlyPayment)}
+                      </td>
 
-                    <td className="px-4 py-4">
-                      <div className="font-bold text-slate-900">
-                        {formatDate(loan.nextPaymentDate)}
-                      </div>
-                      <div className="mt-1 text-xs font-bold text-slate-500">
-                        {loan.nextPaymentDate
-                          ? `всего ${formatMoney(loan.nextPaymentTotal)}`
-                          : "нет платежей"}
-                      </div>
-                    </td>
+                      <td className="px-4 py-4">
+                        <div className="font-bold text-slate-900">
+                          {formatDate(loan.nextPaymentDate)}
+                        </div>
+                        <div className="mt-1 text-xs font-bold text-slate-500">
+                          {loan.nextPaymentDate
+                            ? `всего ${formatMoney(loan.nextPaymentTotal)}`
+                            : "нет платежей"}
+                        </div>
+                      </td>
 
-                    <td className="px-4 py-4 text-right font-bold text-slate-700">
-                      {loan.remainingMonths === null
-                        ? "—"
-                        : `${loan.remainingMonths} мес.`}
-                    </td>
+                      <td className="px-4 py-4 text-right font-bold text-slate-700">
+                        {creditCard
+                          ? creditCard.graceDaysLeft === null
+                            ? "—"
+                            : `${formatDaysLeft(creditCard.graceDaysLeft)} · льготный период`
+                          : loan.remainingMonths === null
+                            ? "—"
+                            : `${loan.remainingMonths} мес.`}
+                      </td>
 
-                    <td className="px-4 py-4 text-right font-bold text-slate-700">
-                      {formatRateLabel({
-                        rate: loan.calculatedAnnualRate,
-                        source: loan.rateSource,
-                      })}
-                    </td>
+                      <td className="px-4 py-4 text-right font-bold text-slate-700">
+                        {creditCard
+                          ? creditCard.gracePeriodDate
+                            ? `0% до ${formatDate(creditCard.gracePeriodDate)}`
+                            : creditCard.interestRate > 0
+                              ? `после льготы ${formatPercent(creditCard.interestRate)}`
+                              : "—"
+                          : formatRateLabel({
+                              rate: loan.calculatedAnnualRate,
+                              source: loan.rateSource,
+                            })}
+                      </td>
 
-                    <td className="px-4 py-4">
-                      {creditCard ? (
-                        <CreditCardRiskBadge tone={creditCard.riskTone} />
-                      ) : (
-                        <span className="inline-flex rounded-full bg-emerald-50 px-3 py-1 text-xs font-black text-emerald-700 ring-1 ring-emerald-100">
-                          ● Активен
-                        </span>
-                      )}
-                    </td>
+                      <td className="px-4 py-4">
+                        {creditCard ? (
+                          <Link
+                            href={buildCreditCardEditHref(
+                              companyName,
+                              selectedMonthValue,
+                              loan.id,
+                            )}
+                            className="inline-flex"
+                          >
+                            <CreditCardRiskBadge tone={creditCard.riskTone} />
+                          </Link>
+                        ) : (
+                          <span className="inline-flex rounded-full bg-emerald-50 px-3 py-1 text-xs font-black text-emerald-700 ring-1 ring-emerald-100">
+                            ● Активен
+                          </span>
+                        )}
+                      </td>
 
-                    <td className="px-4 py-4 text-right">
-                      <div className="flex justify-end gap-2">
-                        <Link
-                          href={buildRepaymentHref(companyName, selectedMonthValue, loan.id)}
-                          className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-black text-slate-700 transition hover:bg-slate-50"
-                        >
-                          {creditCard ? "Пополнить" : "Досрочно погасить"}
-                        </Link>
-                        <Link
-                          href={`/finance/loans/${loan.id}/schedule`}
-                          className="rounded-xl bg-slate-950 px-3 py-2 text-xs font-black text-white transition hover:bg-slate-800"
-                        >
-                          {creditCard ? "История" : "График"}
-                        </Link>
-                      </div>
-                    </td>
-                  </tr>
+                      <td className="px-4 py-4 text-right">
+                        <div className="flex justify-end gap-2">
+                          {creditCard ? (
+                            <>
+                              <Link
+                                href={buildCreditCardEditHref(
+                                  companyName,
+                                  selectedMonthValue,
+                                  loan.id,
+                                )}
+                                className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-black text-slate-700 transition hover:bg-slate-50"
+                              >
+                                Настроить
+                              </Link>
+                              <Link
+                                href={`/finance/loans/${loan.id}/schedule`}
+                                className="rounded-xl bg-slate-950 px-3 py-2 text-xs font-black text-white transition hover:bg-slate-800"
+                              >
+                                История
+                              </Link>
+                            </>
+                          ) : (
+                            <>
+                              <Link
+                                href={buildRepaymentHref(
+                                  companyName,
+                                  selectedMonthValue,
+                                  loan.id,
+                                )}
+                                className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-black text-slate-700 transition hover:bg-slate-50"
+                              >
+                                Досрочно погасить
+                              </Link>
+                              <Link
+                                href={`/finance/loans/${loan.id}/schedule`}
+                                className="rounded-xl bg-slate-950 px-3 py-2 text-xs font-black text-white transition hover:bg-slate-800"
+                              >
+                                График
+                              </Link>
+                            </>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
                   );
                 })}
 
@@ -2117,11 +2283,15 @@ function MetricCard({
         </div>
       </div>
 
-      <div className={`mt-4 text-2xl font-black tracking-tight ${accentClass.split(" ")[0]}`}>
+      <div
+        className={`mt-4 text-2xl font-black tracking-tight ${accentClass.split(" ")[0]}`}
+      >
         {value}
       </div>
 
-      <div className="mt-2 text-xs font-bold leading-5 text-slate-500">{hint}</div>
+      <div className="mt-2 text-xs font-bold leading-5 text-slate-500">
+        {hint}
+      </div>
     </div>
   );
 }
@@ -2167,10 +2337,15 @@ function RecommendationCard({
               className="group rounded-2xl bg-white/85 px-3 py-2 text-xs font-bold text-slate-700 ring-1 ring-white/80 transition hover:bg-white"
             >
               <div className="flex items-center justify-between gap-2">
-                <div className="min-w-0 truncate text-sm font-black text-slate-950" title={row[0]}>
+                <div
+                  className="min-w-0 truncate text-sm font-black text-slate-950"
+                  title={row[0]}
+                >
                   {row[0]}
                 </div>
-                <span className="shrink-0 text-slate-300 transition group-hover:translate-x-0.5 group-hover:text-slate-500">›</span>
+                <span className="shrink-0 text-slate-300 transition group-hover:translate-x-0.5 group-hover:text-slate-500">
+                  ›
+                </span>
               </div>
 
               <div className="mt-1 text-[11px] leading-4 text-slate-500">
@@ -2196,7 +2371,13 @@ function RecommendationCard({
   );
 }
 
-function CreditCardPanel({ card }: { card: CreditCardView }) {
+function CreditCardPanel({
+  card,
+  editHref,
+}: {
+  card: CreditCardView;
+  editHref: string;
+}) {
   const toneClass = {
     high: {
       badge: "bg-red-50 text-red-700 ring-red-100",
@@ -2225,7 +2406,7 @@ function CreditCardPanel({ card }: { card: CreditCardView }) {
   }[card.riskTone];
 
   return (
-    <div className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm shadow-slate-100/70">
+    <div className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm shadow-slate-100/70 transition hover:border-indigo-200 hover:shadow-md">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="truncate text-base font-black text-slate-950">
@@ -2236,7 +2417,9 @@ function CreditCardPanel({ card }: { card: CreditCardView }) {
           </div>
         </div>
 
-        <span className={`shrink-0 rounded-full px-3 py-1 text-[11px] font-black ring-1 ${toneClass.badge}`}>
+        <span
+          className={`shrink-0 rounded-full px-3 py-1 text-[11px] font-black ring-1 ${toneClass.badge}`}
+        >
           {card.riskLabel}
         </span>
       </div>
@@ -2273,12 +2456,18 @@ function CreditCardPanel({ card }: { card: CreditCardView }) {
       <div className="mt-4">
         <div className="flex items-center justify-between text-xs font-bold text-slate-500">
           <span>Использование лимита</span>
-          <span>{card.creditLimit > 0 ? `${card.utilizationPercent.toFixed(0)}%` : "нет лимита"}</span>
+          <span>
+            {card.creditLimit > 0
+              ? `${card.utilizationPercent.toFixed(0)}%`
+              : "нет лимита"}
+          </span>
         </div>
         <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-100">
           <div
             className={`h-full rounded-full ${toneClass.bar}`}
-            style={{ width: `${Math.min(100, Math.max(0, card.utilizationPercent))}%` }}
+            style={{
+              width: `${Math.min(100, Math.max(0, card.utilizationPercent))}%`,
+            }}
           />
         </div>
       </div>
@@ -2289,7 +2478,9 @@ function CreditCardPanel({ card }: { card: CreditCardView }) {
             Мин. платёж
           </div>
           <div className="mt-1 text-sm font-black text-slate-950">
-            {card.minimumPayment > 0 ? formatMoney(card.minimumPayment) : "не задан"}
+            {card.minimumPayment > 0
+              ? formatMoney(card.minimumPayment)
+              : "не задан"}
           </div>
           <div className="mt-1 text-[11px] font-bold text-slate-500">
             до {formatDate(card.minimumPaymentDate)}
@@ -2309,10 +2500,286 @@ function CreditCardPanel({ card }: { card: CreditCardView }) {
         </div>
       </div>
 
-      <div className={`mt-4 rounded-2xl border px-3 py-2 text-xs font-bold leading-5 ${toneClass.soft} ${toneClass.text}`}>
+      <div
+        className={`mt-4 rounded-2xl border px-3 py-2 text-xs font-bold leading-5 ${toneClass.soft} ${toneClass.text}`}
+      >
         {card.riskHint}
       </div>
+
+      <Link
+        href={editHref}
+        className="mt-3 inline-flex w-full items-center justify-center rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-black text-slate-700 transition hover:border-indigo-200 hover:bg-indigo-50 hover:text-indigo-700"
+      >
+        Указать или изменить данные карты
+      </Link>
     </div>
+  );
+}
+
+function InfoBox({
+  label,
+  value,
+  tone = "default",
+}: {
+  label: string;
+  value: string;
+  tone?: "default" | "danger" | "warning";
+}) {
+  const toneClass = {
+    default: "bg-white text-slate-950 ring-slate-100",
+    danger: "bg-red-50 text-red-700 ring-red-100",
+    warning: "bg-orange-50 text-orange-700 ring-orange-100",
+  }[tone];
+
+  return (
+    <div className={`rounded-2xl p-4 ring-1 ${toneClass}`}>
+      <div className="text-xs font-black uppercase tracking-[0.08em] text-slate-400">
+        {label}
+      </div>
+      <div className="mt-2 text-lg font-black">{value}</div>
+    </div>
+  );
+}
+
+function CreditCardEditForm({
+  card,
+  companyName,
+  selectedMonthValue,
+}: {
+  card: CreditCardView;
+  companyName: string | null;
+  selectedMonthValue: string;
+}) {
+  const minimumPaymentPercent =
+    card.minimumPaymentPercent > 0 ? card.minimumPaymentPercent.toFixed(2) : "";
+
+  return (
+    <section
+      id="credit-card-editor"
+      className="rounded-[28px] border border-indigo-100 bg-white p-6 shadow-sm shadow-indigo-100/70 ring-1 ring-indigo-50"
+    >
+      <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+        <div>
+          <div className="inline-flex rounded-full bg-indigo-50 px-3 py-1 text-xs font-black uppercase tracking-[0.08em] text-indigo-700 ring-1 ring-indigo-100">
+            Настройка кредитной карты
+          </div>
+
+          <h2 className="mt-3 text-2xl font-black text-slate-950">
+            {card.displayName}
+          </h2>
+
+          <p className="mt-2 max-w-4xl text-sm font-medium leading-6 text-slate-500">
+            Здесь обновляются долг, лимит, минимальный платёж и льготный период.
+            Эти данные нужны для блока кредиток, ближайших платежей, ОДДС и
+            платёжного календаря.
+          </p>
+        </div>
+
+        <Link
+          href={buildFinanceHref(companyName, selectedMonthValue)}
+          className="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-black text-slate-700 shadow-sm transition hover:bg-slate-50"
+        >
+          Закрыть
+        </Link>
+      </div>
+
+      <div className="mt-5 grid gap-5 xl:grid-cols-[0.85fr_1.15fr]">
+        <div className="rounded-[24px] border border-slate-100 bg-slate-50/70 p-5">
+          <div className="text-sm font-black text-slate-950">
+            {card.companyName}
+          </div>
+
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            <InfoBox
+              label="Текущий долг"
+              value={formatMoney(card.currentDebt)}
+            />
+            <InfoBox
+              label="Кредитный лимит"
+              value={
+                card.creditLimit > 0
+                  ? formatMoney(card.creditLimit)
+                  : "не задан"
+              }
+            />
+            <InfoBox
+              label="Минимальный платёж"
+              value={
+                card.minimumPayment > 0
+                  ? formatMoney(card.minimumPayment)
+                  : "не задан"
+              }
+            />
+            <InfoBox
+              label="Льготный период"
+              value={formatDaysLeft(card.graceDaysLeft)}
+              tone={
+                card.riskTone === "high"
+                  ? "danger"
+                  : card.riskTone === "medium"
+                    ? "warning"
+                    : "default"
+              }
+            />
+          </div>
+
+          <div className="mt-4 rounded-2xl bg-blue-50 p-4 text-sm font-bold leading-6 text-blue-900 ring-1 ring-blue-100">
+            Для кредитки не создаём фиксированный график тела и процентов. В
+            календарь попадает только ближайший минимальный платёж. Льготный
+            период показывается отдельно как риск и рекомендация.
+          </div>
+
+          <div className="mt-3 rounded-2xl bg-amber-50 p-4 text-sm font-bold leading-6 text-amber-900 ring-1 ring-amber-100">
+            Если задан процент минимального платежа, но сумма пустая, система
+            рассчитает минимальный платёж от текущего долга.
+          </div>
+        </div>
+
+        <form
+          action="/api/finance/loans/credit-card"
+          method="POST"
+          className="rounded-[24px] border border-slate-100 bg-white p-5 shadow-sm"
+        >
+          <input type="hidden" name="loanId" value={card.id} />
+          <input
+            type="hidden"
+            name="returnCompany"
+            value={companyName ?? "ALL"}
+          />
+          <input type="hidden" name="returnPeriod" value={selectedMonthValue} />
+
+          <div className="grid gap-4 md:grid-cols-2">
+            <label className="block">
+              <span className="mb-2 block text-xs font-black uppercase tracking-[0.08em] text-slate-400">
+                Текущий долг
+              </span>
+              <input
+                name="currentDebt"
+                type="number"
+                min="0"
+                step="0.01"
+                defaultValue={card.currentDebt || ""}
+                className="h-11 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-900 outline-none transition focus:border-indigo-300 focus:ring-4 focus:ring-indigo-100"
+              />
+            </label>
+
+            <label className="block">
+              <span className="mb-2 block text-xs font-black uppercase tracking-[0.08em] text-slate-400">
+                Кредитный лимит
+              </span>
+              <input
+                name="creditLimit"
+                type="number"
+                min="0"
+                step="0.01"
+                defaultValue={card.creditLimit || ""}
+                className="h-11 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-900 outline-none transition focus:border-indigo-300 focus:ring-4 focus:ring-indigo-100"
+              />
+            </label>
+
+            <label className="block">
+              <span className="mb-2 block text-xs font-black uppercase tracking-[0.08em] text-slate-400">
+                Минимальный платёж, ₽
+              </span>
+              <input
+                name="minimumPayment"
+                type="number"
+                min="0"
+                step="0.01"
+                defaultValue={card.minimumPayment || ""}
+                className="h-11 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-900 outline-none transition focus:border-indigo-300 focus:ring-4 focus:ring-indigo-100"
+              />
+            </label>
+
+            <label className="block">
+              <span className="mb-2 block text-xs font-black uppercase tracking-[0.08em] text-slate-400">
+                Минимальный платёж, % от долга
+              </span>
+              <input
+                name="minimumPaymentPercent"
+                type="number"
+                min="0"
+                step="0.01"
+                defaultValue={minimumPaymentPercent}
+                placeholder="Например 5"
+                className="h-11 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-900 outline-none transition focus:border-indigo-300 focus:ring-4 focus:ring-indigo-100"
+              />
+            </label>
+
+            <label className="block">
+              <span className="mb-2 block text-xs font-black uppercase tracking-[0.08em] text-slate-400">
+                Дата минимального платежа
+              </span>
+              <input
+                name="minimumPaymentDate"
+                type="date"
+                defaultValue={
+                  card.minimumPaymentDate
+                    ? formatDateInput(card.minimumPaymentDate)
+                    : ""
+                }
+                className="h-11 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-900 outline-none transition focus:border-indigo-300 focus:ring-4 focus:ring-indigo-100"
+              />
+            </label>
+
+            <label className="block">
+              <span className="mb-2 block text-xs font-black uppercase tracking-[0.08em] text-slate-400">
+                Конец льготного периода
+              </span>
+              <input
+                name="gracePeriodDate"
+                type="date"
+                defaultValue={
+                  card.gracePeriodDate
+                    ? formatDateInput(card.gracePeriodDate)
+                    : ""
+                }
+                className="h-11 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-900 outline-none transition focus:border-indigo-300 focus:ring-4 focus:ring-indigo-100"
+              />
+            </label>
+
+            <label className="block">
+              <span className="mb-2 block text-xs font-black uppercase tracking-[0.08em] text-slate-400">
+                Ставка после льготного периода, % годовых
+              </span>
+              <input
+                name="interestRate"
+                type="number"
+                min="0"
+                step="0.01"
+                defaultValue={card.interestRate || ""}
+                className="h-11 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-900 outline-none transition focus:border-indigo-300 focus:ring-4 focus:ring-indigo-100"
+              />
+            </label>
+
+            <label className="block">
+              <span className="mb-2 block text-xs font-black uppercase tracking-[0.08em] text-slate-400">
+                Периодичность минимального платежа
+              </span>
+              <select
+                name="paymentFrequency"
+                defaultValue="MONTHLY"
+                className="h-11 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-900 outline-none transition focus:border-indigo-300 focus:ring-4 focus:ring-indigo-100"
+              >
+                <option value="MONTHLY">Ежемесячно</option>
+                <option value="CUSTOM">Ручной контроль</option>
+              </select>
+            </label>
+          </div>
+
+          <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-xs font-bold leading-5 text-slate-500">
+              Сохранение обновит карточку, ближайший минимальный платёж и
+              плановую операцию в финансовом календаре.
+            </p>
+
+            <button className="rounded-2xl bg-slate-950 px-6 py-3 text-sm font-black text-white shadow-sm transition hover:bg-slate-800">
+              Сохранить данные карты
+            </button>
+          </div>
+        </form>
+      </div>
+    </section>
   );
 }
 
@@ -2332,9 +2799,10 @@ function CreditCardRiskBadge({ tone }: { tone: CreditCardRiskTone }) {
   }[tone];
 
   return (
-    <span className={`inline-flex rounded-full px-3 py-1 text-xs font-black ring-1 ${classes}`}>
+    <span
+      className={`inline-flex rounded-full px-3 py-1 text-xs font-black ring-1 ${classes}`}
+    >
       {label}
     </span>
   );
 }
-
