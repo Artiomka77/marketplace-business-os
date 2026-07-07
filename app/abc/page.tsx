@@ -3,6 +3,7 @@ import { getProfitAnalytics } from "@/lib/analytics/profitAnalytics";
 import { getProfitAnalyticsOzon } from "@/lib/analytics/profitAnalyticsOzon";
 import MarketplaceNav from "@/components/marketplaces/MarketplaceNav";
 
+
 type MarketplaceFilter = "ALL" | "WB" | "Ozon";
 type CompanyFilter = "ALL" | "ИП Петров" | "ИП Лебедева";
 
@@ -109,8 +110,9 @@ export default async function AbcPage({
 }) {
   const params = await searchParams;
 
-  const dateFrom = params?.dateFrom ?? "2026-05-18";
-  const dateTo = params?.dateTo ?? "2026-05-24";
+  const defaultPeriod = getDefaultLast30DaysRange();
+  const dateFrom = params?.dateFrom ?? defaultPeriod.dateFrom;
+  const dateTo = params?.dateTo ?? defaultPeriod.dateTo;
   const marketplace = params?.marketplace ?? "ALL";
   const company = params?.company ?? "ALL";
 
