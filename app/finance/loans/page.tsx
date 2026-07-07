@@ -276,6 +276,111 @@ function getLoanDisplayName(loan: { bankName: string; contractNumber: string | n
   return loan.bankName || loan.contractNumber || "Кредит";
 }
 
+
+type CreditCardRiskTone = "high" | "medium" | "low" | "missing";
+
+type CreditCardView = {
+  id: string;
+  displayName: string;
+  companyName: string;
+  contractNumber: string | null;
+  currentDebt: number;
+  creditLimit: number;
+  availableLimit: number;
+  utilizationPercent: number;
+  minimumPayment: number;
+  minimumPaymentDate: Date | null;
+  gracePeriodDate: Date | null;
+  graceDaysLeft: number | null;
+  interestRate: number;
+  riskTone: CreditCardRiskTone;
+  riskLabel: string;
+  riskHint: string;
+};
+
+function isCreditCardLoan(loan: {
+  bankName: string;
+  paymentFrequency?: string | null;
+}) {
+  const name = loan.bankName.toLowerCase();
+
+  return name.includes("кредитка") || name.includes("кредитная карта");
+}
+
+function getDaysLeft(from: Date, to: Date | null | undefined) {
+  if (!to) return null;
+
+  return Math.ceil(
+    (startOfDay(to).getTime() - startOfDay(from).getTime()) /
+      (24 * 60 * 60 * 1000)
+  );
+}
+
+function formatDaysLeft(value: number | null) {
+  if (value === null) return "не задано";
+  if (value < 0) return `просрочено ${Math.abs(value)} дн.`;
+  if (value === 0) return "сегодня";
+
+  return `${value} дн.`;
+}
+
+function getCreditCardRiskTone(params: {
+  graceDaysLeft: number | null;
+  utilizationPercent: number;
+  minimumPayment: number;
+  minimumPaymentDate: Date | null;
+}) {
+  if (params.minimumPayment <= 0 && !params.minimumPaymentDate && params.graceDaysLeft === null) {
+    return "missing" as const;
+  }
+
+  if (params.graceDaysLeft !== null && params.graceDaysLeft <= 7) {
+    return "high" as const;
+  }
+
+  if (params.utilizationPercent >= 80) {
+    return "high" as const;
+  }
+
+  if (params.graceDaysLeft !== null && params.graceDaysLeft <= 21) {
+    return "medium" as const;
+  }
+
+  if (params.utilizationPercent >= 55) {
+    return "medium" as const;
+  }
+
+  return "low" as const;
+}
+
+function getCreditCardRiskCopy(tone: CreditCardRiskTone) {
+  if (tone === "high") {
+    return {
+      label: "Высокий риск",
+      hint: "льготный период близко или лимит сильно использован",
+    };
+  }
+
+  if (tone === "medium") {
+    return {
+      label: "Средний риск",
+      hint: "держать под контролем минимальный платёж и льготный период",
+    };
+  }
+
+  if (tone === "missing") {
+    return {
+      label: "Нужны данные",
+      hint: "укажите минимальный платёж и срок льготного периода",
+    };
+  }
+
+  return {
+    label: "Низкий риск",
+    hint: "баланс и сроки выглядят спокойно",
+  };
+}
+
 export default async function LoansPage({
   searchParams,
 }: {
@@ -387,12 +492,7 @@ export default async function LoansPage({
       payment.paymentDate >= selectedMonth && payment.paymentDate <= selectedMonthEnd
   );
 
-  const next7DaysEnd = addDays(today, 7);
   const next14DaysEnd = addDays(today, 14);
-
-  const next7Payments = allFuturePayments.filter(
-    (payment) => payment.paymentDate <= next7DaysEnd
-  );
 
   const next14Payments = allFuturePayments.filter(
     (payment) => payment.paymentDate <= next14DaysEnd
@@ -427,14 +527,6 @@ export default async function LoansPage({
     selectedMonthPayment > 0 ? selectedMonthPayment : monthlyPaymentFromLoans;
 
   const next14Amount = next14Payments.reduce(
-    (sum, payment) => sum + getPaymentTotal(payment),
-    0
-  );
-
-  const recommendedReserve = Math.ceil((next14Amount * 1.1) / 1000) * 1000;
-
-
-  const next7Amount = next7Payments.reduce(
     (sum, payment) => sum + getPaymentTotal(payment),
     0
   );
@@ -523,6 +615,64 @@ export default async function LoansPage({
     };
   });
 
+
+  const creditCardRows: CreditCardView[] = loanRows
+    .filter((loan) => isCreditCardLoan(loan))
+    .map((loan) => {
+      const availableLimit = Math.max(0, loan.creditLimit - loan.currentDebt);
+      const utilizationPercent = getSafeRatio(loan.currentDebt, loan.creditLimit);
+      const minimumPayment = loan.nextPaymentTotal || loan.monthlyPayment;
+      const minimumPaymentDate = loan.nextPaymentDate;
+      const gracePeriodDate = loan.endDate ?? loan.nextPaymentDate ?? null;
+      const graceDaysLeft = getDaysLeft(today, gracePeriodDate);
+      const riskTone = getCreditCardRiskTone({
+        graceDaysLeft,
+        utilizationPercent,
+        minimumPayment,
+        minimumPaymentDate,
+      });
+      const riskCopy = getCreditCardRiskCopy(riskTone);
+
+      return {
+        id: loan.id,
+        displayName: loan.displayName,
+        companyName: loan.companyName,
+        contractNumber: loan.contractNumber,
+        currentDebt: loan.currentDebt,
+        creditLimit: loan.creditLimit,
+        availableLimit,
+        utilizationPercent,
+        minimumPayment,
+        minimumPaymentDate,
+        gracePeriodDate,
+        graceDaysLeft,
+        interestRate: loan.interestRate,
+        riskTone,
+        riskLabel: riskCopy.label,
+        riskHint: riskCopy.hint,
+      };
+    })
+    .sort((a, b) => {
+      const riskOrder = { high: 0, medium: 1, missing: 2, low: 3 };
+      return (
+        riskOrder[a.riskTone] - riskOrder[b.riskTone] ||
+        b.utilizationPercent - a.utilizationPercent ||
+        b.currentDebt - a.currentDebt
+      );
+    });
+
+  const creditCardsTotalDebt = creditCardRows.reduce(
+    (sum, card) => sum + card.currentDebt,
+    0
+  );
+  const creditCardsMinimumPayment = creditCardRows.reduce(
+    (sum, card) => sum + card.minimumPayment,
+    0
+  );
+  const creditCardsHighRiskCount = creditCardRows.filter(
+    (card) => card.riskTone === "high"
+  ).length;
+
   const loansByMonthlyBurden = [...loanRows].sort(
     (a, b) => b.monthlyPayment - a.monthlyPayment
   );
@@ -543,20 +693,9 @@ export default async function LoansPage({
     (a, b) => a.currentDebt - b.currentDebt
   );
 
-  const loansByFutureInterest = [...loanRows].sort(
-    (a, b) =>
-      b.interestUntilYearEnd - a.interestUntilYearEnd ||
-      b.calculatedAnnualRate - a.calculatedAnnualRate ||
-      b.currentDebt - a.currentDebt
-  );
-
   const nextPayments = allFuturePayments.slice(0, 4);
 
   const nextPayment = allFuturePayments[0] ?? null;
-  const topMonthlyBurdenLoan = loansByMonthlyBurden[0] ?? null;
-  const mostExpensiveLoan = loansByFutureInterest[0] ?? null;
-  const expensiveLoanPeriodLabel = `до 31.12.${selectedMonth.getFullYear()}`;
-
   const monthlyMap = new Map<
     string,
     {
@@ -890,169 +1029,12 @@ export default async function LoansPage({
           />
 
           <MetricCard
-            label="Кредитов активных"
+            label="Активных обязательств"
             value={String(activeLoanIdsCount)}
-            hint={companyName ?? "все компании"}
+            hint={`${activeLoanIdsCount} из ${activeLoanIdsCount} активных`}
             accent="green"
             icon="✓"
           />
-        </section>
-
-        <section className="grid gap-5 xl:grid-cols-[1.28fr_1fr]">
-          <section
-            id="recommendations"
-            className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm shadow-slate-200/70"
-          >
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-              <div>
-                <h2 className="text-xl font-black text-slate-950">
-                  Рекомендации по досрочному погашению
-                </h2>
-                <p className="mt-1 text-sm font-medium text-slate-500">
-                  Три стратегии: снизить платёж, уменьшить проценты или быстро
-                  закрыть мелкие кредиты.
-                </p>
-              </div>
-
-              <span className="shrink-0 rounded-full bg-indigo-50 px-3 py-1 text-xs font-black text-indigo-700 ring-1 ring-indigo-100">
-                Рекомендуемый вариант
-              </span>
-            </div>
-
-            <div className="mt-4 grid gap-3 lg:grid-cols-3">
-              <RecommendationCard
-                number="1"
-                tone="green"
-                title="Снизить ежемесячный платёж"
-                description="Гасите кредиты с самым большим платежом в месяц."
-                headers={["Кредит", "Платёж в мес.", "Потенциал"]}
-                rows={loansByMonthlyBurden.slice(0, 3).map((loan) => [
-                  loan.displayName,
-                  formatMoney(loan.monthlyPayment),
-                  `−${formatMoney(loan.monthlyPayment)}`,
-                ])}
-                action="Показать варианты"
-              />
-
-              <RecommendationCard
-                number="2"
-                tone="blue"
-                title="Снизить переплату по процентам"
-                description="Начинайте с кредитов с высокой ставкой и процентами."
-                headers={["Кредит", "Ставка", "Проценты"]}
-                rows={loansByRate.slice(0, 3).map((loan) => [
-                  loan.displayName,
-                  formatRateLabel({
-                    rate: loan.calculatedAnnualRate,
-                    source: loan.rateSource,
-                  }),
-                  formatMoney(loan.interestUntilYearEnd),
-                ])}
-                action="Рассчитать погашение"
-              />
-
-              <RecommendationCard
-                number="3"
-                tone="purple"
-                title="Быстро закрыть мелкие кредиты"
-                description="Закрывайте небольшие долги, чтобы снизить число обязательств."
-                headers={["Кредит", "Долг", "Платёж в мес."]}
-                rows={loansBySmallDebt.slice(0, 3).map((loan) => [
-                  loan.displayName,
-                  formatMoney(loan.currentDebt),
-                  formatMoney(loan.monthlyPayment),
-                ])}
-                action="Закрыть мелкие кредиты"
-              />
-            </div>
-          </section>
-
-          <section className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm shadow-slate-200/70">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <h2 className="text-xl font-black text-slate-950">
-                  Ближайшие платежи
-                </h2>
-                <p className="mt-1 text-sm font-medium text-slate-500">
-                  Следующие списания по графику.
-                </p>
-              </div>
-
-              <Link
-                href="/finance/calendar"
-                className="text-sm font-black text-indigo-600 hover:text-indigo-500"
-              >
-                Календарь
-              </Link>
-            </div>
-
-            <div className="mt-4 overflow-hidden rounded-2xl border border-slate-100">
-              <div className="hidden grid-cols-[64px_1fr_96px_90px_96px] gap-3 bg-slate-50 px-4 py-3 text-[11px] font-black uppercase tracking-[0.08em] text-slate-400 lg:grid">
-                <div>Дата</div>
-                <div>Кредит</div>
-                <div className="text-right">Тело</div>
-                <div className="text-right">Проценты</div>
-                <div className="text-right">Всего</div>
-              </div>
-
-              <div className="divide-y divide-slate-100">
-                {nextPayments.map((payment) => (
-                  <div
-                    key={payment.id}
-                    className="grid gap-3 bg-white px-4 py-3 lg:grid-cols-[64px_1fr_96px_90px_96px] lg:items-center"
-                  >
-                    <div className="flex items-center gap-3 lg:block">
-                      <div className="flex h-12 w-12 shrink-0 flex-col items-center justify-center rounded-2xl bg-slate-50 ring-1 ring-slate-100">
-                        <div className="text-base font-black text-slate-950">
-                          {formatDay(payment.paymentDate)}
-                        </div>
-                        <div className="text-[10px] font-black uppercase tracking-[0.08em] text-slate-400">
-                          {formatShortMonth(payment.paymentDate)}
-                        </div>
-                      </div>
-                      <div className="min-w-0 lg:hidden">
-                        <div className="truncate text-sm font-black text-slate-950">
-                          {getLoanDisplayName(payment.loan)}
-                        </div>
-                        <div className="mt-1 text-xs font-bold text-slate-500">
-                          Тело {formatMoney(getPaymentPrincipal(payment))} · проценты {formatMoney(getPaymentInterest(payment))}
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="hidden min-w-0 truncate text-sm font-black text-slate-950 lg:block">
-                      {getLoanDisplayName(payment.loan)}
-                    </div>
-
-                    <div className="hidden text-right text-sm font-bold text-slate-900 lg:block">
-                      {formatMoney(getPaymentPrincipal(payment))}
-                    </div>
-
-                    <div className="hidden text-right text-sm font-bold text-orange-600 lg:block">
-                      {formatMoney(getPaymentInterest(payment))}
-                    </div>
-
-                    <div className="text-right text-base font-black text-red-600 lg:text-sm">
-                      {formatMoney(getPaymentTotal(payment))}
-                    </div>
-                  </div>
-                ))}
-
-                {nextPayments.length === 0 && (
-                  <div className="bg-slate-50 p-8 text-center text-sm font-bold text-slate-500">
-                    Ближайших платежей пока нет.
-                  </div>
-                )}
-              </div>
-            </div>
-
-            <Link
-              href="/finance/calendar"
-              className="mt-4 inline-flex text-sm font-black text-indigo-600 hover:text-indigo-500"
-            >
-              Смотреть все платежи →
-            </Link>
-          </section>
         </section>
 
         <section className="grid gap-5 xl:grid-cols-[0.72fr_1.28fr]">
@@ -1331,86 +1313,242 @@ export default async function LoansPage({
           </section>
         </section>
 
-        <section className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm shadow-slate-200/70">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <h2 className="text-xl font-black text-slate-950">
-                Что требует внимания
-              </h2>
-              <p className="mt-1 text-sm font-medium text-slate-500">
-                Резерв, ближайшие платежи и самые дорогие обязательства.
-              </p>
+        <section className="grid gap-5 xl:grid-cols-[1.28fr_1fr]">
+          <section
+            id="recommendations"
+            className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm shadow-slate-200/70"
+          >
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <h2 className="text-xl font-black text-slate-950">
+                  Рекомендации по досрочному погашению
+                </h2>
+                <p className="mt-1 text-sm font-medium text-slate-500">
+                  Три стратегии: снизить платёж, уменьшить проценты или быстро
+                  закрыть мелкие кредиты.
+                </p>
+              </div>
+
+              <span className="shrink-0 rounded-full bg-indigo-50 px-3 py-1 text-xs font-black text-indigo-700 ring-1 ring-indigo-100">
+                Рекомендуемый вариант
+              </span>
+            </div>
+
+            <div className="mt-4 grid gap-3 lg:grid-cols-3">
+              <RecommendationCard
+                number="1"
+                tone="green"
+                title="Снизить ежемесячный платёж"
+                description="Гасите кредиты с самым большим платежом в месяц."
+                headers={["Кредит", "Платёж в мес.", "Потенциал"]}
+                rows={loansByMonthlyBurden.slice(0, 3).map((loan) => [
+                  loan.displayName,
+                  formatMoney(loan.monthlyPayment),
+                  `−${formatMoney(loan.monthlyPayment)}`,
+                ])}
+                action="Показать варианты"
+              />
+
+              <RecommendationCard
+                number="2"
+                tone="blue"
+                title="Снизить переплату по процентам"
+                description="Начинайте с кредитов с высокой ставкой и процентами."
+                headers={["Кредит", "Ставка", "Проценты"]}
+                rows={loansByRate.slice(0, 3).map((loan) => [
+                  loan.displayName,
+                  formatRateLabel({
+                    rate: loan.calculatedAnnualRate,
+                    source: loan.rateSource,
+                  }),
+                  formatMoney(loan.interestUntilYearEnd),
+                ])}
+                action="Рассчитать погашение"
+              />
+
+              <RecommendationCard
+                number="3"
+                tone="purple"
+                title="Быстро закрыть мелкие кредиты"
+                description="Закрывайте небольшие долги, чтобы снизить число обязательств."
+                headers={["Кредит", "Долг", "Платёж в мес."]}
+                rows={loansBySmallDebt.slice(0, 3).map((loan) => [
+                  loan.displayName,
+                  formatMoney(loan.currentDebt),
+                  formatMoney(loan.monthlyPayment),
+                ])}
+                action="Закрыть мелкие кредиты"
+              />
+            </div>
+
+            {creditCardRows.length > 0 ? (
+              <div className="mt-4 rounded-[22px] border border-orange-100 bg-orange-50/70 p-4">
+                <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                  <div>
+                    <div className="text-sm font-black text-orange-900">
+                      Риск по кредитным картам
+                    </div>
+                    <p className="mt-1 text-xs font-bold leading-5 text-orange-800/80">
+                      Минимальные платежи, льготные периоды и использование лимита контролируем отдельно от обычных кредитов.
+                    </p>
+                  </div>
+
+                  <div className="grid gap-2 sm:grid-cols-3 lg:min-w-[520px]">
+                    <div className="rounded-2xl bg-white px-3 py-2 ring-1 ring-orange-100">
+                      <div className="text-[10px] font-black uppercase tracking-[0.08em] text-slate-400">
+                        Долг по картам
+                      </div>
+                      <div className="mt-1 text-sm font-black text-slate-950">
+                        {formatMoney(creditCardsTotalDebt)}
+                      </div>
+                    </div>
+
+                    <div className="rounded-2xl bg-white px-3 py-2 ring-1 ring-orange-100">
+                      <div className="text-[10px] font-black uppercase tracking-[0.08em] text-slate-400">
+                        Мин. платежи
+                      </div>
+                      <div className="mt-1 text-sm font-black text-orange-700">
+                        {formatMoney(creditCardsMinimumPayment)}
+                      </div>
+                    </div>
+
+                    <div className="rounded-2xl bg-white px-3 py-2 ring-1 ring-orange-100">
+                      <div className="text-[10px] font-black uppercase tracking-[0.08em] text-slate-400">
+                        Высокий риск
+                      </div>
+                      <div className="mt-1 text-sm font-black text-red-600">
+                        {creditCardsHighRiskCount} карт
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : null}
+          </section>
+
+          <section className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm shadow-slate-200/70">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h2 className="text-xl font-black text-slate-950">
+                  Ближайшие платежи
+                </h2>
+                <p className="mt-1 text-sm font-medium text-slate-500">
+                  Следующие списания по графику.
+                </p>
+              </div>
+
+              <Link
+                href="/finance/calendar"
+                className="text-sm font-black text-indigo-600 hover:text-indigo-500"
+              >
+                Календарь
+              </Link>
+            </div>
+
+            <div className="mt-4 overflow-hidden rounded-2xl border border-slate-100">
+              <div className="hidden grid-cols-[64px_1fr_96px_90px_96px] gap-3 bg-slate-50 px-4 py-3 text-[11px] font-black uppercase tracking-[0.08em] text-slate-400 lg:grid">
+                <div>Дата</div>
+                <div>Кредит</div>
+                <div className="text-right">Тело</div>
+                <div className="text-right">Проценты</div>
+                <div className="text-right">Всего</div>
+              </div>
+
+              <div className="divide-y divide-slate-100">
+                {nextPayments.map((payment) => (
+                  <div
+                    key={payment.id}
+                    className="grid gap-3 bg-white px-4 py-3 lg:grid-cols-[64px_1fr_96px_90px_96px] lg:items-center"
+                  >
+                    <div className="flex items-center gap-3 lg:block">
+                      <div className="flex h-12 w-12 shrink-0 flex-col items-center justify-center rounded-2xl bg-slate-50 ring-1 ring-slate-100">
+                        <div className="text-base font-black text-slate-950">
+                          {formatDay(payment.paymentDate)}
+                        </div>
+                        <div className="text-[10px] font-black uppercase tracking-[0.08em] text-slate-400">
+                          {formatShortMonth(payment.paymentDate)}
+                        </div>
+                      </div>
+                      <div className="min-w-0 lg:hidden">
+                        <div className="truncate text-sm font-black text-slate-950">
+                          {getLoanDisplayName(payment.loan)}
+                        </div>
+                        <div className="mt-1 text-xs font-bold text-slate-500">
+                          Тело {formatMoney(getPaymentPrincipal(payment))} · проценты {formatMoney(getPaymentInterest(payment))}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="hidden min-w-0 truncate text-sm font-black text-slate-950 lg:block">
+                      {getLoanDisplayName(payment.loan)}
+                    </div>
+
+                    <div className="hidden text-right text-sm font-bold text-slate-900 lg:block">
+                      {formatMoney(getPaymentPrincipal(payment))}
+                    </div>
+
+                    <div className="hidden text-right text-sm font-bold text-orange-600 lg:block">
+                      {formatMoney(getPaymentInterest(payment))}
+                    </div>
+
+                    <div className="text-right text-base font-black text-red-600 lg:text-sm">
+                      {formatMoney(getPaymentTotal(payment))}
+                    </div>
+                  </div>
+                ))}
+
+                {nextPayments.length === 0 && (
+                  <div className="bg-slate-50 p-8 text-center text-sm font-bold text-slate-500">
+                    Ближайших платежей пока нет.
+                  </div>
+                )}
+              </div>
             </div>
 
             <Link
               href="/finance/calendar"
-              className="text-sm font-black text-indigo-600 hover:text-indigo-500"
+              className="mt-4 inline-flex text-sm font-black text-indigo-600 hover:text-indigo-500"
             >
-              Смотреть все
+              Смотреть все платежи →
             </Link>
-          </div>
-
-          <div className="mt-5 grid gap-4 xl:grid-cols-4">
-            <AttentionCard
-              tone="green"
-              title="Резерв на ближайшие платежи"
-              subtitle={`${next14Payments.length} платежей в ближайшие 14 дней`}
-              value={formatMoney(recommendedReserve)}
-              action="Держать на счетах →"
-              href="/finance/accounts"
-            />
-
-            <AttentionCard
-              tone="orange"
-              title="Платежи в ближайшие 7 дней"
-              subtitle={`${next7Payments.length} платежей на сумму`}
-              value={formatMoney(next7Amount)}
-              action="Посмотреть календарь →"
-              href="/finance/calendar"
-            />
-
-            <AttentionCard
-              tone="amber"
-              title="Высокая ежемесячная нагрузка"
-              subtitle={topMonthlyBurdenLoan?.displayName ?? "нет данных"}
-              value={
-                topMonthlyBurdenLoan
-                  ? `${formatMoney(topMonthlyBurdenLoan.monthlyPayment)} / мес.`
-                  : "—"
-              }
-              action="Рекомендации →"
-              href="#recommendations"
-            />
-
-            <AttentionCard
-              tone="purple"
-              title="Самый дорогой кредит"
-              subtitle={
-                mostExpensiveLoan
-                  ? `${mostExpensiveLoan.displayName} · проценты ${expensiveLoanPeriodLabel}`
-                  : "нет данных"
-              }
-              value={
-                mostExpensiveLoan
-                  ? mostExpensiveLoan.interestUntilYearEnd > 0
-                    ? formatMoney(mostExpensiveLoan.interestUntilYearEnd)
-                    : "проценты не рассчитаны"
-                  : "—"
-              }
-              action={
-                mostExpensiveLoan
-                  ? formatRateActionLabel({
-                      rate: mostExpensiveLoan.calculatedAnnualRate,
-                      source: mostExpensiveLoan.rateSource,
-                    })
-                  : "ставка не рассчитана →"
-              }
-              href="#all-loans"
-            />
-          </div>
+          </section>
         </section>
 
-        {selectedRepaymentLoan ? (
+        
+
+        {creditCardRows.length > 0 ? (
+          <section className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm shadow-slate-200/70">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <div className="flex items-center gap-3">
+                  <h2 className="text-xl font-black text-slate-950">
+                    Кредитные карты
+                  </h2>
+                  <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-black text-slate-600">
+                    {creditCardRows.length} карт
+                  </span>
+                </div>
+                <p className="mt-1 text-sm font-medium text-slate-500">
+                  Льготный период, минимальный платёж, использование лимита и риск по каждой карте.
+                </p>
+              </div>
+
+              <a
+                href="#all-loans"
+                className="text-sm font-black text-indigo-600 hover:text-indigo-500"
+              >
+                Все карты →
+              </a>
+            </div>
+
+            <div className="mt-4 grid gap-4 xl:grid-cols-3">
+              {creditCardRows.slice(0, 3).map((card) => (
+                <CreditCardPanel key={card.id} card={card} />
+              ))}
+            </div>
+          </section>
+        ) : null}
+{selectedRepaymentLoan ? (
           <section
             id="early-repayment"
             className="rounded-[28px] border border-indigo-100 bg-white p-6 shadow-sm shadow-indigo-100/70 ring-1 ring-indigo-50"
@@ -1747,7 +1885,10 @@ export default async function LoansPage({
               </thead>
 
               <tbody>
-                {loanRows.map((loan) => (
+                {loanRows.map((loan) => {
+                  const creditCard = creditCardRows.find((card) => card.id === loan.id) ?? null;
+
+                  return (
                   <tr key={loan.id} className="border-b border-slate-100">
                     <td className="px-4 py-4">
                       <div className="font-black text-slate-950">
@@ -1795,9 +1936,13 @@ export default async function LoansPage({
                     </td>
 
                     <td className="px-4 py-4">
-                      <span className="inline-flex rounded-full bg-emerald-50 px-3 py-1 text-xs font-black text-emerald-700 ring-1 ring-emerald-100">
-                        ● Активен
-                      </span>
+                      {creditCard ? (
+                        <CreditCardRiskBadge tone={creditCard.riskTone} />
+                      ) : (
+                        <span className="inline-flex rounded-full bg-emerald-50 px-3 py-1 text-xs font-black text-emerald-700 ring-1 ring-emerald-100">
+                          ● Активен
+                        </span>
+                      )}
                     </td>
 
                     <td className="px-4 py-4 text-right">
@@ -1806,18 +1951,19 @@ export default async function LoansPage({
                           href={buildRepaymentHref(companyName, selectedMonthValue, loan.id)}
                           className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-black text-slate-700 transition hover:bg-slate-50"
                         >
-                          Досрочно погасить
+                          {creditCard ? "Пополнить" : "Досрочно погасить"}
                         </Link>
                         <Link
                           href={`/finance/loans/${loan.id}/schedule`}
                           className="rounded-xl bg-slate-950 px-3 py-2 text-xs font-black text-white transition hover:bg-slate-800"
                         >
-                          График
+                          {creditCard ? "История" : "График"}
                         </Link>
                       </div>
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
 
                 {loanRows.length === 0 && (
                   <tr>
@@ -1980,42 +2126,6 @@ function MetricCard({
   );
 }
 
-function AttentionCard({
-  tone,
-  title,
-  subtitle,
-  value,
-  action,
-  href,
-}: {
-  tone: "red" | "orange" | "amber" | "purple" | "green";
-  title: string;
-  subtitle: string;
-  value: string;
-  action: string;
-  href: string;
-}) {
-  const classes = {
-    red: "border-red-100 bg-red-50/60 text-red-600",
-    orange: "border-orange-100 bg-orange-50/60 text-orange-600",
-    amber: "border-amber-100 bg-amber-50/60 text-amber-600",
-    purple: "border-purple-100 bg-purple-50/60 text-purple-600",
-    green: "border-emerald-100 bg-emerald-50/60 text-emerald-600",
-  }[tone];
-
-  return (
-    <Link
-      href={href}
-      className={`rounded-[22px] border p-5 transition hover:-translate-y-0.5 hover:shadow-md ${classes}`}
-    >
-      <div className="text-sm font-black text-slate-950">{title}</div>
-      <div className="mt-3 text-xs font-bold text-slate-500">{subtitle}</div>
-      <div className="mt-2 text-xl font-black">{value}</div>
-      <div className="mt-4 text-xs font-black">{action}</div>
-    </Link>
-  );
-}
-
 function RecommendationCard({
   number,
   tone,
@@ -2085,3 +2195,146 @@ function RecommendationCard({
     </div>
   );
 }
+
+function CreditCardPanel({ card }: { card: CreditCardView }) {
+  const toneClass = {
+    high: {
+      badge: "bg-red-50 text-red-700 ring-red-100",
+      bar: "bg-red-500",
+      soft: "bg-red-50 border-red-100",
+      text: "text-red-600",
+    },
+    medium: {
+      badge: "bg-orange-50 text-orange-700 ring-orange-100",
+      bar: "bg-orange-500",
+      soft: "bg-orange-50 border-orange-100",
+      text: "text-orange-600",
+    },
+    low: {
+      badge: "bg-emerald-50 text-emerald-700 ring-emerald-100",
+      bar: "bg-emerald-500",
+      soft: "bg-emerald-50 border-emerald-100",
+      text: "text-emerald-600",
+    },
+    missing: {
+      badge: "bg-slate-50 text-slate-600 ring-slate-100",
+      bar: "bg-slate-400",
+      soft: "bg-slate-50 border-slate-100",
+      text: "text-slate-600",
+    },
+  }[card.riskTone];
+
+  return (
+    <div className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm shadow-slate-100/70">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="truncate text-base font-black text-slate-950">
+            {card.displayName}
+          </div>
+          <div className="mt-1 text-xs font-bold text-slate-400">
+            {card.contractNumber || card.companyName}
+          </div>
+        </div>
+
+        <span className={`shrink-0 rounded-full px-3 py-1 text-[11px] font-black ring-1 ${toneClass.badge}`}>
+          {card.riskLabel}
+        </span>
+      </div>
+
+      <div className="mt-4 grid grid-cols-3 gap-3">
+        <div>
+          <div className="text-[10px] font-black uppercase tracking-[0.08em] text-slate-400">
+            Долг
+          </div>
+          <div className="mt-1 text-sm font-black text-slate-950">
+            {formatMoney(card.currentDebt)}
+          </div>
+        </div>
+
+        <div>
+          <div className="text-[10px] font-black uppercase tracking-[0.08em] text-slate-400">
+            Лимит
+          </div>
+          <div className="mt-1 text-sm font-black text-slate-950">
+            {card.creditLimit > 0 ? formatMoney(card.creditLimit) : "—"}
+          </div>
+        </div>
+
+        <div>
+          <div className="text-[10px] font-black uppercase tracking-[0.08em] text-slate-400">
+            Доступно
+          </div>
+          <div className="mt-1 text-sm font-black text-slate-950">
+            {card.creditLimit > 0 ? formatMoney(card.availableLimit) : "—"}
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-4">
+        <div className="flex items-center justify-between text-xs font-bold text-slate-500">
+          <span>Использование лимита</span>
+          <span>{card.creditLimit > 0 ? `${card.utilizationPercent.toFixed(0)}%` : "нет лимита"}</span>
+        </div>
+        <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-100">
+          <div
+            className={`h-full rounded-full ${toneClass.bar}`}
+            style={{ width: `${Math.min(100, Math.max(0, card.utilizationPercent))}%` }}
+          />
+        </div>
+      </div>
+
+      <div className="mt-4 grid grid-cols-2 gap-3 border-t border-slate-100 pt-4">
+        <div>
+          <div className="text-[10px] font-black uppercase tracking-[0.08em] text-slate-400">
+            Мин. платёж
+          </div>
+          <div className="mt-1 text-sm font-black text-slate-950">
+            {card.minimumPayment > 0 ? formatMoney(card.minimumPayment) : "не задан"}
+          </div>
+          <div className="mt-1 text-[11px] font-bold text-slate-500">
+            до {formatDate(card.minimumPaymentDate)}
+          </div>
+        </div>
+
+        <div>
+          <div className="text-[10px] font-black uppercase tracking-[0.08em] text-slate-400">
+            Льготный период
+          </div>
+          <div className={`mt-1 text-sm font-black ${toneClass.text}`}>
+            {formatDaysLeft(card.graceDaysLeft)}
+          </div>
+          <div className="mt-1 text-[11px] font-bold text-slate-500">
+            до {formatDate(card.gracePeriodDate)}
+          </div>
+        </div>
+      </div>
+
+      <div className={`mt-4 rounded-2xl border px-3 py-2 text-xs font-bold leading-5 ${toneClass.soft} ${toneClass.text}`}>
+        {card.riskHint}
+      </div>
+    </div>
+  );
+}
+
+function CreditCardRiskBadge({ tone }: { tone: CreditCardRiskTone }) {
+  const classes = {
+    high: "bg-red-50 text-red-700 ring-red-100",
+    medium: "bg-orange-50 text-orange-700 ring-orange-100",
+    low: "bg-emerald-50 text-emerald-700 ring-emerald-100",
+    missing: "bg-slate-50 text-slate-600 ring-slate-100",
+  }[tone];
+
+  const label = {
+    high: "● Высокий риск",
+    medium: "● Средний риск",
+    low: "● Низкий риск",
+    missing: "● Нужны данные",
+  }[tone];
+
+  return (
+    <span className={`inline-flex rounded-full px-3 py-1 text-xs font-black ring-1 ${classes}`}>
+      {label}
+    </span>
+  );
+}
+
