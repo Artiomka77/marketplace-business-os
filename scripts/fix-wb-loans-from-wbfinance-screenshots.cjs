@@ -254,6 +254,8 @@ function buildChanges(currentState) {
       bankName: target.bankName,
       companyName: target.companyName,
       current: currentLoan ? {
+        bankName: currentLoan.bankName,
+        companyName: currentLoan.companyName,
         contractNumber: currentLoan.contractNumber,
         creditLimit: currentLoan.creditLimit === null ? null : Number(currentLoan.creditLimit),
         currentDebt: currentLoan.currentDebt === null ? null : Number(currentLoan.currentDebt),
