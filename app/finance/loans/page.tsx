@@ -1,4 +1,4 @@
-import Link from "next/link";
+﻿import Link from "next/link";
 
 import { prisma } from "@/lib/prisma";
 
@@ -34,13 +34,13 @@ function formatMoney(value: unknown) {
 
 function formatPercent(value: unknown) {
   const number = toNumber(value);
-  if (!number) return "—";
+  if (!number) return "вЂ”";
 
   return `${number.toFixed(1)}%`;
 }
 
 function formatDate(value: Date | null | undefined) {
-  if (!value) return "—";
+  if (!value) return "вЂ”";
   return value.toLocaleDateString("ru-RU");
 }
 
@@ -81,12 +81,12 @@ function formatShortMonth(value: Date) {
 }
 
 function frequencyLabel(value: string | null | undefined) {
-  if (value === "MONTHLY") return "Ежемесячно";
-  if (value === "WEEKLY") return "Еженедельно";
-  if (value === "BIWEEKLY") return "Раз в 2 недели";
-  if (value === "TWICE_MONTHLY_15_25") return "15 и 25 числа";
-  if (value === "CUSTOM") return "Ручной график";
-  return "Ежемесячно";
+  if (value === "MONTHLY") return "Р•Р¶РµРјРµСЃСЏС‡РЅРѕ";
+  if (value === "WEEKLY") return "Р•Р¶РµРЅРµРґРµР»СЊРЅРѕ";
+  if (value === "BIWEEKLY") return "Р Р°Р· РІ 2 РЅРµРґРµР»Рё";
+  if (value === "TWICE_MONTHLY_15_25") return "15 Рё 25 С‡РёСЃР»Р°";
+  if (value === "CUSTOM") return "Р СѓС‡РЅРѕР№ РіСЂР°С„РёРє";
+  return "Р•Р¶РµРјРµСЃСЏС‡РЅРѕ";
 }
 
 function startOfDay(date: Date) {
@@ -250,17 +250,17 @@ function estimateAnnualRateFromSchedule(params: {
 }
 
 function formatRateLabel(rateInfo: { rate: number; source: string }) {
-  if (!rateInfo.rate) return "—";
-  return `${formatPercent(rateInfo.rate)} годовых`;
+  if (!rateInfo.rate) return "вЂ”";
+  return `${formatPercent(rateInfo.rate)} РіРѕРґРѕРІС‹С…`;
 }
 
 function formatRateActionLabel(rateInfo: { rate: number; source: string }) {
-  if (!rateInfo.rate) return "ставка не рассчитана →";
+  if (!rateInfo.rate) return "СЃС‚Р°РІРєР° РЅРµ СЂР°СЃСЃС‡РёС‚Р°РЅР° в†’";
   if (rateInfo.source === "manual")
-    return `ставка ${formatPercent(rateInfo.rate)} годовых →`;
+    return `СЃС‚Р°РІРєР° ${formatPercent(rateInfo.rate)} РіРѕРґРѕРІС‹С… в†’`;
   if (rateInfo.source === "estimated")
-    return `оценочная ставка ${formatPercent(rateInfo.rate)} годовых →`;
-  return `расчётная ставка ${formatPercent(rateInfo.rate)} годовых →`;
+    return `РѕС†РµРЅРѕС‡РЅР°СЏ СЃС‚Р°РІРєР° ${formatPercent(rateInfo.rate)} РіРѕРґРѕРІС‹С… в†’`;
+  return `СЂР°СЃС‡С‘С‚РЅР°СЏ СЃС‚Р°РІРєР° ${formatPercent(rateInfo.rate)} РіРѕРґРѕРІС‹С… в†’`;
 }
 
 function buildFinanceHref(company: string | null, period: string) {
@@ -304,7 +304,7 @@ function getLoanDisplayName(loan: {
   bankName: string;
   contractNumber: string | null;
 }) {
-  return loan.bankName || loan.contractNumber || "Кредит";
+  return loan.bankName || loan.contractNumber || "РљСЂРµРґРёС‚";
 }
 
 type CreditCardRiskTone = "high" | "medium" | "low" | "missing";
@@ -335,7 +335,7 @@ function isCreditCardLoan(loan: {
 }) {
   const name = loan.bankName.toLowerCase();
 
-  return name.includes("кредитка") || name.includes("кредитная карта");
+  return name.includes("РєСЂРµРґРёС‚РєР°") || name.includes("РєСЂРµРґРёС‚РЅР°СЏ РєР°СЂС‚Р°");
 }
 
 function getDaysLeft(from: Date, to: Date | null | undefined) {
@@ -348,17 +348,18 @@ function getDaysLeft(from: Date, to: Date | null | undefined) {
 }
 
 function formatDaysLeft(value: number | null) {
-  if (value === null) return "не задано";
-  if (value < 0) return `просрочено ${Math.abs(value)} дн.`;
-  if (value === 0) return "сегодня";
+  if (value === null) return "РЅРµ Р·Р°РґР°РЅРѕ";
+  if (value < 0) return `РїСЂРѕСЃСЂРѕС‡РµРЅРѕ ${Math.abs(value)} РґРЅ.`;
+  if (value === 0) return "СЃРµРіРѕРґРЅСЏ";
 
-  return `${value} дн.`;
+  return `${value} РґРЅ.`;
 }
 
 function getCreditCardRiskTone(params: {
   graceDaysLeft: number | null;
   utilizationPercent: number;
   minimumPayment: number;
+  minimumPaymentPercent?: number | null;
   minimumPaymentDate: Date | null;
 }) {
   if (
@@ -391,28 +392,28 @@ function getCreditCardRiskTone(params: {
 function getCreditCardRiskCopy(tone: CreditCardRiskTone) {
   if (tone === "high") {
     return {
-      label: "Высокий риск",
-      hint: "льготный период близко или лимит сильно использован",
+      label: "Р’С‹СЃРѕРєРёР№ СЂРёСЃРє",
+      hint: "Р»СЊРіРѕС‚РЅС‹Р№ РїРµСЂРёРѕРґ Р±Р»РёР·РєРѕ РёР»Рё Р»РёРјРёС‚ СЃРёР»СЊРЅРѕ РёСЃРїРѕР»СЊР·РѕРІР°РЅ",
     };
   }
 
   if (tone === "medium") {
     return {
-      label: "Средний риск",
-      hint: "держать под контролем минимальный платёж и льготный период",
+      label: "РЎСЂРµРґРЅРёР№ СЂРёСЃРє",
+      hint: "РґРµСЂР¶Р°С‚СЊ РїРѕРґ РєРѕРЅС‚СЂРѕР»РµРј РјРёРЅРёРјР°Р»СЊРЅС‹Р№ РїР»Р°С‚С‘Р¶ Рё Р»СЊРіРѕС‚РЅС‹Р№ РїРµСЂРёРѕРґ",
     };
   }
 
   if (tone === "missing") {
     return {
-      label: "Нужны данные",
-      hint: "укажите минимальный платёж и срок льготного периода",
+      label: "РќСѓР¶РЅС‹ РґР°РЅРЅС‹Рµ",
+      hint: "СѓРєР°Р¶РёС‚Рµ РјРёРЅРёРјР°Р»СЊРЅС‹Р№ РїР»Р°С‚С‘Р¶ Рё СЃСЂРѕРє Р»СЊРіРѕС‚РЅРѕРіРѕ РїРµСЂРёРѕРґР°",
     };
   }
 
   return {
-    label: "Низкий риск",
-    hint: "баланс и сроки выглядят спокойно",
+    label: "РќРёР·РєРёР№ СЂРёСЃРє",
+    hint: "Р±Р°Р»Р°РЅСЃ Рё СЃСЂРѕРєРё РІС‹РіР»СЏРґСЏС‚ СЃРїРѕРєРѕР№РЅРѕ",
   };
 }
 
@@ -864,7 +865,7 @@ export default async function LoansPage({
       ? [
           {
             id: "other",
-            label: `Другие кредиты (${Math.max(
+            label: `Р”СЂСѓРіРёРµ РєСЂРµРґРёС‚С‹ (${Math.max(
               0,
               activeLoanIdsCount - debtLoadTopLoans.length,
             )})`,
@@ -933,12 +934,12 @@ export default async function LoansPage({
           <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
             <div>
               <h1 className="text-2xl font-black tracking-tight text-slate-950">
-                Кредиты и займы
+                РљСЂРµРґРёС‚С‹ Рё Р·Р°Р№РјС‹
               </h1>
 
               <p className="mt-1.5 max-w-3xl text-sm font-medium leading-5 text-slate-500">
-                Полная картина долговой нагрузки: ближайшие платежи, проценты,
-                риски и рекомендации по досрочному погашению.
+                РџРѕР»РЅР°СЏ РєР°СЂС‚РёРЅР° РґРѕР»РіРѕРІРѕР№ РЅР°РіСЂСѓР·РєРё: Р±Р»РёР¶Р°Р№С€РёРµ РїР»Р°С‚РµР¶Рё, РїСЂРѕС†РµРЅС‚С‹,
+                СЂРёСЃРєРё Рё СЂРµРєРѕРјРµРЅРґР°С†РёРё РїРѕ РґРѕСЃСЂРѕС‡РЅРѕРјСѓ РїРѕРіР°С€РµРЅРёСЋ.
               </p>
             </div>
 
@@ -947,21 +948,21 @@ export default async function LoansPage({
                 href="/finance/cashflow"
                 className="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-black text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50"
               >
-                ОДДС
+                РћР”Р”РЎ
               </Link>
 
               <Link
                 href="/finance/calendar"
                 className="rounded-2xl bg-slate-950 px-4 py-2 text-sm font-black text-white shadow-sm shadow-slate-300 transition hover:bg-slate-800"
               >
-                Платёжный календарь
+                РџР»Р°С‚С‘Р¶РЅС‹Р№ РєР°Р»РµРЅРґР°СЂСЊ
               </Link>
 
               <Link
                 href="/finance/accounts"
                 className="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-black text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50"
               >
-                Счета
+                РЎС‡РµС‚Р°
               </Link>
             </div>
           </div>
@@ -970,7 +971,7 @@ export default async function LoansPage({
             <div className="grid flex-1 gap-3 md:grid-cols-3">
               <label className="block">
                 <span className="mb-2 block text-xs font-black uppercase tracking-[0.08em] text-slate-400">
-                  Компания
+                  РљРѕРјРїР°РЅРёСЏ
                 </span>
 
                 <select
@@ -978,7 +979,7 @@ export default async function LoansPage({
                   defaultValue={params.company ?? "ALL"}
                   className="h-11 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-900 shadow-sm outline-none transition focus:border-indigo-300 focus:ring-4 focus:ring-indigo-100"
                 >
-                  <option value="ALL">Все компании</option>
+                  <option value="ALL">Р’СЃРµ РєРѕРјРїР°РЅРёРё</option>
 
                   {companies.map((company) => (
                     <option key={company.id} value={company.name}>
@@ -990,7 +991,7 @@ export default async function LoansPage({
 
               <label className="block">
                 <span className="mb-2 block text-xs font-black uppercase tracking-[0.08em] text-slate-400">
-                  Период
+                  РџРµСЂРёРѕРґ
                 </span>
 
                 <input
@@ -1003,7 +1004,7 @@ export default async function LoansPage({
 
               <label className="block">
                 <span className="mb-2 block text-xs font-black uppercase tracking-[0.08em] text-slate-400">
-                  Обновлено
+                  РћР±РЅРѕРІР»РµРЅРѕ
                 </span>
 
                 <div className="flex h-11 w-full items-center rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm font-black text-slate-900 shadow-sm">
@@ -1018,14 +1019,14 @@ export default async function LoansPage({
 
             <div className="flex flex-wrap gap-3">
               <button className="h-11 rounded-2xl bg-slate-950 px-6 text-sm font-black text-white shadow-sm shadow-slate-300 transition hover:bg-slate-800">
-                Применить
+                РџСЂРёРјРµРЅРёС‚СЊ
               </button>
 
               <a
                 href="#all-loans"
                 className="inline-flex h-11 items-center justify-center rounded-2xl border border-slate-200 bg-white px-6 text-sm font-black text-slate-700 shadow-sm transition hover:bg-slate-50"
               >
-                Все кредиты
+                Р’СЃРµ РєСЂРµРґРёС‚С‹
               </a>
             </div>
           </form>
@@ -1033,64 +1034,64 @@ export default async function LoansPage({
 
         <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-6">
           <MetricCard
-            label="Общий долг"
+            label="РћР±С‰РёР№ РґРѕР»Рі"
             value={formatMoney(totalDebt)}
-            hint={`${activeLoanIdsCount} активных кредитов`}
+            hint={`${activeLoanIdsCount} Р°РєС‚РёРІРЅС‹С… РєСЂРµРґРёС‚РѕРІ`}
             accent="red"
-            icon="₽"
+            icon="в‚Ѕ"
           />
 
           <MetricCard
-            label="Резерв 14 дней"
+            label="Р РµР·РµСЂРІ 14 РґРЅРµР№"
             value={formatMoney(next14Amount)}
-            hint={`${next14Payments.length} платежей в ближайшие 14 дней`}
+            hint={`${next14Payments.length} РїР»Р°С‚РµР¶РµР№ РІ Р±Р»РёР¶Р°Р№С€РёРµ 14 РґРЅРµР№`}
             accent="blue"
             icon="14"
           />
 
           <MetricCard
-            label="Платёж в текущем месяце"
+            label="РџР»Р°С‚С‘Р¶ РІ С‚РµРєСѓС‰РµРј РјРµСЃСЏС†Рµ"
             value={formatMoney(paymentInMonth)}
-            hint={`тело ${formatMoney(currentMonthPrincipal)} · проценты ${formatMoney(
+            hint={`С‚РµР»Рѕ ${formatMoney(currentMonthPrincipal)} В· РїСЂРѕС†РµРЅС‚С‹ ${formatMoney(
               currentMonthInterest,
             )}`}
             accent="orange"
-            icon="↗"
+            icon="в†—"
           />
 
           <MetricCard
-            label="Ближайший платёж"
+            label="Р‘Р»РёР¶Р°Р№С€РёР№ РїР»Р°С‚С‘Р¶"
             value={
-              nextPayment ? formatMoney(getPaymentTotal(nextPayment)) : "—"
+              nextPayment ? formatMoney(getPaymentTotal(nextPayment)) : "вЂ”"
             }
             hint={
               nextPayment
-                ? `${formatDate(nextPayment.paymentDate)} · ${getLoanDisplayName(
+                ? `${formatDate(nextPayment.paymentDate)} В· ${getLoanDisplayName(
                     nextPayment.loan,
                   )}`
-                : "платежей нет"
+                : "РїР»Р°С‚РµР¶РµР№ РЅРµС‚"
             }
             accent="indigo"
-            icon="⏱"
+            icon="вЏ±"
           />
 
           <MetricCard
-            label="Проценты до конца года"
+            label="РџСЂРѕС†РµРЅС‚С‹ РґРѕ РєРѕРЅС†Р° РіРѕРґР°"
             value={formatMoney(totalInterestUntilYearEnd)}
             hint={`${getSafeRatio(
               totalInterestUntilYearEnd,
               totalPaymentsUntilYearEnd,
-            ).toFixed(1)}% от выплат`}
+            ).toFixed(1)}% РѕС‚ РІС‹РїР»Р°С‚`}
             accent="amber"
             icon="%"
           />
 
           <MetricCard
-            label="Активных обязательств"
+            label="РђРєС‚РёРІРЅС‹С… РѕР±СЏР·Р°С‚РµР»СЊСЃС‚РІ"
             value={String(activeLoanIdsCount)}
-            hint={`${activeLoanIdsCount} из ${activeLoanIdsCount} активных`}
+            hint={`${activeLoanIdsCount} РёР· ${activeLoanIdsCount} Р°РєС‚РёРІРЅС‹С…`}
             accent="green"
-            icon="✓"
+            icon="вњ“"
           />
         </section>
 
@@ -1099,15 +1100,15 @@ export default async function LoansPage({
             <div className="flex items-start justify-between gap-3">
               <div>
                 <h2 className="text-xl font-black text-slate-950">
-                  Карта долговой нагрузки
+                  РљР°СЂС‚Р° РґРѕР»РіРѕРІРѕР№ РЅР°РіСЂСѓР·РєРё
                 </h2>
                 <p className="mt-1 text-sm font-medium text-slate-500">
-                  Доля кредитов в ежемесячном платеже.
+                  Р”РѕР»СЏ РєСЂРµРґРёС‚РѕРІ РІ РµР¶РµРјРµСЃСЏС‡РЅРѕРј РїР»Р°С‚РµР¶Рµ.
                 </p>
               </div>
 
               <span className="rounded-full bg-slate-50 px-3 py-1 text-xs font-black text-slate-500 ring-1 ring-slate-100">
-                {activeLoanIdsCount} активных
+                {activeLoanIdsCount} Р°РєС‚РёРІРЅС‹С…
               </span>
             </div>
 
@@ -1117,7 +1118,7 @@ export default async function LoansPage({
                   viewBox="0 0 180 180"
                   className="relative z-20 h-full w-full overflow-visible"
                   role="img"
-                  aria-label="Карта долговой нагрузки по кредитам"
+                  aria-label="РљР°СЂС‚Р° РґРѕР»РіРѕРІРѕР№ РЅР°РіСЂСѓР·РєРё РїРѕ РєСЂРµРґРёС‚Р°Рј"
                 >
                   <circle
                     cx="90"
@@ -1163,11 +1164,11 @@ export default async function LoansPage({
                             </div>
                           </div>
                           <div className="mt-1.5 grid grid-cols-2 gap-x-2 gap-y-1 text-[10px] font-bold text-slate-500">
-                            <span>Платёж</span>
+                            <span>РџР»Р°С‚С‘Р¶</span>
                             <span className="text-right text-slate-950">
                               {formatMoney(segment.amount)}
                             </span>
-                            <span>Нагрузка</span>
+                            <span>РќР°РіСЂСѓР·РєР°</span>
                             <span className="text-right text-slate-950">
                               {segment.percent.toFixed(1)}%
                             </span>
@@ -1184,7 +1185,7 @@ export default async function LoansPage({
                       {formatMoney(paymentInMonth)}
                     </div>
                     <div className="mt-1 text-[11px] font-black uppercase tracking-[0.08em] text-slate-400">
-                      в месяц
+                      РІ РјРµСЃСЏС†
                     </div>
                   </div>
                 </div>
@@ -1216,7 +1217,7 @@ export default async function LoansPage({
 
                 {debtLoadLegend.length === 0 && (
                   <div className="rounded-2xl bg-slate-50 p-8 text-center text-sm font-bold text-slate-500">
-                    Активных кредитов пока нет.
+                    РђРєС‚РёРІРЅС‹С… РєСЂРµРґРёС‚РѕРІ РїРѕРєР° РЅРµС‚.
                   </div>
                 )}
               </div>
@@ -1226,7 +1227,7 @@ export default async function LoansPage({
               href="#all-loans"
               className="mt-5 inline-flex text-sm font-black text-indigo-600 hover:text-indigo-500"
             >
-              Подробнее о нагрузке →
+              РџРѕРґСЂРѕР±РЅРµРµ Рѕ РЅР°РіСЂСѓР·РєРµ в†’
             </a>
           </section>
 
@@ -1234,22 +1235,22 @@ export default async function LoansPage({
             <div className="flex items-start justify-between gap-3">
               <div>
                 <h2 className="text-xl font-black text-slate-950">
-                  План платежей по месяцам
+                  РџР»Р°РЅ РїР»Р°С‚РµР¶РµР№ РїРѕ РјРµСЃСЏС†Р°Рј
                 </h2>
                 <p className="mt-1 text-sm font-medium text-slate-500">
-                  Матрица тела, процентов и общей нагрузки.
+                  РњР°С‚СЂРёС†Р° С‚РµР»Р°, РїСЂРѕС†РµРЅС‚РѕРІ Рё РѕР±С‰РµР№ РЅР°РіСЂСѓР·РєРё.
                 </p>
               </div>
 
               <div className="flex flex-wrap items-center justify-end gap-2">
                 {peakMonth ? (
                   <span className="rounded-full bg-orange-50 px-3 py-1 text-xs font-black text-orange-700 ring-1 ring-orange-100">
-                    Пик: {formatShortMonthLabel(peakMonth.monthDate)} ·{" "}
+                    РџРёРє: {formatShortMonthLabel(peakMonth.monthDate)} В·{" "}
                     {formatMoney(peakMonth.totalAmount)}
                   </span>
                 ) : null}
                 <span className="rounded-full bg-slate-950 px-3 py-1 text-xs font-black text-white">
-                  Таблица
+                  РўР°Р±Р»РёС†Р°
                 </span>
               </div>
             </div>
@@ -1259,7 +1260,7 @@ export default async function LoansPage({
                 <thead>
                   <tr className="text-left text-xs font-black uppercase tracking-[0.08em] text-slate-500">
                     <th className="rounded-l-2xl bg-white px-4 py-3 shadow-sm">
-                      Месяц
+                      РњРµСЃСЏС†
                     </th>
                     {monthlyMatrix.map((row, index) => {
                       const isPeak =
@@ -1288,7 +1289,7 @@ export default async function LoansPage({
                 <tbody>
                   <tr>
                     <td className="border-b border-slate-100 bg-white px-4 py-3 font-bold text-slate-600">
-                      Основной долг
+                      РћСЃРЅРѕРІРЅРѕР№ РґРѕР»Рі
                     </td>
                     {monthlyMatrix.map((row) => {
                       const isPeak =
@@ -1311,7 +1312,7 @@ export default async function LoansPage({
 
                   <tr>
                     <td className="border-b border-slate-100 bg-white px-4 py-3 font-bold text-slate-600">
-                      Проценты
+                      РџСЂРѕС†РµРЅС‚С‹
                     </td>
                     {monthlyMatrix.map((row) => {
                       const isPeak =
@@ -1334,7 +1335,7 @@ export default async function LoansPage({
 
                   <tr>
                     <td className="rounded-l-2xl bg-slate-100 px-4 py-4 font-black text-slate-950">
-                      Всего платежей
+                      Р’СЃРµРіРѕ РїР»Р°С‚РµР¶РµР№
                     </td>
                     {monthlyMatrix.map((row, index) => {
                       const isPeak =
@@ -1365,7 +1366,7 @@ export default async function LoansPage({
                         colSpan={7}
                         className="px-4 py-8 text-center text-sm font-bold text-slate-500"
                       >
-                        Платежей пока нет.
+                        РџР»Р°С‚РµР¶РµР№ РїРѕРєР° РЅРµС‚.
                       </td>
                     </tr>
                   )}
@@ -1378,11 +1379,11 @@ export default async function LoansPage({
                 href="/finance/calendar"
                 className="inline-flex text-sm font-black text-indigo-600 hover:text-indigo-500"
               >
-                Показать полный график →
+                РџРѕРєР°Р·Р°С‚СЊ РїРѕР»РЅС‹Р№ РіСЂР°С„РёРє в†’
               </Link>
 
               <div className="flex items-center gap-3 text-sm font-bold text-slate-600">
-                <span>Показывать план до погашения</span>
+                <span>РџРѕРєР°Р·С‹РІР°С‚СЊ РїР»Р°РЅ РґРѕ РїРѕРіР°С€РµРЅРёСЏ</span>
                 <span className="relative inline-flex h-6 w-11 items-center rounded-full bg-slate-950">
                   <span className="ml-auto mr-1 h-4 w-4 rounded-full bg-white" />
                 </span>
@@ -1399,16 +1400,16 @@ export default async function LoansPage({
             <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
               <div>
                 <h2 className="text-xl font-black text-slate-950">
-                  Рекомендации по досрочному погашению
+                  Р РµРєРѕРјРµРЅРґР°С†РёРё РїРѕ РґРѕСЃСЂРѕС‡РЅРѕРјСѓ РїРѕРіР°С€РµРЅРёСЋ
                 </h2>
                 <p className="mt-1 text-sm font-medium text-slate-500">
-                  Три стратегии: снизить платёж, уменьшить проценты или быстро
-                  закрыть мелкие кредиты.
+                  РўСЂРё СЃС‚СЂР°С‚РµРіРёРё: СЃРЅРёР·РёС‚СЊ РїР»Р°С‚С‘Р¶, СѓРјРµРЅСЊС€РёС‚СЊ РїСЂРѕС†РµРЅС‚С‹ РёР»Рё Р±С‹СЃС‚СЂРѕ
+                  Р·Р°РєСЂС‹С‚СЊ РјРµР»РєРёРµ РєСЂРµРґРёС‚С‹.
                 </p>
               </div>
 
               <span className="shrink-0 rounded-full bg-indigo-50 px-3 py-1 text-xs font-black text-indigo-700 ring-1 ring-indigo-100">
-                Рекомендуемый вариант
+                Р РµРєРѕРјРµРЅРґСѓРµРјС‹Р№ РІР°СЂРёР°РЅС‚
               </span>
             </div>
 
@@ -1416,25 +1417,25 @@ export default async function LoansPage({
               <RecommendationCard
                 number="1"
                 tone="green"
-                title="Снизить ежемесячный платёж"
-                description="Гасите кредиты с самым большим платежом в месяц."
-                headers={["Кредит", "Платёж в мес.", "Потенциал"]}
+                title="РЎРЅРёР·РёС‚СЊ РµР¶РµРјРµСЃСЏС‡РЅС‹Р№ РїР»Р°С‚С‘Р¶"
+                description="Р“Р°СЃРёС‚Рµ РєСЂРµРґРёС‚С‹ СЃ СЃР°РјС‹Рј Р±РѕР»СЊС€РёРј РїР»Р°С‚РµР¶РѕРј РІ РјРµСЃСЏС†."
+                headers={["РљСЂРµРґРёС‚", "РџР»Р°С‚С‘Р¶ РІ РјРµСЃ.", "РџРѕС‚РµРЅС†РёР°Р»"]}
                 rows={loansByMonthlyBurden
                   .slice(0, 3)
                   .map((loan) => [
                     loan.displayName,
                     formatMoney(loan.monthlyPayment),
-                    `−${formatMoney(loan.monthlyPayment)}`,
+                    `в€’${formatMoney(loan.monthlyPayment)}`,
                   ])}
-                action="Показать варианты"
+                action="РџРѕРєР°Р·Р°С‚СЊ РІР°СЂРёР°РЅС‚С‹"
               />
 
               <RecommendationCard
                 number="2"
                 tone="blue"
-                title="Снизить переплату по процентам"
-                description="Начинайте с кредитов с высокой ставкой и процентами."
-                headers={["Кредит", "Ставка", "Проценты"]}
+                title="РЎРЅРёР·РёС‚СЊ РїРµСЂРµРїР»Р°С‚Сѓ РїРѕ РїСЂРѕС†РµРЅС‚Р°Рј"
+                description="РќР°С‡РёРЅР°Р№С‚Рµ СЃ РєСЂРµРґРёС‚РѕРІ СЃ РІС‹СЃРѕРєРѕР№ СЃС‚Р°РІРєРѕР№ Рё РїСЂРѕС†РµРЅС‚Р°РјРё."
+                headers={["РљСЂРµРґРёС‚", "РЎС‚Р°РІРєР°", "РџСЂРѕС†РµРЅС‚С‹"]}
                 rows={loansByRate.slice(0, 3).map((loan) => [
                   loan.displayName,
                   formatRateLabel({
@@ -1443,15 +1444,15 @@ export default async function LoansPage({
                   }),
                   formatMoney(loan.interestUntilYearEnd),
                 ])}
-                action="Рассчитать погашение"
+                action="Р Р°СЃСЃС‡РёС‚Р°С‚СЊ РїРѕРіР°С€РµРЅРёРµ"
               />
 
               <RecommendationCard
                 number="3"
                 tone="purple"
-                title="Быстро закрыть мелкие кредиты"
-                description="Закрывайте небольшие долги, чтобы снизить число обязательств."
-                headers={["Кредит", "Долг", "Платёж в мес."]}
+                title="Р‘С‹СЃС‚СЂРѕ Р·Р°РєСЂС‹С‚СЊ РјРµР»РєРёРµ РєСЂРµРґРёС‚С‹"
+                description="Р—Р°РєСЂС‹РІР°Р№С‚Рµ РЅРµР±РѕР»СЊС€РёРµ РґРѕР»РіРё, С‡С‚РѕР±С‹ СЃРЅРёР·РёС‚СЊ С‡РёСЃР»Рѕ РѕР±СЏР·Р°С‚РµР»СЊСЃС‚РІ."
+                headers={["РљСЂРµРґРёС‚", "Р”РѕР»Рі", "РџР»Р°С‚С‘Р¶ РІ РјРµСЃ."]}
                 rows={loansBySmallDebt
                   .slice(0, 3)
                   .map((loan) => [
@@ -1459,7 +1460,7 @@ export default async function LoansPage({
                     formatMoney(loan.currentDebt),
                     formatMoney(loan.monthlyPayment),
                   ])}
-                action="Закрыть мелкие кредиты"
+                action="Р—Р°РєСЂС‹С‚СЊ РјРµР»РєРёРµ РєСЂРµРґРёС‚С‹"
               />
             </div>
 
@@ -1468,18 +1469,18 @@ export default async function LoansPage({
                 <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                   <div>
                     <div className="text-sm font-black text-orange-900">
-                      Риск по кредитным картам
+                      Р РёСЃРє РїРѕ РєСЂРµРґРёС‚РЅС‹Рј РєР°СЂС‚Р°Рј
                     </div>
                     <p className="mt-1 text-xs font-bold leading-5 text-orange-800/80">
-                      Минимальные платежи, льготные периоды и использование
-                      лимита контролируем отдельно от обычных кредитов.
+                      РњРёРЅРёРјР°Р»СЊРЅС‹Рµ РїР»Р°С‚РµР¶Рё, Р»СЊРіРѕС‚РЅС‹Рµ РїРµСЂРёРѕРґС‹ Рё РёСЃРїРѕР»СЊР·РѕРІР°РЅРёРµ
+                      Р»РёРјРёС‚Р° РєРѕРЅС‚СЂРѕР»РёСЂСѓРµРј РѕС‚РґРµР»СЊРЅРѕ РѕС‚ РѕР±С‹С‡РЅС‹С… РєСЂРµРґРёС‚РѕРІ.
                     </p>
                   </div>
 
                   <div className="grid gap-2 sm:grid-cols-3 lg:min-w-[520px]">
                     <div className="rounded-2xl bg-white px-3 py-2 ring-1 ring-orange-100">
                       <div className="text-[10px] font-black uppercase tracking-[0.08em] text-slate-400">
-                        Долг по картам
+                        Р”РѕР»Рі РїРѕ РєР°СЂС‚Р°Рј
                       </div>
                       <div className="mt-1 text-sm font-black text-slate-950">
                         {formatMoney(creditCardsTotalDebt)}
@@ -1488,7 +1489,7 @@ export default async function LoansPage({
 
                     <div className="rounded-2xl bg-white px-3 py-2 ring-1 ring-orange-100">
                       <div className="text-[10px] font-black uppercase tracking-[0.08em] text-slate-400">
-                        Мин. платежи
+                        РњРёРЅ. РїР»Р°С‚РµР¶Рё
                       </div>
                       <div className="mt-1 text-sm font-black text-orange-700">
                         {formatMoney(creditCardsMinimumPayment)}
@@ -1497,10 +1498,10 @@ export default async function LoansPage({
 
                     <div className="rounded-2xl bg-white px-3 py-2 ring-1 ring-orange-100">
                       <div className="text-[10px] font-black uppercase tracking-[0.08em] text-slate-400">
-                        Высокий риск
+                        Р’С‹СЃРѕРєРёР№ СЂРёСЃРє
                       </div>
                       <div className="mt-1 text-sm font-black text-red-600">
-                        {creditCardsHighRiskCount} карт
+                        {creditCardsHighRiskCount} РєР°СЂС‚
                       </div>
                     </div>
                   </div>
@@ -1513,10 +1514,10 @@ export default async function LoansPage({
             <div className="flex items-start justify-between gap-3">
               <div>
                 <h2 className="text-xl font-black text-slate-950">
-                  Ближайшие платежи
+                  Р‘Р»РёР¶Р°Р№С€РёРµ РїР»Р°С‚РµР¶Рё
                 </h2>
                 <p className="mt-1 text-sm font-medium text-slate-500">
-                  Следующие списания по графику.
+                  РЎР»РµРґСѓСЋС‰РёРµ СЃРїРёСЃР°РЅРёСЏ РїРѕ РіСЂР°С„РёРєСѓ.
                 </p>
               </div>
 
@@ -1524,17 +1525,17 @@ export default async function LoansPage({
                 href="/finance/calendar"
                 className="text-sm font-black text-indigo-600 hover:text-indigo-500"
               >
-                Календарь
+                РљР°Р»РµРЅРґР°СЂСЊ
               </Link>
             </div>
 
             <div className="mt-4 overflow-hidden rounded-2xl border border-slate-100">
               <div className="hidden grid-cols-[64px_1fr_96px_90px_96px] gap-3 bg-slate-50 px-4 py-3 text-[11px] font-black uppercase tracking-[0.08em] text-slate-400 lg:grid">
-                <div>Дата</div>
-                <div>Кредит</div>
-                <div className="text-right">Тело</div>
-                <div className="text-right">Проценты</div>
-                <div className="text-right">Всего</div>
+                <div>Р”Р°С‚Р°</div>
+                <div>РљСЂРµРґРёС‚</div>
+                <div className="text-right">РўРµР»Рѕ</div>
+                <div className="text-right">РџСЂРѕС†РµРЅС‚С‹</div>
+                <div className="text-right">Р’СЃРµРіРѕ</div>
               </div>
 
               <div className="divide-y divide-slate-100">
@@ -1557,8 +1558,8 @@ export default async function LoansPage({
                           {getLoanDisplayName(payment.loan)}
                         </div>
                         <div className="mt-1 text-xs font-bold text-slate-500">
-                          Тело {formatMoney(getPaymentPrincipal(payment))} ·
-                          проценты {formatMoney(getPaymentInterest(payment))}
+                          РўРµР»Рѕ {formatMoney(getPaymentPrincipal(payment))} В·
+                          РїСЂРѕС†РµРЅС‚С‹ {formatMoney(getPaymentInterest(payment))}
                         </div>
                       </div>
                     </div>
@@ -1583,7 +1584,7 @@ export default async function LoansPage({
 
                 {nextPayments.length === 0 && (
                   <div className="bg-slate-50 p-8 text-center text-sm font-bold text-slate-500">
-                    Ближайших платежей пока нет.
+                    Р‘Р»РёР¶Р°Р№С€РёС… РїР»Р°С‚РµР¶РµР№ РїРѕРєР° РЅРµС‚.
                   </div>
                 )}
               </div>
@@ -1593,7 +1594,7 @@ export default async function LoansPage({
               href="/finance/calendar"
               className="mt-4 inline-flex text-sm font-black text-indigo-600 hover:text-indigo-500"
             >
-              Смотреть все платежи →
+              РЎРјРѕС‚СЂРµС‚СЊ РІСЃРµ РїР»Р°С‚РµР¶Рё в†’
             </Link>
           </section>
         </section>
@@ -1604,15 +1605,15 @@ export default async function LoansPage({
               <div>
                 <div className="flex items-center gap-3">
                   <h2 className="text-xl font-black text-slate-950">
-                    Кредитные карты
+                    РљСЂРµРґРёС‚РЅС‹Рµ РєР°СЂС‚С‹
                   </h2>
                   <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-black text-slate-600">
-                    {creditCardRows.length} карт
+                    {creditCardRows.length} РєР°СЂС‚
                   </span>
                 </div>
                 <p className="mt-1 text-sm font-medium text-slate-500">
-                  Льготный период, минимальный платёж, использование лимита и
-                  риск по каждой карте.
+                  Р›СЊРіРѕС‚РЅС‹Р№ РїРµСЂРёРѕРґ, РјРёРЅРёРјР°Р»СЊРЅС‹Р№ РїР»Р°С‚С‘Р¶, РёСЃРїРѕР»СЊР·РѕРІР°РЅРёРµ Р»РёРјРёС‚Р° Рё
+                  СЂРёСЃРє РїРѕ РєР°Р¶РґРѕР№ РєР°СЂС‚Рµ.
                 </p>
               </div>
 
@@ -1620,7 +1621,7 @@ export default async function LoansPage({
                 href="#all-loans"
                 className="text-sm font-black text-indigo-600 hover:text-indigo-500"
               >
-                Все карты →
+                Р’СЃРµ РєР°СЂС‚С‹ в†’
               </a>
             </div>
 
@@ -1656,17 +1657,17 @@ export default async function LoansPage({
             <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
               <div>
                 <div className="inline-flex rounded-full bg-indigo-50 px-3 py-1 text-xs font-black uppercase tracking-[0.08em] text-indigo-700 ring-1 ring-indigo-100">
-                  Досрочное погашение
+                  Р”РѕСЃСЂРѕС‡РЅРѕРµ РїРѕРіР°С€РµРЅРёРµ
                 </div>
 
                 <h2 className="mt-3 text-2xl font-black text-slate-950">
-                  Погасить {selectedRepaymentLoan.displayName}
+                  РџРѕРіР°СЃРёС‚СЊ {selectedRepaymentLoan.displayName}
                 </h2>
 
                 <p className="mt-2 max-w-4xl text-sm font-medium leading-6 text-slate-500">
-                  Система создаст финансовые операции: тело кредита отдельно от
-                  процентов. Тело уменьшит долг и не испортит прибыль, проценты
-                  попадут в финансовые расходы.
+                  РЎРёСЃС‚РµРјР° СЃРѕР·РґР°СЃС‚ С„РёРЅР°РЅСЃРѕРІС‹Рµ РѕРїРµСЂР°С†РёРё: С‚РµР»Рѕ РєСЂРµРґРёС‚Р° РѕС‚РґРµР»СЊРЅРѕ РѕС‚
+                  РїСЂРѕС†РµРЅС‚РѕРІ. РўРµР»Рѕ СѓРјРµРЅСЊС€РёС‚ РґРѕР»Рі Рё РЅРµ РёСЃРїРѕСЂС‚РёС‚ РїСЂРёР±С‹Р»СЊ, РїСЂРѕС†РµРЅС‚С‹
+                  РїРѕРїР°РґСѓС‚ РІ С„РёРЅР°РЅСЃРѕРІС‹Рµ СЂР°СЃС…РѕРґС‹.
                 </p>
               </div>
 
@@ -1674,7 +1675,7 @@ export default async function LoansPage({
                 href={buildFinanceHref(companyName, selectedMonthValue)}
                 className="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-black text-slate-700 shadow-sm transition hover:bg-slate-50"
               >
-                Отменить
+                РћС‚РјРµРЅРёС‚СЊ
               </Link>
             </div>
 
@@ -1687,7 +1688,7 @@ export default async function LoansPage({
                 <div className="mt-4 grid gap-3 sm:grid-cols-2">
                   <div className="rounded-2xl bg-white p-4 ring-1 ring-slate-100">
                     <div className="text-xs font-black uppercase tracking-[0.08em] text-slate-400">
-                      Текущий долг
+                      РўРµРєСѓС‰РёР№ РґРѕР»Рі
                     </div>
                     <div className="mt-2 text-xl font-black text-slate-950">
                       {formatMoney(selectedRepaymentLoan.currentDebt)}
@@ -1696,7 +1697,7 @@ export default async function LoansPage({
 
                   <div className="rounded-2xl bg-white p-4 ring-1 ring-slate-100">
                     <div className="text-xs font-black uppercase tracking-[0.08em] text-slate-400">
-                      Следующий платёж
+                      РЎР»РµРґСѓСЋС‰РёР№ РїР»Р°С‚С‘Р¶
                     </div>
                     <div className="mt-2 text-xl font-black text-indigo-600">
                       {formatMoney(selectedRepaymentLoan.nextPaymentTotal)}
@@ -1708,7 +1709,7 @@ export default async function LoansPage({
 
                   <div className="rounded-2xl bg-white p-4 ring-1 ring-slate-100">
                     <div className="text-xs font-black uppercase tracking-[0.08em] text-slate-400">
-                      Тело ближайшего платежа
+                      РўРµР»Рѕ Р±Р»РёР¶Р°Р№С€РµРіРѕ РїР»Р°С‚РµР¶Р°
                     </div>
                     <div className="mt-2 text-lg font-black text-slate-950">
                       {formatMoney(selectedRepaymentLoan.nextPaymentPrincipal)}
@@ -1717,7 +1718,7 @@ export default async function LoansPage({
 
                   <div className="rounded-2xl bg-white p-4 ring-1 ring-slate-100">
                     <div className="text-xs font-black uppercase tracking-[0.08em] text-slate-400">
-                      Проценты ближайшего платежа
+                      РџСЂРѕС†РµРЅС‚С‹ Р±Р»РёР¶Р°Р№С€РµРіРѕ РїР»Р°С‚РµР¶Р°
                     </div>
                     <div className="mt-2 text-lg font-black text-orange-600">
                       {formatMoney(selectedRepaymentLoan.nextPaymentInterest)}
@@ -1727,15 +1728,15 @@ export default async function LoansPage({
 
                 <div className="mt-4 space-y-3">
                   <div className="rounded-2xl bg-emerald-50 p-4 text-sm font-bold leading-6 text-emerald-800 ring-1 ring-emerald-100">
-                    При полном погашении будущие платежи по этому кредиту будут
-                    помечены как закрытые, будущие плановые операции будут
-                    удалены, а текущий долг станет 0 ₽.
+                    РџСЂРё РїРѕР»РЅРѕРј РїРѕРіР°С€РµРЅРёРё Р±СѓРґСѓС‰РёРµ РїР»Р°С‚РµР¶Рё РїРѕ СЌС‚РѕРјСѓ РєСЂРµРґРёС‚Сѓ Р±СѓРґСѓС‚
+                    РїРѕРјРµС‡РµРЅС‹ РєР°Рє Р·Р°РєСЂС‹С‚С‹Рµ, Р±СѓРґСѓС‰РёРµ РїР»Р°РЅРѕРІС‹Рµ РѕРїРµСЂР°С†РёРё Р±СѓРґСѓС‚
+                    СѓРґР°Р»РµРЅС‹, Р° С‚РµРєСѓС‰РёР№ РґРѕР»Рі СЃС‚Р°РЅРµС‚ 0 в‚Ѕ.
                   </div>
 
                   <div className="rounded-2xl bg-amber-50 p-4 text-sm font-bold leading-6 text-amber-900 ring-1 ring-amber-100">
-                    При частичном погашении система закроет старый будущий
-                    график и создаст новый: с новым телом, процентами, датами
-                    платежей и новой долговой нагрузкой.
+                    РџСЂРё С‡Р°СЃС‚РёС‡РЅРѕРј РїРѕРіР°С€РµРЅРёРё СЃРёСЃС‚РµРјР° Р·Р°РєСЂРѕРµС‚ СЃС‚Р°СЂС‹Р№ Р±СѓРґСѓС‰РёР№
+                    РіСЂР°С„РёРє Рё СЃРѕР·РґР°СЃС‚ РЅРѕРІС‹Р№: СЃ РЅРѕРІС‹Рј С‚РµР»РѕРј, РїСЂРѕС†РµРЅС‚Р°РјРё, РґР°С‚Р°РјРё
+                    РїР»Р°С‚РµР¶РµР№ Рё РЅРѕРІРѕР№ РґРѕР»РіРѕРІРѕР№ РЅР°РіСЂСѓР·РєРѕР№.
                   </div>
                 </div>
               </div>
@@ -1764,21 +1765,21 @@ export default async function LoansPage({
                 <div className="grid gap-4 md:grid-cols-2">
                   <label className="block">
                     <span className="mb-2 block text-xs font-black uppercase tracking-[0.08em] text-slate-400">
-                      Тип погашения
+                      РўРёРї РїРѕРіР°С€РµРЅРёСЏ
                     </span>
                     <select
                       name="repaymentMode"
                       defaultValue="FULL"
                       className="h-11 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-900 outline-none transition focus:border-indigo-300 focus:ring-4 focus:ring-indigo-100"
                     >
-                      <option value="FULL">Полное погашение</option>
-                      <option value="PARTIAL">Частичное погашение</option>
+                      <option value="FULL">РџРѕР»РЅРѕРµ РїРѕРіР°С€РµРЅРёРµ</option>
+                      <option value="PARTIAL">Р§Р°СЃС‚РёС‡РЅРѕРµ РїРѕРіР°С€РµРЅРёРµ</option>
                     </select>
                   </label>
 
                   <label className="block">
                     <span className="mb-2 block text-xs font-black uppercase tracking-[0.08em] text-slate-400">
-                      Дата операции
+                      Р”Р°С‚Р° РѕРїРµСЂР°С†РёРё
                     </span>
                     <input
                       type="date"
@@ -1790,7 +1791,7 @@ export default async function LoansPage({
 
                   <label className="block">
                     <span className="mb-2 block text-xs font-black uppercase tracking-[0.08em] text-slate-400">
-                      Тело кредита
+                      РўРµР»Рѕ РєСЂРµРґРёС‚Р°
                     </span>
                     <input
                       name="principalAmount"
@@ -1802,7 +1803,7 @@ export default async function LoansPage({
 
                   <label className="block">
                     <span className="mb-2 block text-xs font-black uppercase tracking-[0.08em] text-slate-400">
-                      Проценты
+                      РџСЂРѕС†РµРЅС‚С‹
                     </span>
                     <input
                       name="interestAmount"
@@ -1816,23 +1817,23 @@ export default async function LoansPage({
                     <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                       <div>
                         <div className="text-xs font-black uppercase tracking-[0.08em] text-indigo-700">
-                          Новый график для частичного погашения
+                          РќРѕРІС‹Р№ РіСЂР°С„РёРє РґР»СЏ С‡Р°СЃС‚РёС‡РЅРѕРіРѕ РїРѕРіР°С€РµРЅРёСЏ
                         </div>
                         <p className="mt-1 text-sm font-bold leading-6 text-slate-600">
-                          Заполняется только при выборе “Частичное погашение”.
-                          Система закроет старые будущие платежи и создаст новый
-                          график по этим настройкам.
+                          Р—Р°РїРѕР»РЅСЏРµС‚СЃСЏ С‚РѕР»СЊРєРѕ РїСЂРё РІС‹Р±РѕСЂРµ вЂњР§Р°СЃС‚РёС‡РЅРѕРµ РїРѕРіР°С€РµРЅРёРµвЂќ.
+                          РЎРёСЃС‚РµРјР° Р·Р°РєСЂРѕРµС‚ СЃС‚Р°СЂС‹Рµ Р±СѓРґСѓС‰РёРµ РїР»Р°С‚РµР¶Рё Рё СЃРѕР·РґР°СЃС‚ РЅРѕРІС‹Р№
+                          РіСЂР°С„РёРє РїРѕ СЌС‚РёРј РЅР°СЃС‚СЂРѕР№РєР°Рј.
                         </p>
                       </div>
                       <span className="rounded-full bg-white px-3 py-1 text-xs font-black text-indigo-700 ring-1 ring-indigo-100">
-                        Пересчёт
+                        РџРµСЂРµСЃС‡С‘С‚
                       </span>
                     </div>
 
                     <div className="mt-4 grid gap-4 md:grid-cols-2">
                       <label className="block">
                         <span className="mb-2 block text-xs font-black uppercase tracking-[0.08em] text-slate-400">
-                          Как пересчитать
+                          РљР°Рє РїРµСЂРµСЃС‡РёС‚Р°С‚СЊ
                         </span>
                         <select
                           name="scheduleStrategy"
@@ -1840,17 +1841,17 @@ export default async function LoansPage({
                           className="h-11 w-full rounded-2xl border border-indigo-100 bg-white px-4 text-sm font-bold text-slate-900 outline-none transition focus:border-indigo-300 focus:ring-4 focus:ring-indigo-100"
                         >
                           <option value="REDUCE_PAYMENT">
-                            Уменьшить платёж, срок оставить
+                            РЈРјРµРЅСЊС€РёС‚СЊ РїР»Р°С‚С‘Р¶, СЃСЂРѕРє РѕСЃС‚Р°РІРёС‚СЊ
                           </option>
                           <option value="SHORTEN_TERM">
-                            Платёж оставить, сократить срок
+                            РџР»Р°С‚С‘Р¶ РѕСЃС‚Р°РІРёС‚СЊ, СЃРѕРєСЂР°С‚РёС‚СЊ СЃСЂРѕРє
                           </option>
                         </select>
                       </label>
 
                       <label className="block">
                         <span className="mb-2 block text-xs font-black uppercase tracking-[0.08em] text-slate-400">
-                          Первый платёж нового графика
+                          РџРµСЂРІС‹Р№ РїР»Р°С‚С‘Р¶ РЅРѕРІРѕРіРѕ РіСЂР°С„РёРєР°
                         </span>
                         <input
                           type="date"
@@ -1862,7 +1863,7 @@ export default async function LoansPage({
 
                       <label className="block">
                         <span className="mb-2 block text-xs font-black uppercase tracking-[0.08em] text-slate-400">
-                          Ставка для пересчёта, % годовых
+                          РЎС‚Р°РІРєР° РґР»СЏ РїРµСЂРµСЃС‡С‘С‚Р°, % РіРѕРґРѕРІС‹С…
                         </span>
                         <input
                           name="scheduleAnnualRate"
@@ -1872,14 +1873,14 @@ export default async function LoansPage({
                               ? selectedRepaymentRate.toFixed(2)
                               : ""
                           }
-                          placeholder="Например 24"
+                          placeholder="РќР°РїСЂРёРјРµСЂ 24"
                           className="h-11 w-full rounded-2xl border border-indigo-100 bg-white px-4 text-sm font-bold text-slate-900 outline-none transition focus:border-indigo-300 focus:ring-4 focus:ring-indigo-100"
                         />
                       </label>
 
                       <label className="block">
                         <span className="mb-2 block text-xs font-black uppercase tracking-[0.08em] text-slate-400">
-                          Дата окончания при уменьшении платежа
+                          Р”Р°С‚Р° РѕРєРѕРЅС‡Р°РЅРёСЏ РїСЂРё СѓРјРµРЅСЊС€РµРЅРёРё РїР»Р°С‚РµР¶Р°
                         </span>
                         <input
                           type="date"
@@ -1891,7 +1892,7 @@ export default async function LoansPage({
 
                       <label className="block md:col-span-2">
                         <span className="mb-2 block text-xs font-black uppercase tracking-[0.08em] text-slate-400">
-                          Регулярный платёж при сокращении срока
+                          Р РµРіСѓР»СЏСЂРЅС‹Р№ РїР»Р°С‚С‘Р¶ РїСЂРё СЃРѕРєСЂР°С‰РµРЅРёРё СЃСЂРѕРєР°
                         </span>
                         <input
                           name="newRegularPayment"
@@ -1899,32 +1900,32 @@ export default async function LoansPage({
                           defaultValue={Math.round(
                             selectedRepaymentRegularPayment,
                           )}
-                          placeholder="Сумма одного платежа"
+                          placeholder="РЎСѓРјРјР° РѕРґРЅРѕРіРѕ РїР»Р°С‚РµР¶Р°"
                           className="h-11 w-full rounded-2xl border border-indigo-100 bg-white px-4 text-sm font-bold text-slate-900 outline-none transition focus:border-indigo-300 focus:ring-4 focus:ring-indigo-100"
                         />
                       </label>
                     </div>
 
                     <div className="mt-4 rounded-2xl bg-white p-4 text-sm font-bold leading-6 text-slate-600 ring-1 ring-indigo-100">
-                      Для частичного погашения сумма в поле “Тело кредита”
-                      должна быть меньше текущего долга. Если закрываешь кредит
-                      полностью — выбирай “Полное погашение”.
+                      Р”Р»СЏ С‡Р°СЃС‚РёС‡РЅРѕРіРѕ РїРѕРіР°С€РµРЅРёСЏ СЃСѓРјРјР° РІ РїРѕР»Рµ вЂњРўРµР»Рѕ РєСЂРµРґРёС‚Р°вЂќ
+                      РґРѕР»Р¶РЅР° Р±С‹С‚СЊ РјРµРЅСЊС€Рµ С‚РµРєСѓС‰РµРіРѕ РґРѕР»РіР°. Р•СЃР»Рё Р·Р°РєСЂС‹РІР°РµС€СЊ РєСЂРµРґРёС‚
+                      РїРѕР»РЅРѕСЃС‚СЊСЋ вЂ” РІС‹Р±РёСЂР°Р№ вЂњРџРѕР»РЅРѕРµ РїРѕРіР°С€РµРЅРёРµвЂќ.
                     </div>
                   </div>
 
                   <label className="block md:col-span-2">
                     <span className="mb-2 block text-xs font-black uppercase tracking-[0.08em] text-slate-400">
-                      Счёт списания
+                      РЎС‡С‘С‚ СЃРїРёСЃР°РЅРёСЏ
                     </span>
                     <select
                       name="bankAccount"
                       defaultValue=""
                       className="h-11 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-900 outline-none transition focus:border-indigo-300 focus:ring-4 focus:ring-indigo-100"
                     >
-                      <option value="">Не выбран</option>
+                      <option value="">РќРµ РІС‹Р±СЂР°РЅ</option>
                       {accounts.map((account) => (
                         <option key={account.id} value={account.name}>
-                          {account.companyName} · {account.name}
+                          {account.companyName} В· {account.name}
                         </option>
                       ))}
                     </select>
@@ -1932,12 +1933,12 @@ export default async function LoansPage({
 
                   <label className="block md:col-span-2">
                     <span className="mb-2 block text-xs font-black uppercase tracking-[0.08em] text-slate-400">
-                      Комментарий
+                      РљРѕРјРјРµРЅС‚Р°СЂРёР№
                     </span>
                     <textarea
                       name="comment"
                       rows={3}
-                      defaultValue={`Досрочное погашение ${selectedRepaymentLoan.displayName}`}
+                      defaultValue={`Р”РѕСЃСЂРѕС‡РЅРѕРµ РїРѕРіР°С€РµРЅРёРµ ${selectedRepaymentLoan.displayName}`}
                       className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-900 outline-none transition focus:border-indigo-300 focus:ring-4 focus:ring-indigo-100"
                     />
                   </label>
@@ -1945,10 +1946,10 @@ export default async function LoansPage({
 
                 <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <div className="text-sm font-bold text-slate-500">
-                    Ориентир к списанию: {formatMoney(selectedRepaymentTotal)}
+                    РћСЂРёРµРЅС‚РёСЂ Рє СЃРїРёСЃР°РЅРёСЋ: {formatMoney(selectedRepaymentTotal)}
                   </div>
                   <button className="rounded-2xl bg-slate-950 px-6 py-3 text-sm font-black text-white shadow-sm transition hover:bg-slate-800">
-                    Создать погашение
+                    РЎРѕР·РґР°С‚СЊ РїРѕРіР°С€РµРЅРёРµ
                   </button>
                 </div>
               </form>
@@ -1962,7 +1963,7 @@ export default async function LoansPage({
         >
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-center gap-3">
-              <h2 className="text-xl font-black text-slate-950">Все кредиты</h2>
+              <h2 className="text-xl font-black text-slate-950">Р’СЃРµ РєСЂРµРґРёС‚С‹</h2>
               <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-black text-slate-600">
                 {activeLoanIdsCount}
               </span>
@@ -1973,13 +1974,13 @@ export default async function LoansPage({
                 href="#add-loan"
                 className="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-black text-slate-700 shadow-sm transition hover:bg-slate-50"
               >
-                Добавить кредит
+                Р”РѕР±Р°РІРёС‚СЊ РєСЂРµРґРёС‚
               </a>
               <Link
                 href="/finance/calendar"
                 className="rounded-2xl bg-slate-950 px-4 py-2 text-sm font-black text-white shadow-sm transition hover:bg-slate-800"
               >
-                График платежей
+                Р“СЂР°С„РёРє РїР»Р°С‚РµР¶РµР№
               </Link>
             </div>
           </div>
@@ -1988,16 +1989,16 @@ export default async function LoansPage({
             <table className="w-full min-w-[1180px] text-sm">
               <thead>
                 <tr className="bg-slate-50 text-left text-xs font-black uppercase tracking-[0.08em] text-slate-400">
-                  <th className="rounded-l-2xl px-4 py-3">Кредит</th>
-                  <th className="px-4 py-3">Компания</th>
-                  <th className="px-4 py-3 text-right">Текущий долг</th>
-                  <th className="px-4 py-3 text-right">Платёж в месяц</th>
-                  <th className="px-4 py-3">Следующий платёж</th>
-                  <th className="px-4 py-3 text-right">Остаток срока</th>
-                  <th className="px-4 py-3 text-right">Ставка</th>
-                  <th className="px-4 py-3">Статус</th>
+                  <th className="rounded-l-2xl px-4 py-3">РљСЂРµРґРёС‚</th>
+                  <th className="px-4 py-3">РљРѕРјРїР°РЅРёСЏ</th>
+                  <th className="px-4 py-3 text-right">РўРµРєСѓС‰РёР№ РґРѕР»Рі</th>
+                  <th className="px-4 py-3 text-right">РџР»Р°С‚С‘Р¶ РІ РјРµСЃСЏС†</th>
+                  <th className="px-4 py-3">РЎР»РµРґСѓСЋС‰РёР№ РїР»Р°С‚С‘Р¶</th>
+                  <th className="px-4 py-3 text-right">РћСЃС‚Р°С‚РѕРє СЃСЂРѕРєР°</th>
+                  <th className="px-4 py-3 text-right">РЎС‚Р°РІРєР°</th>
+                  <th className="px-4 py-3">РЎС‚Р°С‚СѓСЃ</th>
                   <th className="rounded-r-2xl px-4 py-3 text-right">
-                    Действия
+                    Р”РµР№СЃС‚РІРёСЏ
                   </th>
                 </tr>
               </thead>
@@ -2037,28 +2038,28 @@ export default async function LoansPage({
                         </div>
                         <div className="mt-1 text-xs font-bold text-slate-500">
                           {loan.nextPaymentDate
-                            ? `всего ${formatMoney(loan.nextPaymentTotal)}`
-                            : "нет платежей"}
+                            ? `РІСЃРµРіРѕ ${formatMoney(loan.nextPaymentTotal)}`
+                            : "РЅРµС‚ РїР»Р°С‚РµР¶РµР№"}
                         </div>
                       </td>
 
                       <td className="px-4 py-4 text-right font-bold text-slate-700">
                         {creditCard
                           ? creditCard.graceDaysLeft === null
-                            ? "—"
-                            : `${formatDaysLeft(creditCard.graceDaysLeft)} · льготный период`
+                            ? "вЂ”"
+                            : `${formatDaysLeft(creditCard.graceDaysLeft)} В· Р»СЊРіРѕС‚РЅС‹Р№ РїРµСЂРёРѕРґ`
                           : loan.remainingMonths === null
-                            ? "—"
-                            : `${loan.remainingMonths} мес.`}
+                            ? "вЂ”"
+                            : `${loan.remainingMonths} РјРµСЃ.`}
                       </td>
 
                       <td className="px-4 py-4 text-right font-bold text-slate-700">
                         {creditCard
                           ? creditCard.gracePeriodDate
-                            ? `0% до ${formatDate(creditCard.gracePeriodDate)}`
+                            ? `0% РґРѕ ${formatDate(creditCard.gracePeriodDate)}`
                             : creditCard.interestRate > 0
-                              ? `после льготы ${formatPercent(creditCard.interestRate)}`
-                              : "—"
+                              ? `РїРѕСЃР»Рµ Р»СЊРіРѕС‚С‹ ${formatPercent(creditCard.interestRate)}`
+                              : "вЂ”"
                           : formatRateLabel({
                               rate: loan.calculatedAnnualRate,
                               source: loan.rateSource,
@@ -2079,7 +2080,7 @@ export default async function LoansPage({
                           </Link>
                         ) : (
                           <span className="inline-flex rounded-full bg-emerald-50 px-3 py-1 text-xs font-black text-emerald-700 ring-1 ring-emerald-100">
-                            ● Активен
+                            в—Џ РђРєС‚РёРІРµРЅ
                           </span>
                         )}
                       </td>
@@ -2096,13 +2097,13 @@ export default async function LoansPage({
                                 )}
                                 className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-black text-slate-700 transition hover:bg-slate-50"
                               >
-                                Настроить
+                                РќР°СЃС‚СЂРѕРёС‚СЊ
                               </Link>
                               <Link
                                 href={`/finance/loans/${loan.id}/schedule`}
                                 className="rounded-xl bg-slate-950 px-3 py-2 text-xs font-black text-white transition hover:bg-slate-800"
                               >
-                                История
+                                РСЃС‚РѕСЂРёСЏ
                               </Link>
                             </>
                           ) : (
@@ -2115,13 +2116,13 @@ export default async function LoansPage({
                                 )}
                                 className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-black text-slate-700 transition hover:bg-slate-50"
                               >
-                                Досрочно погасить
+                                Р”РѕСЃСЂРѕС‡РЅРѕ РїРѕРіР°СЃРёС‚СЊ
                               </Link>
                               <Link
                                 href={`/finance/loans/${loan.id}/schedule`}
                                 className="rounded-xl bg-slate-950 px-3 py-2 text-xs font-black text-white transition hover:bg-slate-800"
                               >
-                                График
+                                Р“СЂР°С„РёРє
                               </Link>
                             </>
                           )}
@@ -2137,7 +2138,7 @@ export default async function LoansPage({
                       colSpan={9}
                       className="px-4 py-10 text-center text-sm font-bold text-slate-500"
                     >
-                      Кредиты пока не заведены.
+                      РљСЂРµРґРёС‚С‹ РїРѕРєР° РЅРµ Р·Р°РІРµРґРµРЅС‹.
                     </td>
                   </tr>
                 )}
@@ -2151,7 +2152,7 @@ export default async function LoansPage({
           className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm shadow-slate-200/70"
         >
           <summary className="cursor-pointer list-none text-xl font-black text-slate-950">
-            Добавить кредит
+            Р”РѕР±Р°РІРёС‚СЊ РєСЂРµРґРёС‚
           </summary>
 
           <form
@@ -2174,13 +2175,13 @@ export default async function LoansPage({
             <input
               name="bankName"
               required
-              placeholder="Название кредита / банка"
+              placeholder="РќР°Р·РІР°РЅРёРµ РєСЂРµРґРёС‚Р° / Р±Р°РЅРєР°"
               className="h-12 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-900"
             />
 
             <input
               name="contractNumber"
-              placeholder="Номер договора"
+              placeholder="РќРѕРјРµСЂ РґРѕРіРѕРІРѕСЂР°"
               className="h-12 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-900"
             />
 
@@ -2189,34 +2190,34 @@ export default async function LoansPage({
               defaultValue="MONTHLY"
               className="h-12 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-900"
             >
-              <option value="MONTHLY">Ежемесячно</option>
-              <option value="WEEKLY">Еженедельно</option>
-              <option value="BIWEEKLY">Раз в 2 недели</option>
-              <option value="TWICE_MONTHLY_15_25">15 и 25 числа</option>
-              <option value="CUSTOM">Ручной график</option>
+              <option value="MONTHLY">Р•Р¶РµРјРµСЃСЏС‡РЅРѕ</option>
+              <option value="WEEKLY">Р•Р¶РµРЅРµРґРµР»СЊРЅРѕ</option>
+              <option value="BIWEEKLY">Р Р°Р· РІ 2 РЅРµРґРµР»Рё</option>
+              <option value="TWICE_MONTHLY_15_25">15 Рё 25 С‡РёСЃР»Р°</option>
+              <option value="CUSTOM">Р СѓС‡РЅРѕР№ РіСЂР°С„РёРє</option>
             </select>
 
             <input
               name="interestRate"
-              placeholder="Ставка %"
+              placeholder="РЎС‚Р°РІРєР° %"
               className="h-12 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-900"
             />
 
             <input
               name="creditLimit"
-              placeholder="Лимит кредита"
+              placeholder="Р›РёРјРёС‚ РєСЂРµРґРёС‚Р°"
               className="h-12 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-900"
             />
 
             <input
               name="currentDebt"
-              placeholder="Текущий долг"
+              placeholder="РўРµРєСѓС‰РёР№ РґРѕР»Рі"
               className="h-12 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-900"
             />
 
             <input
               name="monthlyPayment"
-              placeholder="Платёж в месяц"
+              placeholder="РџР»Р°С‚С‘Р¶ РІ РјРµСЃСЏС†"
               className="h-12 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-900"
             />
 
@@ -2233,14 +2234,14 @@ export default async function LoansPage({
             />
 
             <button className="h-12 rounded-2xl bg-slate-950 px-4 text-sm font-black text-white">
-              Добавить кредит
+              Р”РѕР±Р°РІРёС‚СЊ РєСЂРµРґРёС‚
             </button>
           </form>
 
           <p className="mt-4 text-sm font-medium text-slate-500">
-            Для досрочного погашения следующим этапом добавим отдельную форму:
-            она будет создавать финансовую операцию, уменьшать остаток долга и
-            пересчитывать будущий график платежей.
+            Р”Р»СЏ РґРѕСЃСЂРѕС‡РЅРѕРіРѕ РїРѕРіР°С€РµРЅРёСЏ СЃР»РµРґСѓСЋС‰РёРј СЌС‚Р°РїРѕРј РґРѕР±Р°РІРёРј РѕС‚РґРµР»СЊРЅСѓСЋ С„РѕСЂРјСѓ:
+            РѕРЅР° Р±СѓРґРµС‚ СЃРѕР·РґР°РІР°С‚СЊ С„РёРЅР°РЅСЃРѕРІСѓСЋ РѕРїРµСЂР°С†РёСЋ, СѓРјРµРЅСЊС€Р°С‚СЊ РѕСЃС‚Р°С‚РѕРє РґРѕР»РіР° Рё
+            РїРµСЂРµСЃС‡РёС‚С‹РІР°С‚СЊ Р±СѓРґСѓС‰РёР№ РіСЂР°С„РёРє РїР»Р°С‚РµР¶РµР№.
           </p>
         </details>
       </div>
@@ -2344,14 +2345,14 @@ function RecommendationCard({
                   {row[0]}
                 </div>
                 <span className="shrink-0 text-slate-300 transition group-hover:translate-x-0.5 group-hover:text-slate-500">
-                  ›
+                  вЂє
                 </span>
               </div>
 
               <div className="mt-1 text-[11px] leading-4 text-slate-500">
                 <span className="font-bold text-slate-500">{headers[1]}: </span>
                 <b className="text-slate-900">{row[1]}</b>
-                <span className="mx-1.5 text-slate-300">·</span>
+                <span className="mx-1.5 text-slate-300">В·</span>
                 <span className="font-bold text-slate-500">{headers[2]}: </span>
                 <b className="text-emerald-600">{row[2]}</b>
               </div>
@@ -2359,7 +2360,7 @@ function RecommendationCard({
           ))
         ) : (
           <div className="rounded-2xl bg-white/75 px-3 py-4 text-xs font-bold text-slate-500 ring-1 ring-white/80">
-            Недостаточно данных.
+            РќРµРґРѕСЃС‚Р°С‚РѕС‡РЅРѕ РґР°РЅРЅС‹С….
           </div>
         )}
       </div>
@@ -2427,7 +2428,7 @@ function CreditCardPanel({
       <div className="mt-4 grid grid-cols-3 gap-3">
         <div>
           <div className="text-[10px] font-black uppercase tracking-[0.08em] text-slate-400">
-            Долг
+            Р”РѕР»Рі
           </div>
           <div className="mt-1 text-sm font-black text-slate-950">
             {formatMoney(card.currentDebt)}
@@ -2436,30 +2437,30 @@ function CreditCardPanel({
 
         <div>
           <div className="text-[10px] font-black uppercase tracking-[0.08em] text-slate-400">
-            Лимит
+            Р›РёРјРёС‚
           </div>
           <div className="mt-1 text-sm font-black text-slate-950">
-            {card.creditLimit > 0 ? formatMoney(card.creditLimit) : "—"}
+            {card.creditLimit > 0 ? formatMoney(card.creditLimit) : "вЂ”"}
           </div>
         </div>
 
         <div>
           <div className="text-[10px] font-black uppercase tracking-[0.08em] text-slate-400">
-            Доступно
+            Р”РѕСЃС‚СѓРїРЅРѕ
           </div>
           <div className="mt-1 text-sm font-black text-slate-950">
-            {card.creditLimit > 0 ? formatMoney(card.availableLimit) : "—"}
+            {card.creditLimit > 0 ? formatMoney(card.availableLimit) : "вЂ”"}
           </div>
         </div>
       </div>
 
       <div className="mt-4">
         <div className="flex items-center justify-between text-xs font-bold text-slate-500">
-          <span>Использование лимита</span>
+          <span>РСЃРїРѕР»СЊР·РѕРІР°РЅРёРµ Р»РёРјРёС‚Р°</span>
           <span>
             {card.creditLimit > 0
               ? `${card.utilizationPercent.toFixed(0)}%`
-              : "нет лимита"}
+              : "РЅРµС‚ Р»РёРјРёС‚Р°"}
           </span>
         </div>
         <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-100">
@@ -2475,27 +2476,27 @@ function CreditCardPanel({
       <div className="mt-4 grid grid-cols-2 gap-3 border-t border-slate-100 pt-4">
         <div>
           <div className="text-[10px] font-black uppercase tracking-[0.08em] text-slate-400">
-            Мин. платёж
+            РњРёРЅ. РїР»Р°С‚С‘Р¶
           </div>
           <div className="mt-1 text-sm font-black text-slate-950">
             {card.minimumPayment > 0
               ? formatMoney(card.minimumPayment)
-              : "не задан"}
+              : "РЅРµ Р·Р°РґР°РЅ"}
           </div>
           <div className="mt-1 text-[11px] font-bold text-slate-500">
-            до {formatDate(card.minimumPaymentDate)}
+            РґРѕ {formatDate(card.minimumPaymentDate)}
           </div>
         </div>
 
         <div>
           <div className="text-[10px] font-black uppercase tracking-[0.08em] text-slate-400">
-            Льготный период
+            Р›СЊРіРѕС‚РЅС‹Р№ РїРµСЂРёРѕРґ
           </div>
           <div className={`mt-1 text-sm font-black ${toneClass.text}`}>
             {formatDaysLeft(card.graceDaysLeft)}
           </div>
           <div className="mt-1 text-[11px] font-bold text-slate-500">
-            до {formatDate(card.gracePeriodDate)}
+            РґРѕ {formatDate(card.gracePeriodDate)}
           </div>
         </div>
       </div>
@@ -2510,7 +2511,7 @@ function CreditCardPanel({
         href={editHref}
         className="mt-3 inline-flex w-full items-center justify-center rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-black text-slate-700 transition hover:border-indigo-200 hover:bg-indigo-50 hover:text-indigo-700"
       >
-        Указать или изменить данные карты
+        РЈРєР°Р·Р°С‚СЊ РёР»Рё РёР·РјРµРЅРёС‚СЊ РґР°РЅРЅС‹Рµ РєР°СЂС‚С‹
       </Link>
     </div>
   );
@@ -2561,7 +2562,7 @@ function CreditCardEditForm({
       <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
         <div>
           <div className="inline-flex rounded-full bg-indigo-50 px-3 py-1 text-xs font-black uppercase tracking-[0.08em] text-indigo-700 ring-1 ring-indigo-100">
-            Настройка кредитной карты
+            РќР°СЃС‚СЂРѕР№РєР° РєСЂРµРґРёС‚РЅРѕР№ РєР°СЂС‚С‹
           </div>
 
           <h2 className="mt-3 text-2xl font-black text-slate-950">
@@ -2569,9 +2570,9 @@ function CreditCardEditForm({
           </h2>
 
           <p className="mt-2 max-w-4xl text-sm font-medium leading-6 text-slate-500">
-            Здесь обновляются долг, лимит, минимальный платёж и льготный период.
-            Эти данные нужны для блока кредиток, ближайших платежей, ОДДС и
-            платёжного календаря.
+            Р—РґРµСЃСЊ РѕР±РЅРѕРІР»СЏСЋС‚СЃСЏ РґРѕР»Рі, Р»РёРјРёС‚, РјРёРЅРёРјР°Р»СЊРЅС‹Р№ РїР»Р°С‚С‘Р¶ Рё Р»СЊРіРѕС‚РЅС‹Р№ РїРµСЂРёРѕРґ.
+            Р­С‚Рё РґР°РЅРЅС‹Рµ РЅСѓР¶РЅС‹ РґР»СЏ Р±Р»РѕРєР° РєСЂРµРґРёС‚РѕРє, Р±Р»РёР¶Р°Р№С€РёС… РїР»Р°С‚РµР¶РµР№, РћР”Р”РЎ Рё
+            РїР»Р°С‚С‘Р¶РЅРѕРіРѕ РєР°Р»РµРЅРґР°СЂСЏ.
           </p>
         </div>
 
@@ -2579,7 +2580,7 @@ function CreditCardEditForm({
           href={buildFinanceHref(companyName, selectedMonthValue)}
           className="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-black text-slate-700 shadow-sm transition hover:bg-slate-50"
         >
-          Закрыть
+          Р—Р°РєСЂС‹С‚СЊ
         </Link>
       </div>
 
@@ -2591,27 +2592,27 @@ function CreditCardEditForm({
 
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
             <InfoBox
-              label="Текущий долг"
+              label="РўРµРєСѓС‰РёР№ РґРѕР»Рі"
               value={formatMoney(card.currentDebt)}
             />
             <InfoBox
-              label="Кредитный лимит"
+              label="РљСЂРµРґРёС‚РЅС‹Р№ Р»РёРјРёС‚"
               value={
                 card.creditLimit > 0
                   ? formatMoney(card.creditLimit)
-                  : "не задан"
+                  : "РЅРµ Р·Р°РґР°РЅ"
               }
             />
             <InfoBox
-              label="Минимальный платёж"
+              label="РњРёРЅРёРјР°Р»СЊРЅС‹Р№ РїР»Р°С‚С‘Р¶"
               value={
                 card.minimumPayment > 0
                   ? formatMoney(card.minimumPayment)
-                  : "не задан"
+                  : "РЅРµ Р·Р°РґР°РЅ"
               }
             />
             <InfoBox
-              label="Льготный период"
+              label="Р›СЊРіРѕС‚РЅС‹Р№ РїРµСЂРёРѕРґ"
               value={formatDaysLeft(card.graceDaysLeft)}
               tone={
                 card.riskTone === "high"
@@ -2624,14 +2625,14 @@ function CreditCardEditForm({
           </div>
 
           <div className="mt-4 rounded-2xl bg-blue-50 p-4 text-sm font-bold leading-6 text-blue-900 ring-1 ring-blue-100">
-            Для кредитки не создаём фиксированный график тела и процентов. В
-            календарь попадает только ближайший минимальный платёж. Льготный
-            период показывается отдельно как риск и рекомендация.
+            Р”Р»СЏ РєСЂРµРґРёС‚РєРё РЅРµ СЃРѕР·РґР°С‘Рј С„РёРєСЃРёСЂРѕРІР°РЅРЅС‹Р№ РіСЂР°С„РёРє С‚РµР»Р° Рё РїСЂРѕС†РµРЅС‚РѕРІ. Р’
+            РєР°Р»РµРЅРґР°СЂСЊ РїРѕРїР°РґР°РµС‚ С‚РѕР»СЊРєРѕ Р±Р»РёР¶Р°Р№С€РёР№ РјРёРЅРёРјР°Р»СЊРЅС‹Р№ РїР»Р°С‚С‘Р¶. Р›СЊРіРѕС‚РЅС‹Р№
+            РїРµСЂРёРѕРґ РїРѕРєР°Р·С‹РІР°РµС‚СЃСЏ РѕС‚РґРµР»СЊРЅРѕ РєР°Рє СЂРёСЃРє Рё СЂРµРєРѕРјРµРЅРґР°С†РёСЏ.
           </div>
 
           <div className="mt-3 rounded-2xl bg-amber-50 p-4 text-sm font-bold leading-6 text-amber-900 ring-1 ring-amber-100">
-            Если задан процент минимального платежа, но сумма пустая, система
-            рассчитает минимальный платёж от текущего долга.
+            Р•СЃР»Рё Р·Р°РґР°РЅ РїСЂРѕС†РµРЅС‚ РјРёРЅРёРјР°Р»СЊРЅРѕРіРѕ РїР»Р°С‚РµР¶Р°, РЅРѕ СЃСѓРјРјР° РїСѓСЃС‚Р°СЏ, СЃРёСЃС‚РµРјР°
+            СЂР°СЃСЃС‡РёС‚Р°РµС‚ РјРёРЅРёРјР°Р»СЊРЅС‹Р№ РїР»Р°С‚С‘Р¶ РѕС‚ С‚РµРєСѓС‰РµРіРѕ РґРѕР»РіР°.
           </div>
         </div>
 
@@ -2651,7 +2652,7 @@ function CreditCardEditForm({
           <div className="grid gap-4 md:grid-cols-2">
             <label className="block">
               <span className="mb-2 block text-xs font-black uppercase tracking-[0.08em] text-slate-400">
-                Текущий долг
+                РўРµРєСѓС‰РёР№ РґРѕР»Рі
               </span>
               <input
                 name="currentDebt"
@@ -2665,7 +2666,7 @@ function CreditCardEditForm({
 
             <label className="block">
               <span className="mb-2 block text-xs font-black uppercase tracking-[0.08em] text-slate-400">
-                Кредитный лимит
+                РљСЂРµРґРёС‚РЅС‹Р№ Р»РёРјРёС‚
               </span>
               <input
                 name="creditLimit"
@@ -2679,7 +2680,7 @@ function CreditCardEditForm({
 
             <label className="block">
               <span className="mb-2 block text-xs font-black uppercase tracking-[0.08em] text-slate-400">
-                Минимальный платёж, ₽
+                РњРёРЅРёРјР°Р»СЊРЅС‹Р№ РїР»Р°С‚С‘Р¶, в‚Ѕ
               </span>
               <input
                 name="minimumPayment"
@@ -2693,7 +2694,7 @@ function CreditCardEditForm({
 
             <label className="block">
               <span className="mb-2 block text-xs font-black uppercase tracking-[0.08em] text-slate-400">
-                Минимальный платёж, % от долга
+                РњРёРЅРёРјР°Р»СЊРЅС‹Р№ РїР»Р°С‚С‘Р¶, % РѕС‚ РґРѕР»РіР°
               </span>
               <input
                 name="minimumPaymentPercent"
@@ -2701,14 +2702,14 @@ function CreditCardEditForm({
                 min="0"
                 step="0.01"
                 defaultValue={minimumPaymentPercent}
-                placeholder="Например 5"
+                placeholder="РќР°РїСЂРёРјРµСЂ 5"
                 className="h-11 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-900 outline-none transition focus:border-indigo-300 focus:ring-4 focus:ring-indigo-100"
               />
             </label>
 
             <label className="block">
               <span className="mb-2 block text-xs font-black uppercase tracking-[0.08em] text-slate-400">
-                Дата минимального платежа
+                Р”Р°С‚Р° РјРёРЅРёРјР°Р»СЊРЅРѕРіРѕ РїР»Р°С‚РµР¶Р°
               </span>
               <input
                 name="minimumPaymentDate"
@@ -2724,7 +2725,7 @@ function CreditCardEditForm({
 
             <label className="block">
               <span className="mb-2 block text-xs font-black uppercase tracking-[0.08em] text-slate-400">
-                Конец льготного периода
+                РљРѕРЅРµС† Р»СЊРіРѕС‚РЅРѕРіРѕ РїРµСЂРёРѕРґР°
               </span>
               <input
                 name="gracePeriodDate"
@@ -2740,7 +2741,7 @@ function CreditCardEditForm({
 
             <label className="block">
               <span className="mb-2 block text-xs font-black uppercase tracking-[0.08em] text-slate-400">
-                Ставка после льготного периода, % годовых
+                РЎС‚Р°РІРєР° РїРѕСЃР»Рµ Р»СЊРіРѕС‚РЅРѕРіРѕ РїРµСЂРёРѕРґР°, % РіРѕРґРѕРІС‹С…
               </span>
               <input
                 name="interestRate"
@@ -2754,27 +2755,27 @@ function CreditCardEditForm({
 
             <label className="block">
               <span className="mb-2 block text-xs font-black uppercase tracking-[0.08em] text-slate-400">
-                Периодичность минимального платежа
+                РџРµСЂРёРѕРґРёС‡РЅРѕСЃС‚СЊ РјРёРЅРёРјР°Р»СЊРЅРѕРіРѕ РїР»Р°С‚РµР¶Р°
               </span>
               <select
                 name="paymentFrequency"
                 defaultValue="MONTHLY"
                 className="h-11 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-900 outline-none transition focus:border-indigo-300 focus:ring-4 focus:ring-indigo-100"
               >
-                <option value="MONTHLY">Ежемесячно</option>
-                <option value="CUSTOM">Ручной контроль</option>
+                <option value="MONTHLY">Р•Р¶РµРјРµСЃСЏС‡РЅРѕ</option>
+                <option value="CUSTOM">Р СѓС‡РЅРѕР№ РєРѕРЅС‚СЂРѕР»СЊ</option>
               </select>
             </label>
           </div>
 
           <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <p className="text-xs font-bold leading-5 text-slate-500">
-              Сохранение обновит карточку, ближайший минимальный платёж и
-              плановую операцию в финансовом календаре.
+              РЎРѕС…СЂР°РЅРµРЅРёРµ РѕР±РЅРѕРІРёС‚ РєР°СЂС‚РѕС‡РєСѓ, Р±Р»РёР¶Р°Р№С€РёР№ РјРёРЅРёРјР°Р»СЊРЅС‹Р№ РїР»Р°С‚С‘Р¶ Рё
+              РїР»Р°РЅРѕРІСѓСЋ РѕРїРµСЂР°С†РёСЋ РІ С„РёРЅР°РЅСЃРѕРІРѕРј РєР°Р»РµРЅРґР°СЂРµ.
             </p>
 
             <button className="rounded-2xl bg-slate-950 px-6 py-3 text-sm font-black text-white shadow-sm transition hover:bg-slate-800">
-              Сохранить данные карты
+              РЎРѕС…СЂР°РЅРёС‚СЊ РґР°РЅРЅС‹Рµ РєР°СЂС‚С‹
             </button>
           </div>
         </form>
@@ -2792,10 +2793,10 @@ function CreditCardRiskBadge({ tone }: { tone: CreditCardRiskTone }) {
   }[tone];
 
   const label = {
-    high: "● Высокий риск",
-    medium: "● Средний риск",
-    low: "● Низкий риск",
-    missing: "● Нужны данные",
+    high: "в—Џ Р’С‹СЃРѕРєРёР№ СЂРёСЃРє",
+    medium: "в—Џ РЎСЂРµРґРЅРёР№ СЂРёСЃРє",
+    low: "в—Џ РќРёР·РєРёР№ СЂРёСЃРє",
+    missing: "в—Џ РќСѓР¶РЅС‹ РґР°РЅРЅС‹Рµ",
   }[tone];
 
   return (
@@ -2806,3 +2807,4 @@ function CreditCardRiskBadge({ tone }: { tone: CreditCardRiskTone }) {
     </span>
   );
 }
+
