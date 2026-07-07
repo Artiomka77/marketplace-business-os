@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { getProfitAnalytics } from "@/lib/analytics/profitAnalytics";
 import { getProfitAnalyticsOzon } from "@/lib/analytics/profitAnalyticsOzon";
+import { getDefaultLastCompletedWeekRange } from "@/lib/date/defaultPeriod";
 
 function formatMoney(value: unknown) {
   return new Intl.NumberFormat("ru-RU", {
@@ -257,8 +258,9 @@ export default async function InsightsPage({
   const params = searchParams ? await searchParams : {};
   const now = new Date();
 
-  const dateFrom = params.dateFrom ?? toInputDate(startOfMonth(now));
-  const dateTo = params.dateTo ?? toInputDate(endOfMonth(now));
+  const defaultPeriod = getDefaultLastCompletedWeekRange();
+  const dateFrom = params.dateFrom ?? defaultPeriod.dateFrom;
+  const dateTo = params.dateTo ?? defaultPeriod.dateTo;
   const selectedCompany = params.company ?? "ALL";
 
   const companies = await prisma.company.findMany({

@@ -712,7 +712,7 @@ function createPeriodOptions(): PeriodOption[] {
     },
     {
       key: "previous-week",
-      shortLabel: "Прошлая неделя",
+      shortLabel: "Последняя закрытая неделя",
       label: `Прошлая закрытая неделя: ${formatDate(previousWeekStart)} — ${formatDate(
         previousWeekEnd
       )}`,
@@ -3194,7 +3194,7 @@ export default async function HomePage({ searchParams }: Props) {
   const periodOptions = createPeriodOptions();
   const selectedPeriodOption =
     periodOptions.find((period) => period.key === params.period) ??
-    periodOptions.find((period) => period.key === "current-month") ??
+    periodOptions.find((period) => period.key === "previous-week") ??
     periodOptions[0];
 
   const selectedPeriod =

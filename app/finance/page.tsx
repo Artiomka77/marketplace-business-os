@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { prisma } from "@/lib/prisma";
+import { getDefaultCurrentMonthRange } from "@/lib/date/defaultPeriod";
 import {
   buildFinanceCategoryTreatmentIndex,
   calculateFinanceMetricsForRows,
@@ -799,8 +800,9 @@ export default async function FinancePage({
   const company = params.company ?? "ALL";
   const companyName = company !== "ALL" ? company : null;
 
-  const dateFrom = params.dateFrom ?? "";
-  const dateTo = params.dateTo ?? "";
+  const defaultPeriod = getDefaultCurrentMonthRange();
+  const dateFrom = params.dateFrom ?? defaultPeriod.dateFrom;
+  const dateTo = params.dateTo ?? defaultPeriod.dateTo;
 
   const today = startOfDay(new Date());
   const in30Days = endOfDay(addDays(today, 30));

@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { AdsMappingTable } from "./AdsMappingForm";
 import MarketplaceNav from "@/components/marketplaces/MarketplaceNav";
+import { getDefaultLastCompletedWeekRange } from "@/lib/date/defaultPeriod";
 
 type Props = {
   searchParams?: Promise<{
@@ -96,8 +97,9 @@ const companyName =
     ? params.companyName
     : null;
 
-  const dateFrom = params.dateFrom ?? "2026-05-18";
-  const dateTo = params.dateTo ?? "2026-05-24";
+  const defaultPeriod = getDefaultLastCompletedWeekRange();
+  const dateFrom = params.dateFrom ?? defaultPeriod.dateFrom;
+  const dateTo = params.dateTo ?? defaultPeriod.dateTo;
 
   const selectedFrom = startOfDay(dateFrom);
   const selectedTo = endOfDay(dateTo);

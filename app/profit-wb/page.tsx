@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 
 import { prisma } from "@/lib/prisma";
 import { getProfitAnalytics } from "@/lib/analytics/profitAnalytics";
+import { getDefaultLastCompletedWeekRange } from "@/lib/date/defaultPeriod";
 
 type SortKey =
   | "revenue"
@@ -69,8 +70,9 @@ type EnrichedProfitRow = ProfitRow & {
   sizeRows: SizeBreakdownRow[];
 };
 
-const DEFAULT_DATE_FROM = "2026-05-18";
-const DEFAULT_DATE_TO = "2026-05-24";
+function getDefaultDateRange() {
+  return getDefaultLastCompletedWeekRange();
+}
 const DEFAULT_PAGE_SIZE = 15;
 const PAGE_SIZE_OPTIONS = [10, 15, 20, 30, 50];
 
@@ -292,8 +294,8 @@ function buildQueryHref(
   const query = new URLSearchParams();
 
   const next = {
-    dateFrom: params.dateFrom ?? DEFAULT_DATE_FROM,
-    dateTo: params.dateTo ?? DEFAULT_DATE_TO,
+    dateFrom: params.dateFrom ?? getDefaultDateRange().dateFrom,
+    dateTo: params.dateTo ?? getDefaultDateRange().dateTo,
     companyName: params.companyName ?? "ALL",
     sort: params.sort ?? "netProfitAfterTax",
     dir: params.dir ?? "desc",
@@ -1313,8 +1315,8 @@ export default async function ProfitPage({
 }) {
   const params = (await searchParams) ?? {};
 
-  const dateFrom = params.dateFrom ?? DEFAULT_DATE_FROM;
-  const dateTo = params.dateTo ?? DEFAULT_DATE_TO;
+  const dateFrom = params.dateFrom ?? getDefaultDateRange().dateFrom;
+  const dateTo = params.dateTo ?? getDefaultDateRange().dateTo;
   const companyName = params.companyName ?? "ALL";
   const sort = (params.sort ?? "netProfitAfterTax") as SortKey;
   const dir = (params.dir === "asc" ? "asc" : "desc") as SortDir;

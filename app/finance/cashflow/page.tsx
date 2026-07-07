@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { prisma } from "@/lib/prisma";
+import { getDefaultCurrentMonthRange } from "@/lib/date/defaultPeriod";
 import {
   buildFinanceCategoryTreatmentIndex,
   calculateFinanceMetricsForRows,
@@ -173,8 +174,9 @@ export default async function CashFlowPage({
   const selectedCategory = params.category ?? "ALL";
   const bankAccount = params.bankAccount ?? "ALL";
   const operationType = params.operationType ?? "ALL";
-  const dateFrom = params.dateFrom ?? "";
-  const dateTo = params.dateTo ?? "";
+  const defaultPeriod = getDefaultCurrentMonthRange();
+  const dateFrom = params.dateFrom ?? defaultPeriod.dateFrom;
+  const dateTo = params.dateTo ?? defaultPeriod.dateTo;
   const rowsLimit = Number(params.rows ?? 25);
 
   const safeRowsLimit = [25, 50, 100, 250, 500].includes(rowsLimit)
