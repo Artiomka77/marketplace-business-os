@@ -394,52 +394,68 @@ export async function syncWbDailyFinancialReports(
     );
 
     const detailedResults: Array<{
+      ok: boolean;
       reportNumber: string;
       rowsFromApi: number;
       savedRows: number;
+      error?: string;
     }> = [];
 
     if (options.loadDetailed !== false) {
       for (const reportNumber of reportNumbers) {
-        const detailRowsFromApi = await fetchWbDetailedReportRows(wbToken, reportNumber);
-        const mappedDetailRows = mapWbSalesApiRows(detailRowsFromApi);
+        try {
+          const detailRowsFromApi = await fetchWbDetailedReportRows(wbToken, reportNumber);
+          const mappedDetailRows = mapWbSalesApiRows(detailRowsFromApi);
 
-        const salesImportSession = await prisma.importSession.create({
-          data: {
-            fileName: `WB API Daily Detailed ${company.name} report ${reportNumber} ${financeResult.dateFrom} - ${financeResult.dateTo}`,
-            reportType: "WB_SALES",
-            marketplace: "WILDBERRIES",
-            companyName: company.name,
-            rowsCount: mappedDetailRows.length,
-            previewJson: mappedDetailRows.slice(0, 10),
-            sheetName: "WB Daily Detailed API",
-            headerRow: 1,
-            status: "SUCCESS",
-          },
-        });
+          const salesImportSession = await prisma.importSession.create({
+            data: {
+              fileName: `WB API Daily Detailed ${company.name} report ${reportNumber} ${financeResult.dateFrom} - ${financeResult.dateTo}`,
+              reportType: "WB_SALES",
+              marketplace: "WILDBERRIES",
+              companyName: company.name,
+              rowsCount: mappedDetailRows.length,
+              previewJson: mappedDetailRows.slice(0, 10),
+              sheetName: "WB Daily Detailed API",
+              headerRow: 1,
+              status: "SUCCESS",
+            },
+          });
 
-        const salesNormalizeResult = await normalizeWbSales(
-          mappedDetailRows,
-          salesImportSession.id,
-          company.name
-        );
+          const salesNormalizeResult = await normalizeWbSales(
+            mappedDetailRows,
+            salesImportSession.id,
+            company.name
+          );
 
-        await prisma.importSession.update({
-          where: { id: salesImportSession.id },
-          data: { rowsCount: salesNormalizeResult.savedRows },
-        });
+          await prisma.importSession.update({
+            where: { id: salesImportSession.id },
+            data: { rowsCount: salesNormalizeResult.savedRows },
+          });
 
-        detailedResults.push({
-          reportNumber,
-          rowsFromApi: detailRowsFromApi.length,
-          savedRows: salesNormalizeResult.savedRows,
-        });
+          detailedResults.push({
+            ok: true,
+            reportNumber,
+            rowsFromApi: detailRowsFromApi.length,
+            savedRows: salesNormalizeResult.savedRows,
+          });
+        } catch (error) {
+          detailedResults.push({
+            ok: false,
+            reportNumber,
+            rowsFromApi: 0,
+            savedRows: 0,
+            error: getErrorMessage(error).slice(0, 2000),
+          });
+        }
 
         await sleep(DEFAULT_DETAIL_DELAY_MS);
       }
     }
 
     await markConnected(companyId);
+
+    const detailedRows = detailedResults.reduce((sum, item) => sum + item.savedRows, 0);
+    const detailErrors = detailedResults.filter((item) => !item.ok);
 
     return {
       name: "WB Daily Financial Reports",
@@ -451,8 +467,10 @@ export async function syncWbDailyFinancialReports(
       reportNumbers,
       financeRows: financeNormalizeResult.savedRows,
       detailedReports: detailedResults,
-      detailedRows: detailedResults.reduce((sum, item) => sum + item.savedRows, 0),
-      rows: financeNormalizeResult.savedRows + detailedResults.reduce((sum, item) => sum + item.savedRows, 0),
+      detailedRows,
+      detailErrors,
+      detailStatus: detailErrors.length === 0 ? "COMPLETE" : "PARTIAL",
+      rows: financeNormalizeResult.savedRows + detailedRows,
     };
   } catch (error) {
     await markError(companyId, error);

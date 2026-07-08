@@ -40,6 +40,17 @@ function parseDate(value: string | null, fallback: Date) {
   return startOfUtcDay(new Date(`${value}T00:00:00Z`));
 }
 
+function parseBooleanParam(value: string | null, fallback: boolean) {
+  if (value === null) return fallback;
+
+  const normalized = value.trim().toLowerCase();
+
+  if (["0", "false", "no", "нет"].includes(normalized)) return false;
+  if (["1", "true", "yes", "да"].includes(normalized)) return true;
+
+  return fallback;
+}
+
 async function getConnections(companyName: string | null) {
   return prisma.marketplaceApiConnection.findMany({
     where: {
@@ -74,6 +85,7 @@ export async function GET(req: Request) {
     const dateFromParam = url.searchParams.get("dateFrom");
     const dateToParam = url.searchParams.get("dateTo");
     const companyName = String(url.searchParams.get("companyName") ?? "").trim() || null;
+    const loadDetailed = parseBooleanParam(url.searchParams.get("loadDetailed"), true);
 
     const defaultDate = getYesterdayMoscowDate();
     const dateFrom = parseDate(dateFromParam ?? dateParam, defaultDate);
@@ -92,7 +104,7 @@ export async function GET(req: Request) {
           dateFrom,
           dateTo,
           period: "daily",
-          loadDetailed: true,
+          loadDetailed,
         });
 
         results.push({
@@ -117,6 +129,7 @@ export async function GET(req: Request) {
       dateFrom: formatDateOnly(dateFrom),
       dateTo: formatDateOnly(dateTo),
       companyName,
+      loadDetailed,
       results,
       failed,
       executedAt: new Date().toISOString(),
