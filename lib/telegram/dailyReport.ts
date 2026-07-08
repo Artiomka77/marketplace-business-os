@@ -554,7 +554,12 @@ function isWbSaleOperation(reason: string | null | undefined) {
 }
 
 function isWbReturnOperation(reason: string | null | undefined) {
-  return normalizeText(reason) === "возврат";
+  const value = normalizeText(reason);
+
+  // В ежедневных и детализированных WB-отчётах возврат может приходить
+  // не только точным значением "Возврат", но и расширенным текстом операции.
+  // "Сторно возвратов" при этом оставляем положительной операцией.
+  return value.includes("возврат") && value !== "сторно возвратов";
 }
 
 function getDateSpan(dateFrom: Date | null, dateTo: Date | null) {
@@ -1020,6 +1025,68 @@ function calculateWbNetProfitAfterTax(params: {
   return sellerPayout - totalCost - params.adSpend - taxesAmount;
 }
 
+function calculateWbCostOfGoodsForRows(params: {
+  rows: Array<{
+    paymentReason: string | null;
+    quantity: number | null;
+    vendorCode: string | null;
+  }>;
+  costs: ProductCostForDailyProfit[];
+}) {
+  let totalCost = 0;
+
+  for (const row of params.rows) {
+    const quantity = Math.abs(toNumber(row.quantity)) || 1;
+    const costPrice = getWbCostPrice({
+      vendorCode: row.vendorCode,
+      costs: params.costs,
+    });
+
+    if (isWbSaleOperation(row.paymentReason)) {
+      totalCost += costPrice * quantity;
+      continue;
+    }
+
+    if (isWbReturnOperation(row.paymentReason)) {
+      totalCost -= costPrice * quantity;
+    }
+  }
+
+  return totalCost;
+}
+
+function sumWbFinanceRows(rows: Array<{
+  payoutAmount: unknown;
+  totalToPay: unknown;
+  logisticsCost: unknown;
+  storageCost: unknown;
+  acceptanceCost: unknown;
+  penaltiesAmount: unknown;
+  otherDeductions: unknown;
+}>) {
+  return rows.reduce(
+    (acc, row) => {
+      acc.sellerPayout += toNumber(row.payoutAmount);
+      acc.totalToPay += toNumber(row.totalToPay);
+      acc.logisticsCost += toNumber(row.logisticsCost);
+      acc.storageCost += toNumber(row.storageCost);
+      acc.acceptanceCost += toNumber(row.acceptanceCost);
+      acc.penaltiesAmount += toNumber(row.penaltiesAmount);
+      acc.otherDeductions += toNumber(row.otherDeductions);
+      return acc;
+    },
+    {
+      sellerPayout: 0,
+      totalToPay: 0,
+      logisticsCost: 0,
+      storageCost: 0,
+      acceptanceCost: 0,
+      penaltiesAmount: 0,
+      otherDeductions: 0,
+    }
+  );
+}
+
 function calculateOzonNetProfitAfterTax(params: {
   rows: Array<{
     operationType: string | null;
@@ -1219,6 +1286,7 @@ async function getWbMetrics(companyName: string, range: DateRange) {
   const [
     orderStats,
     salesRows,
+    financeRows,
     adsRowsRaw,
     stockQty,
     costs,
@@ -1246,6 +1314,48 @@ async function getWbMetrics(companyName: string, range: DateRange) {
           wbRealizedAmount: true,
           sellerPayout: true,
           vendorCode: true,
+        },
+      }),
+      prisma.wbFinance.findMany({
+        where: {
+          companyName,
+          OR: [
+            {
+              dateFrom: {
+                gte: range.dateFrom,
+                lt: range.dateToExclusive,
+              },
+            },
+            {
+              dateTo: {
+                gte: range.dateFrom,
+                lt: range.dateToExclusive,
+              },
+            },
+            {
+              AND: [
+                {
+                  dateFrom: {
+                    lte: range.dateFrom,
+                  },
+                },
+                {
+                  dateTo: {
+                    gte: range.dateToExclusive,
+                  },
+                },
+              ],
+            },
+          ],
+        },
+        select: {
+          payoutAmount: true,
+          totalToPay: true,
+          logisticsCost: true,
+          storageCost: true,
+          acceptanceCost: true,
+          penaltiesAmount: true,
+          otherDeductions: true,
         },
       }),
       prisma.wbAds.findMany({
@@ -1366,6 +1476,8 @@ async function getWbMetrics(companyName: string, range: DateRange) {
   });
 
   const profitTotals = wbProfitAnalytics.totals;
+  const financeTotals = sumWbFinanceRows(financeRows);
+  const hasDailyFinance = financeRows.length > 0 && Math.abs(financeTotals.totalToPay) > 0.5;
   const profitAnalyticsHasWbData =
     wbProfitAnalytics.rows.length > 0 ||
     profitTotals.revenue !== 0 ||
@@ -1376,15 +1488,44 @@ async function getWbMetrics(companyName: string, range: DateRange) {
   const finalSalesQty = profitAnalyticsHasWbData
     ? profitTotals.netSalesQty
     : salesQty;
-  const finalSalesAmount = profitAnalyticsHasWbData
-    ? profitTotals.revenue
-    : salesAmount;
+
+  // Для Telegram WB берём каноническую налоговую выручку из тех же WB Sale
+  // строк, что и /profit-wb. Это защищает отчёт от старого пути, где возвраты
+  // могли прибавляться к выручке.
+  const finalSalesAmount = salesAmount !== 0
+    ? salesAmount
+    : profitAnalyticsHasWbData
+      ? profitTotals.revenue
+      : 0;
+
   const finalAdSpend = profitAnalyticsHasWbData
     ? profitTotals.adsCost
     : adSpend;
-  const finalNetProfitAfterTax = profitAnalyticsHasWbData
-    ? profitTotals.netProfitAfterTax
-    : fallbackNetProfitAfterTax;
+
+  const canonicalCostOfGoods = calculateWbCostOfGoodsForRows({
+    rows: effectiveSalesRows,
+    costs,
+  });
+  const canonicalTaxesAmount = calculateTaxesAmount({
+    revenue: finalSalesAmount,
+    usnRate: taxRates.usnRate,
+    vatRate: taxRates.vatRate,
+  });
+
+  // Если ежедневный финансовый отчёт WB загружен, Telegram считает прибыль
+  // от "Итого к оплате WB", как /profit-wb и управленческая экономика:
+  // Итого к оплате WB − себестоимость − реклама − налог.
+  const canonicalNetProfitAfterTax =
+    financeTotals.totalToPay -
+    canonicalCostOfGoods -
+    finalAdSpend -
+    canonicalTaxesAmount;
+
+  const finalNetProfitAfterTax = hasDailyFinance
+    ? canonicalNetProfitAfterTax
+    : profitAnalyticsHasWbData
+      ? profitTotals.netProfitAfterTax
+      : fallbackNetProfitAfterTax;
 
   return {
     marketplace: "WB" as const,
