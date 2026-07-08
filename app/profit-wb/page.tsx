@@ -210,8 +210,9 @@ function formatDeltaPercent(value: number, inverse = false) {
 }
 
 function formatShare(value: number, total: number, label = "от выручки") {
-  if (!total || total <= 0) return `0.0% ${label}`;
-  return `${((value / total) * 100).toFixed(1)}% ${label}`;
+  const suffix = label ? ` ${label}` : "";
+  if (!total || total <= 0) return `0.0%${suffix}`;
+  return `${((value / total) * 100).toFixed(1)}%${suffix}`;
 }
 
 function clamp(value: number, min: number, max: number) {
@@ -1409,17 +1410,9 @@ export default async function ProfitPage({
   const economicTurnover = totals.sellerRetailAmount > 0 ? totals.sellerRetailAmount : totals.revenue;
   const taxableRevenueShare =
     economicTurnover > 0 ? (totals.revenue / economicTurnover) * 100 : 0;
-  const wbSettlementAmount =
-    totals.sellerPayout -
-    totals.logisticsCost -
-    storageAndAcceptance -
-    totals.penaltiesAmount -
-    totals.deductions;
-  const wbExpensesWithoutAds =
-    Math.max(0, totals.wbCommission) +
-    totals.logisticsCost +
-    storageAndAcceptance +
-    penaltiesAndDeductions;
+  const wbOperatingDeductions = totals.logisticsCost + storageAndAcceptance + penaltiesAndDeductions;
+  const wbSettlementAmount = totals.sellerPayout - wbOperatingDeductions;
+  const wbExpensesWithoutAds = totals.wbCommission + wbOperatingDeductions;
   const wbExpensesWithAds = wbExpensesWithoutAds + totals.adsCost;
   const totalExpensesAfterTax = totals.revenue - totals.netProfitAfterTax;
   const excludedWbDeductions =
@@ -1454,7 +1447,7 @@ export default async function ProfitPage({
       colorHex: "#6366f1",
     },
     {
-      label: "Комиссия / компенсация WB",
+      label: "Удержано WB до выплат",
       value: totals.wbCommission,
       colorClassName: "bg-violet-500",
       colorHex: "#8b5cf6",
@@ -1508,9 +1501,9 @@ export default async function ProfitPage({
               </h1>
 
               <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-500">
-                Unit economics по WB Sales: цена продавца, СПП WB, фактическая
-                реализация, комиссия/компенсация WB, себестоимость, логистика,
-                реклама и налоги.
+                Управленческая экономика WB: экономический оборот, СПП WB,
+                налоговая выручка, выплаты WB, расходы площадки, реклама,
+                налоги и прибыль без задвоения списаний.
               </p>
             </div>
 
@@ -1596,21 +1589,40 @@ export default async function ProfitPage({
 
         <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-6">
           <KpiCard
-            title="Выручка"
-            value={formatMoney(totals.revenue)}
-            helper={`${formatPercent(taxableRevenueShare)} от экон. оборота`}
+            title="Экономический оборот"
+            value={formatMoney(economicTurnover)}
+            helper="100% база для всех долей"
             delta={comparison.revenue.diffPercent}
             sparkTone="indigo"
             sparkPoints={[10, 12, 18, 14, 14, 21, 19, 28]}
           />
 
           <KpiCard
-            title="Марж. прибыль"
-            value={formatMoney(totals.marginProfit)}
-            helper={`${formatPercent(totals.marginProfitPercent)} от экон. оборота`}
-            delta={comparison.marginProfit.diffPercent}
+            title="Налоговая выручка"
+            value={formatMoney(totals.revenue)}
+            helper={`${formatPercent(taxableRevenueShare)} от экон. оборота`}
+            delta={comparison.revenue.diffPercent}
             sparkTone="emerald"
             sparkPoints={[8, 12, 10, 13, 21, 19, 28, 22]}
+          />
+
+          <KpiCard
+            title="Итого к оплате WB"
+            value={formatMoney(wbSettlementAmount)}
+            helper={`${formatShare(wbSettlementAmount, economicTurnover, "от экон. оборота")}`}
+            delta={comparison.sellerPayout.diffPercent}
+            sparkTone="emerald"
+            sparkPoints={[8, 10, 9, 15, 14, 18, 23, 21]}
+          />
+
+          <KpiCard
+            title="Все расходы P&L"
+            value={formatMoney(totalExpensesAfterTax)}
+            helper={`${formatShare(totalExpensesAfterTax, economicTurnover, "от экон. оборота")}`}
+            delta={comparison.totalCost.diffPercent}
+            inverseDelta
+            sparkTone="red"
+            sparkPoints={[9, 10, 12, 14, 13, 18, 20, 22]}
           />
 
           <KpiCard
@@ -1623,7 +1635,7 @@ export default async function ProfitPage({
           />
 
           <KpiCard
-            title="Реклама (ДРР)"
+            title="Реклама / ДРР"
             value={formatMoney(totals.adsCost)}
             helper={`${formatPercent(totals.drrPercent)} от экон. оборота`}
             delta={comparison.adsCost.diffPercent}
@@ -1631,91 +1643,165 @@ export default async function ProfitPage({
             sparkTone="orange"
             sparkPoints={[18, 17, 22, 16, 14, 13, 15, 23]}
           />
-
-          <KpiCard
-            title="Себестоимость"
-            value={formatMoney(totals.totalCost)}
-            helper={`${formatShare(totals.totalCost, economicTurnover, "от экон. оборота")}`}
-            delta={comparison.totalCost.diffPercent}
-            inverseDelta
-            sparkTone="red"
-            sparkPoints={[9, 10, 12, 14, 13, 18, 20, 22]}
-          />
-
-          <KpiCard
-            title="К перечислению WB"
-            value={formatMoney(totals.sellerPayout)}
-            helper={`${formatShare(totals.sellerPayout, economicTurnover, "от экон. оборота")}`}
-            delta={comparison.sellerPayout.diffPercent}
-            sparkTone="emerald"
-            sparkPoints={[8, 10, 9, 15, 14, 18, 23, 21]}
-          />
         </section>
 
-        <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-6">
-          <PriceBridgeCard
-            title="Экономический оборот"
-            value={economicTurnover}
-            helper="Цена продавца до СПП WB. Это 100% база для всех долей на странице."
-            tone="violet"
-          />
-          <PriceBridgeCard
-            title="Налоговая выручка"
-            value={totals.revenue}
-            helper={`${formatPercent(taxableRevenueShare)} от экономического оборота. Цена после СПП WB; с этой суммы считаем налог.`}
-            tone="emerald"
-          />
-          <PriceBridgeCard
-            title="СПП WB"
-            value={totals.sppDiscountAmount}
-            helper={`${formatShare(totals.sppDiscountAmount, economicTurnover, "от экон. оборота")}. Скидка площадки покупателю за счёт WB.`}
-            tone="orange"
-          />
-          <PriceBridgeCard
-            title="К перечислению за товар"
-            value={totals.sellerPayout}
-            helper={`${formatShare(totals.sellerPayout, economicTurnover, "от экон. оборота")}. Сумма после разницы до перечисления WB.`}
-            tone="emerald"
-          />
-          <PriceBridgeCard
-            title="Разница до перечисления WB"
-            value={totals.wbCommission}
-            helper={`${formatShare(totals.wbCommission, economicTurnover, "от экон. оборота")}. Мост от налоговой выручки к перечислению; повторно не вычитается.`}
-            tone={totals.wbCommission < 0 ? "emerald" : "red"}
-          />
-          <PriceBridgeCard
-            title="Итого к оплате WB"
-            value={wbSettlementAmount}
-            helper={`${formatShare(wbSettlementAmount, economicTurnover, "от экон. оборота")}. После логистики, хранения, штрафов и удержаний WB.`}
-            tone="slate"
-          />
-        </section>
+        <section className="grid gap-5 xl:grid-cols-[minmax(0,4fr)_minmax(360px,2fr)]">
+          <section className="panel p-5 sm:p-6">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <div className="section-eyebrow">Движение денег</div>
+                <h2 className="mt-1 text-2xl font-black tracking-tight text-slate-950">
+                  Воронка WB: от цены продавца до выплаты
+                </h2>
+                <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">
+                  Все проценты считаются от экономического оборота. СПП WB показываем отдельно:
+                  это скидка площадки за счёт WB, а не расход продавца.
+                </p>
+              </div>
+              <span className="hidden rounded-2xl bg-violet-50 px-3 py-1 text-xs font-black uppercase tracking-[0.12em] text-violet-700 ring-1 ring-violet-100 sm:inline-flex">
+                100% = экон. оборот
+              </span>
+            </div>
 
-        <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <PriceBridgeCard
-            title="Расходы WB без рекламы"
-            value={wbExpensesWithoutAds}
-            helper={`${formatShare(wbExpensesWithoutAds, economicTurnover, "от экон. оборота")}. Разница до перечисления + логистика + хранение + штрафы/удержания.`}
-            tone="red"
-          />
-          <PriceBridgeCard
-            title="Расходы WB с рекламой"
-            value={wbExpensesWithAds}
-            helper={`${formatShare(wbExpensesWithAds, economicTurnover, "от экон. оборота")}. Показывает, сколько денег ушло в WB вместе с рекламой.`}
-            tone="red"
-          />
-          <PriceBridgeCard
-            title="Все расходы P&L"
-            value={totalExpensesAfterTax}
-            helper={`${formatShare(totalExpensesAfterTax, economicTurnover, "от экон. оборота")}. Расходы после СПП без задвоения комиссии.`}
-            tone="orange"
-          />
-          <PriceBridgeCard
-            title="Платёжные / ПВЗ"
-            value={wbInternalServices}
-            helper="Справочная расшифровка внутри выплаты WB. В прибыль второй раз не вычитается."
-            tone="slate"
-          />
+            <div className="mt-5 overflow-hidden rounded-[24px] border border-slate-200 bg-white">
+              <div className="grid grid-cols-[34px_minmax(0,1fr)_150px_90px] items-center gap-3 bg-slate-50 px-4 py-3 text-xs font-black uppercase tracking-[0.12em] text-slate-400">
+                <div />
+                <div>Показатель</div>
+                <div className="text-right">Сумма</div>
+                <div className="text-right">Доля</div>
+              </div>
+
+              <div className="divide-y divide-slate-100">
+                <div className="grid grid-cols-[34px_minmax(0,1fr)_150px_90px] items-center gap-3 px-4 py-3">
+                  <div className="flex h-7 w-7 items-center justify-center rounded-full bg-violet-100 text-sm font-black text-violet-700">1</div>
+                  <div>
+                    <div className="font-black text-slate-900">Экономический оборот</div>
+                    <div className="mt-0.5 text-xs font-semibold text-slate-500">Цена продавца до СПП WB.</div>
+                  </div>
+                  <div className="text-right text-lg font-black text-violet-700">{formatMoney(economicTurnover)}</div>
+                  <div className="text-right text-sm font-black text-violet-700">100%</div>
+                </div>
+
+                <div className="grid grid-cols-[34px_minmax(0,1fr)_150px_90px] items-center gap-3 px-4 py-3">
+                  <div className="flex h-7 w-7 items-center justify-center rounded-full bg-orange-100 text-sm font-black text-orange-700">−</div>
+                  <div>
+                    <div className="font-black text-slate-900">СПП WB</div>
+                    <div className="mt-0.5 text-xs font-semibold text-slate-500">Скидка покупателю за счёт WB.</div>
+                  </div>
+                  <div className="text-right text-lg font-black text-orange-600">{formatMoney(totals.sppDiscountAmount)}</div>
+                  <div className="text-right text-sm font-black text-orange-600">
+                    {formatPercent(economicTurnover > 0 ? (totals.sppDiscountAmount / economicTurnover) * 100 : 0)}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-[34px_minmax(0,1fr)_150px_90px] items-center gap-3 bg-emerald-50/60 px-4 py-3">
+                  <div className="flex h-7 w-7 items-center justify-center rounded-full bg-emerald-100 text-sm font-black text-emerald-700">=</div>
+                  <div>
+                    <div className="font-black text-emerald-800">Налоговая выручка</div>
+                    <div className="mt-0.5 text-xs font-semibold text-emerald-700/75">Цена после СПП WB; с этой суммы считаем налог.</div>
+                  </div>
+                  <div className="text-right text-lg font-black text-emerald-700">{formatMoney(totals.revenue)}</div>
+                  <div className="text-right text-sm font-black text-emerald-700">{formatPercent(taxableRevenueShare)}</div>
+                </div>
+
+                <div className="grid grid-cols-[34px_minmax(0,1fr)_150px_90px] items-center gap-3 px-4 py-3">
+                  <div className="flex h-7 w-7 items-center justify-center rounded-full bg-red-100 text-sm font-black text-red-700">−</div>
+                  <div>
+                    <div className="font-black text-slate-900">Удержано WB до выплат</div>
+                    <div className="mt-0.5 text-xs font-semibold text-slate-500">Разница между налоговой выручкой и суммой к перечислению WB.</div>
+                  </div>
+                  <div className="text-right text-lg font-black text-red-600">{formatMoney(totals.wbCommission)}</div>
+                  <div className="text-right text-sm font-black text-red-600">
+                    {formatShare(totals.wbCommission, economicTurnover, "")}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-[34px_minmax(0,1fr)_150px_90px] items-center gap-3 bg-emerald-50/60 px-4 py-3">
+                  <div className="flex h-7 w-7 items-center justify-center rounded-full bg-emerald-100 text-sm font-black text-emerald-700">=</div>
+                  <div>
+                    <div className="font-black text-emerald-800">К перечислению WB</div>
+                    <div className="mt-0.5 text-xs font-semibold text-emerald-700/75">Сумма до списания логистики, хранения, штрафов и удержаний.</div>
+                  </div>
+                  <div className="text-right text-lg font-black text-emerald-700">{formatMoney(totals.sellerPayout)}</div>
+                  <div className="text-right text-sm font-black text-emerald-700">
+                    {formatShare(totals.sellerPayout, economicTurnover, "")}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-[34px_minmax(0,1fr)_150px_90px] items-center gap-3 px-4 py-3">
+                  <div className="flex h-7 w-7 items-center justify-center rounded-full bg-red-100 text-sm font-black text-red-700">−</div>
+                  <div>
+                    <div className="font-black text-slate-900">Логистика / хранение / штрафы</div>
+                    <div className="mt-0.5 text-xs font-semibold text-slate-500">Операционные списания WB после суммы к перечислению.</div>
+                  </div>
+                  <div className="text-right text-lg font-black text-red-600">{formatMoney(wbOperatingDeductions)}</div>
+                  <div className="text-right text-sm font-black text-red-600">
+                    {formatShare(wbOperatingDeductions, economicTurnover, "")}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-[34px_minmax(0,1fr)_150px_90px] items-center gap-3 bg-slate-50 px-4 py-4">
+                  <div className="flex h-7 w-7 items-center justify-center rounded-full bg-slate-200 text-sm font-black text-slate-700">=</div>
+                  <div>
+                    <div className="font-black text-slate-950">Итого к оплате WB</div>
+                    <div className="mt-0.5 text-xs font-semibold text-slate-500">Фактическая выплата WB до себестоимости, рекламы и налогов.</div>
+                  </div>
+                  <div className="text-right text-xl font-black text-slate-950">{formatMoney(wbSettlementAmount)}</div>
+                  <div className="text-right text-sm font-black text-slate-700">
+                    {formatShare(wbSettlementAmount, economicTurnover, "")}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <aside className="panel p-5 sm:p-6">
+            <div className="section-eyebrow">Контроль площадки</div>
+            <h2 className="mt-1 text-2xl font-black tracking-tight text-slate-950">
+              Сколько забирает WB
+            </h2>
+            <p className="mt-2 text-sm leading-6 text-slate-500">
+              СПП WB сюда не включаем как расход продавца. Это нетто-расходы площадки
+              после СПП, отдельно без рекламы и вместе с рекламой.
+            </p>
+
+            <div className="mt-5 grid gap-3">
+              <div className="rounded-[24px] border border-red-100 bg-red-50 p-4">
+                <div className="text-xs font-black uppercase tracking-[0.12em] text-red-500">Без рекламы</div>
+                <div className="mt-2 text-3xl font-black text-red-700">{formatMoney(wbExpensesWithoutAds)}</div>
+                <div className="mt-1 text-sm font-black text-red-600">{formatShare(wbExpensesWithoutAds, economicTurnover, "от экон. оборота")}</div>
+              </div>
+
+              <div className="rounded-[24px] border border-orange-100 bg-orange-50 p-4">
+                <div className="text-xs font-black uppercase tracking-[0.12em] text-orange-500">С рекламой</div>
+                <div className="mt-2 text-3xl font-black text-orange-700">{formatMoney(wbExpensesWithAds)}</div>
+                <div className="mt-1 text-sm font-black text-orange-600">{formatShare(wbExpensesWithAds, economicTurnover, "от экон. оборота")}</div>
+              </div>
+            </div>
+
+            <div className="mt-5 space-y-3 rounded-[24px] border border-slate-200 bg-slate-50 p-4">
+              <div className="flex items-center justify-between gap-3 text-sm">
+                <span className="font-bold text-slate-600">Удержано WB до выплат</span>
+                <span className="font-black text-slate-950">{formatMoney(totals.wbCommission)}</span>
+              </div>
+              <div className="flex items-center justify-between gap-3 text-sm">
+                <span className="font-bold text-slate-600">Логистика WB</span>
+                <span className="font-black text-slate-950">{formatMoney(totals.logisticsCost)}</span>
+              </div>
+              <div className="flex items-center justify-between gap-3 text-sm">
+                <span className="font-bold text-slate-600">Хранение и приёмка</span>
+                <span className="font-black text-slate-950">{formatMoney(storageAndAcceptance)}</span>
+              </div>
+              <div className="flex items-center justify-between gap-3 text-sm">
+                <span className="font-bold text-slate-600">Штрафы и прочие удержания</span>
+                <span className="font-black text-slate-950">{formatMoney(penaltiesAndDeductions)}</span>
+              </div>
+              <div className="flex items-center justify-between gap-3 border-t border-slate-200 pt-3 text-sm">
+                <span className="font-bold text-slate-600">Реклама WB</span>
+                <span className="font-black text-slate-950">{formatMoney(totals.adsCost)}</span>
+              </div>
+            </div>
+          </aside>
         </section>
 
         {excludedWbDeductions > 0 ? (
@@ -1750,6 +1836,16 @@ export default async function ProfitPage({
                     colorHex={row.colorHex}
                   />
                 ))}
+
+                <div className="grid grid-cols-[minmax(0,1fr)_105px_62px] items-center gap-3 border-t border-slate-100 pt-4">
+                  <div className="font-black text-slate-900">Все расходы P&amp;L</div>
+                  <div className="text-right font-black text-slate-900">
+                    {formatMoney(totalExpensesAfterTax)}
+                  </div>
+                  <div className="text-right font-black text-slate-900">
+                    {formatShare(totalExpensesAfterTax, economicTurnover, "")}
+                  </div>
+                </div>
 
                 <div className="grid grid-cols-[minmax(0,1fr)_105px_62px] items-center gap-3 border-t border-slate-100 pt-4">
                   <div className="font-black text-emerald-600">Прибыль после налогов</div>
