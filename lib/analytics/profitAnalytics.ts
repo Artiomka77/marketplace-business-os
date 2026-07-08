@@ -39,6 +39,18 @@ function nextDayStart(value: string | Date) {
   return date;
 }
 
+function getMoscowDateKey(value: unknown) {
+  if (!value) return "unknown";
+
+  const date = value instanceof Date ? value : new Date(String(value));
+
+  if (Number.isNaN(date.getTime())) return "unknown";
+
+  return new Date(date.getTime() + 3 * 60 * 60 * 1000)
+    .toISOString()
+    .slice(0, 10);
+}
+
 function isSaleOperation(reason: string) {
   const value = normalizeText(reason);
   return value === "продажа" || value === "сторно возвратов";
@@ -892,6 +904,45 @@ async function findLatestWbSaleRowsBySaleDate(params?: {
   });
 }
 
+async function findPreferredWbSaleRowsBySaleDate(params?: {
+  dateFrom?: string | null;
+  dateTo?: string | null;
+  companyName?: string | null;
+}) {
+  const detailedRows = await findLatestWbSaleRowsBySaleDate({
+    ...params,
+    reportTypes: ["WB_SALES_OPERATIONAL", "WB_SALES"],
+  });
+
+  const dailyRows = await findLatestWbSaleRowsBySaleDate({
+    ...params,
+    reportTypes: ["WB_SALES_DAILY"],
+  });
+
+  if (detailedRows.length === 0) {
+    return dailyRows;
+  }
+
+  if (dailyRows.length === 0) {
+    return detailedRows;
+  }
+
+  const detailedKeys = new Set(
+    detailedRows.map((row) =>
+      [row.companyName ?? params?.companyName ?? "", getMoscowDateKey(row.saleDate)].join("__")
+    )
+  );
+
+  return [
+    ...detailedRows,
+    ...dailyRows.filter((row) => {
+      const key = [row.companyName ?? params?.companyName ?? "", getMoscowDateKey(row.saleDate)].join("__");
+
+      return !detailedKeys.has(key);
+    }),
+  ];
+}
+
 async function findWbSaleRowsByPeriod(params?: {
   dateFrom?: string | null;
   dateTo?: string | null;
@@ -918,7 +969,9 @@ async function findWbSaleRowsByPeriod(params?: {
     const importSessions = await prisma.importSession.findMany({
       where: {
         ...(params?.companyName ? { companyName: params.companyName } : {}),
-        reportType: "WB_SALES",
+        reportType: {
+          in: ["WB_SALES", "WB_SALES_OPERATIONAL"],
+        },
         OR: reportNumbers.map((reportNumber) => ({
           fileName: {
             contains: reportNumber,
@@ -959,19 +1012,7 @@ async function findWbSaleRowsByPeriod(params?: {
     }
   }
 
-  const currentDailyRows = await findLatestWbSaleRowsBySaleDate({
-    ...params,
-    reportTypes: ["WB_SALES_DAILY"],
-  });
-
-  if (currentDailyRows.length > 0) {
-    return currentDailyRows;
-  }
-
-  return findLatestWbSaleRowsBySaleDate({
-    ...params,
-    reportTypes: ["WB_SALES"],
-  });
+  return findPreferredWbSaleRowsBySaleDate(params);
 }
 
 async function findAdsRowsByPeriod(params?: {

@@ -5,6 +5,7 @@ import { syncMarketplaceDailyOrders } from "@/lib/marketplaceOrders/syncMarketpl
 import { syncOzonFinance } from "@/lib/ozon/syncOzon";
 import { syncOzonDailyEconomicTotals } from "@/lib/ozon/syncOzonDailyEconomicTotals";
 import { syncWbDailySales } from "@/lib/wb/syncWbDailySales";
+import { syncWbOperationalDetail } from "@/lib/wb/syncWbOperationalDetail";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 180;
@@ -20,6 +21,7 @@ type MarketplaceApiConnectionForDaily = {
 const DEFAULT_STEP_TIMEOUT_MS = 30_000;
 const ORDER_SYNC_TIMEOUT_MS = 60_000;
 const OZON_FINANCE_TIMEOUT_MS = 120_000;
+const WB_OPERATIONAL_DETAIL_TIMEOUT_MS = 120_000;
 
 function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : "Неизвестная ошибка";
@@ -232,6 +234,39 @@ async function runWbDailySales(
   }
 }
 
+async function runWbOperationalDetail(
+  connection: MarketplaceApiConnectionForDaily,
+  date: Date
+) {
+  try {
+    const result = await withStepTimeout(
+      `WB Operational Detail ${connection.company.name} ${formatDateOnly(date)}`,
+      () =>
+        syncWbOperationalDetail(connection.companyId, {
+          dateFrom: date,
+          dateTo: date,
+        }),
+      WB_OPERATIONAL_DETAIL_TIMEOUT_MS
+    );
+
+    return {
+      marketplace: "WB",
+      companyName: connection.company.name,
+      dataType: "SALES_OPERATIONAL_DETAIL",
+      ok: true,
+      result,
+    };
+  } catch (error) {
+    return {
+      marketplace: "WB",
+      companyName: connection.company.name,
+      dataType: "SALES_OPERATIONAL_DETAIL",
+      ok: false,
+      error: getErrorMessage(error),
+    };
+  }
+}
+
 async function ensureWbAdsJobForReportDate(
   connection: MarketplaceApiConnectionForDaily,
   date: Date
@@ -337,6 +372,7 @@ export async function GET(req: Request) {
 
       if (connection.marketplace === "WB") {
         results.push(await runWbDailySales(connection, date));
+        results.push(await runWbOperationalDetail(connection, date));
         results.push(await ensureWbAdsJobForReportDate(connection, date));
       }
     }
