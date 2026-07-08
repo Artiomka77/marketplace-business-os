@@ -1333,6 +1333,8 @@ export default async function ProfitPage({
     companyName,
   });
 
+  const isPreliminaryWbProfit = totals.dataMode === "PRELIMINARY";
+
   const abcByRevenue = calculateAbcByPositiveValue(rows, (row) => row.revenue);
 
   const { metaByVendorCode, sizeRowsByVendorCode } =
@@ -1554,6 +1556,19 @@ export default async function ProfitPage({
             </Link>
           </div>
         </section>
+
+        {isPreliminaryWbProfit ? (
+          <section className="rounded-[28px] border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-900 shadow-sm">
+            <div className="font-black">Финансовый результат WB предварительный</div>
+            <div className="mt-1 leading-6">
+              Продажи, выкупы и реклама загружены оперативно. Комиссия WB
+              восстановлена по разнице между реализацией и выплатой, а
+              логистика/хранение/штрафы рассчитаны оценочно по последнему
+              доступному детальному отчёту WB. После появления финального
+              отчёта WB система заменит оценку официальными расходами.
+            </div>
+          </section>
+        ) : null}
 
         <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-6">
           <KpiCard

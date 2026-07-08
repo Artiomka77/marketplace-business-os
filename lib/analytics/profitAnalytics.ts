@@ -342,6 +342,12 @@ export type ProfitTotals = {
 
   usnRate: number;
   vatRate: number;
+
+  dataMode?: "FINAL" | "PRELIMINARY";
+  estimatedLogisticsCost?: number;
+  estimatedStorageCost?: number;
+  estimatedAcceptanceCost?: number;
+  estimatedPenaltiesAmount?: number;
 };
 
 type CostRecord = {
@@ -522,6 +528,12 @@ function createEmptyTotals(
 
     usnRate,
     vatRate,
+
+    dataMode: "FINAL",
+    estimatedLogisticsCost: 0,
+    estimatedStorageCost: 0,
+    estimatedAcceptanceCost: 0,
+    estimatedPenaltiesAmount: 0,
   };
 }
 
@@ -656,16 +668,26 @@ function calculateRowsAndTotals({
     const sppDiscountAmount =
       toNumber(wbRow.sppDiscountAmount) || sellerRetailAmount - realizedAmount;
 
-    const wbCommissionBeforeVat = toNumber(wbRow.wbReward);
-    const wbCommissionVat = calculateWbCommissionVatFallback(
+    let wbCommissionBeforeVat = toNumber(wbRow.wbReward);
+    let wbCommissionVat = calculateWbCommissionVatFallback(
       wbCommissionBeforeVat,
       wbRow.wbRewardVat
     );
     const wbCommissionTotalRaw = toNumber(wbRow.wbRewardTotal);
-    const wbCommissionTotal =
+    let wbCommissionTotal =
       wbCommissionTotalRaw !== 0
         ? wbCommissionTotalRaw
         : wbCommissionBeforeVat + wbCommissionVat;
+
+    // Оперативная WB Daily Sales-загрузка не содержит отдельную комиссию WB.
+    // Но в ней есть «WB реализовал» и «к перечислению продавцу».
+    // Чтобы на /profit-wb не показывать ложный 0 по комиссии за текущие дни,
+    // восстанавливаем комиссию как разницу между реализацией и выплатой.
+    if (wbCommissionTotal === 0 && realizedAmount !== 0 && sellerPayout !== 0) {
+      wbCommissionTotal = Math.max(0, Math.abs(realizedAmount) - Math.abs(sellerPayout));
+      wbCommissionBeforeVat = wbCommissionTotal;
+      wbCommissionVat = 0;
+    }
 
     if (isSaleOperation(paymentReason)) {
       current.salesQty += quantity;
@@ -1181,6 +1203,199 @@ function applyWbFinanceExpenseTotals(
   return result;
 }
 
+type WbOperationalExpenseRates = {
+  hasRates: boolean;
+  logisticsPerSaleQty: number;
+  storagePerSaleQty: number;
+  acceptancePerSaleQty: number;
+  penaltiesPerSaleQty: number;
+};
+
+function recalculateProfitRow(row: ProfitAnalyticsRow, usnRate: number, vatRate: number) {
+  row.marginProfit =
+    row.sellerPayout -
+    row.totalCost -
+    row.logisticsCost -
+    row.storageCost -
+    row.acceptanceCost -
+    row.penaltiesAmount -
+    row.deductions -
+    row.adsCost;
+
+  row.marginProfitPercent = row.revenue > 0 ? (row.marginProfit / row.revenue) * 100 : 0;
+  row.drrPercent = row.revenue > 0 ? (row.adsCost / row.revenue) * 100 : 0;
+
+  const usnTax = row.revenue > 0 ? row.revenue * (usnRate / 100) : 0;
+  const vatTax = row.revenue > 0 ? calculateVatTax(row.revenue, vatRate) : 0;
+
+  row.taxesAmount = usnTax + vatTax;
+  row.netProfitAfterTax = row.marginProfit - row.taxesAmount;
+  row.marginAfterTaxPercent =
+    row.revenue > 0 ? (row.netProfitAfterTax / row.revenue) * 100 : 0;
+}
+
+function recalculateTotalsFromRows(
+  rows: ProfitAnalyticsRow[],
+  previousTotals: ProfitTotals,
+  usnRate: number,
+  vatRate: number
+): ProfitTotals {
+  const totals = rows.reduce((acc, row) => {
+    acc.salesQty += row.salesQty;
+    acc.returnsQty += row.returnsQty;
+    acc.netSalesQty += row.netSalesQty;
+    acc.revenue += row.revenue;
+    acc.sellerRetailAmount += row.sellerRetailAmount;
+    acc.sppDiscountAmount += row.sppDiscountAmount;
+    acc.sellerPayout += row.sellerPayout;
+    acc.wbCommission += row.wbCommission;
+    acc.wbCommissionBeforeVat += row.wbCommissionBeforeVat;
+    acc.wbCommissionVat += row.wbCommissionVat;
+    acc.logisticsCost += row.logisticsCost;
+    acc.storageCost += row.storageCost;
+    acc.acceptanceCost += row.acceptanceCost;
+    acc.penaltiesAmount += row.penaltiesAmount;
+    acc.deductions += row.deductions;
+    acc.wbAdsDeduction += row.wbAdsDeduction;
+    acc.wbCreditDeduction += row.wbCreditDeduction;
+    acc.wbUnknownDeduction += row.wbUnknownDeduction;
+    acc.wbRawDeduction += row.wbRawDeduction;
+    acc.paymentServiceCost += row.paymentServiceCost;
+    acc.pvzCompensation += row.pvzCompensation;
+    acc.transportCompensation += row.transportCompensation;
+    acc.loyaltyDiscountCompensation += row.loyaltyDiscountCompensation;
+    acc.loyaltyParticipationCost += row.loyaltyParticipationCost;
+    acc.loyaltyPointsAmount += row.loyaltyPointsAmount;
+    acc.adsCost += row.adsCost;
+    acc.totalCost += row.totalCost;
+    acc.marginProfit += row.marginProfit;
+    acc.taxesAmount += row.taxesAmount;
+    acc.netProfitAfterTax += row.netProfitAfterTax;
+
+    return acc;
+  }, createEmptyTotals(usnRate, vatRate, previousTotals.undistributedAdsCost));
+
+  totals.dataMode = previousTotals.dataMode;
+  totals.estimatedLogisticsCost = previousTotals.estimatedLogisticsCost ?? 0;
+  totals.estimatedStorageCost = previousTotals.estimatedStorageCost ?? 0;
+  totals.estimatedAcceptanceCost = previousTotals.estimatedAcceptanceCost ?? 0;
+  totals.estimatedPenaltiesAmount = previousTotals.estimatedPenaltiesAmount ?? 0;
+
+  totals.marginProfitPercent = totals.revenue > 0 ? (totals.marginProfit / totals.revenue) * 100 : 0;
+  totals.marginAfterTaxPercent =
+    totals.revenue > 0 ? (totals.netProfitAfterTax / totals.revenue) * 100 : 0;
+  totals.drrPercent = totals.revenue > 0 ? (totals.adsCost / totals.revenue) * 100 : 0;
+
+  return totals;
+}
+
+async function findLatestWbOperationalExpenseRates(params?: {
+  companyName?: string | null;
+}): Promise<WbOperationalExpenseRates> {
+  const rows = await findLatestWbSaleRowsBySaleDate({
+    companyName: params?.companyName,
+    reportTypes: ["WB_SALES"],
+  });
+
+  let saleQty = 0;
+  let logisticsCost = 0;
+  let storageCost = 0;
+  let acceptanceCost = 0;
+  let penaltiesAmount = 0;
+
+  for (const row of rows) {
+    if (isSaleOperation(row.paymentReason)) {
+      saleQty += Math.abs(toNumber(row.quantity)) || 1;
+    }
+
+    logisticsCost += Math.abs(toNumber(row.logisticsCost));
+    storageCost += Math.abs(toNumber(row.storageCost));
+    acceptanceCost += Math.abs(toNumber(row.acceptanceCost));
+    penaltiesAmount += Math.abs(toNumber(row.penaltiesAmount));
+  }
+
+  if (saleQty <= 0) {
+    return {
+      hasRates: false,
+      logisticsPerSaleQty: 0,
+      storagePerSaleQty: 0,
+      acceptancePerSaleQty: 0,
+      penaltiesPerSaleQty: 0,
+    };
+  }
+
+  return {
+    hasRates: true,
+    logisticsPerSaleQty: logisticsCost / saleQty,
+    storagePerSaleQty: storageCost / saleQty,
+    acceptancePerSaleQty: acceptanceCost / saleQty,
+    penaltiesPerSaleQty: penaltiesAmount / saleQty,
+  };
+}
+
+function applyEstimatedOperationalExpenses(
+  result: { rows: ProfitAnalyticsRow[]; totals: ProfitTotals },
+  rates: WbOperationalExpenseRates,
+  usnRate: number,
+  vatRate: number
+) {
+  if (!rates.hasRates) return result;
+
+  const shouldEstimateLogistics = result.totals.logisticsCost === 0;
+  const shouldEstimateStorage = result.totals.storageCost === 0;
+  const shouldEstimateAcceptance = result.totals.acceptanceCost === 0;
+  const shouldEstimatePenalties = result.totals.penaltiesAmount === 0;
+
+  if (
+    !shouldEstimateLogistics &&
+    !shouldEstimateStorage &&
+    !shouldEstimateAcceptance &&
+    !shouldEstimatePenalties
+  ) {
+    return result;
+  }
+
+  let estimatedLogisticsCost = 0;
+  let estimatedStorageCost = 0;
+  let estimatedAcceptanceCost = 0;
+  let estimatedPenaltiesAmount = 0;
+
+  for (const row of result.rows) {
+    const saleQtyBase = Math.max(0, row.salesQty);
+
+    if (shouldEstimateLogistics) {
+      row.logisticsCost = saleQtyBase * rates.logisticsPerSaleQty;
+      estimatedLogisticsCost += row.logisticsCost;
+    }
+
+    if (shouldEstimateStorage) {
+      row.storageCost = saleQtyBase * rates.storagePerSaleQty;
+      estimatedStorageCost += row.storageCost;
+    }
+
+    if (shouldEstimateAcceptance) {
+      row.acceptanceCost = saleQtyBase * rates.acceptancePerSaleQty;
+      estimatedAcceptanceCost += row.acceptanceCost;
+    }
+
+    if (shouldEstimatePenalties) {
+      row.penaltiesAmount = saleQtyBase * rates.penaltiesPerSaleQty;
+      estimatedPenaltiesAmount += row.penaltiesAmount;
+    }
+
+    recalculateProfitRow(row, usnRate, vatRate);
+  }
+
+  result.totals.dataMode = "PRELIMINARY";
+  result.totals.estimatedLogisticsCost = estimatedLogisticsCost;
+  result.totals.estimatedStorageCost = estimatedStorageCost;
+  result.totals.estimatedAcceptanceCost = estimatedAcceptanceCost;
+  result.totals.estimatedPenaltiesAmount = estimatedPenaltiesAmount;
+  result.totals = recalculateTotalsFromRows(result.rows, result.totals, usnRate, vatRate);
+
+  return result;
+}
+
 export async function getProfitAnalytics(params?: {
   dateFrom?: string | null;
   dateTo?: string | null;
@@ -1272,9 +1487,20 @@ export async function getProfitAnalytics(params?: {
     vatRate,
   });
 
+  const currentOperationalRates = currentFinanceExpenses.hasRows
+    ? null
+    : await findLatestWbOperationalExpenseRates({ companyName });
+
   const current = currentFinanceExpenses.hasRows
     ? applyWbFinanceExpenseTotals(currentBase, currentFinanceExpenses)
-    : currentBase;
+    : currentOperationalRates
+      ? applyEstimatedOperationalExpenses(
+          currentBase,
+          currentOperationalRates,
+          usnRate,
+          vatRate
+        )
+      : currentBase;
 
   const previousSalesRows = previousPeriod
     ? await findWbSaleRowsByPeriod({
@@ -1293,9 +1519,20 @@ export async function getProfitAnalytics(params?: {
     vatRate,
   });
 
+  const previousOperationalRates = previousFinanceExpenses.hasRows
+    ? null
+    : await findLatestWbOperationalExpenseRates({ companyName });
+
   const previous = previousFinanceExpenses.hasRows
     ? applyWbFinanceExpenseTotals(previousBase, previousFinanceExpenses)
-    : previousBase;
+    : previousOperationalRates
+      ? applyEstimatedOperationalExpenses(
+          previousBase,
+          previousOperationalRates,
+          usnRate,
+          vatRate
+        )
+      : previousBase;
 
   const comparison = {
     revenue: createComparison(current.totals.revenue, previous.totals.revenue),
