@@ -52,6 +52,33 @@ function toStringOrNull(value: unknown): string | null {
   return text ? text : null;
 }
 
+function firstNumber(...values: unknown[]): number | null {
+  for (const value of values) {
+    const number = toNumber(value);
+    if (number !== null) return number;
+  }
+
+  return null;
+}
+
+function firstString(...values: unknown[]): string | null {
+  for (const value of values) {
+    const text = toStringOrNull(value);
+    if (text) return text;
+  }
+
+  return null;
+}
+
+function firstDate(...values: unknown[]): Date | null {
+  for (const value of values) {
+    const date = toDate(value);
+    if (date) return date;
+  }
+
+  return null;
+}
+
 export async function normalizeWbFinance(
   rows: any[],
   importSessionId: string,
@@ -62,21 +89,26 @@ export async function normalizeWbFinance(
       importSessionId,
       companyName,
 
-      reportNumber: toStringOrNull(row["№ отчета"]),
+      reportNumber: firstString(
+        row["№ отчета"],
+        row["№ отчёта"],
+        row["Номер отчета"],
+        row["Номер отчёта"]
+      ),
       legalEntity: toStringOrNull(row["Юридическое лицо"]),
 
-      dateFrom: toDate(row["Дата начала"]),
-      dateTo: toDate(row["Дата конца"]),
-      reportTypeName: toStringOrNull(row["Тип отчета"]),
+      dateFrom: firstDate(row["Дата начала"], row["Дата начала отчета"], row["Дата начала отчёта"]),
+      dateTo: firstDate(row["Дата конца"], row["Дата окончания"], row["Дата конца отчета"], row["Дата конца отчёта"]),
+      reportTypeName: firstString(row["Тип отчета"], row["Тип отчёта"]),
 
-      salesAmount: toNumber(row["Продажа"]),
-      payoutAmount: toNumber(row["К перечислению за товар"]),
-      logisticsCost: toNumber(row["Стоимость логистики"]),
-      storageCost: toNumber(row["Стоимость хранения"]),
-      acceptanceCost: toNumber(row["Стоимость операций на приемке"]),
-      otherDeductions: toNumber(row["Прочие удержания/выплаты"]),
-      penaltiesAmount: toNumber(row["Общая сумма штрафов"]),
-      totalToPay: toNumber(row["Итого к оплате"]),
+      salesAmount: firstNumber(row["Продажа"], row["Сумма продаж"], row["Продажи"]),
+      payoutAmount: firstNumber(row["К перечислению за товар"], row["К перечислению продавцу"], row["К перечислению"]),
+      logisticsCost: firstNumber(row["Стоимость логистики"], row["Логистика"]),
+      storageCost: firstNumber(row["Стоимость хранения"], row["Хранение"]),
+      acceptanceCost: firstNumber(row["Стоимость операций на приемке"], row["Стоимость операций на приёмке"], row["Платная приемка"], row["Платная приёмка"]),
+      otherDeductions: firstNumber(row["Прочие удержания/выплаты"], row["Удержания"], row["Прочие удержания"]),
+      penaltiesAmount: firstNumber(row["Общая сумма штрафов"], row["Штрафы"], row["Штраф"]),
+      totalToPay: firstNumber(row["Итого к оплате"], row["Итого"]),
     }))
     .filter((row) => row.reportNumber || row.legalEntity);
 

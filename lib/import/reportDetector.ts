@@ -379,6 +379,49 @@ export function detectWorkbookReport(workbook: XLSX.WorkBook): DetectionResult {
       }
 
       if (
+        rowHasAny(row, ["№ отчета", "№ отчёта", "Номер отчета", "Номер отчёта"]) &&
+        rowHas(row, "Продажа") &&
+        rowHas(row, "К перечислению за товар") &&
+        rowHasAny(row, ["Стоимость логистики", "Логистика"])
+      ) {
+        return {
+          reportType: "WB_FINANCE",
+          sheetName,
+          headerRowIndex: rowIndex,
+          matchedColumns: [
+            "№ отчета / Номер отчета",
+            "Продажа",
+            "К перечислению за товар",
+            "Стоимость логистики",
+          ],
+        };
+      }
+
+      if (
+        rowHasAny(row, ["№ отчета", "№ отчёта", "Номер отчета", "Номер отчёта"]) &&
+        rowHas(row, "Тип документа") &&
+        rowHas(row, "Обоснование для оплаты") &&
+        rowHasAny(row, ["Артикул поставщика", "Артикул продавца"]) &&
+        rowHasAny(row, [
+          "К перечислению Продавцу за реализованный Товар",
+          "К перечислению продавцу за реализованный товар",
+        ])
+      ) {
+        return {
+          reportType: "WB_SALES",
+          sheetName,
+          headerRowIndex: rowIndex,
+          matchedColumns: [
+            "№ отчета / Номер отчета",
+            "Тип документа",
+            "Обоснование для оплаты",
+            "Артикул поставщика",
+            "К перечислению продавцу",
+          ],
+        };
+      }
+
+      if (
         normalize(sheetName).includes("справочник") &&
         rowHas(row, "Итого к оплате, руб")
       ) {

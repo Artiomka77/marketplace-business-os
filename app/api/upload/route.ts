@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
+import { inflateRawSync } from "zlib";
 import * as XLSX from "xlsx";
 
 import { detectWorkbookReport } from "@/lib/import/reportDetector";
@@ -19,6 +20,91 @@ import { normalizeOzonProduct } from "@/lib/import/normalizers/ozonProductNormal
 import { normalizeOzonSupplyRecommendation } from "@/lib/import/normalizers/ozonSupplyRecommendationNormalizer";
 import { normalizeOzonWarehouseStock } from "@/lib/import/normalizers/ozonWarehouseStockNormalizer";
 import { normalizeFinanceTransactions } from "@/lib/import/normalizers/financeTransactionNormalizer";
+
+
+function findEndOfCentralDirectory(buffer: Buffer) {
+  for (let offset = buffer.length - 22; offset >= Math.max(0, buffer.length - 65557); offset -= 1) {
+    if (buffer.readUInt32LE(offset) === 0x06054b50) {
+      return offset;
+    }
+  }
+
+  return -1;
+}
+
+function extractFirstXlsxFromOuterZip(buffer: Buffer) {
+  const eocdOffset = findEndOfCentralDirectory(buffer);
+
+  if (eocdOffset < 0) {
+    return null;
+  }
+
+  const totalEntries = buffer.readUInt16LE(eocdOffset + 10);
+  const centralDirectoryOffset = buffer.readUInt32LE(eocdOffset + 16);
+  let offset = centralDirectoryOffset;
+
+  for (let index = 0; index < totalEntries; index += 1) {
+    if (offset + 46 > buffer.length || buffer.readUInt32LE(offset) !== 0x02014b50) {
+      break;
+    }
+
+    const compressionMethod = buffer.readUInt16LE(offset + 10);
+    const compressedSize = buffer.readUInt32LE(offset + 20);
+    const fileNameLength = buffer.readUInt16LE(offset + 28);
+    const extraLength = buffer.readUInt16LE(offset + 30);
+    const commentLength = buffer.readUInt16LE(offset + 32);
+    const localHeaderOffset = buffer.readUInt32LE(offset + 42);
+    const fileName = buffer
+      .subarray(offset + 46, offset + 46 + fileNameLength)
+      .toString("utf8");
+
+    offset += 46 + fileNameLength + extraLength + commentLength;
+
+    if (!fileName.toLowerCase().endsWith(".xlsx")) {
+      continue;
+    }
+
+    if (
+      localHeaderOffset + 30 > buffer.length ||
+      buffer.readUInt32LE(localHeaderOffset) !== 0x04034b50
+    ) {
+      continue;
+    }
+
+    const localFileNameLength = buffer.readUInt16LE(localHeaderOffset + 26);
+    const localExtraLength = buffer.readUInt16LE(localHeaderOffset + 28);
+    const dataOffset = localHeaderOffset + 30 + localFileNameLength + localExtraLength;
+    const compressed = buffer.subarray(dataOffset, dataOffset + compressedSize);
+
+    if (compressionMethod === 0) {
+      return compressed;
+    }
+
+    if (compressionMethod === 8) {
+      return inflateRawSync(compressed);
+    }
+
+    throw new Error(`ZIP содержит .xlsx с неподдерживаемым методом сжатия: ${compressionMethod}`);
+  }
+
+  return null;
+}
+
+function prepareWorkbookBuffer(buffer: Buffer, fileName: string) {
+  const lowerFileName = fileName.toLowerCase();
+
+  if (!lowerFileName.endsWith(".zip")) {
+    return buffer;
+  }
+
+  const extracted = extractFirstXlsxFromOuterZip(buffer);
+
+  if (!extracted) {
+    throw new Error("В ZIP-архиве не найден .xlsx-файл отчёта");
+  }
+
+  return Buffer.from(extracted);
+}
 
 function parseWbAdsPeriodFromFileName(fileName: string) {
   const matches = Array.from(fileName.matchAll(/(\d{4}-\d{2}-\d{2})T/g));
@@ -108,7 +194,9 @@ export async function POST(req: Request) {
     const bytes = await file.arrayBuffer();
     const buffer = Buffer.from(bytes);
 
-    const workbook = XLSX.read(buffer, {
+    const workbookBuffer = prepareWorkbookBuffer(buffer, file.name);
+
+    const workbook = XLSX.read(workbookBuffer, {
       type: "buffer",
       cellDates: false,
     });

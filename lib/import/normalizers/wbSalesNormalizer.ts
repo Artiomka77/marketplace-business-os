@@ -60,6 +60,15 @@ function firstNumber(...values: unknown[]): number | null {
   return null;
 }
 
+function firstString(...values: unknown[]): string | null {
+  for (const value of values) {
+    const text = toStringOrNull(value);
+    if (text) return text;
+  }
+
+  return null;
+}
+
 function calculateSppAmount(
   retailPriceWithDiscount: number | null,
   wbRealizedAmount: number | null
@@ -90,12 +99,19 @@ export async function normalizeWbSales(
 
     const wbRealizedAmount = firstNumber(
       row["Вайлдберриз реализовал Товар (Пр)"],
+      row["Вайлдберриз реализовал товар"],
       row["Wildberries реализовал товар"],
-      row["WB реализовал товар"]
+      row["WB реализовал товар"],
+      row["WB реализовал Товар"],
+      row["Сумма продаж"]
     );
 
     const wbReward = firstNumber(
-      row["Вознаграждение Вайлдберриз (ВВ), без НДС"]
+      row["Вознаграждение Вайлдберриз (ВВ), без НДС"],
+      row["Вознаграждение Вайлдберриз без НДС"],
+      row["Вознаграждение WB без НДС"],
+      row["Вознаграждение Вайлдберриз (ВВ)"],
+      row["Комиссия"]
     );
 
     const wbRewardVat = firstNumber(
@@ -114,8 +130,17 @@ export async function normalizeWbSales(
       importSessionId,
       companyName,
 
-      reportNumber: toStringOrNull(row["Номер отчета"]),
-      supplyNumber: toStringOrNull(row["Номер поставки"]),
+      reportNumber: firstString(
+        row["Номер отчета"],
+        row["Номер отчёта"],
+        row["№ отчета"],
+        row["№ отчёта"]
+      ),
+      supplyNumber: firstString(
+        row["Номер поставки"],
+        row["№ поставки"],
+        row["Номер поставки WB"]
+      ),
 
       brand: toStringOrNull(row["Бренд"]),
       subject: toStringOrNull(row["Предмет"]),
@@ -148,7 +173,12 @@ export async function normalizeWbSales(
       wbRealizedAmount,
 
       // К перечислению продавцу за реализованный товар.
-      sellerPayout: firstNumber(row["К перечислению Продавцу за реализованный Товар"]),
+      sellerPayout: firstNumber(
+        row["К перечислению Продавцу за реализованный Товар"],
+        row["К перечислению продавцу за реализованный товар"],
+        row["К перечислению продавцу"],
+        row["К перечислению за товар"]
+      ),
 
       sppDiscountAmount: calculateSppAmount(
         retailPriceWithDiscount,
@@ -173,15 +203,25 @@ export async function normalizeWbSales(
       deliveriesCount: toInt(row["Количество доставок"]),
       returnsCount: toInt(row["Количество возврата"]),
 
-      logisticsCost: firstNumber(row["Услуги по доставке товара покупателю"]),
-      storageCost: firstNumber(row["Хранение"]),
+      logisticsCost: firstNumber(
+        row["Услуги по доставке товара покупателю"],
+        row["Стоимость логистики"],
+        row["Доставка"],
+        row["Логистика"]
+      ),
+      storageCost: firstNumber(row["Хранение"], row["Стоимость хранения"]),
       acceptanceCost:
-        firstNumber(row["Платная приемка"]) ?? firstNumber(row["Операции на приемке"]),
+        firstNumber(row["Платная приемка"], row["Платная приёмка"]) ??
+        firstNumber(row["Операции на приемке"], row["Операции на приёмке"], row["Стоимость операций на приемке"]),
       deductions: firstNumber(row["Удержания"]),
       deductionReason: toStringOrNull(
         row["Виды логистики, штрафов и корректировок ВВ"]
       ),
-      penaltiesAmount: firstNumber(row["Общая сумма штрафов"]),
+      penaltiesAmount: firstNumber(
+        row["Общая сумма штрафов"],
+        row["Штрафы"],
+        row["Штраф"]
+      ),
 
       paymentServiceCost: firstNumber(
         row["Компенсация платёжных услуг/Комиссия за интеграцию платёжных сервисов"],
