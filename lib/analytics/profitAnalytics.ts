@@ -66,6 +66,12 @@ function calculateVatTax(revenue: number, vatRate: number) {
   return revenue * (vatRate / (100 + vatRate));
 }
 
+function getWbShareBase(sellerRetailAmount: number, revenue: number) {
+  // База для управленческих долей WB — экономический оборот: цена продавца до СПП.
+  // Если по старым данным цена продавца недоступна, используем налоговую выручку как fallback.
+  return sellerRetailAmount > 0 ? sellerRetailAmount : revenue;
+}
+
 const WB_COMMISSION_VAT_RATE_FALLBACK = 0.22;
 
 function calculateWbCommissionVatFallback(
@@ -679,14 +685,31 @@ function calculateRowsAndTotals({
         ? wbCommissionTotalRaw
         : wbCommissionBeforeVat + wbCommissionVat;
 
-    // Оперативная WB Daily Sales-загрузка не содержит отдельную комиссию WB.
-    // Но в ней есть «WB реализовал» и «к перечислению продавцу».
-    // Чтобы на /profit-wb не показывать ложный 0 по комиссии за текущие дни,
-    // восстанавливаем комиссию как разницу между реализацией и выплатой.
-    if (wbCommissionTotal === 0 && realizedAmount !== 0 && sellerPayout !== 0) {
-      wbCommissionTotal = Math.max(0, Math.abs(realizedAmount) - Math.abs(sellerPayout));
-      wbCommissionBeforeVat = wbCommissionTotal;
-      wbCommissionVat = 0;
+    // Управленческая комиссия WB должна совпадать с логикой внешней аналитики:
+    // «выручка/налоговая база WB» − «к перечислению продавцу».
+    //
+    // В детализированных ежедневных/еженедельных отчетах WB есть отдельные поля
+    // «Вознаграждение Вайлдберриз», «НДС с вознаграждения», «комиссия за
+    // платежные сервисы» и компенсации. Но они не являются готовым управленческим
+    // показателем «Комиссия» из P&L. Например, по отчету 07.07 поле
+    // «Вознаграждение WB» может быть отрицательным/компенсационным, тогда как
+    // управленческая комиссия равна мосту от выручки к выплате продавцу.
+    //
+    // Поэтому для P&L и SKU-аналитики берем комиссию из официальных строк отчета
+    // как точную разницу официальных полей, а не как оценку:
+    //   revenue / tax base − seller payout.
+    // Если явная комиссия уже была положительной и мост недоступен — оставляем ее.
+    if (realizedAmount !== 0 && sellerPayout !== 0) {
+      const wbCommissionByOfficialFields = Math.max(
+        0,
+        Math.abs(realizedAmount) - Math.abs(sellerPayout)
+      );
+
+      if (wbCommissionByOfficialFields > 0) {
+        wbCommissionTotal = wbCommissionByOfficialFields;
+        wbCommissionBeforeVat = wbCommissionByOfficialFields;
+        wbCommissionVat = 0;
+      }
     }
 
     if (isSaleOperation(paymentReason)) {
@@ -765,11 +788,16 @@ function calculateRowsAndTotals({
       current.deductions -
       current.adsCost;
 
+    const currentShareBase = getWbShareBase(
+      current.sellerRetailAmount,
+      current.revenue
+    );
+
     current.marginProfitPercent =
-      current.revenue > 0 ? (current.marginProfit / current.revenue) * 100 : 0;
+      currentShareBase > 0 ? (current.marginProfit / currentShareBase) * 100 : 0;
 
     current.drrPercent =
-      current.revenue > 0 ? (current.adsCost / current.revenue) * 100 : 0;
+      currentShareBase > 0 ? (current.adsCost / currentShareBase) * 100 : 0;
 
     const usnTax = current.revenue > 0 ? current.revenue * (usnRate / 100) : 0;
     const vatTax =
@@ -779,8 +807,8 @@ function calculateRowsAndTotals({
     current.netProfitAfterTax = current.marginProfit - current.taxesAmount;
 
     current.marginAfterTaxPercent =
-      current.revenue > 0
-        ? (current.netProfitAfterTax / current.revenue) * 100
+      currentShareBase > 0
+        ? (current.netProfitAfterTax / currentShareBase) * 100
         : 0;
 
     grouped.set(vendorCodeKey, current);
@@ -855,16 +883,21 @@ function calculateRowsAndTotals({
     totals.netProfitAfterTax -= adsDifference;
   }
 
+  const totalsShareBase = getWbShareBase(
+    totals.sellerRetailAmount,
+    totals.revenue
+  );
+
   totals.marginProfitPercent =
-    totals.revenue > 0 ? (totals.marginProfit / totals.revenue) * 100 : 0;
+    totalsShareBase > 0 ? (totals.marginProfit / totalsShareBase) * 100 : 0;
 
   totals.marginAfterTaxPercent =
-    totals.revenue > 0
-      ? (totals.netProfitAfterTax / totals.revenue) * 100
+    totalsShareBase > 0
+      ? (totals.netProfitAfterTax / totalsShareBase) * 100
       : 0;
 
   totals.drrPercent =
-    totals.revenue > 0 ? (totals.adsCost / totals.revenue) * 100 : 0;
+    totalsShareBase > 0 ? (totals.adsCost / totalsShareBase) * 100 : 0;
 
   return {
     rows,
@@ -1146,20 +1179,34 @@ function applyWbFinanceExpenseTotals(
   },
   financeExpenses: WbFinanceExpenseTotals
 ) {
-  result.totals.revenue = financeExpenses.revenue;
+  // ВАЖНО: WbFinance.salesAmount НЕ заменяет управленческую выручку.
+  // Для WB в управленческой аналитике выручка/налоговая база — это
+  // «WB реализовал товар» из ежедневного детализированного отчёта или WB Sales
+  // после СПП площадки. Поле «Продажа» в ежедневном финансовом отчёте WB
+  // используется как служебная сумма самого отчёта и не должно занижать
+  // выручку на /profit-wb и в Telegram.
+  const managementRevenue = result.totals.revenue;
+
   result.totals.sellerPayout = financeExpenses.sellerPayout;
   result.totals.logisticsCost = financeExpenses.logisticsCost;
   result.totals.storageCost = financeExpenses.storageCost;
   result.totals.acceptanceCost = financeExpenses.acceptanceCost;
   result.totals.penaltiesAmount = financeExpenses.penaltiesAmount;
 
-  // Важно: WbFinance.otherDeductions НЕ подставляем целиком в прибыль.
-  // В этой сумме могут быть WB Продвижение и WB-кредит, которые нельзя задваивать.
-  // Операционные удержания берём из WbSale после классификации deductionReason.
+  // Комиссию/компенсацию WB показываем как мост:
+  // «WB реализовал» − «к перечислению продавцу».
+  // Эту сумму НЕ вычитаем второй раз из прибыли, потому что прибыль считается
+  // уже от официальной суммы к перечислению WB.
+  if (managementRevenue !== 0 || result.totals.sellerPayout !== 0) {
+    const wbCommissionBridge = managementRevenue - result.totals.sellerPayout;
+    result.totals.wbCommission = wbCommissionBridge;
+    result.totals.wbCommissionBeforeVat = wbCommissionBridge;
+    result.totals.wbCommissionVat = 0;
+  }
 
   if (result.totals.sellerRetailAmount > 0) {
     result.totals.sppDiscountAmount =
-      result.totals.sellerRetailAmount - result.totals.revenue;
+      result.totals.sellerRetailAmount - managementRevenue;
   }
 
   if (result.totals.wbAdsDeduction > 0) {
@@ -1177,27 +1224,32 @@ function applyWbFinanceExpenseTotals(
     result.totals.adsCost;
 
   result.totals.taxesAmount =
-    result.totals.revenue > 0
-      ? result.totals.revenue * (result.totals.usnRate / 100) +
-        calculateVatTax(result.totals.revenue, result.totals.vatRate)
+    managementRevenue > 0
+      ? managementRevenue * (result.totals.usnRate / 100) +
+        calculateVatTax(managementRevenue, result.totals.vatRate)
       : 0;
 
   result.totals.netProfitAfterTax =
     result.totals.marginProfit - result.totals.taxesAmount;
 
+  const shareBase = getWbShareBase(
+    result.totals.sellerRetailAmount,
+    managementRevenue
+  );
+
   result.totals.marginProfitPercent =
-    result.totals.revenue > 0
-      ? (result.totals.marginProfit / result.totals.revenue) * 100
+    shareBase > 0
+      ? (result.totals.marginProfit / shareBase) * 100
       : 0;
 
   result.totals.marginAfterTaxPercent =
-    result.totals.revenue > 0
-      ? (result.totals.netProfitAfterTax / result.totals.revenue) * 100
+    shareBase > 0
+      ? (result.totals.netProfitAfterTax / shareBase) * 100
       : 0;
 
   result.totals.drrPercent =
-    result.totals.revenue > 0
-      ? (result.totals.adsCost / result.totals.revenue) * 100
+    shareBase > 0
+      ? (result.totals.adsCost / shareBase) * 100
       : 0;
 
   return result;
@@ -1222,8 +1274,10 @@ function recalculateProfitRow(row: ProfitAnalyticsRow, usnRate: number, vatRate:
     row.deductions -
     row.adsCost;
 
-  row.marginProfitPercent = row.revenue > 0 ? (row.marginProfit / row.revenue) * 100 : 0;
-  row.drrPercent = row.revenue > 0 ? (row.adsCost / row.revenue) * 100 : 0;
+  const rowShareBase = getWbShareBase(row.sellerRetailAmount, row.revenue);
+
+  row.marginProfitPercent = rowShareBase > 0 ? (row.marginProfit / rowShareBase) * 100 : 0;
+  row.drrPercent = rowShareBase > 0 ? (row.adsCost / rowShareBase) * 100 : 0;
 
   const usnTax = row.revenue > 0 ? row.revenue * (usnRate / 100) : 0;
   const vatTax = row.revenue > 0 ? calculateVatTax(row.revenue, vatRate) : 0;
@@ -1231,7 +1285,7 @@ function recalculateProfitRow(row: ProfitAnalyticsRow, usnRate: number, vatRate:
   row.taxesAmount = usnTax + vatTax;
   row.netProfitAfterTax = row.marginProfit - row.taxesAmount;
   row.marginAfterTaxPercent =
-    row.revenue > 0 ? (row.netProfitAfterTax / row.revenue) * 100 : 0;
+    rowShareBase > 0 ? (row.netProfitAfterTax / rowShareBase) * 100 : 0;
 }
 
 function recalculateTotalsFromRows(
@@ -1281,10 +1335,12 @@ function recalculateTotalsFromRows(
   totals.estimatedAcceptanceCost = previousTotals.estimatedAcceptanceCost ?? 0;
   totals.estimatedPenaltiesAmount = previousTotals.estimatedPenaltiesAmount ?? 0;
 
-  totals.marginProfitPercent = totals.revenue > 0 ? (totals.marginProfit / totals.revenue) * 100 : 0;
+  const totalsShareBase = getWbShareBase(totals.sellerRetailAmount, totals.revenue);
+
+  totals.marginProfitPercent = totalsShareBase > 0 ? (totals.marginProfit / totalsShareBase) * 100 : 0;
   totals.marginAfterTaxPercent =
-    totals.revenue > 0 ? (totals.netProfitAfterTax / totals.revenue) * 100 : 0;
-  totals.drrPercent = totals.revenue > 0 ? (totals.adsCost / totals.revenue) * 100 : 0;
+    totalsShareBase > 0 ? (totals.netProfitAfterTax / totalsShareBase) * 100 : 0;
+  totals.drrPercent = totalsShareBase > 0 ? (totals.adsCost / totalsShareBase) * 100 : 0;
 
   return totals;
 }

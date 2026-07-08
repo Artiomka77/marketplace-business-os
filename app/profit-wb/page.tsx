@@ -980,10 +980,12 @@ function describeDonutArc(
 
 function ExpenseDonut({
   rows,
-  revenue,
+  shareBase,
+  baseLabel = "экон. оборота",
 }: {
   rows: { label: string; value: number; colorHex: string }[];
-  revenue: number;
+  shareBase: number;
+  baseLabel?: string;
 }) {
   const positiveRows = rows.filter((row) => row.value > 0);
   const positiveTotal = positiveRows.reduce((sum, row) => sum + row.value, 0);
@@ -1025,8 +1027,8 @@ function ExpenseDonut({
           >
             <title>
               {`${segment.label}: ${formatMoney(segment.value)} · ${formatPercent(
-                revenue > 0 ? (segment.value / revenue) * 100 : 0
-              )} от выручки`}
+                shareBase > 0 ? (segment.value / shareBase) * 100 : 0
+              )} от ${baseLabel}`}
             </title>
           </path>
         ))}
@@ -1037,10 +1039,10 @@ function ExpenseDonut({
       <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
         <div className="text-center">
           <div className="text-2xl font-black text-slate-950">
-            {formatCompactMoney(revenue)}
+            {formatCompactMoney(shareBase)}
           </div>
           <div className="mt-1 text-xs font-black uppercase tracking-[0.12em] text-slate-400">
-            Выручка
+            Экон. оборот
           </div>
         </div>
       </div>
@@ -1058,11 +1060,11 @@ function TableHeader() {
       </div>
       <div className="flex items-center gap-1">
         Расходы
-        <InfoTooltip text="Расходы — управленческие расходы по артикулу: себестоимость, логистика, хранение и приёмка, штрафы/прочие удержания, реклама и налоги. Комиссия/компенсация WB и СПП показываются отдельно, потому что они уже учтены внутри суммы к перечислению продавцу." />
+        <InfoTooltip text="Расходы — структура экономики WB. Доли считаются от экономического оборота: цены продавца до СПП WB. Комиссия/разница до перечисления показывается как мост и не задваивается в прибыли." />
       </div>
       <div className="flex items-center gap-1">
         Прибыль
-        <InfoTooltip text="Прибыль — прибыль после налогов: к перечислению продавцу минус себестоимость, логистика, хранение, приёмка, штрафы/удержания, реклама и налоги. Налог считается с суммы ‘WB реализовал товар’." />
+        <InfoTooltip text="Прибыль — прибыль после налогов без задвоения комиссии. Расчёт идёт от суммы к перечислению/итого к оплате WB, а доля прибыли считается от экономического оборота." />
       </div>
       <div className="flex items-center gap-1">
         Процент выкупа
@@ -1070,7 +1072,7 @@ function TableHeader() {
       </div>
       <div className="flex items-center gap-1">
         Маржинальность
-        <InfoTooltip text="Маржинальность — прибыль после налогов / выручка артикула × 100% за выбранный период. Шкала помогает быстро увидеть качество маржи." />
+        <InfoTooltip text="Маржинальность — прибыль после налогов / экономический оборот × 100% за выбранный период. Для старых строк без цены продавца используется выручка как fallback." />
       </div>
     </div>
   );
@@ -1113,7 +1115,7 @@ function SizeRow({
       <div className="flex items-start gap-2">
         <MoneyWithShare
           value={row.netProfitAfterTax}
-          share={formatShare(row.netProfitAfterTax, row.revenue)}
+          share={formatShare(row.netProfitAfterTax, row.sellerRetailAmount || row.revenue, "от экон. оборота")}
           valueClassName={profitTextColor(row.netProfitAfterTax)}
         />
         <AbcBadge value={row.abcByProfit} />
@@ -1183,13 +1185,13 @@ function ProductRow({
 
         <MoneyWithShare
           value={expenses}
-          share={formatShare(expenses, row.revenue)}
+          share={formatShare(expenses, row.sellerRetailAmount || row.revenue, "от экон. оборота")}
         />
 
         <div className="flex items-start gap-2">
           <MoneyWithShare
             value={row.netProfitAfterTax}
-            share={formatShare(row.netProfitAfterTax, row.revenue)}
+            share={formatShare(row.netProfitAfterTax, row.sellerRetailAmount || row.revenue, "от экон. оборота")}
             valueClassName={profitTextColor(row.netProfitAfterTax)}
           />
           <AbcBadge value={row.abcByProfit} />
@@ -1397,6 +1399,22 @@ export default async function ProfitPage({
 
   const storageAndAcceptance = totals.storageCost + totals.acceptanceCost;
   const penaltiesAndDeductions = totals.penaltiesAmount + totals.deductions;
+  const economicTurnover = totals.sellerRetailAmount > 0 ? totals.sellerRetailAmount : totals.revenue;
+  const taxableRevenueShare =
+    economicTurnover > 0 ? (totals.revenue / economicTurnover) * 100 : 0;
+  const wbSettlementAmount =
+    totals.sellerPayout -
+    totals.logisticsCost -
+    storageAndAcceptance -
+    totals.penaltiesAmount -
+    totals.deductions;
+  const wbExpensesWithoutAds =
+    Math.max(0, totals.wbCommission) +
+    totals.logisticsCost +
+    storageAndAcceptance +
+    penaltiesAndDeductions;
+  const wbExpensesWithAds = wbExpensesWithoutAds + totals.adsCost;
+  const totalExpensesAfterTax = totals.revenue - totals.netProfitAfterTax;
   const excludedWbDeductions =
     totals.wbCreditDeduction + totals.wbUnknownDeduction;
   const wbInternalServices =
@@ -1561,11 +1579,10 @@ export default async function ProfitPage({
           <section className="rounded-[28px] border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-900 shadow-sm">
             <div className="font-black">Финансовый результат WB предварительный</div>
             <div className="mt-1 leading-6">
-              Продажи, выкупы и реклама загружены оперативно. Комиссия WB
-              восстановлена по разнице между реализацией и выплатой, а
-              логистика/хранение/штрафы рассчитаны оценочно по последнему
-              доступному детальному отчёту WB. После появления финального
-              отчёта WB система заменит оценку официальными расходами.
+              Продажи, выкупы и реклама загружены оперативно. Если ежедневный
+              финансовый отчёт WB уже есть, логистика/хранение/штрафы берутся
+              из него. Если отчёта ещё нет, прибыль считается предварительной
+              и не должна использоваться как финальный финансовый результат.
             </div>
           </section>
         ) : null}
@@ -1574,7 +1591,7 @@ export default async function ProfitPage({
           <KpiCard
             title="Выручка"
             value={formatMoney(totals.revenue)}
-            helper="к пред. периоду"
+            helper={`${formatPercent(taxableRevenueShare)} от экон. оборота`}
             delta={comparison.revenue.diffPercent}
             sparkTone="indigo"
             sparkPoints={[10, 12, 18, 14, 14, 21, 19, 28]}
@@ -1583,7 +1600,7 @@ export default async function ProfitPage({
           <KpiCard
             title="Марж. прибыль"
             value={formatMoney(totals.marginProfit)}
-            helper={`${formatPercent(totals.marginProfitPercent)} от выручки`}
+            helper={`${formatPercent(totals.marginProfitPercent)} от экон. оборота`}
             delta={comparison.marginProfit.diffPercent}
             sparkTone="emerald"
             sparkPoints={[8, 12, 10, 13, 21, 19, 28, 22]}
@@ -1592,7 +1609,7 @@ export default async function ProfitPage({
           <KpiCard
             title="Прибыль после налогов"
             value={formatMoney(totals.netProfitAfterTax)}
-            helper={`${formatPercent(totals.marginAfterTaxPercent)} от выручки`}
+            helper={`${formatPercent(totals.marginAfterTaxPercent)} от экон. оборота`}
             delta={comparison.netProfitAfterTax.diffPercent}
             sparkTone="emerald"
             sparkPoints={[7, 9, 15, 13, 18, 17, 24, 16]}
@@ -1601,7 +1618,7 @@ export default async function ProfitPage({
           <KpiCard
             title="Реклама (ДРР)"
             value={formatMoney(totals.adsCost)}
-            helper={`${formatPercent(totals.drrPercent)} от выручки`}
+            helper={`${formatPercent(totals.drrPercent)} от экон. оборота`}
             delta={comparison.adsCost.diffPercent}
             inverseDelta
             sparkTone="orange"
@@ -1611,7 +1628,7 @@ export default async function ProfitPage({
           <KpiCard
             title="Себестоимость"
             value={formatMoney(totals.totalCost)}
-            helper={`${formatShare(totals.totalCost, totals.revenue)}`}
+            helper={`${formatShare(totals.totalCost, economicTurnover, "от экон. оборота")}`}
             delta={comparison.totalCost.diffPercent}
             inverseDelta
             sparkTone="red"
@@ -1621,42 +1638,75 @@ export default async function ProfitPage({
           <KpiCard
             title="К перечислению WB"
             value={formatMoney(totals.sellerPayout)}
-            helper={`${formatShare(totals.sellerPayout, totals.revenue)}`}
+            helper={`${formatShare(totals.sellerPayout, economicTurnover, "от экон. оборота")}`}
             delta={comparison.sellerPayout.diffPercent}
             sparkTone="emerald"
             sparkPoints={[8, 10, 9, 15, 14, 18, 23, 21]}
           />
         </section>
 
-        <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+        <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-6">
           <PriceBridgeCard
-            title="Цена продавца"
-            value={totals.sellerRetailAmount}
-            helper="Цена розничная с учётом согласованной скидки, до СПП WB."
+            title="Экономический оборот"
+            value={economicTurnover}
+            helper="Цена продавца до СПП WB. Это 100% база для всех долей на странице."
             tone="violet"
           />
           <PriceBridgeCard
-            title="WB реализовал"
+            title="Налоговая выручка"
             value={totals.revenue}
-            helper="Фактическая продажа покупателю после СПП. С этой суммы считаем налог и ДРР."
+            helper={`${formatPercent(taxableRevenueShare)} от экономического оборота. Цена после СПП WB; с этой суммы считаем налог.`}
             tone="emerald"
           />
           <PriceBridgeCard
             title="СПП WB"
             value={totals.sppDiscountAmount}
-            helper={`${formatShare(totals.sppDiscountAmount, totals.sellerRetailAmount, "от цены продавца")}. Скидка площадки покупателю.`}
+            helper={`${formatShare(totals.sppDiscountAmount, economicTurnover, "от экон. оборота")}. Скидка площадки покупателю за счёт WB.`}
             tone="orange"
           />
           <PriceBridgeCard
-            title="Комиссия / компенсация"
+            title="К перечислению за товар"
+            value={totals.sellerPayout}
+            helper={`${formatShare(totals.sellerPayout, economicTurnover, "от экон. оборота")}. Сумма после разницы до перечисления WB.`}
+            tone="emerald"
+          />
+          <PriceBridgeCard
+            title="Разница до перечисления WB"
             value={totals.wbCommission}
-            helper={`Без НДС: ${formatMoney(totals.wbCommissionBeforeVat)} · НДС: ${formatMoney(totals.wbCommissionVat)}. Отрицательное значение — компенсация WB.`}
+            helper={`${formatShare(totals.wbCommission, economicTurnover, "от экон. оборота")}. Мост от налоговой выручки к перечислению; повторно не вычитается.`}
             tone={totals.wbCommission < 0 ? "emerald" : "red"}
+          />
+          <PriceBridgeCard
+            title="Итого к оплате WB"
+            value={wbSettlementAmount}
+            helper={`${formatShare(wbSettlementAmount, economicTurnover, "от экон. оборота")}. После логистики, хранения, штрафов и удержаний WB.`}
+            tone="slate"
+          />
+        </section>
+
+        <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <PriceBridgeCard
+            title="Расходы WB без рекламы"
+            value={wbExpensesWithoutAds}
+            helper={`${formatShare(wbExpensesWithoutAds, economicTurnover, "от экон. оборота")}. Разница до перечисления + логистика + хранение + штрафы/удержания.`}
+            tone="red"
+          />
+          <PriceBridgeCard
+            title="Расходы WB с рекламой"
+            value={wbExpensesWithAds}
+            helper={`${formatShare(wbExpensesWithAds, economicTurnover, "от экон. оборота")}. Показывает, сколько денег ушло в WB вместе с рекламой.`}
+            tone="red"
+          />
+          <PriceBridgeCard
+            title="Все расходы P&L"
+            value={totalExpensesAfterTax}
+            helper={`${formatShare(totalExpensesAfterTax, economicTurnover, "от экон. оборота")}. Расходы после СПП без задвоения комиссии.`}
+            tone="orange"
           />
           <PriceBridgeCard
             title="Платёжные / ПВЗ"
             value={wbInternalServices}
-            helper="Расшифровка внутри выплаты WB: платёжные сервисы, ПВЗ, перевозка и лояльность. В прибыль второй раз не вычитается."
+            helper="Справочная расшифровка внутри выплаты WB. В прибыль второй раз не вычитается."
             tone="slate"
           />
         </section>
@@ -1680,7 +1730,7 @@ export default async function ProfitPage({
 
             <div className="mt-5 grid gap-6 lg:grid-cols-[300px_minmax(0,1fr)] lg:items-center">
               <div className="flex justify-center">
-                <ExpenseDonut rows={structureRows} revenue={totals.revenue} />
+                <ExpenseDonut rows={structureRows} shareBase={economicTurnover} />
               </div>
 
               <div className="space-y-3">
@@ -1689,7 +1739,7 @@ export default async function ProfitPage({
                     key={row.label}
                     label={row.label}
                     value={row.value}
-                    share={totals.revenue > 0 ? (row.value / totals.revenue) * 100 : 0}
+                    share={economicTurnover > 0 ? (row.value / economicTurnover) * 100 : 0}
                     colorHex={row.colorHex}
                   />
                 ))}
