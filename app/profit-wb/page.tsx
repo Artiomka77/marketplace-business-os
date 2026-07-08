@@ -44,6 +44,7 @@ type SizeBreakdownRow = {
   size: string;
   barcode: string;
   revenue: number;
+  sellerRetailAmount: number;
   netSalesQty: number;
   salesQty: number;
   returnsQty: number;
@@ -652,6 +653,7 @@ async function buildProductMetaAndSizeRows(params: {
             : 1 / Math.max(1, rawSizes.length);
 
       const allocatedRevenue = row.revenue * share;
+      const allocatedSellerRetailAmount = row.sellerRetailAmount * share;
       const allocatedExpenses = expenses * share;
       const allocatedProfit = row.netProfitAfterTax * share;
       const denominator = size.salesQty + size.returnsQty;
@@ -662,6 +664,7 @@ async function buildProductMetaAndSizeRows(params: {
         size: size.size,
         barcode: size.barcode,
         revenue: allocatedRevenue,
+        sellerRetailAmount: allocatedSellerRetailAmount,
         netSalesQty: size.netSalesQty,
         salesQty: size.salesQty,
         returnsQty: size.returnsQty,
@@ -669,7 +672,11 @@ async function buildProductMetaAndSizeRows(params: {
         netProfitAfterTax: allocatedProfit,
         buyoutPercent,
         marginAfterTaxPercent:
-          allocatedRevenue > 0 ? (allocatedProfit / allocatedRevenue) * 100 : 0,
+          allocatedSellerRetailAmount > 0
+            ? (allocatedProfit / allocatedSellerRetailAmount) * 100
+            : allocatedRevenue > 0
+              ? (allocatedProfit / allocatedRevenue) * 100
+              : 0,
         abcByRevenue: abcByRevenue.get(size) ?? "C",
         abcByProfit: abcByProfit.get(item) ?? "C",
       };
@@ -1109,7 +1116,7 @@ function SizeRow({
 
       <MoneyWithShare
         value={row.expenses}
-        share={formatShare(row.expenses, row.revenue)}
+        share={formatShare(row.expenses, row.sellerRetailAmount || row.revenue, "от экон. оборота")}
       />
 
       <div className="flex items-start gap-2">
