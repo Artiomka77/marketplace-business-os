@@ -56,6 +56,15 @@ function isSaleOperation(reason: unknown) {
   return value === "продажа" || value === "сторно возвратов";
 }
 
+function isReturnOperation(reason: unknown) {
+  const value = normalizeText(reason);
+
+  if (!value) return false;
+  if (value === "сторно возвратов") return false;
+
+  return value === "возврат" || value.includes("возврат");
+}
+
 function clampRate(value: unknown, allowedRates: number[], fallback: number) {
   const rate = toNumber(value);
   return allowedRates.includes(rate) ? rate : fallback;
@@ -726,7 +735,7 @@ function calculateRowsAndTotals({
       current.totalCost += current.costPrice * quantity;
     }
 
-    if (paymentReason === "возврат") {
+    if (isReturnOperation(paymentReason)) {
       current.returnsQty += quantity;
       current.netSalesQty -= quantity;
 
