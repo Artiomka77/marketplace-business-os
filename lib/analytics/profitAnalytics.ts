@@ -51,7 +51,7 @@ function getMoscowDateKey(value: unknown) {
     .slice(0, 10);
 }
 
-function isSaleOperation(reason: string) {
+function isSaleOperation(reason: unknown) {
   const value = normalizeText(reason);
   return value === "продажа" || value === "сторно возвратов";
 }
