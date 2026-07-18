@@ -13,6 +13,10 @@
       "schedule": "20 3 * * *"
     },
     {
+      "path": "/api/cron/daily-data-completeness-retry",
+      "schedule": "10 5-23 * * *"
+    },
+    {
       "path": "/api/cron/priority-wb-ads",
       "schedule": "30,42 3 * * *"
     },
@@ -24,10 +28,7 @@
       "path": "/api/cron/sync-marketplace-orders",
       "schedule": "45 3 * * *"
     },
-    {
-      "path": "/api/telegram/daily-report",
-      "schedule": "20 4 * * *"
-    },
+
     {
       "path": "/api/cron/historical-sync",
       "schedule": "*/30 * * * *"
