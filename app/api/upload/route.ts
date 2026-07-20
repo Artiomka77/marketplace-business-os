@@ -14,6 +14,11 @@ import { normalizeWbSupplyRecommendation } from "@/lib/import/normalizers/wbSupp
 import { normalizeProductCost } from "@/lib/import/normalizers/productCostNormalizer";
 
 import { normalizeOzonFinance } from "@/lib/import/normalizers/ozonFinanceNormalizer";
+import {
+  isOzonAccrualEconomicsReport,
+  normalizeOzonAccrualEconomics,
+  type OzonAccrualEconomicsImportResult,
+} from "@/lib/import/normalizers/ozonAccrualEconomicsNormalizer";
 import { normalizeOzonAds } from "@/lib/import/normalizers/ozonAdsNormalizer";
 import { normalizeOzonStock } from "@/lib/import/normalizers/ozonStockNormalizer";
 import { normalizeOzonProduct } from "@/lib/import/normalizers/ozonProductNormalizer";
@@ -278,6 +283,7 @@ export async function POST(req: Request) {
 
     let normalizedRows = 0;
     let skippedRows = 0;
+    let ozonAccrualEconomics: OzonAccrualEconomicsImportResult | null = null;
 
     if (detection.reportType === "WB_SALES") {
       const result = await normalizeWbSales(data, importSession.id, companyName);
@@ -355,12 +361,45 @@ export async function POST(req: Request) {
     }
 
     if (detection.reportType === "OZON_FINANCE") {
+      const isAccrualEconomicsReport =
+        isOzonAccrualEconomicsReport(data);
+
       const result = await normalizeOzonFinance(
         data,
         importSession.id,
         companyName
       );
       normalizedRows = result.savedRows;
+
+      if (isAccrualEconomicsReport) {
+        const rawRows = XLSX.utils.sheet_to_json<unknown[]>(worksheet, {
+          header: 1,
+          defval: "",
+          blankrows: false,
+        });
+
+        try {
+          ozonAccrualEconomics =
+            await normalizeOzonAccrualEconomics({
+              data,
+              rawRows,
+              importSessionId: importSession.id,
+              companyName,
+              fileName: file.name,
+            });
+        } catch (error) {
+          await prisma.importSession.update({
+            where: {
+              id: importSession.id,
+            },
+            data: {
+              status: "ERROR",
+            },
+          });
+
+          throw error;
+        }
+      }
     }
 
     if (detection.reportType === "OZON_ADS") {
@@ -469,6 +508,7 @@ export async function POST(req: Request) {
       rows: data.length,
       normalizedRows,
       skippedRows,
+      ozonAccrualEconomics,
       preview: data.slice(0, 5),
     });
   } catch (error) {
