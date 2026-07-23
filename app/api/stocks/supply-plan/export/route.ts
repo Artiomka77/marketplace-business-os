@@ -1909,7 +1909,9 @@ async function buildSupplyPlanRows(url: URL) {
   const priorityFilter = getPriorityFilter(getQueryValue(url, "supplyPriority"));
   const abcFilter = getAbcFilter(getQueryValue(url, "supplyAbc"));
   const targetFilters = new Set(
-    Array.from(getSelectedKeys(url, "supplyTarget")).filter(
+    url.searchParams
+      .getAll("supplyTarget")
+      .map((target) => target.trim()).filter(
       (target) => target && target !== "ALL"
     )
   );

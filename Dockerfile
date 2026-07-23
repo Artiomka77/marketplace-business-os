@@ -34,6 +34,12 @@ ENV NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=$NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
 
 RUN npm run build
 
+FROM builder AS stock-abc-worker
+
+ENV NODE_ENV=production
+
+CMD ["node", "--import", "tsx", "scripts/stocks/refreshStockAbcSnapshots.ts"]
+
 FROM base AS runner
 
 WORKDIR /app

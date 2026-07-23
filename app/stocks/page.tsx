@@ -1,8 +1,7 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
-import { getProfitAnalytics } from "@/lib/analytics/profitAnalytics";
-import { getProfitAnalyticsOzon } from "@/lib/analytics/profitAnalyticsOzon";
 import MarketplaceNav from "@/components/marketplaces/MarketplaceNav";
+import { readStockAbcSnapshots } from "@/lib/stocks/stockAbcSnapshots";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -43,12 +42,6 @@ type StockSearchParams = {
 type StockSource = "ALL" | "WB" | "OZON" | "OWN";
 type SortKey = "product" | "vendorCode" | "qty" | "costPrice" | "totalCost" | "availableForSupplyQty";
 type AbcCategory = "A" | "B" | "C";
-
-type WbProfitAnalyticsResult = Awaited<ReturnType<typeof getProfitAnalytics>>;
-type WbProfitRow = WbProfitAnalyticsResult["rows"][number];
-
-type OzonProfitAnalyticsResult = Awaited<ReturnType<typeof getProfitAnalyticsOzon>>;
-type OzonProfitRow = OzonProfitAnalyticsResult["rows"][number];
 
 type StockAbcInfo = {
   abcByRevenue: AbcCategory;
@@ -1664,7 +1657,7 @@ function ProductSizeSummaryCard({ group }: { group: ProductSizeSummary }) {
 function makeUrl(params: StockSearchParams, patch: Record<string, string | null | undefined>) {
   const next = new URLSearchParams();
 
-  const merged: Record<string, string | undefined> = {
+  const merged: Record<string, string | string[] | undefined> = {
     companyName: params.companyName,
     source: params.source,
     rows: params.rows,
@@ -1679,9 +1672,7 @@ function makeUrl(params: StockSearchParams, patch: Record<string, string | null 
     dateTo: params.dateTo,
     supplyOpen: params.supplyOpen,
     supplyMarketplace: params.supplyMarketplace,
-    supplyTarget: Array.isArray(params.supplyTarget)
-      ? params.supplyTarget.join(",")
-      : params.supplyTarget,
+    supplyTarget: params.supplyTarget,
     supplyAbc: params.supplyAbc,
     supplyPriority: params.supplyPriority,
     supplyRows: params.supplyRows,
@@ -1690,17 +1681,13 @@ function makeUrl(params: StockSearchParams, patch: Record<string, string | null 
     supplyOzonDays: params.supplyOzonDays,
     supplyReservationMode: params.supplyReservationMode,
     supplySelectionMode: params.supplySelectionMode,
-    supplySelected: Array.isArray(params.supplySelected)
-      ? params.supplySelected.join(",")
-      : params.supplySelected,
+    supplySelected: params.supplySelected,
     productionOpen: params.productionOpen,
     productionBufferDays: params.productionBufferDays,
     productionRows: params.productionRows,
     productionAbc: params.productionAbc,
     productionSelectionMode: params.productionSelectionMode,
-    productionSelected: Array.isArray(params.productionSelected)
-      ? params.productionSelected.join(",")
-      : params.productionSelected,
+    productionSelected: params.productionSelected,
   };
 
   for (const [key, value] of Object.entries(patch)) {
@@ -1712,8 +1699,12 @@ function makeUrl(params: StockSearchParams, patch: Record<string, string | null 
   }
 
   for (const [key, value] of Object.entries(merged)) {
-    if (value && value !== "ALL") {
-      next.set(key, value);
+    const values = Array.isArray(value) ? value : [value];
+
+    for (const item of values) {
+      if (item && item !== "ALL") {
+        next.append(key, item);
+      }
     }
   }
 
@@ -1919,7 +1910,15 @@ function getSupplySelectedKeys(value?: string | string[] | null) {
 }
 
 function getSupplyParamValues(value?: string | string[] | null) {
-  return Array.from(getSupplySelectedKeys(value));
+  const rawValues = Array.isArray(value) ? value : value ? [value] : [];
+
+  return Array.from(
+    new Set(
+      rawValues
+        .map((item) => String(item).trim())
+        .filter(Boolean)
+    )
+  );
 }
 
 function supplyPlanMatchesSearch(row: SupplyPlanRow, query: string) {
@@ -2215,7 +2214,9 @@ function SupplyPlanningBlock({
   const marketplaceFilter = getSupplyMarketplaceFilter(params.supplyMarketplace);
   const priorityFilter = getSupplyPriorityFilter(params.supplyPriority);
   const abcFilter = getSupplyAbcFilter(params.supplyAbc);
-  const selectedSupplyTargetValues = getSupplySelectedKeys(params.supplyTarget);
+  const selectedSupplyTargetValues = new Set(
+    getSupplyParamValues(params.supplyTarget)
+  );
   const query = normalizeKey(params.supplyQ);
   const wbRecommendationDays = getWbRecommendationDays(params.supplyWbDays);
   const ozonRecommendationDays = getOzonRecommendationDays(params.supplyOzonDays);
@@ -3414,122 +3415,34 @@ export default async function StocksPage({
         }
       : undefined;
 
-  const [wbProfitAnalytics, ozonProfitAnalytics] = await Promise.all([
-    getProfitAnalytics({
-      dateFrom: abcDateFrom,
-      dateTo: abcDateTo,
-      companyName: selectedCompanyName ?? "ALL",
-    }),
-    getProfitAnalyticsOzon({
-      dateFrom: abcDateFrom,
-      dateTo: abcDateTo,
-      usnRate: "1",
-      vatRate: "5",
-      companyName: selectedCompanyName ?? "ALL",
-    }),
-  ]);
-
-  const wbAbcByRevenue = calculateAbcByPositiveValue(
-    wbProfitAnalytics.rows,
-    (row: WbProfitRow) => row.revenue
-  );
+  const stockAbcSnapshots = await readStockAbcSnapshots({
+    companyScope: selectedCompanyName ?? "ALL",
+    dateFrom: abcDateFrom,
+    dateTo: abcDateTo,
+  });
   const wbAbcMap = new Map<string, StockAbcInfo>();
-
-  for (const row of wbProfitAnalytics.rows) {
-    const abc = {
-      abcByRevenue: wbAbcByRevenue.get(row) ?? "C",
-      abcByProfit: toAbcCategory(row.abcByProfit),
-    } satisfies StockAbcInfo;
-
-    const companyName = rowCompanyName(row, selectedCompanyName);
-
-    registerStockAbc(wbAbcMap, {
-      companyName,
-      article: row.nmId,
-      abc,
-    });
-
-    registerStockAbc(wbAbcMap, {
-      companyName,
-      article: row.vendorCode,
-      abc,
-    });
-  }
-
   const ozonAbcMap = new Map<string, StockAbcInfo>();
-  const ozonGroupsForAbc = new Map<
-    string,
-    {
-      companyName: string | null;
-      baseArticle: string;
-      revenue: number;
-      netProfitAfterTax: number;
-      rows: OzonProfitRow[];
-    }
-  >();
 
-  for (const row of ozonProfitAnalytics.rows) {
-    const companyName = rowCompanyName(row, selectedCompanyName);
-    const baseArticle = getMarketplaceBaseArticle(row.vendorCode) || row.vendorCode;
-    const key = `${companyName ?? ""}::${baseArticle}`;
-    const current =
-      ozonGroupsForAbc.get(key) ??
-      ({
-        companyName,
-        baseArticle,
-        revenue: 0,
-        netProfitAfterTax: 0,
-        rows: [],
-      } satisfies {
-        companyName: string | null;
-        baseArticle: string;
-        revenue: number;
-        netProfitAfterTax: number;
-        rows: OzonProfitRow[];
-      });
-
-    current.revenue += row.revenue;
-    current.netProfitAfterTax += row.netProfitAfterTax;
-    current.rows.push(row);
-
-    ozonGroupsForAbc.set(key, current);
+  for (const entry of stockAbcSnapshots.wbEntries) {
+    registerStockAbc(wbAbcMap, {
+      companyName: entry.companyName,
+      article: entry.article,
+      abc: {
+        abcByRevenue: entry.abcByRevenue,
+        abcByProfit: entry.abcByProfit,
+      },
+    });
   }
 
-  const ozonGroupedRowsForAbc = Array.from(ozonGroupsForAbc.values());
-  const ozonGroupedAbcByRevenue = calculateAbcByPositiveValue(
-    ozonGroupedRowsForAbc,
-    (row) => row.revenue
-  );
-  const ozonGroupedAbcByProfit = calculateAbcByPositiveValue(
-    ozonGroupedRowsForAbc,
-    (row) => row.netProfitAfterTax
-  );
-
-  for (const group of ozonGroupedRowsForAbc) {
-    const abc = {
-      abcByRevenue: ozonGroupedAbcByRevenue.get(group) ?? "C",
-      abcByProfit: ozonGroupedAbcByProfit.get(group) ?? "C",
-    } satisfies StockAbcInfo;
-
+  for (const entry of stockAbcSnapshots.ozonEntries) {
     registerStockAbc(ozonAbcMap, {
-      companyName: group.companyName,
-      article: group.baseArticle,
-      abc,
+      companyName: entry.companyName,
+      article: entry.article,
+      abc: {
+        abcByRevenue: entry.abcByRevenue,
+        abcByProfit: entry.abcByProfit,
+      },
     });
-
-    for (const row of group.rows) {
-      registerStockAbc(ozonAbcMap, {
-        companyName: group.companyName,
-        article: row.vendorCode,
-        abc,
-      });
-
-      registerStockAbc(ozonAbcMap, {
-        companyName: group.companyName,
-        article: row.nmId,
-        abc,
-      });
-    }
   }
 
   const wbDailySaleDateFrom = new Date(`${abcDateFrom}T00:00:00.000Z`);
@@ -4715,11 +4628,10 @@ export default async function StocksPage({
       vendorCode: string;
       netSalesQty: number;
       revenue: number;
-      rows: OzonProfitRow[];
     }
   >();
 
-  for (const row of ozonProfitAnalytics.rows) {
+  for (const row of stockAbcSnapshots.ozonSalesEntries) {
     const vendorCode = normalizeKey(row.vendorCode);
     const inferredCompanyName =
       findUniqueCompanyByArticle(ozonArticleCompanyByArticleKey, vendorCode) ??
@@ -4728,8 +4640,9 @@ export default async function StocksPage({
         getMarketplaceBaseArticle(vendorCode)
       );
     const companyName =
-      rowCompanyName(row, selectedCompanyName) ??
-      inferredCompanyName ??
+      normalizeKey(row.companyName) ||
+      inferredCompanyName ||
+      selectedCompanyName ||
       "Без компании";
     const netSalesQty = Math.max(0, toNumber(row.netSalesQty));
 
@@ -4745,23 +4658,26 @@ export default async function StocksPage({
         vendorCode,
         netSalesQty: 0,
         revenue: 0,
-        rows: [],
       } satisfies {
         companyName: string;
         vendorCode: string;
         netSalesQty: number;
         revenue: number;
-        rows: OzonProfitRow[];
       });
 
     currentGroup.netSalesQty += netSalesQty;
     currentGroup.revenue += toNumber(row.revenue);
-    currentGroup.rows.push(row);
 
     ozonCalculatedGroups.set(groupKey, currentGroup);
   }
 
-  const ozonSalesPeriodDays = getInclusiveDateRangeDays(abcDateFrom, abcDateTo);
+  const ozonSnapshotMetadata = stockAbcSnapshots.metadata.find(
+    (item) => item.marketplace === "OZON"
+  );
+  const ozonSalesPeriodDays = getInclusiveDateRangeDays(
+    ozonSnapshotMetadata?.dateFrom ?? abcDateFrom,
+    ozonSnapshotMetadata?.dateTo ?? abcDateTo
+  );
 
   for (const group of ozonCalculatedGroups.values()) {
     const baseArticle = getMarketplaceBaseArticle(group.vendorCode);
@@ -5294,6 +5210,12 @@ export default async function StocksPage({
                 </Link>
               </div>
             </div>
+
+            {!stockAbcSnapshots.isExact ? (
+              <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-bold leading-5 text-amber-800">
+                ABC для выбранного периода ещё не сформирован полностью. Страница использует последний готовый снимок, а при его отсутствии — безопасную оценку по стоимости остатков. Остатки и рекомендации поставок загружены из актуальных таблиц.
+              </div>
+            ) : null}
 
             <div className="mt-5 flex flex-wrap gap-1 rounded-[22px] bg-slate-50 p-1 ring-1 ring-slate-100">
               {[

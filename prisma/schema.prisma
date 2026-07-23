@@ -990,3 +990,23 @@ model HistoricalSyncJob {
   @@index([createdAt])
 }
 
+model StockAbcSnapshot {
+  id String @id @default(cuid())
+
+  companyScope String
+  marketplace  String
+
+  dateFrom DateTime
+  dateTo   DateTime
+
+  payload   Json
+  rowsCount Int @default(0)
+
+  generatedAt DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([companyScope, marketplace, dateFrom, dateTo])
+  @@index([companyScope, marketplace])
+  @@index([dateFrom, dateTo])
+  @@index([generatedAt])
+}
