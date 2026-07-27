@@ -6,7 +6,12 @@
     "dev": "next dev",
     "build": "prisma generate && next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "financial-core:verify": "node scripts/financial-core/verify-financial-core-v3.mjs",
+    "financial-core:regression": "bash scripts/financial-core/run-financial-core-regression-v1.sh",
+    "financial-core:restore": "node scripts/financial-core/restore-financial-core-v3.mjs",
+    "prebuild": "npm run financial-core:verify",
+    "predev": "npm run financial-core:verify"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.8.0",

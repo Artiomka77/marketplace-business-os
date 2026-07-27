@@ -2182,7 +2182,6 @@ export async function getProfitAnalyticsOzon(params?: {
   usnRate?: string | number | null;
   vatRate?: string | number | null;
   companyName?: string | null;
-  skipComparison?: boolean;
 }): Promise<OzonProfitAnalyticsResult> {
   const requestedCompanyName =
     params?.companyName && params.companyName !== "ALL"
@@ -2307,9 +2306,10 @@ export async function getProfitAnalyticsOzon(params?: {
         companyName,
       });
 
-  const previousPeriod = params?.skipComparison
-    ? null
-    : calculatePreviousPeriod(params?.dateFrom, params?.dateTo);
+  const previousPeriod = calculatePreviousPeriod(
+    params?.dateFrom,
+    params?.dateTo,
+  );
 
   const previousFinanceRows = previousPeriod
     ? await findLatestOzonFinanceRowsByDatePeriod({

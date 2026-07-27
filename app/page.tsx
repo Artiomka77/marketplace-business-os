@@ -47,11 +47,21 @@ type CompanyDashboardRow = {
   wbRevenue: number;
   ozonRevenue: number;
   totalRevenue: number;
+  wbTaxableRevenue: number;
+  ozonTaxableRevenue: number;
+  taxableRevenue: number;
   operatingProfitAfterTax: number;
   netProfit: number;
   profitAfterOwnerWithdrawal: number;
   cashFlowResult: number;
   adsCost: number;
+  drrBase: number;
+  drrEconomicBase: number;
+  drrTaxableBase: number;
+  drrByEconomicTurnover: number | null;
+  drrByTaxableRevenue: number | null;
+  wbDrrBase: number;
+  ozonDrrBase: number;
   wbAdsCost: number;
   ozonAdsCost: number;
   drr: number | null;
@@ -82,12 +92,20 @@ type DashboardSummary = {
   totalRevenue: number;
   wbRevenue: number;
   ozonRevenue: number;
+  wbTaxableRevenue: number;
+  ozonTaxableRevenue: number;
+  taxableRevenue: number;
   operatingProfitAfterTax: number;
   netProfit: number;
   profitAfterOwnerWithdrawal: number;
   cashFlowResult: number;
   adsCost: number;
+  drrBase: number;
+  drrEconomicBase: number;
+  drrTaxableBase: number;
   drr: number | null;
+  drrByEconomicTurnover: number | null;
+  drrByTaxableRevenue: number | null;
   drrByOrders: number | null;
   loanPayments: number;
   creditPrincipal: number;
@@ -817,9 +835,17 @@ function trendTone(isGood: boolean | null) {
 
 function buildMoneyTrend(params: {
   current: number;
-  previous: number;
+  previous: number | null;
   goodWhen: "up" | "down";
 }): MetricTrend {
+  if (params.previous === null) {
+    return {
+      label: "нет полного сравнения",
+      title: "предыдущий период загружен частично",
+      className: trendTone(null),
+    };
+  }
+
   const delta = params.current - params.previous;
   const percent =
     params.previous !== 0 ? (delta / Math.abs(params.previous)) * 100 : null;
@@ -1238,7 +1264,7 @@ function InteractiveDonut({
         />
 
         <div className="pointer-events-none relative z-30 flex h-20 w-20 flex-col items-center justify-center rounded-full bg-white text-center shadow-sm ring-1 ring-slate-100 sm:h-24 sm:w-24">
-          <div className="text-[10px] font-bold text-slate-400 sm:text-xs">Продажи/начисления</div>
+          <div className="text-[10px] font-bold text-slate-400 sm:text-xs">Экономический оборот</div>
           <div className="mt-1 text-sm font-black text-slate-950 sm:text-base">
             {formatCurrency(total)}
           </div>
@@ -1892,7 +1918,7 @@ function buildReconciliationRows(summary: DashboardSummary, points: DashboardDai
   const daily = summarizeDailyForReconciliation(points);
 
   return [
-    makeMoneyReconciliationRow("Продажи/начисления", summary.totalRevenue, daily.revenue),
+    makeMoneyReconciliationRow("Экономический оборот", summary.totalRevenue, daily.revenue),
     makeMoneyReconciliationRow("Выручка WB", summary.wbRevenue, daily.wbRevenue),
     makeMoneyReconciliationRow("Выручка Ozon", summary.ozonRevenue, daily.ozonRevenue),
     makeMoneyReconciliationRow("Реклама", summary.adsCost, daily.adsCost),
@@ -2282,6 +2308,7 @@ function MarketplaceShare({
   companyName,
   marketplaceCompanyName,
   companies,
+  comparisonAvailable,
 }: {
   wbRevenue: number;
   ozonRevenue: number;
@@ -2294,9 +2321,12 @@ function MarketplaceShare({
   companyName: string;
   marketplaceCompanyName: string;
   companies: { name: string }[];
+  comparisonAvailable: boolean;
 }) {
   const total = wbRevenue + ozonRevenue;
-  const previousTotal = previousWbRevenue + previousOzonRevenue;
+  const previousTotal = comparisonAvailable
+    ? previousWbRevenue + previousOzonRevenue
+    : 0;
   const wbPercent = total > 0 ? (wbRevenue / total) * 100 : 0;
   const ozonPercent = total > 0 ? (ozonRevenue / total) * 100 : 0;
   const previousWbPercent = previousTotal > 0 ? (previousWbRevenue / previousTotal) * 100 : 0;
@@ -2313,7 +2343,7 @@ function MarketplaceShare({
         <div>
           <div className="section-eyebrow">Разрез по маркетплейсам</div>
           <h2 className="mt-1 text-xl font-black tracking-tight text-slate-950">
-            Доля продаж/начислений WB / Ozon
+            Доля экономического оборота WB / Ozon
           </h2>
         </div>
 
@@ -2352,7 +2382,9 @@ function MarketplaceShare({
             <div>
               <div className="text-base font-black text-violet-700">Wildberries</div>
               <div className="mt-1 text-lg font-black text-slate-950">{formatCurrency(wbRevenue)}</div>
-              <div className="mt-1 text-xs font-bold text-slate-400">{formatCurrency(previousWbRevenue)}</div>
+              <div className="mt-1 text-xs font-bold text-slate-400">
+                {comparisonAvailable ? formatCurrency(previousWbRevenue) : "—"}
+              </div>
             </div>
           </div>
 
@@ -2370,7 +2402,9 @@ function MarketplaceShare({
 
           <div className="text-right">
             <div className="text-lg font-black text-violet-700">{formatPercent(wbPercent)}</div>
-            <div className="mt-1 text-sm font-black text-slate-400">{formatPercent(previousWbPercent)}</div>
+            <div className="mt-1 text-sm font-black text-slate-400">
+              {comparisonAvailable ? formatPercent(previousWbPercent) : "—"}
+            </div>
           </div>
         </div>
 
@@ -2380,7 +2414,9 @@ function MarketplaceShare({
             <div>
               <div className="text-base font-black text-sky-700">Ozon</div>
               <div className="mt-1 text-lg font-black text-slate-950">{formatCurrency(ozonRevenue)}</div>
-              <div className="mt-1 text-xs font-bold text-slate-400">{formatCurrency(previousOzonRevenue)}</div>
+              <div className="mt-1 text-xs font-bold text-slate-400">
+                {comparisonAvailable ? formatCurrency(previousOzonRevenue) : "—"}
+              </div>
             </div>
           </div>
 
@@ -2398,7 +2434,9 @@ function MarketplaceShare({
 
           <div className="text-right">
             <div className="text-lg font-black text-sky-700">{formatPercent(ozonPercent)}</div>
-            <div className="mt-1 text-sm font-black text-slate-400">{formatPercent(previousOzonPercent)}</div>
+            <div className="mt-1 text-sm font-black text-slate-400">
+              {comparisonAvailable ? formatPercent(previousOzonPercent) : "—"}
+            </div>
           </div>
         </div>
       </div>
@@ -2407,9 +2445,13 @@ function MarketplaceShare({
         <div className="flex items-center gap-3 border-b border-slate-100 p-3 sm:border-r xl:border-b-0">
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-violet-50 text-base font-black text-violet-700">▦</div>
           <div>
-            <div className="text-xs font-bold text-slate-500">Продажи/начисления</div>
+            <div className="text-xs font-bold text-slate-500">Экономический оборот</div>
             <div className="mt-1 text-base font-black text-slate-950">{formatCurrency(current.totalRevenue)}</div>
-            <div className="mt-1 text-xs font-black text-emerald-600">{formatDelta(percentDelta(current.totalRevenue, previous.totalRevenue), "money")}</div>
+            <div className="mt-1 text-xs font-black text-emerald-600">
+              {comparisonAvailable
+                ? formatDelta(percentDelta(current.totalRevenue, previous.totalRevenue), "money")
+                : "нет полного сравнения"}
+            </div>
           </div>
         </div>
 
@@ -2418,7 +2460,7 @@ function MarketplaceShare({
           <div>
             <div className="text-xs font-bold text-slate-500">Реклама / ДРР</div>
             <div className="mt-1 text-base font-black text-slate-950">{formatCurrency(current.adsCost)} / {current.drr !== null ? formatPercent(current.drr) : "—"}</div>
-            <div className="mt-1 text-xs font-black text-red-600">{formatDelta(current.drr !== null && previous.drr !== null ? current.drr - previous.drr : null, "percent")}</div>
+            <div className="mt-1 text-xs font-black text-slate-500">от налоговой: {current.drrByTaxableRevenue !== null ? formatPercent(current.drrByTaxableRevenue) : "—"}</div>
           </div>
         </div>
 
@@ -2427,7 +2469,17 @@ function MarketplaceShare({
           <div>
             <div className="text-xs font-bold text-slate-500">Опер. прибыль</div>
             <div className="mt-1 text-base font-black text-slate-950">{formatCurrency(current.operatingProfitAfterTax)}</div>
-            <div className="mt-1 text-xs font-black text-emerald-600">{formatDelta(percentDelta(current.operatingProfitAfterTax, previous.operatingProfitAfterTax), "money")}</div>
+            <div className="mt-1 text-xs font-black text-emerald-600">
+              {comparisonAvailable
+                ? formatDelta(
+                    percentDelta(
+                      current.operatingProfitAfterTax,
+                      previous.operatingProfitAfterTax
+                    ),
+                    "money"
+                  )
+                : "нет полного сравнения"}
+            </div>
           </div>
         </div>
 
@@ -2486,8 +2538,8 @@ function CompanyCard({
   dateTo: string;
 }) {
   const drrText = row.drr !== null ? formatPercent(row.drr) : "—";
-  const wbDrr = getRevenuePercent(row.wbAdsCost, row.wbRevenue);
-  const ozonDrr = getRevenuePercent(row.ozonAdsCost, row.ozonRevenue);
+  const wbDrr = getRevenuePercent(row.wbAdsCost, row.wbDrrBase);
+  const ozonDrr = getRevenuePercent(row.ozonAdsCost, row.ozonDrrBase);
   const wbDrrText = wbDrr !== null ? formatPercent(wbDrr) : "—";
   const ozonDrrText = ozonDrr !== null ? formatPercent(ozonDrr) : "—";
   const margin = getRevenuePercent(row.operatingProfitAfterTax, row.totalRevenue);
@@ -2527,7 +2579,7 @@ function CompanyCard({
 
         <div className="mt-4 grid grid-cols-2 gap-2 xl:grid-cols-4">
           <div className="rounded-2xl border border-slate-200 bg-white p-3">
-            <div className="text-[10px] font-bold text-slate-500">Выручка</div>
+            <div className="text-[10px] font-bold text-slate-500">Оборот</div>
             <div className="mt-1 text-base font-black text-slate-950">
               {formatCurrency(row.totalRevenue)}
             </div>
@@ -2535,6 +2587,7 @@ function CompanyCard({
               current={row.totalRevenue}
               previous={previousRow?.totalRevenue}
             />
+            <div className="mt-1 text-[10px] font-bold text-slate-400">Налоговая: {formatCurrency(row.taxableRevenue)}</div>
           </div>
 
           <div className="rounded-2xl border border-slate-200 bg-white p-3">
@@ -2606,7 +2659,7 @@ function CompanyCard({
             <div>
               <div className="font-bold uppercase tracking-[0.08em] text-slate-400">Итого</div>
               <div className={row.drr !== null && row.drr > 12 ? "font-black text-red-600" : "font-black text-slate-950"}>
-                {drrText} · {formatCurrency(row.adsCost)}
+                {drrText} от оборота · {formatCurrency(row.adsCost)}
               </div>
             </div>
             <div className="grid grid-cols-2 gap-2">
@@ -2912,23 +2965,39 @@ async function buildCompanyDashboardRows(params: {
 
       // buildDailyReport уже внутри берёт финальные управленческие итоги WB/Ozon.
       // На главной странице используем эти готовые суммы и не пересчитываем SKU/ABC повторно.
-      const wbRevenue = companyReport?.wb.salesAmount ?? 0;
+      // REVENUE_DRR_POLICY_V1:
+      // главный масштаб Dashboard = экономический оборот. Налоговую выручку показываем отдельно.
+      // главный ДРР = реклама / экономический оборот; ДРР от налоговой выручки — справочно.
+      const wbRevenue =
+        companyReport?.wb.economicTurnover ?? companyReport?.wb.salesAmount ?? 0;
+      const wbTaxableRevenue =
+        companyReport?.wb.taxableRevenue ?? companyReport?.wb.salesAmount ?? 0;
       const wbNetProfitAfterTax = companyReport?.wb.netProfitAfterTax ?? 0;
       const wbAdsCost = companyReport?.wb.adSpend ?? 0;
 
       const ozonRevenue =
         companyReport?.ozon.economicTurnover ?? companyReport?.ozon.salesAmount ?? 0;
+      const ozonTaxableRevenue =
+        companyReport?.ozon.taxableRevenue ?? 0;
       const ozonNetProfitAfterTax = companyReport?.ozon.netProfitAfterTax ?? 0;
       const ozonAdsCost = companyReport?.ozon.adSpend ?? 0;
       const totalRevenue = wbRevenue + ozonRevenue;
+      const taxableRevenue = wbTaxableRevenue + ozonTaxableRevenue;
+
+      const wbDrrBase = wbRevenue;
+      const ozonDrrBase = ozonRevenue;
+      const drrBase = wbDrrBase + ozonDrrBase;
+      const drrEconomicBase = drrBase;
+      const drrTaxableBase = taxableRevenue;
 
       const operatingProfitAfterTax = wbNetProfitAfterTax + ozonNetProfitAfterTax;
 
-      const netProfit =
+      const financeNetProfitImpact =
         companyReport?.finance.netProfitImpact ??
-        operatingProfitAfterTax +
-          cash.netProfitIncludedIncome -
+        cash.netProfitIncludedIncome -
           cash.netProfitIncludedExpenses;
+      const marketplaceNetProfit = wbNetProfitAfterTax + ozonNetProfitAfterTax;
+      const netProfit = marketplaceNetProfit + financeNetProfitImpact;
 
       const personalExpenses =
         companyReport?.finance.ownerWithdrawals ?? cash.personalExpenses;
@@ -2939,7 +3008,10 @@ async function buildCompanyDashboardRows(params: {
 
       const adsCost = wbAdsCost + ozonAdsCost;
 
-      const drr = totalRevenue > 0 ? (adsCost / totalRevenue) * 100 : null;
+      const drr = drrBase > 0 ? (adsCost / drrBase) * 100 : null;
+      const drrByEconomicTurnover = drr;
+      const drrByTaxableRevenue =
+        drrTaxableBase > 0 ? (adsCost / drrTaxableBase) * 100 : null;
       const drrByOrders = ordersAmount > 0 ? (adsCost / ordersAmount) * 100 : null;
 
       const wbStockQty = companyReport?.wb.stockQty ?? 0;
@@ -2954,11 +3026,21 @@ async function buildCompanyDashboardRows(params: {
         wbRevenue,
         ozonRevenue,
         totalRevenue,
+        wbTaxableRevenue,
+        ozonTaxableRevenue,
+        taxableRevenue,
         operatingProfitAfterTax,
         netProfit,
         profitAfterOwnerWithdrawal,
         cashFlowResult,
         adsCost,
+        drrBase,
+        drrEconomicBase,
+        drrTaxableBase,
+        drrByEconomicTurnover,
+        drrByTaxableRevenue,
+        wbDrrBase,
+        ozonDrrBase,
         wbAdsCost,
         ozonAdsCost,
         drr,
@@ -3004,6 +3086,9 @@ function summarizeDashboardRows(rows: CompanyDashboardRow[]): DashboardSummary {
   const totalRevenue = companyRows.reduce((sum, row) => sum + row.totalRevenue, 0);
   const wbRevenue = companyRows.reduce((sum, row) => sum + row.wbRevenue, 0);
   const ozonRevenue = companyRows.reduce((sum, row) => sum + row.ozonRevenue, 0);
+  const wbTaxableRevenue = companyRows.reduce((sum, row) => sum + row.wbTaxableRevenue, 0);
+  const ozonTaxableRevenue = companyRows.reduce((sum, row) => sum + row.ozonTaxableRevenue, 0);
+  const taxableRevenue = wbTaxableRevenue + ozonTaxableRevenue;
 
   const operatingProfitAfterTax = companyRows.reduce(
     (sum, row) => sum + row.operatingProfitAfterTax,
@@ -3023,7 +3108,13 @@ function summarizeDashboardRows(rows: CompanyDashboardRow[]): DashboardSummary {
   );
 
   const adsCost = companyRows.reduce((sum, row) => sum + row.adsCost, 0);
-  const drr = totalRevenue > 0 ? (adsCost / totalRevenue) * 100 : null;
+  const drrBase = companyRows.reduce((sum, row) => sum + row.drrBase, 0);
+  const drrEconomicBase = companyRows.reduce((sum, row) => sum + row.drrEconomicBase, 0);
+  const drrTaxableBase = companyRows.reduce((sum, row) => sum + row.drrTaxableBase, 0);
+  const drr = drrBase > 0 ? (adsCost / drrBase) * 100 : null;
+  const drrByEconomicTurnover = drr;
+  const drrByTaxableRevenue =
+    drrTaxableBase > 0 ? (adsCost / drrTaxableBase) * 100 : null;
   const drrByOrders = ordersAmount > 0 ? (adsCost / ordersAmount) * 100 : null;
 
   const loanPayments = companyRows.reduce((sum, row) => sum + row.loanPayments, 0);
@@ -3079,12 +3170,20 @@ function summarizeDashboardRows(rows: CompanyDashboardRow[]): DashboardSummary {
     totalRevenue,
     wbRevenue,
     ozonRevenue,
+    wbTaxableRevenue,
+    ozonTaxableRevenue,
+    taxableRevenue,
     operatingProfitAfterTax,
     netProfit,
     profitAfterOwnerWithdrawal,
     cashFlowResult,
     adsCost,
+    drrBase,
+    drrEconomicBase,
+    drrTaxableBase,
     drr,
+    drrByEconomicTurnover,
+    drrByTaxableRevenue,
     drrByOrders,
     loanPayments,
     creditPrincipal,
@@ -3290,6 +3389,8 @@ export default async function HomePage({ searchParams }: Props) {
 
   const current = summarizeDashboardRows(currentRows);
   const previous = summarizeDashboardRows(previousRows);
+  const previousComparisonAvailable =
+    previous.orderDataExpectedDays > 0 && !hasPartialOrderCoverage(previous);
 
   const dataReadinessStartedAt = Date.now();
   const dataReadiness = await getDataReadinessSummary({
@@ -3369,6 +3470,19 @@ export default async function HomePage({ searchParams }: Props) {
       icon: "▦",
     },
     {
+      level: previousComparisonAvailable ? "ok" : "warning",
+      title: "Сравнение периодов",
+      text: previousComparisonAvailable
+        ? "Предыдущий период загружен полностью."
+        : `Предыдущий период загружен частично: ${formatNumber(
+            previous.orderDataLoadedDays
+          )} из ${formatNumber(
+            previous.orderDataExpectedDays
+          )} дневных срезов. Проценты изменения скрыты.`,
+      href: "/analytics",
+      icon: "↔",
+    },
+    {
       level: current.cashFlowResult < 0 ? "danger" : "ok",
       title: "Денежный поток",
       text:
@@ -3411,7 +3525,9 @@ export default async function HomePage({ searchParams }: Props) {
   ];
 
   const previousCompanyRowsByName = new Map(
-    previous.companyRows.map((row) => [row.companyName, row])
+    previousComparisonAvailable
+      ? previous.companyRows.map((row) => [row.companyName, row] as const)
+      : []
   );
 
   logDashboardPerf("homepage total before render", dashboardPerfStartedAt);
@@ -3655,17 +3771,17 @@ export default async function HomePage({ searchParams }: Props) {
             accent="bg-violet-50 text-violet-700"
             valueClassName={hasOrderCoverageWarning ? "text-amber-700" : "text-slate-950"}
             href="/analytics"
-            trend={buildMoneyTrend({ current: current.ordersAmount, previous: previous.ordersAmount, goodWhen: "up" })}
+            trend={buildMoneyTrend({ current: current.ordersAmount, previous: previousComparisonAvailable ? previous.ordersAmount : null, goodWhen: "up" })}
           />
 
           <MetricCard
-            title="Продажи/начисления"
+            title="Экономический оборот"
             value={current.totalRevenue > 0 ? formatCurrency(current.totalRevenue) : "Нет данных"}
-            subtitle={`WB: ${formatCurrency(current.wbRevenue)} · Ozon: ${formatCurrency(current.ozonRevenue)}`}
+            subtitle={`WB: ${formatCurrency(current.wbRevenue)} · Ozon: ${formatCurrency(current.ozonRevenue)} · налоговая: ${formatCurrency(current.taxableRevenue)}`}
             icon="▣"
             accent="bg-indigo-50 text-indigo-700"
             href="/analytics"
-            trend={buildMoneyTrend({ current: current.totalRevenue, previous: previous.totalRevenue, goodWhen: "up" })}
+            trend={buildMoneyTrend({ current: current.totalRevenue, previous: previousComparisonAvailable ? previous.totalRevenue : null, goodWhen: "up" })}
           />
 
           <MetricCard
@@ -3676,7 +3792,7 @@ export default async function HomePage({ searchParams }: Props) {
             accent="bg-emerald-50 text-emerald-700"
             valueClassName={valueColor(current.operatingProfitAfterTax)}
             href="/analytics"
-            trend={buildMoneyTrend({ current: current.operatingProfitAfterTax, previous: previous.operatingProfitAfterTax, goodWhen: "up" })}
+            trend={buildMoneyTrend({ current: current.operatingProfitAfterTax, previous: previousComparisonAvailable ? previous.operatingProfitAfterTax : null, goodWhen: "up" })}
           />
 
           <MetricCard
@@ -3687,7 +3803,7 @@ export default async function HomePage({ searchParams }: Props) {
             accent="bg-red-50 text-red-700"
             valueClassName={valueColor(current.netProfit)}
             href={buildOperationsHref({ dateFrom: selectedPeriod.dateFrom, dateTo: selectedPeriod.dateTo })}
-            trend={buildMoneyTrend({ current: current.netProfit, previous: previous.netProfit, goodWhen: "up" })}
+            trend={buildMoneyTrend({ current: current.netProfit, previous: previousComparisonAvailable ? previous.netProfit : null, goodWhen: "up" })}
           />
 
           <MetricCard
@@ -3698,7 +3814,7 @@ export default async function HomePage({ searchParams }: Props) {
             accent="bg-blue-50 text-blue-700"
             valueClassName={valueColor(current.profitAfterOwnerWithdrawal)}
             href={buildOperationsHref({ dateFrom: selectedPeriod.dateFrom, dateTo: selectedPeriod.dateTo, operationType: "PERSONAL" })}
-            trend={buildMoneyTrend({ current: current.profitAfterOwnerWithdrawal, previous: previous.profitAfterOwnerWithdrawal, goodWhen: "up" })}
+            trend={buildMoneyTrend({ current: current.profitAfterOwnerWithdrawal, previous: previousComparisonAvailable ? previous.profitAfterOwnerWithdrawal : null, goodWhen: "up" })}
           />
 
           <MetricCard
@@ -3709,20 +3825,20 @@ export default async function HomePage({ searchParams }: Props) {
             accent="bg-cyan-50 text-cyan-700"
             valueClassName={valueColor(current.cashFlowResult)}
             href="/finance/cashflow"
-            trend={buildMoneyTrend({ current: current.cashFlowResult, previous: previous.cashFlowResult, goodWhen: "up" })}
+            trend={buildMoneyTrend({ current: current.cashFlowResult, previous: previousComparisonAvailable ? previous.cashFlowResult : null, goodWhen: "up" })}
           />
 
           <MetricCard
-            title="Реклама / ДРР от продаж"
+            title="Реклама / ДРР"
             value={current.drr !== null ? formatPercent(current.drr) : "Нет данных"}
-            subtitle={`Реклама всего: ${formatCurrency(current.adsCost)} · ДРР от заказов: ${
-              current.drrByOrders !== null ? formatPercent(current.drrByOrders) : "—"
-            }${financialMetricSuffix}`}
+            subtitle={`Реклама: ${formatCurrency(current.adsCost)} · от налоговой: ${
+              current.drrByTaxableRevenue !== null ? formatPercent(current.drrByTaxableRevenue) : "—"
+            } · от заказов: ${current.drrByOrders !== null ? formatPercent(current.drrByOrders) : "—"}${financialMetricSuffix}`}
             icon="↗"
             accent="bg-orange-50 text-orange-700"
             valueClassName={dataReadiness.isFinal ? (current.drr !== null && current.drr > 12 ? "text-red-600" : "text-slate-950") : "text-amber-700"}
             href="/ads-mapping"
-            trend={buildPercentTrend({ current: current.drr, previous: previous.drr, goodWhen: "down" })}
+            trend={buildPercentTrend({ current: current.drr, previous: previousComparisonAvailable ? previous.drr : null, goodWhen: "down" })}
           />
         </section>
 
@@ -3740,6 +3856,7 @@ export default async function HomePage({ searchParams }: Props) {
               companyName={selectedCompanyValue}
               marketplaceCompanyName={selectedMarketplaceCompanyValue}
               companies={marketplaceCompanies}
+              comparisonAvailable={previousComparisonAvailable}
             />
           </div>
 
@@ -3819,7 +3936,7 @@ export default async function HomePage({ searchParams }: Props) {
                   Разрез по компаниям
                 </h2>
                 <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">
-                  Главное по каждой компании: выручка, прибыль, ДДС, каналы продаж и ДРР по маркетплейсам.
+                  Главное по каждой компании: экономический оборот, налоговая выручка, прибыль, ДДС и ДРР по маркетплейсам.
                 </p>
               </div>
 

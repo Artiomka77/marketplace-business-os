@@ -1269,124 +1269,40 @@ function getMoscowDateKey(date: Date | null | undefined) {
     .slice(0, 10);
 }
 
-const WB_DAILY_REPORT_TYPES = [
-  "WB_SALES",
-  "WB_SALES_OPERATIONAL",
-  "WB_SALES_DAILY",
-] as const;
+function isWbDailyStatisticsSaleRow(row: {
+  reportNumber: string | null;
+}) {
+  return String(row.reportNumber ?? "").startsWith("WB_DAILY_STATISTICS_");
+}
 
-async function findCanonicalWbSaleRowsForDailyReport(
-  companyName: string,
-  range: DateRange
-) {
-  const sessions = await prisma.importSession.findMany({
-    where: {
-      companyName,
-      reportType: {
-        in: [...WB_DAILY_REPORT_TYPES],
-      },
-      status: "SUCCESS",
-    },
-    select: {
-      id: true,
-      fileName: true,
-      reportType: true,
-      companyName: true,
-      createdAt: true,
-    },
-    orderBy: [
-      { createdAt: "desc" },
-      { id: "desc" },
-    ],
-  });
-
-  // Повторная синхронизация одного и того же файла не должна добавлять
-  // старую копию данных. Берём только самую новую ImportSession на fileName.
-  const latestSessionByFileName = new Map<
-    string,
-    (typeof sessions)[number]
-  >();
-
-  for (const session of sessions) {
-    const sessionKey = [session.companyName ?? "", session.fileName].join("__");
-
-    if (!latestSessionByFileName.has(sessionKey)) {
-      latestSessionByFileName.set(sessionKey, session);
-    }
-  }
-
-  const selectedSessions = [...latestSessionByFileName.values()];
-
-  if (selectedSessions.length === 0) {
-    return [];
-  }
-
-  const reportTypeBySessionId = new Map(
-    selectedSessions.map((session) => [session.id, session.reportType])
-  );
-
-  const rows = await prisma.wbSale.findMany({
-    where: {
-      companyName,
-      importSessionId: {
-        in: selectedSessions.map((session) => session.id),
-      },
-      saleDate: {
-        gte: range.dateFrom,
-        lt: range.dateToExclusive,
-      },
-    },
-    select: {
-      importSessionId: true,
-      reportNumber: true,
-      saleDate: true,
-      paymentReason: true,
-      quantity: true,
-      wbRealizedAmount: true,
-      sellerPayout: true,
-      vendorCode: true,
-    },
-  });
-
-  const wbSalesDays = new Set<string>();
-  const operationalDays = new Set<string>();
+function selectPreferredWbSaleRows<
+  T extends {
+    reportNumber: string | null;
+    saleDate: Date | null;
+  },
+>(rows: T[]) {
+  const rowsByDay = new Map<string, T[]>();
 
   for (const row of rows) {
-    const reportType = row.importSessionId
-      ? reportTypeBySessionId.get(row.importSessionId)
-      : undefined;
-    const dateKey = getMoscowDateKey(row.saleDate);
+    const key = getMoscowDateKey(row.saleDate);
+    const current = rowsByDay.get(key) ?? [];
 
-    if (reportType === "WB_SALES") {
-      wbSalesDays.add(dateKey);
-      continue;
-    }
-
-    if (reportType === "WB_SALES_OPERATIONAL") {
-      operationalDays.add(dateKey);
-    }
+    current.push(row);
+    rowsByDay.set(key, current);
   }
 
-  return rows.filter((row) => {
-    const reportType = row.importSessionId
-      ? reportTypeBySessionId.get(row.importSessionId)
-      : undefined;
-    const dateKey = getMoscowDateKey(row.saleDate);
+  const preferredRows: T[] = [];
 
-    if (reportType === "WB_SALES") {
-      return true;
-    }
+  for (const dayRows of rowsByDay.values()) {
+    const finalRows = dayRows.filter((row) => !isWbDailyStatisticsSaleRow(row));
+    const dailyRows = dayRows.filter((row) => isWbDailyStatisticsSaleRow(row));
 
-    if (reportType === "WB_SALES_OPERATIONAL") {
-      return !wbSalesDays.has(dateKey);
-    }
+    // Если за день уже есть финальный недельный WB Sales — используем его.
+    // Иначе используем оперативный daily sales, чтобы не было пустоты в утреннем отчёте.
+    preferredRows.push(...(finalRows.length > 0 ? finalRows : dailyRows));
+  }
 
-    if (reportType === "WB_SALES_DAILY") {
-      return !wbSalesDays.has(dateKey) && !operationalDays.has(dateKey);
-    }
-
-    return false;
-  });
+  return preferredRows;
 }
 
 async function getWbMetrics(companyName: string, range: DateRange) {
@@ -1405,7 +1321,24 @@ async function getWbMetrics(companyName: string, range: DateRange) {
         marketplace: "WB",
         range,
       }),
-      findCanonicalWbSaleRowsForDailyReport(companyName, range),
+      prisma.wbSale.findMany({
+        where: {
+          companyName,
+          saleDate: {
+            gte: range.dateFrom,
+            lt: range.dateToExclusive,
+          },
+        },
+        select: {
+          reportNumber: true,
+          saleDate: true,
+          paymentReason: true,
+          quantity: true,
+          wbRealizedAmount: true,
+          sellerPayout: true,
+          vendorCode: true,
+        },
+      }),
       prisma.wbFinance.findMany({
         where: {
           companyName,
@@ -1515,11 +1448,10 @@ async function getWbMetrics(companyName: string, range: DateRange) {
         dateFrom: getMoscowDateInput(range.dateFrom),
         dateTo: getMoscowDateInput(getInclusiveDateTo(range.dateToExclusive)),
         companyName,
-        skipComparison: true,
       }),
     ]);
 
-  const effectiveSalesRows = salesRows;
+  const effectiveSalesRows = selectPreferredWbSaleRows(salesRows);
 
   let salesQty = 0;
   let salesAmount = 0;
@@ -1787,7 +1719,6 @@ async function getOzonMetrics(companyName: string, range: DateRange) {
       dateFrom: getMoscowDateInput(range.dateFrom),
       dateTo: getMoscowDateInput(getInclusiveDateTo(range.dateToExclusive)),
       companyName,
-      skipComparison: true,
     }),
   ]);
 

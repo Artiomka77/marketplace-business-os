@@ -39,50 +39,6 @@ function nextDayStart(value: string | Date) {
   return date;
 }
 
-function startOfMoscowDayUtc(value: string | Date) {
-  const source =
-    typeof value === "string"
-      ? value
-      : value.toISOString().slice(0, 10);
-  const match = source.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
-
-  if (!match) {
-    const date = new Date(value);
-
-    return new Date(
-      Date.UTC(
-        date.getUTCFullYear(),
-        date.getUTCMonth(),
-        date.getUTCDate(),
-        -3,
-        0,
-        0,
-        0
-      )
-    );
-  }
-
-  const [, year, month, day] = match;
-
-  return new Date(
-    Date.UTC(
-      Number(year),
-      Number(month) - 1,
-      Number(day),
-      -3,
-      0,
-      0,
-      0
-    )
-  );
-}
-
-function nextMoscowDayStartUtc(value: string | Date) {
-  const date = startOfMoscowDayUtc(value);
-  date.setUTCDate(date.getUTCDate() + 1);
-  return date;
-}
-
 function getMoscowDateKey(value: unknown) {
   if (!value) return "unknown";
 
@@ -382,14 +338,6 @@ function isReturnOperation(reason: unknown) {
 }
 
 function clampRate(value: unknown, allowedRates: number[], fallback: number) {
-  if (
-    value === null ||
-    value === undefined ||
-    (typeof value === "string" && value.trim() === "")
-  ) {
-    return fallback;
-  }
-
   const rate = toNumber(value);
   return allowedRates.includes(rate) ? rate : fallback;
 }
@@ -668,13 +616,6 @@ export type ProfitTotals = {
   adsCost: number;
   drrPercent: number;
   undistributedAdsCost: number;
-  adsReconciliationAmount: number;
-
-  unallocatedLogisticsCost: number;
-  unallocatedStorageCost: number;
-  unallocatedAcceptanceCost: number;
-  unallocatedPenaltiesAmount: number;
-  unallocatedOperatingDeductions: number;
 
   totalCost: number;
 
@@ -709,14 +650,12 @@ type AdMapRecord = {
 type WbSaleRecord = {
   id?: string;
   importSessionId?: string | null;
-  companyName?: string | null;
   saleDate?: Date | null;
 
   nmId: string | null;
   vendorCode: string | null;
   subject: string | null;
   paymentReason: string | null;
-  documentType?: string | null;
   quantity: number | null;
 
   retailPrice: unknown;
@@ -867,13 +806,6 @@ function createEmptyTotals(
     adsCost: 0,
     drrPercent: 0,
     undistributedAdsCost,
-    adsReconciliationAmount: 0,
-
-    unallocatedLogisticsCost: 0,
-    unallocatedStorageCost: 0,
-    unallocatedAcceptanceCost: 0,
-    unallocatedPenaltiesAmount: 0,
-    unallocatedOperatingDeductions: 0,
 
     totalCost: 0,
 
@@ -939,7 +871,6 @@ function calculateRowsAndTotals({
   adMaps,
   usnRate,
   vatRate,
-  taxRatesByCompanyName,
 }: {
   wbRows: WbSaleRecord[];
   costs: CostRecord[];
@@ -947,13 +878,6 @@ function calculateRowsAndTotals({
   adMaps: AdMapRecord[];
   usnRate: number;
   vatRate: number;
-  taxRatesByCompanyName: Map<
-    string,
-    {
-      usnRate: number;
-      vatRate: number;
-    }
-  >;
 }) {
   const costByVendorCode = buildCostByVendorCode(costs);
   const vendorCodesByCampaign = buildVendorCodesByCampaign(adMaps);
@@ -965,42 +889,9 @@ function calculateRowsAndTotals({
 
   const grouped = new Map<string, ProfitAnalyticsRow>();
 
-  let unallocatedLogisticsCost = 0;
-  let unallocatedStorageCost = 0;
-  let unallocatedAcceptanceCost = 0;
-  let unallocatedPenaltiesAmount = 0;
-  let unallocatedAdsDeduction = 0;
-  let unallocatedCreditDeduction = 0;
-  let unallocatedOperatingDeductions = 0;
-  let unallocatedUnknownDeduction = 0;
-  let unallocatedRawDeduction = 0;
-
   for (const wbRow of wbRows) {
     const vendorCodeKey = normalizeText(wbRow.vendorCode);
-
-    if (!vendorCodeKey) {
-      unallocatedLogisticsCost += Math.abs(toNumber(wbRow.logisticsCost));
-      unallocatedStorageCost += Math.abs(toNumber(wbRow.storageCost));
-      unallocatedAcceptanceCost += Math.abs(toNumber(wbRow.acceptanceCost));
-      unallocatedPenaltiesAmount += toNumber(wbRow.penaltiesAmount);
-
-      const rawDeduction = Math.abs(toNumber(wbRow.deductions));
-      const deductionClass = classifyWbDeductionReason(wbRow.deductionReason);
-
-      unallocatedRawDeduction += rawDeduction;
-
-      if (deductionClass === "ADS") {
-        unallocatedAdsDeduction += rawDeduction;
-      } else if (deductionClass === "CREDIT") {
-        unallocatedCreditDeduction += rawDeduction;
-      } else if (deductionClass === "OPERATING") {
-        unallocatedOperatingDeductions += rawDeduction;
-      } else {
-        unallocatedUnknownDeduction += rawDeduction;
-      }
-
-      continue;
-    }
+    if (!vendorCodeKey) continue;
 
     const current =
       grouped.get(vendorCodeKey) ??
@@ -1058,14 +949,11 @@ function calculateRowsAndTotals({
         abcByProfit: "C" as const,
       };
 
-    const rowTaxRates =
-      taxRatesByCompanyName.get(normalizeText(wbRow.companyName)) ?? {
-        usnRate,
-        vatRate,
-      };
-
     const paymentReason = normalizeText(wbRow.paymentReason);
-    const wbDocumentType = wbRow.documentType;
+    const wbDocumentType =
+      (wbRow as Record<string, unknown>).docTypeName ??
+      (wbRow as Record<string, unknown>).documentType ??
+      (wbRow as Record<string, unknown>).docType;
 
     const isWbStornoReturnOperation =
       normalizeText(paymentReason) === "сторно возвратов";
@@ -1147,9 +1035,6 @@ function calculateRowsAndTotals({
       current.wbCommissionVat += wbCommissionVat;
       current.wbCommission += wbCommissionTotal;
       current.totalCost += current.costPrice * quantity;
-      current.taxesAmount +=
-        taxableRevenueAmount * (rowTaxRates.usnRate / 100) +
-        calculateVatTax(taxableRevenueAmount, rowTaxRates.vatRate);
     }
 
     if (isWbReturnOperation) {
@@ -1172,9 +1057,6 @@ function calculateRowsAndTotals({
       current.wbCommissionVat -= returnWbCommissionVat;
       current.wbCommission -= returnWbCommissionTotal;
       current.totalCost -= current.costPrice * quantity;
-      current.taxesAmount -=
-        returnTaxableRevenueAmount * (rowTaxRates.usnRate / 100) +
-        calculateVatTax(returnTaxableRevenueAmount, rowTaxRates.vatRate);
     }
 
     current.logisticsCost += Math.abs(toNumber(wbRow.logisticsCost));
@@ -1236,6 +1118,11 @@ function calculateRowsAndTotals({
     current.drrPercent =
       currentShareBase > 0 ? (current.adsCost / currentShareBase) * 100 : 0;
 
+    const usnTax = current.revenue > 0 ? current.revenue * (usnRate / 100) : 0;
+    const vatTax =
+      current.revenue > 0 ? calculateVatTax(current.revenue, vatRate) : 0;
+
+    current.taxesAmount = usnTax + vatTax;
     current.netProfitAfterTax = current.marginProfit - current.taxesAmount;
 
     current.marginAfterTaxPercent =
@@ -1247,27 +1134,7 @@ function calculateRowsAndTotals({
   }
 
   const rows = Array.from(grouped.values())
-    .filter(
-      (row) =>
-        row.salesQty !== 0 ||
-        row.returnsQty !== 0 ||
-        row.netSalesQty !== 0 ||
-        row.revenue !== 0 ||
-        row.sellerRetailAmount !== 0 ||
-        row.sellerPayout !== 0 ||
-        row.logisticsCost !== 0 ||
-        row.storageCost !== 0 ||
-        row.acceptanceCost !== 0 ||
-        row.penaltiesAmount !== 0 ||
-        row.deductions !== 0 ||
-        row.wbAdsDeduction !== 0 ||
-        row.wbCreditDeduction !== 0 ||
-        row.wbUnknownDeduction !== 0 ||
-        row.wbRawDeduction !== 0 ||
-        row.adsCost !== 0 ||
-        row.totalCost !== 0 ||
-        row.taxesAmount !== 0
-    )
+    .filter((row) => row.salesQty !== 0 || row.revenue !== 0)
     .sort((a, b) => b.marginProfit - a.marginProfit);
 
   calculateAbcByProfit(rows);
@@ -1321,47 +1188,19 @@ function calculateRowsAndTotals({
     createEmptyTotals(usnRate, vatRate, undistributedAdsCost)
   );
 
-  const distributedAdsCost = totals.adsCost;
-  const apiAdsCost = distributedAdsCost + totals.undistributedAdsCost;
+  if (totals.undistributedAdsCost > 0) {
+    totals.adsCost += totals.undistributedAdsCost;
+    totals.marginProfit -= totals.undistributedAdsCost;
+    totals.netProfitAfterTax -= totals.undistributedAdsCost;
+  }
 
-  totals.unallocatedLogisticsCost = unallocatedLogisticsCost;
-  totals.unallocatedStorageCost = unallocatedStorageCost;
-  totals.unallocatedAcceptanceCost = unallocatedAcceptanceCost;
-  totals.unallocatedPenaltiesAmount = unallocatedPenaltiesAmount;
-  totals.unallocatedOperatingDeductions = unallocatedOperatingDeductions;
+  if (totals.wbAdsDeduction > 0) {
+    const adsDifference = totals.wbAdsDeduction - totals.adsCost;
 
-  totals.logisticsCost += unallocatedLogisticsCost;
-  totals.storageCost += unallocatedStorageCost;
-  totals.acceptanceCost += unallocatedAcceptanceCost;
-  totals.penaltiesAmount += unallocatedPenaltiesAmount;
-  totals.deductions += unallocatedOperatingDeductions;
-  totals.wbAdsDeduction += unallocatedAdsDeduction;
-  totals.wbCreditDeduction += unallocatedCreditDeduction;
-  totals.wbUnknownDeduction += unallocatedUnknownDeduction;
-  totals.wbRawDeduction += unallocatedRawDeduction;
-
-  // Канонический общий рекламный расход WB — фактическое удержание
-  // «WB Продвижение». WB Ads API используется для распределения по SKU.
-  // Если фактическое удержание отсутствует, оставляем API как fallback.
-  const canonicalAdsCost =
-    totals.wbAdsDeduction > 0
-      ? totals.wbAdsDeduction
-      : apiAdsCost;
-
-  totals.adsReconciliationAmount = canonicalAdsCost - distributedAdsCost;
-  totals.undistributedAdsCost = totals.adsReconciliationAmount;
-  totals.adsCost = canonicalAdsCost;
-
-  const nonRowExpenseAdjustment =
-    unallocatedLogisticsCost +
-    unallocatedStorageCost +
-    unallocatedAcceptanceCost +
-    unallocatedPenaltiesAmount +
-    unallocatedOperatingDeductions +
-    totals.adsReconciliationAmount;
-
-  totals.marginProfit -= nonRowExpenseAdjustment;
-  totals.netProfitAfterTax -= nonRowExpenseAdjustment;
+    totals.adsCost = totals.wbAdsDeduction;
+    totals.marginProfit -= adsDifference;
+    totals.netProfitAfterTax -= adsDifference;
+  }
 
   const totalsShareBase = getWbShareBase(
     totals.sellerRetailAmount,
@@ -1385,39 +1224,6 @@ function calculateRowsAndTotals({
   };
 }
 
-const WB_SALE_ANALYTICS_SELECT = {
-  id: true,
-  importSessionId: true,
-  companyName: true,
-  saleDate: true,
-  nmId: true,
-  vendorCode: true,
-  subject: true,
-  paymentReason: true,
-  documentType: true,
-  quantity: true,
-  retailPrice: true,
-  retailPriceWithDiscount: true,
-  wbRealizedAmount: true,
-  sellerPayout: true,
-  sppDiscountAmount: true,
-  wbReward: true,
-  wbRewardVat: true,
-  wbRewardTotal: true,
-  logisticsCost: true,
-  storageCost: true,
-  acceptanceCost: true,
-  penaltiesAmount: true,
-  deductions: true,
-  deductionReason: true,
-  paymentServiceCost: true,
-  pvzCompensation: true,
-  transportCompensation: true,
-  loyaltyDiscountCompensation: true,
-  loyaltyParticipationCost: true,
-  loyaltyPointsAmount: true,
-} as const;
-
 async function findLatestWbSaleRowsBySaleDate(params?: {
   dateFrom?: string | null;
   dateTo?: string | null;
@@ -1427,12 +1233,8 @@ async function findLatestWbSaleRowsBySaleDate(params?: {
   const saleDateWhere =
     params?.dateFrom || params?.dateTo
       ? {
-          ...(params?.dateFrom
-            ? { gte: startOfMoscowDayUtc(params.dateFrom) }
-            : {}),
-          ...(params?.dateTo
-            ? { lt: nextMoscowDayStartUtc(params.dateTo) }
-            : {}),
+          ...(params?.dateFrom ? { gte: startOfDay(params.dateFrom) } : {}),
+          ...(params?.dateTo ? { lt: nextDayStart(params.dateTo) } : {}),
         }
       : undefined;
 
@@ -1442,25 +1244,17 @@ async function findLatestWbSaleRowsBySaleDate(params?: {
       reportType: {
         in: params?.reportTypes ?? ["WB_SALES_DAILY"],
       },
-      status: "SUCCESS",
     },
     orderBy: {
       createdAt: "desc",
-    },
-    select: {
-      id: true,
-      fileName: true,
-      companyName: true,
     },
   });
 
   const latestSessionByFileName = new Map<string, string>();
 
   for (const session of importSessions) {
-    const sessionKey = [session.companyName ?? "", session.fileName].join("__");
-
-    if (!latestSessionByFileName.has(sessionKey)) {
-      latestSessionByFileName.set(sessionKey, session.id);
+    if (!latestSessionByFileName.has(session.fileName)) {
+      latestSessionByFileName.set(session.fileName, session.id);
     }
   }
 
@@ -1478,7 +1272,6 @@ async function findLatestWbSaleRowsBySaleDate(params?: {
         in: latestImportSessionIds,
       },
     },
-    select: WB_SALE_ANALYTICS_SELECT,
     orderBy: {
       saleDate: "desc",
     },
@@ -1490,14 +1283,9 @@ async function findPreferredWbSaleRowsBySaleDate(params?: {
   dateTo?: string | null;
   companyName?: string | null;
 }) {
-  const wbSalesRows = await findLatestWbSaleRowsBySaleDate({
+  const detailedRows = await findLatestWbSaleRowsBySaleDate({
     ...params,
-    reportTypes: ["WB_SALES"],
-  });
-
-  const operationalRows = await findLatestWbSaleRowsBySaleDate({
-    ...params,
-    reportTypes: ["WB_SALES_OPERATIONAL"],
+    reportTypes: ["WB_SALES_OPERATIONAL", "WB_SALES"],
   });
 
   const dailyRows = await findLatestWbSaleRowsBySaleDate({
@@ -1505,52 +1293,28 @@ async function findPreferredWbSaleRowsBySaleDate(params?: {
     reportTypes: ["WB_SALES_DAILY"],
   });
 
-  const wbSalesDayKeys = new Set(
-    wbSalesRows.map((row) =>
-      [
-        row.companyName ?? params?.companyName ?? "",
-        getMoscowDateKey(row.saleDate),
-      ].join("__")
+  if (detailedRows.length === 0) {
+    return dailyRows;
+  }
+
+  if (dailyRows.length === 0) {
+    return detailedRows;
+  }
+
+  const detailedKeys = new Set(
+    detailedRows.map((row) =>
+      [row.companyName ?? params?.companyName ?? "", getMoscowDateKey(row.saleDate)].join("__")
     )
   );
 
-  const operationalFallbackRows = operationalRows.filter((row) => {
-    const key = [
-      row.companyName ?? params?.companyName ?? "",
-      getMoscowDateKey(row.saleDate),
-    ].join("__");
-
-    return !wbSalesDayKeys.has(key);
-  });
-
-  const detailedDayKeys = new Set([
-    ...wbSalesDayKeys,
-    ...operationalFallbackRows.map((row) =>
-      [
-        row.companyName ?? params?.companyName ?? "",
-        getMoscowDateKey(row.saleDate),
-      ].join("__")
-    ),
-  ]);
-
-  const dailyFallbackRows = dailyRows.filter((row) => {
-    const key = [
-      row.companyName ?? params?.companyName ?? "",
-      getMoscowDateKey(row.saleDate),
-    ].join("__");
-
-    return !detailedDayKeys.has(key);
-  });
-
   return [
-    ...wbSalesRows,
-    ...operationalFallbackRows,
-    ...dailyFallbackRows,
-  ].sort(
-    (left, right) =>
-      (right.saleDate?.getTime() ?? 0) -
-      (left.saleDate?.getTime() ?? 0)
-  );
+    ...detailedRows,
+    ...dailyRows.filter((row) => {
+      const key = [row.companyName ?? params?.companyName ?? "", getMoscowDateKey(row.saleDate)].join("__");
+
+      return !detailedKeys.has(key);
+    }),
+  ];
 }
 
 async function findWbSaleRowsByPeriod(params?: {
@@ -1558,12 +1322,189 @@ async function findWbSaleRowsByPeriod(params?: {
   dateTo?: string | null;
   companyName?: string | null;
 }) {
-  // Канонический приоритет по компании и московскому дню:
-  // WB_SALES -> WB_SALES_OPERATIONAL fallback -> WB_SALES_DAILY fallback.
-  //
-  // WbFinance остаётся источником официальных общих расходов, но больше не
-  // управляет выбором строк продаж и удержаний. Иначе документы
-  // «WB Продвижение» без продаж могут выпадать из общего P&L.
+  const rawFinanceRows = await prisma.wbFinance.findMany({
+    where: {
+      ...createWideWbFinanceDateFilter(params),
+      ...(params?.companyName ? { companyName: params.companyName } : {}),
+    },
+  });
+
+  const selectedFinanceGroups = selectPreferredWbFinanceGroups(
+    rawFinanceRows,
+    params
+  );
+
+  // Если официальный WbFinance нельзя разложить на непересекающиеся интервалы,
+  // не используем перекрывающиеся недельные отчёты. В этом случае берём
+  // детализированные операции строго по дате периода.
+  if (selectedFinanceGroups.length === 0) {
+    return findPreferredWbSaleRowsBySaleDate(params);
+  }
+
+  const reportNumbers = Array.from(
+    new Set(
+      selectedFinanceGroups
+        .flatMap((group) => group.rows)
+        .map((row) => String(row.reportNumber ?? "").trim())
+        .filter(Boolean)
+    )
+  );
+
+  if (reportNumbers.length === 0) {
+    return findPreferredWbSaleRowsBySaleDate(params);
+  }
+
+  const importSessions = await prisma.importSession.findMany({
+    where: {
+      ...(params?.companyName ? { companyName: params.companyName } : {}),
+      reportType: {
+        in: ["WB_SALES", "WB_SALES_OPERATIONAL"],
+      },
+      OR: reportNumbers.map((reportNumber) => ({
+        fileName: {
+          contains: reportNumber,
+        },
+      })),
+    },
+    orderBy: {
+      createdAt: "desc",
+    },
+  });
+
+  const latestSessionByFileName = new Map<
+    string,
+    (typeof importSessions)[number]
+  >();
+
+  for (const session of importSessions) {
+    if (!latestSessionByFileName.has(session.fileName)) {
+      latestSessionByFileName.set(session.fileName, session);
+    }
+  }
+
+  const latestSessions = Array.from(latestSessionByFileName.values());
+  const sessionIdsByReportNumber = new Map<string, string[]>();
+
+  for (const reportNumber of reportNumbers) {
+    sessionIdsByReportNumber.set(
+      reportNumber,
+      latestSessions
+        .filter((session) => session.fileName.includes(reportNumber))
+        .map((session) => session.id)
+    );
+  }
+
+  const latestImportSessionIds = Array.from(
+    new Set(latestSessions.map((session) => session.id))
+  );
+
+  const rowsByImportSessionId = new Map<string, WbSaleRecord[]>();
+
+  if (latestImportSessionIds.length > 0) {
+    const reportRows = await prisma.wbSale.findMany({
+      where: {
+        ...(params?.companyName ? { companyName: params.companyName } : {}),
+        importSessionId: {
+          in: latestImportSessionIds,
+        },
+      },
+      orderBy: {
+        saleDate: "desc",
+      },
+    });
+
+    for (const row of reportRows) {
+      const sessionId = String(row.importSessionId ?? "");
+
+      if (!sessionId) {
+        continue;
+      }
+
+      const current = rowsByImportSessionId.get(sessionId) ?? [];
+      current.push(row);
+      rowsByImportSessionId.set(sessionId, current);
+    }
+  }
+
+  const collectedRows: WbSaleRecord[] = [];
+
+  for (const group of selectedFinanceGroups) {
+    const groupReportNumbers = Array.from(
+      new Set(
+        group.rows
+          .map((row) => String(row.reportNumber ?? "").trim())
+          .filter(Boolean)
+      )
+    );
+
+    const financiallyMaterialReportNumbers = group.rows
+      .filter(
+        (row) =>
+          Math.abs(toNumber(row.salesAmount)) +
+            Math.abs(toNumber(row.payoutAmount)) >
+          0.005
+      )
+      .map((row) => String(row.reportNumber ?? "").trim())
+      .filter(Boolean);
+
+    const hasAllMaterialReportDetails =
+      financiallyMaterialReportNumbers.length > 0 &&
+      financiallyMaterialReportNumbers.every(
+        (reportNumber) =>
+          (sessionIdsByReportNumber.get(reportNumber) ?? []).length > 0
+      );
+
+    if (hasAllMaterialReportDetails) {
+      const groupSessionIds = Array.from(
+        new Set(
+          groupReportNumbers.flatMap(
+            (reportNumber) =>
+              sessionIdsByReportNumber.get(reportNumber) ?? []
+          )
+        )
+      );
+
+      for (const sessionId of groupSessionIds) {
+        collectedRows.push(
+          ...(rowsByImportSessionId.get(sessionId) ?? [])
+        );
+      }
+
+      continue;
+    }
+
+    // Отчёт WB Finance есть, но детализированного отчёта по основному
+    // reportNumber нет. Не подмешиваем данные соседней недели: используем
+    // детализированные/daily операции только внутри этого интервала.
+    const fallbackRows = await findPreferredWbSaleRowsBySaleDate({
+      dateFrom: group.startKey,
+      dateTo: group.endKey,
+      companyName: params?.companyName,
+    });
+
+    collectedRows.push(...fallbackRows);
+  }
+
+  const uniqueRowsById = new Map<string, WbSaleRecord>();
+
+  for (const row of collectedRows) {
+    const rowId = String(row.id ?? "");
+
+    if (rowId) {
+      uniqueRowsById.set(rowId, row);
+    }
+  }
+
+  const uniqueRows = Array.from(uniqueRowsById.values()).sort(
+    (left, right) =>
+      (right.saleDate?.getTime() ?? 0) -
+      (left.saleDate?.getTime() ?? 0)
+  );
+
+  if (uniqueRows.length > 0) {
+    return uniqueRows;
+  }
+
   return findPreferredWbSaleRowsBySaleDate(params);
 }
 
@@ -1687,10 +1628,7 @@ function applyWbFinanceExpenseTotals(
   const managementRevenue = result.totals.revenue;
 
   result.totals.sellerPayout = financeExpenses.sellerPayout;
-  result.totals.logisticsCost =
-    result.totals.logisticsCost > 0
-      ? result.totals.logisticsCost
-      : financeExpenses.logisticsCost;
+  result.totals.logisticsCost = financeExpenses.logisticsCost;
   result.totals.storageCost = financeExpenses.storageCost;
   result.totals.acceptanceCost = financeExpenses.acceptanceCost;
   result.totals.penaltiesAmount = financeExpenses.penaltiesAmount;
@@ -1724,6 +1662,12 @@ function applyWbFinanceExpenseTotals(
     result.totals.penaltiesAmount -
     result.totals.deductions -
     result.totals.adsCost;
+
+  result.totals.taxesAmount =
+    managementRevenue > 0
+      ? managementRevenue * (result.totals.usnRate / 100) +
+        calculateVatTax(managementRevenue, result.totals.vatRate)
+      : 0;
 
   result.totals.netProfitAfterTax =
     result.totals.marginProfit - result.totals.taxesAmount;
@@ -1761,7 +1705,7 @@ type WbOperationalExpenseRates = {
   penaltiesPerSaleQty: number;
 };
 
-function recalculateProfitRow(row: ProfitAnalyticsRow) {
+function recalculateProfitRow(row: ProfitAnalyticsRow, usnRate: number, vatRate: number) {
   row.marginProfit =
     row.sellerPayout -
     row.totalCost -
@@ -1774,10 +1718,13 @@ function recalculateProfitRow(row: ProfitAnalyticsRow) {
 
   const rowShareBase = getWbShareBase(row.sellerRetailAmount, row.revenue);
 
-  row.marginProfitPercent =
-    rowShareBase > 0 ? (row.marginProfit / rowShareBase) * 100 : 0;
-  row.drrPercent =
-    rowShareBase > 0 ? (row.adsCost / rowShareBase) * 100 : 0;
+  row.marginProfitPercent = rowShareBase > 0 ? (row.marginProfit / rowShareBase) * 100 : 0;
+  row.drrPercent = rowShareBase > 0 ? (row.adsCost / rowShareBase) * 100 : 0;
+
+  const usnTax = row.revenue > 0 ? row.revenue * (usnRate / 100) : 0;
+  const vatTax = row.revenue > 0 ? calculateVatTax(row.revenue, vatRate) : 0;
+
+  row.taxesAmount = usnTax + vatTax;
   row.netProfitAfterTax = row.marginProfit - row.taxesAmount;
   row.marginAfterTaxPercent =
     rowShareBase > 0 ? (row.netProfitAfterTax / rowShareBase) * 100 : 0;
@@ -1824,46 +1771,11 @@ function recalculateTotalsFromRows(
     return acc;
   }, createEmptyTotals(usnRate, vatRate, previousTotals.undistributedAdsCost));
 
-  const distributedAdsCost = totals.adsCost;
-
   totals.dataMode = previousTotals.dataMode;
   totals.estimatedLogisticsCost = previousTotals.estimatedLogisticsCost ?? 0;
   totals.estimatedStorageCost = previousTotals.estimatedStorageCost ?? 0;
   totals.estimatedAcceptanceCost = previousTotals.estimatedAcceptanceCost ?? 0;
   totals.estimatedPenaltiesAmount = previousTotals.estimatedPenaltiesAmount ?? 0;
-
-  totals.unallocatedLogisticsCost =
-    previousTotals.unallocatedLogisticsCost ?? 0;
-  totals.unallocatedStorageCost = previousTotals.unallocatedStorageCost ?? 0;
-  totals.unallocatedAcceptanceCost = previousTotals.unallocatedAcceptanceCost ?? 0;
-  totals.unallocatedPenaltiesAmount = previousTotals.unallocatedPenaltiesAmount ?? 0;
-  totals.unallocatedOperatingDeductions =
-    previousTotals.unallocatedOperatingDeductions ?? 0;
-  totals.adsReconciliationAmount = previousTotals.adsReconciliationAmount ?? 0;
-  totals.undistributedAdsCost = previousTotals.undistributedAdsCost ?? 0;
-
-  totals.logisticsCost += totals.unallocatedLogisticsCost;
-  totals.storageCost += totals.unallocatedStorageCost;
-  totals.acceptanceCost += totals.unallocatedAcceptanceCost;
-  totals.penaltiesAmount += totals.unallocatedPenaltiesAmount;
-  totals.deductions += totals.unallocatedOperatingDeductions;
-
-  totals.wbAdsDeduction = previousTotals.wbAdsDeduction;
-  totals.wbCreditDeduction = previousTotals.wbCreditDeduction;
-  totals.wbUnknownDeduction = previousTotals.wbUnknownDeduction;
-  totals.wbRawDeduction = previousTotals.wbRawDeduction;
-  totals.adsCost = previousTotals.adsCost;
-
-  const nonRowExpenseAdjustment =
-    totals.unallocatedLogisticsCost +
-    totals.unallocatedStorageCost +
-    totals.unallocatedAcceptanceCost +
-    totals.unallocatedPenaltiesAmount +
-    totals.unallocatedOperatingDeductions +
-    (totals.adsCost - distributedAdsCost);
-
-  totals.marginProfit -= nonRowExpenseAdjustment;
-  totals.netProfitAfterTax = totals.marginProfit - totals.taxesAmount;
 
   const totalsShareBase = getWbShareBase(totals.sellerRetailAmount, totals.revenue);
 
@@ -1877,18 +1789,9 @@ function recalculateTotalsFromRows(
 
 async function findLatestWbOperationalExpenseRates(params?: {
   companyName?: string | null;
-  anchorDate?: string | null;
 }): Promise<WbOperationalExpenseRates> {
-  const anchor = params?.anchorDate
-    ? startOfDay(params.anchorDate)
-    : startOfDay(new Date());
-  const from = new Date(anchor);
-  from.setDate(from.getDate() - 34);
-
   const rows = await findLatestWbSaleRowsBySaleDate({
     companyName: params?.companyName,
-    dateFrom: from.toISOString().slice(0, 10),
-    dateTo: anchor.toISOString().slice(0, 10),
     reportTypes: ["WB_SALES"],
   });
 
@@ -1978,7 +1881,7 @@ function applyEstimatedOperationalExpenses(
       estimatedPenaltiesAmount += row.penaltiesAmount;
     }
 
-    recalculateProfitRow(row);
+    recalculateProfitRow(row, usnRate, vatRate);
   }
 
   result.totals.dataMode = "PRELIMINARY";
@@ -1995,65 +1898,22 @@ export async function getProfitAnalytics(params?: {
   dateFrom?: string | null;
   dateTo?: string | null;
   companyName?: string | null;
-  skipComparison?: boolean;
 }) {
   const companyName =
     params?.companyName && params.companyName !== "ALL"
       ? params.companyName
       : null;
 
-  const companySettingsRows = await prisma.company.findMany({
-    where: companyName
-      ? {
+  const companySettings = companyName
+    ? await prisma.company.findFirst({
+        where: {
           name: companyName,
-        }
-      : undefined,
-    select: {
-      name: true,
-      usnRate: true,
-      vatRate: true,
-    },
-  });
-
-  const taxRatesByCompanyName = new Map(
-    companySettingsRows.map((settings) => [
-      normalizeText(settings.name),
-      {
-        usnRate: clampRate(
-          settings.usnRate,
-          [0, 1, 2, 3, 4, 5, 6],
-          1
-        ),
-        vatRate: clampRate(settings.vatRate, [0, 5, 7], 5),
-      },
-    ])
-  );
-
-  const selectedCompanyRates = companyName
-    ? taxRatesByCompanyName.get(normalizeText(companyName))
+        },
+      })
     : null;
 
-  const allUsnRates = Array.from(
-    new Set(
-      Array.from(taxRatesByCompanyName.values()).map(
-        (rates) => rates.usnRate
-      )
-    )
-  );
-  const allVatRates = Array.from(
-    new Set(
-      Array.from(taxRatesByCompanyName.values()).map(
-        (rates) => rates.vatRate
-      )
-    )
-  );
-
-  const usnRate =
-    selectedCompanyRates?.usnRate ??
-    (allUsnRates.length === 1 ? allUsnRates[0] : 1);
-  const vatRate =
-    selectedCompanyRates?.vatRate ??
-    (allVatRates.length === 1 ? allVatRates[0] : 5);
+  const usnRate = clampRate(companySettings?.usnRate, [0, 1, 2, 3, 4, 5, 6], 1);
+  const vatRate = clampRate(companySettings?.vatRate, [0, 5, 7], 5);
 
   const costs = await prisma.productCost.findMany({
     orderBy: {
@@ -2074,9 +1934,10 @@ export async function getProfitAnalytics(params?: {
     companyName,
   });
 
-  const previousPeriod = params?.skipComparison
-    ? null
-    : calculatePreviousPeriod(params?.dateFrom, params?.dateTo);
+  const previousPeriod = calculatePreviousPeriod(
+    params?.dateFrom,
+    params?.dateTo
+  );
 
   const currentAdsRows = await findAdsRowsByPeriod({
     dateFrom: params?.dateFrom,
@@ -2122,15 +1983,11 @@ export async function getProfitAnalytics(params?: {
     adMaps,
     usnRate,
     vatRate,
-    taxRatesByCompanyName,
   });
 
   const currentOperationalRates = currentFinanceExpenses.hasRows
     ? null
-    : await findLatestWbOperationalExpenseRates({
-        companyName,
-        anchorDate: params?.dateTo ?? params?.dateFrom,
-      });
+    : await findLatestWbOperationalExpenseRates({ companyName });
 
   const current = currentFinanceExpenses.hasRows
     ? applyWbFinanceExpenseTotals(currentBase, currentFinanceExpenses)
@@ -2158,16 +2015,11 @@ export async function getProfitAnalytics(params?: {
     adMaps,
     usnRate,
     vatRate,
-    taxRatesByCompanyName,
   });
 
-  const previousOperationalRates =
-    previousPeriod && !previousFinanceExpenses.hasRows
-      ? await findLatestWbOperationalExpenseRates({
-          companyName,
-          anchorDate: previousPeriod.dateTo.toISOString().slice(0, 10),
-        })
-      : null;
+  const previousOperationalRates = previousFinanceExpenses.hasRows
+    ? null
+    : await findLatestWbOperationalExpenseRates({ companyName });
 
   const previous = previousFinanceExpenses.hasRows
     ? applyWbFinanceExpenseTotals(previousBase, previousFinanceExpenses)

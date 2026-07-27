@@ -1,0 +1,218 @@
+{
+  "version": "financial-core-v3",
+  "createdAt": "2026-07-27T21:07:53.987316+00:00",
+  "tagName": "financial-core-v3-wb-integrity-verified-v13-2026-07-27",
+  "sourceCommit": "94c39f901851cda5c2f4f0c88178f7e4e83a021a",
+  "workingTreeDirty": true,
+  "policy": {
+    "purpose": "Защитить проверенное финансовое ядро V2: ежедневная управленческая прибыль Ozon с финальным налогом по налоговой выручке и предварительным налоговым резервом по экономическому обороту до появления отчёта начислений.",
+    "visualChangesAllowed": [
+      "компоновка и размеры блоков",
+      "цвета, типографика и адаптивность",
+      "таблицы, графики и подписи",
+      "фильтры отображения без изменения финансового источника"
+    ],
+    "requireNewAuditFor": [
+      "формулы прибыли, налогов, налогового резерва, ДРР и ДДС",
+      "выбор и объединение периодов WB/Ozon",
+      "себестоимость и финансовые нормализаторы",
+      "готовность данных и статус FINAL/PRELIMINARY",
+      "финансовая логика Telegram/Dashboard/Центра прибыли"
+    ]
+  },
+  "packageScriptContract": {
+    "financial-core:verify": "node scripts/financial-core/verify-financial-core-v3.mjs",
+    "financial-core:regression": "bash scripts/financial-core/run-financial-core-regression-v1.sh",
+    "financial-core:restore": "node scripts/financial-core/restore-financial-core-v3.mjs",
+    "prebuild": "npm run financial-core:verify",
+    "predev": "npm run financial-core:verify"
+  },
+  "protectedFiles": [
+    {
+      "path": "lib/analytics/profitAnalytics.ts",
+      "role": "Канонический расчёт прибыли Wildberries",
+      "sha256": "424b2a6a35b76ca46f1fc7674fbb08966c96d180ef11f9bc23f60e98f010c6af",
+      "sizeBytes": 64823,
+      "snapshotSha256": "424b2a6a35b76ca46f1fc7674fbb08966c96d180ef11f9bc23f60e98f010c6af"
+    },
+    {
+      "path": "lib/analytics/profitAnalyticsOzon.ts",
+      "role": "Канонический расчёт прибыли Ozon",
+      "sha256": "a14c25837a150cb7844a6f05226c75674b32353c9757a238094719e20b4858b4",
+      "sizeBytes": 68342,
+      "snapshotSha256": "a14c25837a150cb7844a6f05226c75674b32353c9757a238094719e20b4858b4"
+    },
+    {
+      "path": "lib/analytics/dataReadiness.ts",
+      "role": "Определение полноты и финальности данных периода",
+      "sha256": "100dcd757defbce1538cf6380fe9bb328e9ce3f751fc834e5c98d81abbd512bc",
+      "sizeBytes": 18137,
+      "snapshotSha256": "100dcd757defbce1538cf6380fe9bb328e9ce3f751fc834e5c98d81abbd512bc"
+    },
+    {
+      "path": "lib/finance/financeMetrics.ts",
+      "role": "ДДС, влияние финансовых операций и выводы собственника",
+      "sha256": "ea9d671f620f3af4849577b75d10b5e9636a86b5a5ada34eb4dd687eba3d94f3",
+      "sizeBytes": 12812,
+      "snapshotSha256": "ea9d671f620f3af4849577b75d10b5e9636a86b5a5ada34eb4dd687eba3d94f3"
+    },
+    {
+      "path": "lib/telegram/dailyReport.ts",
+      "role": "Единая финансовая сводка Dashboard и Telegram",
+      "sha256": "a841d9a671609f0d3bc302c451b7a469729a80323435f46b93af7a254214b735",
+      "sizeBytes": 89073,
+      "snapshotSha256": "a841d9a671609f0d3bc302c451b7a469729a80323435f46b93af7a254214b735"
+    },
+    {
+      "path": "lib/import/detectReportType.ts",
+      "role": "Распознавание типов импортируемых отчётов",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "sizeBytes": 0,
+      "snapshotSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "lib/import/reportDetector.ts",
+      "role": "Контракт определения финансовых источников",
+      "sha256": "f32adb4dce27e7667778dd4b7cc3b4c6e75a78caaabdae231a80090f5879928d",
+      "sizeBytes": 14888,
+      "snapshotSha256": "f32adb4dce27e7667778dd4b7cc3b4c6e75a78caaabdae231a80090f5879928d"
+    },
+    {
+      "path": "lib/import/normalizers/productCostNormalizer.ts",
+      "role": "Нормализация себестоимости и Excel-дат",
+      "sha256": "e5b7db3ca0f2ac37ababec3ace7575b1834533dee21d4122225b77f95e76bba2",
+      "sizeBytes": 3920,
+      "snapshotSha256": "e5b7db3ca0f2ac37ababec3ace7575b1834533dee21d4122225b77f95e76bba2"
+    },
+    {
+      "path": "lib/import/normalizers/wbSalesNormalizer.ts",
+      "role": "Нормализация продаж Wildberries",
+      "sha256": "3ceccc2c93e1a6f8f2e63686638eaa4727011bcbe4e2b90e3c5051530aef486e",
+      "sizeBytes": 10402,
+      "snapshotSha256": "3ceccc2c93e1a6f8f2e63686638eaa4727011bcbe4e2b90e3c5051530aef486e"
+    },
+    {
+      "path": "lib/import/normalizers/wbFinanceNormalizer.ts",
+      "role": "Нормализация финансового отчёта Wildberries",
+      "sha256": "b8c8d5747bcbf33b2bdb0e8ad4eac3a53dd9c3dcf5971fd8d3df3f59390dd5c9",
+      "sizeBytes": 4653,
+      "snapshotSha256": "b8c8d5747bcbf33b2bdb0e8ad4eac3a53dd9c3dcf5971fd8d3df3f59390dd5c9"
+    },
+    {
+      "path": "lib/import/normalizers/wbAdsNormalizer.ts",
+      "role": "Нормализация рекламы Wildberries",
+      "sha256": "86f733ac864c5ceccc0a8257904e94b85ecd3183177954cd56edef9dd4fc0e66",
+      "sizeBytes": 6495,
+      "snapshotSha256": "86f733ac864c5ceccc0a8257904e94b85ecd3183177954cd56edef9dd4fc0e66"
+    },
+    {
+      "path": "lib/import/normalizers/ozonFinanceNormalizer.ts",
+      "role": "Нормализация финансового отчёта Ozon",
+      "sha256": "1d60270c20875273b6f32c4034c2e0b40e14c795f8302ba00c288e97917d24f4",
+      "sizeBytes": 5710,
+      "snapshotSha256": "1d60270c20875273b6f32c4034c2e0b40e14c795f8302ba00c288e97917d24f4"
+    },
+    {
+      "path": "lib/import/normalizers/ozonAdsNormalizer.ts",
+      "role": "Нормализация рекламы Ozon",
+      "sha256": "e4ec16a9cf29f37c886d205eb898e2007716d1eb810ccb4895e34ffb54c88733",
+      "sizeBytes": 2607,
+      "snapshotSha256": "e4ec16a9cf29f37c886d205eb898e2007716d1eb810ccb4895e34ffb54c88733"
+    },
+    {
+      "path": "lib/import/normalizers/financeTransactionNormalizer.ts",
+      "role": "Нормализация внутренних финансовых операций",
+      "sha256": "2d79d46fb4152ed30870f7d28bb30a11f1960ae7b7d6795549dce1230707b3ce",
+      "sizeBytes": 10720,
+      "snapshotSha256": "2d79d46fb4152ed30870f7d28bb30a11f1960ae7b7d6795549dce1230707b3ce"
+    }
+  ],
+  "consumerContracts": [
+    {
+      "path": "app/page.tsx",
+      "role": "Dashboard",
+      "requiredPatterns": [
+        "buildDailyReport",
+        "@/lib/telegram/dailyReport"
+      ]
+    },
+    {
+      "path": "app/insights/page.tsx",
+      "role": "Центр прибыли",
+      "requiredPatterns": [
+        "buildDailyReport",
+        "getProfitAnalytics",
+        "getProfitAnalyticsOzon"
+      ]
+    },
+    {
+      "path": "app/profit-wb/page.tsx",
+      "role": "Прибыль по SKU WB",
+      "requiredPatterns": [
+        "getProfitAnalytics",
+        "@/lib/analytics/profitAnalytics"
+      ]
+    },
+    {
+      "path": "app/profit-ozon/page.tsx",
+      "role": "Прибыль по SKU Ozon",
+      "requiredPatterns": [
+        "getProfitAnalyticsOzon",
+        "@/lib/analytics/profitAnalyticsOzon"
+      ]
+    }
+  ],
+  "controlValues": {
+    "currency": "RUB",
+    "periods": {
+      "2026-07-08|ИП Петров": {
+        "wb": {
+          "economicTurnover": 4475.62,
+          "taxableRevenue": 3724.1,
+          "netProfitAfterTax": 1070.9157502644614,
+          "dataMode": "PRELIMINARY"
+        }
+      },
+      "2026-07-12|ИП Петров": {
+        "wb": {
+          "economicTurnover": 534945.33,
+          "taxableRevenue": 367931.12,
+          "netProfitAfterTax": 21598.379276190462,
+          "dataMode": "FINAL"
+        },
+        "ozon": {
+          "economicTurnover": 1094262,
+          "taxableRevenue": 388036.97,
+          "netProfitAfterTax": 150332.11934761913
+        },
+        "company": {
+          "netProfitBeforeOwner": 171930.4986238096,
+          "ownerWithdrawals": 9000,
+          "netProfitAfterOwner": 162930.4986238096
+        }
+      },
+      "2026-Q2|ИП Петров": {
+        "ozon": {
+          "taxableRevenue": 14445957.17,
+          "netProfitAfterTax": 4855169.645919057,
+          "coverageComplete": true
+        }
+      },
+      "2026-Q2|ИП Лебедева": {
+        "ozon": {
+          "taxableRevenue": 2456623.33,
+          "netProfitAfterTax": 619216.6133666668,
+          "coverageComplete": true
+        }
+      }
+    }
+  },
+  "parentVersion": "financial-core-v2",
+  "changeAudit": {
+    "reason": "Исправление канонических источников WB, сохранение расходных SKU-групп с нулевой выручкой, официальной рекламы, налогов и производительности после полного read-only PASS V13.",
+    "approvedControlPeriod": "2026-07-01..2026-07-26",
+    "expectedWbNetProfitAfterTax": 1359701.69,
+    "expectedOzonNetProfitAfterTax": 2420829.84,
+    "databaseChanges": "NONE"
+  }
+}
