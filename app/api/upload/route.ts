@@ -19,6 +19,7 @@ import {
   normalizeOzonAccrualEconomics,
   type OzonAccrualEconomicsImportResult,
 } from "@/lib/import/normalizers/ozonAccrualEconomicsNormalizer";
+import { replaceOzonAccrualCategoryFacts } from "@/lib/ozon/ozonAccrualCategoryFacts";
 import { normalizeOzonAds } from "@/lib/import/normalizers/ozonAdsNormalizer";
 import { normalizeOzonStock } from "@/lib/import/normalizers/ozonStockNormalizer";
 import { normalizeOzonProduct } from "@/lib/import/normalizers/ozonProductNormalizer";
@@ -372,6 +373,12 @@ export async function POST(req: Request) {
         });
 
         try {
+          await replaceOzonAccrualCategoryFacts({
+            data,
+            importSessionId: importSession.id,
+            companyName,
+          });
+
           ozonAccrualEconomics =
             await normalizeOzonAccrualEconomics({
               data,
@@ -380,6 +387,7 @@ export async function POST(req: Request) {
               companyName,
               fileName: file.name,
             });
+
           normalizedRows = ozonAccrualEconomics.sourceRows;
         } catch (error) {
           await prisma.importSession.update({

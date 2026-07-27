@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { normalizeOzonFinance } from "@/lib/import/normalizers/ozonFinanceNormalizer";
 import { syncOzonDailyEconomicTotalsRange } from "@/lib/ozon/syncOzonDailyEconomicTotals";
@@ -594,7 +595,10 @@ function createOzonFinancialFact(params: {
     sourceOperationCode: params.operation.operation_type ?? null,
     sourceServiceName: params.sourceServiceName ?? null,
     category: params.category,
-    amount: params.amount,
+    amount:
+      params.category === "OZON_COMPENSATION"
+        ? -params.amount
+        : params.amount,
     ...flags,
   };
 }
@@ -613,6 +617,7 @@ function buildOzonFinancialCategoryFacts(params: {
   };
 
   for (const operation of params.operations) {
+    const operationFactStart = facts.length;
     const operationCategory = classifyOzonOperation(operation);
     const hasItems = Boolean(operation.items?.length);
     let serviceDeliveryAmount = 0;
@@ -703,9 +708,113 @@ function buildOzonFinancialCategoryFacts(params: {
         })
       );
     }
+
+    const operationIsExcluded =
+      operationCategory?.startsWith("EXCLUDED_") ?? false;
+
+    if (!operationIsExcluded) {
+      const expectedOperationExpense =
+        toNumberSafe(operation.accruals_for_sale) -
+        toNumberSafe(operation.amount);
+      const representedOperationExpense = facts
+        .slice(operationFactStart)
+        .reduce(
+          (sum, fact) =>
+            sum +
+            (fact.category === "OZON_COMPENSATION"
+              ? -fact.amount
+              : fact.amount),
+          0,
+        );
+      const residualExpense =
+        expectedOperationExpense - representedOperationExpense;
+
+      if (isMeaningfulAmount(residualExpense)) {
+        pushFact(
+          createOzonFinancialFact({
+            ...params,
+            operation,
+            category: "OZON_OTHER_SERVICES",
+            amount: residualExpense,
+            sourceServiceName: "operation_expense_reconciliation",
+          })
+        );
+      }
+    }
   }
 
   return facts;
+}
+
+async function insertOzonFinancialCategoryFacts(
+  tx: Prisma.TransactionClient,
+  facts: OzonFinancialCategoryFactInput[],
+) {
+  const chunkSize = 1_000;
+
+  for (let index = 0; index < facts.length; index += chunkSize) {
+    const part = facts.slice(index, index + chunkSize).map((fact) => ({
+      ...fact,
+      operationDate: fact.operationDate?.toISOString() ?? null,
+      dateFrom: fact.dateFrom.toISOString(),
+      dateTo: fact.dateTo.toISOString(),
+    }));
+
+    await tx.$executeRawUnsafe(
+      `
+        INSERT INTO "OzonFinancialCategoryFact" (
+          "id",
+          "importSessionId",
+          "companyName",
+          "operationDate",
+          "dateFrom",
+          "dateTo",
+          "source",
+          "sourceOperationType",
+          "sourceOperationCode",
+          "sourceServiceName",
+          "category",
+          "amount",
+          "includeInProfit",
+          "isCashFlowOnly",
+          "isCompensation"
+        )
+        SELECT
+          x."id",
+          x."importSessionId",
+          x."companyName",
+          x."operationDate"::timestamptz,
+          x."dateFrom"::timestamptz,
+          x."dateTo"::timestamptz,
+          'OZON_FINANCE_API',
+          x."sourceOperationType",
+          x."sourceOperationCode",
+          x."sourceServiceName",
+          x."category",
+          x."amount"::numeric,
+          x."includeInProfit",
+          x."isCashFlowOnly",
+          x."isCompensation"
+        FROM jsonb_to_recordset($1::jsonb) AS x(
+          "id" text,
+          "importSessionId" text,
+          "companyName" text,
+          "operationDate" text,
+          "dateFrom" text,
+          "dateTo" text,
+          "sourceOperationType" text,
+          "sourceOperationCode" text,
+          "sourceServiceName" text,
+          "category" text,
+          "amount" numeric,
+          "includeInProfit" boolean,
+          "isCashFlowOnly" boolean,
+          "isCompensation" boolean
+        )
+      `,
+      JSON.stringify(part),
+    );
+  }
 }
 
 async function replaceOzonFinancialCategoryFacts(params: {
@@ -717,52 +826,43 @@ async function replaceOzonFinancialCategoryFacts(params: {
 }) {
   const facts = buildOzonFinancialCategoryFacts(params);
 
-  await prisma.$executeRaw`
-    DELETE FROM "OzonFinancialCategoryFact"
-    WHERE "companyName" = ${params.companyName}
-      AND "operationDate" >= ${params.dateFrom}
-      AND "operationDate" <= ${params.dateTo}
-  `;
+  return prisma.$transaction(
+    async (tx) => {
+      const exactReportDates = await tx.$queryRaw<
+        Array<{ date: Date }>
+      >`
+        SELECT DISTINCT "operationDate"::date AS "date"
+        FROM "OzonFinancialCategoryFact"
+        WHERE "companyName" = ${params.companyName}
+          AND "source" = ${"OZON_ACCRUAL_REPORT"}
+          AND "operationDate" >= ${params.dateFrom}
+          AND "operationDate" <= ${params.dateTo}
+      `;
+      const exactDateKeys = new Set(
+        exactReportDates.map((row) => formatDateOnly(row.date)),
+      );
+      const factsToSave = facts.filter((fact) => {
+        if (!fact.operationDate) return true;
+        return !exactDateKeys.has(formatDateOnly(fact.operationDate));
+      });
 
-  for (const fact of facts) {
-    await prisma.$executeRaw`
-      INSERT INTO "OzonFinancialCategoryFact" (
-        "id",
-        "importSessionId",
-        "companyName",
-        "operationDate",
-        "dateFrom",
-        "dateTo",
-        "source",
-        "sourceOperationType",
-        "sourceOperationCode",
-        "sourceServiceName",
-        "category",
-        "amount",
-        "includeInProfit",
-        "isCashFlowOnly",
-        "isCompensation"
-      ) VALUES (
-        ${fact.id},
-        ${fact.importSessionId},
-        ${fact.companyName},
-        ${fact.operationDate},
-        ${fact.dateFrom},
-        ${fact.dateTo},
-        ${"OZON_FINANCE_API"},
-        ${fact.sourceOperationType},
-        ${fact.sourceOperationCode},
-        ${fact.sourceServiceName},
-        ${fact.category},
-        ${fact.amount},
-        ${fact.includeInProfit},
-        ${fact.isCashFlowOnly},
-        ${fact.isCompensation}
-      )
-    `;
-  }
+      await tx.$executeRaw`
+        DELETE FROM "OzonFinancialCategoryFact"
+        WHERE "companyName" = ${params.companyName}
+          AND "source" = ${"OZON_FINANCE_API"}
+          AND "operationDate" >= ${params.dateFrom}
+          AND "operationDate" <= ${params.dateTo}
+      `;
 
-  return facts.length;
+      await insertOzonFinancialCategoryFacts(tx, factsToSave);
+
+      return factsToSave.length;
+    },
+    {
+      maxWait: 10_000,
+      timeout: 120_000,
+    },
+  );
 }
 
 function mapOzonFinanceRows(operations: OzonFinanceOperation[]) {
@@ -824,52 +924,64 @@ export async function syncOzonFinance(
       previewJson: rows.slice(0, 10) as any,
       sheetName: "Ozon Finance API",
       headerRow: 1,
-      status: "SUCCESS",
+      status: "RUNNING",
     },
   });
 
-  const normalizeResult = await normalizeOzonFinance(
-    rows,
-    importSession.id,
-    company.name,
-    {
-      dateFrom,
-      dateTo,
-    }
-  );
+  try {
+    const normalizeResult = await normalizeOzonFinance(
+      rows,
+      importSession.id,
+      company.name,
+      {
+        dateFrom,
+        dateTo,
+      }
+    );
 
-  const financialCategoryFactsCount = await replaceOzonFinancialCategoryFacts({
-    operations,
-    importSessionId: importSession.id,
-    companyName: company.name,
-    dateFrom,
-    dateTo,
-  });
+    const financialCategoryFactsCount =
+      await replaceOzonFinancialCategoryFacts({
+        operations,
+        importSessionId: importSession.id,
+        companyName: company.name,
+        dateFrom,
+        dateTo,
+      });
 
-  const dailyEconomicTotals = await syncOzonDailyEconomicTotalsRange(company.id, {
-    dateFrom,
-    dateTo: startOfUtcDay(dateTo),
-  });
+    const dailyEconomicTotals =
+      await syncOzonDailyEconomicTotalsRange(company.id, {
+        dateFrom,
+        dateTo: startOfUtcDay(dateTo),
+      });
 
-  await prisma.importSession.update({
-    where: { id: importSession.id },
-    data: {
-      rowsCount: normalizeResult.savedRows,
-      previewJson: {
-        financeRows: rows.slice(0, 10),
-        financialCategoryFactsCount,
-        dailyEconomicTotals,
-      } as any,
-    },
-  });
+    await prisma.importSession.update({
+      where: { id: importSession.id },
+      data: {
+        status: "SUCCESS",
+        rowsCount: normalizeResult.savedRows,
+        previewJson: {
+          financeRows: rows.slice(0, 10),
+          financialCategoryFactsCount,
+          dailyEconomicTotals,
+        } as any,
+      },
+    });
 
-  return {
-    name: "Ozon Finance",
-    rows: normalizeResult.savedRows,
-    dateFrom: dateFromText,
-    dateTo: dateToText,
-    dailyEconomicTotals,
-  };
+    return {
+      name: "Ozon Finance",
+      rows: normalizeResult.savedRows,
+      dateFrom: dateFromText,
+      dateTo: dateToText,
+      dailyEconomicTotals,
+    };
+  } catch (error) {
+    await prisma.importSession.update({
+      where: { id: importSession.id },
+      data: { status: "ERROR" },
+    }).catch(() => undefined);
+
+    throw error;
+  }
 }
 
 /* -------------------- PRODUCTS -------------------- */
