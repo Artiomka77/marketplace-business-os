@@ -32,6 +32,8 @@ export type OzonAccrualEconomicsImportResult = {
   partnerProgramsAmount: number;
   economicTurnover: number;
   financeEconomicTurnover: number;
+  financeEconomicTurnoverMatched: boolean;
+  financeEconomicTurnoverDifference: number;
 };
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -62,6 +64,24 @@ function findValue(row: InputRow, aliases: string[]) {
   }
 
   return undefined;
+}
+
+function findValueWithFallback(
+  row: InputRow,
+  aliases: string[],
+  fallbackIndex: number
+) {
+  const value = findValue(row, aliases);
+
+  if (
+    value !== undefined &&
+    value !== null &&
+    String(value).trim() !== ""
+  ) {
+    return value;
+  }
+
+  return Object.values(row)[fallbackIndex];
 }
 
 function parseMoneyToCents(value: unknown) {
@@ -217,21 +237,28 @@ function createId(prefix: string) {
   return `${prefix}_${randomUUID()}`;
 }
 
-export function isOzonAccrualEconomicsReport(data: InputRow[]) {
+export function isOzonAccrualEconomicsReport(
+  data: InputRow[],
+  fileName = ""
+) {
   const row = data.find((item) => Object.keys(item).length > 0);
+  const normalizedFileName = normalizeText(fileName);
 
-  if (!row) {
-    return false;
+  if (row) {
+    const headers = Object.keys(row).map(normalizeHeader);
+    const matchesHeaders = [
+      "дата начисления",
+      "группа услуг",
+      "тип начисления",
+      "сумма итого руб",
+    ].every((required) => headers.includes(required));
+
+    if (matchesHeaders) {
+      return true;
+    }
   }
 
-  const headers = Object.keys(row).map(normalizeHeader);
-
-  return [
-    "дата начисления",
-    "группа услуг",
-    "тип начисления",
-    "сумма итого руб",
-  ].every((required) => headers.includes(required));
+  return normalizedFileName.includes("отчет по начислениям");
 }
 
 function buildDailyEconomics(data: InputRow[], rawRows: unknown[][]) {
@@ -243,18 +270,34 @@ function buildDailyEconomics(data: InputRow[], rawRows: unknown[][]) {
   }> = [];
 
   for (const row of data) {
-    const rawDate = findValue(row, [
-      "Дата начисления",
-      "Дата операции",
-      "operation_date",
-    ]);
-    const rawGroup = findValue(row, ["Группа услуг"]);
-    const rawType = findValue(row, ["Тип начисления"]);
-    const rawAmount = findValue(row, [
-      "Сумма итого, руб.",
-      "Сумма итого",
-      "Итого, руб.",
-    ]);
+    const rawDate = findValueWithFallback(
+      row,
+      [
+        "Дата начисления",
+        "Дата операции",
+        "operation_date",
+      ],
+      1
+    );
+    const rawGroup = findValueWithFallback(
+      row,
+      ["Группа услуг"],
+      2
+    );
+    const rawType = findValueWithFallback(
+      row,
+      ["Тип начисления"],
+      3
+    );
+    const rawAmount = findValueWithFallback(
+      row,
+      [
+        "Сумма итого, руб.",
+        "Сумма итого",
+        "Итого, руб.",
+      ],
+      15
+    );
 
     const group = normalizeText(rawGroup);
     const type = normalizeText(rawType);
@@ -559,20 +602,20 @@ export async function normalizeOzonAccrualEconomics(params: {
       parsed.dateTo
     );
 
-  if (
-    financeEconomicTurnoverCents !== totals.economicTurnoverCents
-  ) {
-    throw new Error(
-      [
-        "Контроль отчёта начислений Ozon не пройден:",
-        `экономический оборот из отчёта ${centsToMoney(totals.economicTurnoverCents).toFixed(2)} ₽`,
-        `не совпадает с Ozon Finance ${centsToMoney(financeEconomicTurnoverCents).toFixed(2)} ₽`,
-      ].join(" ")
-    );
-  }
+  const financeEconomicTurnoverMatched =
+    financeEconomicTurnoverCents === totals.economicTurnoverCents;
+  const financeEconomicTurnoverDifferenceCents =
+    financeEconomicTurnoverCents - totals.economicTurnoverCents;
 
   await prisma.$transaction(
     async (tx) => {
+      await tx.ozonFinance.deleteMany({
+        where: {
+          importSessionId,
+          companyName,
+        },
+      });
+
       await replaceSummaryRows(tx, {
         importSessionId,
         companyName,
@@ -580,6 +623,15 @@ export async function normalizeOzonAccrualEconomics(params: {
         dateFrom: parsed.dateFrom,
         dateTo: parsed.dateTo,
         daily: parsed.daily,
+      });
+
+      await tx.importSession.update({
+        where: {
+          id: importSessionId,
+        },
+        data: {
+          status: "SUCCESS",
+        },
       });
     },
     {
@@ -601,6 +653,10 @@ export async function normalizeOzonAccrualEconomics(params: {
     economicTurnover: centsToMoney(totals.economicTurnoverCents),
     financeEconomicTurnover: centsToMoney(
       financeEconomicTurnoverCents
+    ),
+    financeEconomicTurnoverMatched,
+    financeEconomicTurnoverDifference: centsToMoney(
+      financeEconomicTurnoverDifferenceCents
     ),
   };
 }

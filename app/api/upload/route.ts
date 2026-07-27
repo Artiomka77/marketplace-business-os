@@ -362,14 +362,7 @@ export async function POST(req: Request) {
 
     if (detection.reportType === "OZON_FINANCE") {
       const isAccrualEconomicsReport =
-        isOzonAccrualEconomicsReport(data);
-
-      const result = await normalizeOzonFinance(
-        data,
-        importSession.id,
-        companyName
-      );
-      normalizedRows = result.savedRows;
+        isOzonAccrualEconomicsReport(data, file.name);
 
       if (isAccrualEconomicsReport) {
         const rawRows = XLSX.utils.sheet_to_json<unknown[]>(worksheet, {
@@ -387,6 +380,7 @@ export async function POST(req: Request) {
               companyName,
               fileName: file.name,
             });
+          normalizedRows = ozonAccrualEconomics.sourceRows;
         } catch (error) {
           await prisma.importSession.update({
             where: {
@@ -399,6 +393,13 @@ export async function POST(req: Request) {
 
           throw error;
         }
+      } else {
+        const result = await normalizeOzonFinance(
+          data,
+          importSession.id,
+          companyName
+        );
+        normalizedRows = result.savedRows;
       }
     }
 
