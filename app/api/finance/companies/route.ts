@@ -24,12 +24,15 @@ export async function POST(request: Request) {
   const ogrnIp = String(formData.get("ogrnIp") ?? "").trim() || null;
   const taxSystem =
     String(formData.get("taxSystem") ?? "").trim() || "УСН Доходы";
-  const incomeTaxRate = toNumber(formData.get("incomeTaxRate"), 1);
+  const usnRate = toNumber(
+    formData.get("usnRate") ?? formData.get("incomeTaxRate"),
+    1
+  );
   const vatRate = toNumber(formData.get("vatRate"), 5);
   const isActive = formData.get("isActive") === "on";
 
   if (!name) {
-    return NextResponse.redirect(new URL("/finance/companies", request.url));
+    return NextResponse.redirect(new URL("/settings/companies", request.url));
   }
 
   await prisma.$transaction(async (tx) => {
@@ -42,7 +45,8 @@ export async function POST(request: Request) {
           "inn" = ${inn},
           "ogrnIp" = ${ogrnIp},
           "taxSystem" = ${taxSystem},
-          "incomeTaxRate" = ${incomeTaxRate},
+          "usnRate" = ${usnRate},
+          "incomeTaxRate" = ${usnRate},
           "vatRate" = ${vatRate},
           "isActive" = ${isActive},
           "updatedAt" = now()
@@ -59,6 +63,7 @@ export async function POST(request: Request) {
           "inn",
           "ogrnIp",
           "taxSystem",
+          "usnRate",
           "incomeTaxRate",
           "vatRate",
           "isActive",
@@ -72,7 +77,8 @@ export async function POST(request: Request) {
           ${inn},
           ${ogrnIp},
           ${taxSystem},
-          ${incomeTaxRate},
+          ${usnRate},
+          ${usnRate},
           ${vatRate},
           ${isActive},
           now(),
@@ -100,10 +106,11 @@ export async function POST(request: Request) {
   });
 
   revalidatePath("/finance");
+  revalidatePath("/settings/companies");
   revalidatePath("/finance/companies");
   revalidatePath("/finance/accounts");
   revalidatePath("/finance/loans");
   revalidatePath("/finance/operations");
 
-  return NextResponse.redirect(new URL("/finance/companies", request.url));
+  return NextResponse.redirect(new URL("/settings/companies", request.url));
 }

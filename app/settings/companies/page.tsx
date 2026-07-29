@@ -11,7 +11,7 @@ type CompanyRow = {
   inn: string | null;
   ogrnIp: string | null;
   taxSystem: string;
-  incomeTaxRate: unknown;
+  usnRate: unknown;
   vatRate: unknown;
   isActive: boolean;
 };
@@ -59,7 +59,7 @@ export default async function FinanceCompaniesPage() {
       "inn",
       "ogrnIp",
       "taxSystem",
-      "incomeTaxRate",
+      "usnRate",
       "vatRate",
       "isActive"
     from "Company"
@@ -240,10 +240,10 @@ export default async function FinanceCompaniesPage() {
 
             <div>
               <label className="mb-2 block text-sm font-medium text-slate-700">
-                Налог, %
+                УСН, %
               </label>
               <input
-                name="incomeTaxRate"
+                name="usnRate"
                 inputMode="decimal"
                 defaultValue="1"
                 className="w-full rounded-xl border border-slate-300 px-4 py-2"
@@ -381,12 +381,12 @@ export default async function FinanceCompaniesPage() {
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <label className="mb-2 block text-sm font-medium text-slate-700">
-                        Налог, %
+                        УСН, %
                       </label>
                       <input
-                        name="incomeTaxRate"
+                        name="usnRate"
                         inputMode="decimal"
-                        defaultValue={String(row.company.incomeTaxRate ?? 1)}
+                        defaultValue={String(row.company.usnRate ?? 1)}
                         className="w-full rounded-xl border border-slate-300 px-4 py-2"
                       />
                     </div>
