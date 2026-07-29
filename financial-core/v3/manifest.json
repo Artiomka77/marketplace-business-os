@@ -59,9 +59,9 @@
     {
       "path": "lib/telegram/dailyReport.ts",
       "role": "Единая финансовая сводка Dashboard и Telegram",
-      "sha256": "a841d9a671609f0d3bc302c451b7a469729a80323435f46b93af7a254214b735",
-      "sizeBytes": 89073,
-      "snapshotSha256": "a841d9a671609f0d3bc302c451b7a469729a80323435f46b93af7a254214b735"
+      "sha256": "bd65be68c4208a781b5357a32c075a430166372bd26379db831b28287ce3b63a",
+      "sizeBytes": 102103,
+      "snapshotSha256": "bd65be68c4208a781b5357a32c075a430166372bd26379db831b28287ce3b63a"
     },
     {
       "path": "lib/import/detectReportType.ts",
@@ -213,6 +213,18 @@
     "approvedControlPeriod": "2026-07-01..2026-07-26",
     "expectedWbNetProfitAfterTax": 1359701.69,
     "expectedOzonNetProfitAfterTax": 2420829.84,
+    "databaseChanges": "NONE"
+  },
+  "lockRevision": "financial-core-v3-telegram-owner-report-v28-4",
+  "lastUpdatedAt": "2026-07-29T11:45:00.000Z",
+  "lastChangeAudit": {
+    "reason": "Улучшение представления ежедневного Telegram-отчёта с сохранением канонических финансовых результатов.",
+    "approvedControlPeriod": "2026-07-28",
+    "protectedFile": "lib/telegram/dailyReport.ts",
+    "previousSha256": "a841d9a671609f0d3bc302c451b7a469729a80323435f46b93af7a254214b735",
+    "newSha256": "bd65be68c4208a781b5357a32c075a430166372bd26379db831b28287ce3b63a",
+    "financialCoreFormulasChanged": false,
+    "oldNewFinancialOutputsCompared": true,
     "databaseChanges": "NONE"
   }
 }
