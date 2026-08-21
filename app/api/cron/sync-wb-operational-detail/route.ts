@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { rejectUnauthorizedCron } from "@/lib/security/cronAuth";
 
 import { prisma } from "@/lib/prisma";
 import {
@@ -103,6 +104,8 @@ async function runForConnection(connection: WbConnection, dateFrom: Date, dateTo
 }
 
 export async function GET(req: Request) {
+  const cronDenied = rejectUnauthorizedCron(req);
+  if (cronDenied) return cronDenied;
   try {
     const url = new URL(req.url);
     const companyName = url.searchParams.get("companyName");

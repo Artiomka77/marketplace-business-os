@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { rejectUnauthorizedCron } from "@/lib/security/cronAuth";
 
 import { prisma } from "@/lib/prisma";
 import { syncWbFinance } from "@/lib/wb/syncWb";
@@ -13,7 +14,9 @@ import {
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+export async function GET(request: Request) {
+  const cronDenied = rejectUnauthorizedCron(request);
+  if (cronDenied) return cronDenied;
   const connections: WbCronConnection[] =
     await prisma.marketplaceApiConnection.findMany({
       where: {

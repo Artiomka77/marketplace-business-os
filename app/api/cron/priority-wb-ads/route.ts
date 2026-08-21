@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { rejectUnauthorizedCron } from "@/lib/security/cronAuth";
 
 import { prisma } from "@/lib/prisma";
 import { runNextHistoricalSyncJob } from "@/lib/historicalSync/runHistoricalSyncJob";
@@ -218,7 +219,9 @@ async function runRecentWbAdsJob(dateFrom: Date, dateTo: Date) {
   });
 }
 
-export async function GET() {
+export async function GET(request: Request) {
+  const cronDenied = rejectUnauthorizedCron(request);
+  if (cronDenied) return cronDenied;
   try {
     const period = getRecentWbAdsPeriod();
     const resetResult = await resetStuckRecentWbAdsJobs(

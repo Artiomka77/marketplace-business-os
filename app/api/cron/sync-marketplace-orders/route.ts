@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { rejectUnauthorizedCron } from "@/lib/security/cronAuth";
 
 import { syncMarketplaceDailyOrders } from "@/lib/marketplaceOrders/syncMarketplaceDailyOrders";
 
@@ -16,6 +17,8 @@ function toDate(value: string | null) {
 }
 
 export async function GET(req: Request) {
+  const cronDenied = rejectUnauthorizedCron(req);
+  if (cronDenied) return cronDenied;
   const url = new URL(req.url);
 
   const date = toDate(url.searchParams.get("date"));

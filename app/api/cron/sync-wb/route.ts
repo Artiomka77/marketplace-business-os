@@ -1,9 +1,12 @@
 import { NextResponse } from "next/server";
+import { rejectUnauthorizedCron } from "@/lib/security/cronAuth";
 
 import { prisma } from "@/lib/prisma";
 import { syncWbAll } from "@/lib/wb/syncWb";
 
-export async function GET() {
+export async function GET(request: Request) {
+  const cronDenied = rejectUnauthorizedCron(request);
+  if (cronDenied) return cronDenied;
   const connections = await prisma.marketplaceApiConnection.findMany({
     where: {
       marketplace: "WB",

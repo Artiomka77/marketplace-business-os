@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { rejectUnauthorizedCron } from "@/lib/security/cronAuth";
 
 import { runCurrentPrioritySync } from "@/lib/currentPrioritySync/syncCurrentPriorityData";
 
@@ -55,6 +56,8 @@ function parseMode(value: string | null) {
 }
 
 export async function GET(req: Request) {
+  const cronDenied = rejectUnauthorizedCron(req);
+  if (cronDenied) return cronDenied;
   try {
     const url = new URL(req.url);
     const mode = parseMode(url.searchParams.get("mode"));

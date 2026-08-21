@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { rejectUnauthorizedCron } from "@/lib/security/cronAuth";
 
 import { retryMissingOzonReportAds } from "@/lib/ozon/reportAdsRetry";
 
@@ -20,6 +21,8 @@ function parseDate(value: string | null) {
 }
 
 export async function GET(req: Request) {
+  const cronDenied = rejectUnauthorizedCron(req);
+  if (cronDenied) return cronDenied;
   try {
     const url = new URL(req.url);
     const date = parseDate(url.searchParams.get("date"));

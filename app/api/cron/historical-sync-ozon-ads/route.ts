@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { rejectUnauthorizedCron } from "@/lib/security/cronAuth";
 
 import { prisma } from "@/lib/prisma";
 
@@ -9,7 +10,9 @@ function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : "Неизвестная ошибка";
 }
 
-export async function GET() {
+export async function GET(request: Request) {
+  const cronDenied = rejectUnauthorizedCron(request);
+  if (cronDenied) return cronDenied;
   try {
     const marked = await prisma.historicalSyncJob.updateMany({
       where: {

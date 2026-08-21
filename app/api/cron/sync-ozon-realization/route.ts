@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { randomUUID } from "crypto";
+import { rejectUnauthorizedCron } from "@/lib/security/cronAuth";
 
 import { prisma } from "@/lib/prisma";
 
@@ -464,7 +465,9 @@ async function syncCompanyPeriod(connection: OzonConnection, period: PeriodToSyn
   };
 }
 
-export async function GET() {
+export async function GET(request: Request) {
+  const cronDenied = rejectUnauthorizedCron(request);
+  if (cronDenied) return cronDenied;
   const startedAt = new Date();
   const periods = buildPeriods(startedAt);
 
