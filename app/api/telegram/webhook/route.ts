@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+
+import { rejectUnauthorizedTelegramWebhook } from "@/lib/security/telegramWebhookAuth";
 import { Prisma } from "@prisma/client";
 
 import { prisma } from "@/lib/prisma";
@@ -669,6 +671,78 @@ async function telegramRequest(method: string, payload: Record<string, unknown>)
 
   return response;
 }
+
+
+// DIRECT_TELEGRAM_WEBHOOK_RESPONSE_SIMPLE_COMMANDS_V1
+// Простые команды отвечают прямо в webhook response.
+// Это убирает зависимость /id, /menu и выбора меню отчёта от отдельного fetch к api.telegram.org/sendMessage.
+function directTelegramWebhookSendMessage(
+  chatId: string,
+  text: string,
+  replyMarkup?: Record<string, unknown>
+) {
+  return NextResponse.json({
+    method: "sendMessage",
+    chat_id: chatId,
+    text,
+    disable_web_page_preview: true,
+    ...(replyMarkup ? { reply_markup: replyMarkup } : {}),
+  });
+}
+
+function buildDirectTelegramWebhookResponse(update: TelegramUpdate) {
+  const message = update.message;
+
+  if (!message?.text) {
+    return null;
+  }
+
+  const chatId = String(message.chat.id);
+
+  if (!isChatAllowed(chatId)) {
+    return directTelegramWebhookSendMessage(chatId, "Доступ запрещён");
+  }
+
+  const rawText = message.text.trim();
+  const normalizedText = rawText
+    .replace(/\s+/g, " ")
+    .toLowerCase()
+    .replaceAll("ё", "е");
+
+  if (normalizedText.startsWith("/id")) {
+    return directTelegramWebhookSendMessage(chatId, `Ваш chat id: ${chatId}`);
+  }
+
+  if (
+    normalizedText.startsWith("/start") ||
+    normalizedText.startsWith("/help") ||
+    normalizedText.startsWith("/menu") ||
+    normalizedText === "меню" ||
+    normalizedText === "главное меню" ||
+    normalizedText === "🏠 главное меню"
+  ) {
+    return directTelegramWebhookSendMessage(
+      chatId,
+      getHelpMessage(chatId),
+      mainReplyKeyboard()
+    );
+  }
+
+  if (
+    normalizedText === "/report" ||
+    normalizedText === "отчет собственника" ||
+    normalizedText === "📊 отчет собственника"
+  ) {
+    return directTelegramWebhookSendMessage(
+      chatId,
+      getReportMenuMessage(),
+      reportPeriodInlineKeyboard()
+    );
+  }
+
+  return null;
+}
+
 
 async function sendMessage(
   chatId: string,
@@ -2565,15 +2639,17 @@ async function handleCallbackQuery(callbackQuery: TelegramCallbackQuery) {
 }
 
 export async function POST(req: Request) {
-  const configuredSecret = getWebhookSecret();
-  const incomingSecret = req.headers.get("x-telegram-bot-api-secret-token");
-
-  if (configuredSecret && incomingSecret !== configuredSecret) {
-    return NextResponse.json({ ok: false }, { status: 401 });
-  }
+  const webhookDenied = rejectUnauthorizedTelegramWebhook(req);
+  if (webhookDenied) return webhookDenied;
 
   try {
     const update = (await req.json()) as TelegramUpdate;
+
+    const directTelegramResponse = buildDirectTelegramWebhookResponse(update);
+
+    if (directTelegramResponse) {
+      return directTelegramResponse;
+    }
 
     if (update.callback_query) {
       await handleCallbackQuery(update.callback_query);
