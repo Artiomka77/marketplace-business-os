@@ -3,35 +3,24 @@ import { rejectUnauthorizedCron } from "@/lib/security/cronAuth";
 
 import { prisma } from "@/lib/prisma";
 import { syncOzonAll } from "@/lib/ozon/syncOzon";
+import { SYNC_OZON_ALL_SCHEDULED } from "@/lib/ozon/syncOzonAllSequence";
+import {
+  fromSyncOzonAllResult,
+  fromSyncOzonThrownError,
+  historicalSyncSkipResult,
+  isOzonRateLimitText,
+  mapCompaniesSequentially,
+  rateLimitCooldownSkipResult,
+  summarizeOzonCronResults,
+  type OzonCronResult,
+} from "@/lib/ozon/syncOzonCronContract";
 
 export const dynamic = "force-dynamic";
 
 const OZON_COOLDOWN_MS = 60 * 60 * 1000;
-
-type OzonCronResult = {
-  companyId: string;
-  ok: boolean;
-  skipped: boolean;
-  reason: string | null;
-  message: string | null;
-  results?: unknown;
-  error?: string | null;
-};
-
-function getErrorMessage(error: unknown) {
-  return error instanceof Error ? error.message : "Неизвестная ошибка";
-}
-
-function isOzonRateLimitText(value: unknown) {
-  const text = getErrorMessage(value).toLowerCase();
-
-  return (
-    text.includes("429") ||
-    text.includes("rate limit") ||
-    text.includes("rate exceeded") ||
-    text.includes("too many requests")
-  );
-}
+const SCHEDULED_MODE = SYNC_OZON_ALL_SCHEDULED.mode;
+const SCHEDULED_OWNED_DOMAINS = [...SYNC_OZON_ALL_SCHEDULED.ownedDomains];
+const SCHEDULED_DEFERRED_DOMAINS = [...SYNC_OZON_ALL_SCHEDULED.deferredDomains];
 
 async function getActiveOzonHistoricalJobsCount(companyId: string) {
   return prisma.historicalSyncJob.count({
@@ -74,51 +63,20 @@ async function syncCompanyOzon(companyId: string): Promise<OzonCronResult> {
   const activeHistoricalJobs = await getActiveOzonHistoricalJobsCount(companyId);
 
   if (activeHistoricalJobs > 0) {
-    return {
-      companyId,
-      ok: true,
-      skipped: true,
-      reason: "OZON_HISTORICAL_SYNC_ACTIVE",
-      message: `Ежедневная синхронизация Ozon пропущена: сейчас идёт историческая загрузка Ozon. Осталось задач: ${activeHistoricalJobs}.`,
-      error: null,
-    };
+    return historicalSyncSkipResult(companyId, activeHistoricalJobs);
   }
 
   const isCooldown = await isOzonInCooldown(companyId);
 
   if (isCooldown) {
-    return {
-      companyId,
-      ok: true,
-      skipped: true,
-      reason: "OZON_RATE_LIMIT_COOLDOWN",
-      message:
-        "Ежедневная синхронизация Ozon пропущена: недавно был лимит API. Система повторит позже.",
-      error: null,
-    };
+    return rateLimitCooldownSkipResult(companyId);
   }
 
   try {
-    const result = await syncOzonAll(companyId);
-
-    return {
-      companyId,
-      ok: result.ok,
-      skipped: false,
-      reason: null,
-      message: null,
-      results: result.results,
-      error: result.ok ? null : result.error,
-    };
+    const result = await syncOzonAll(companyId, { mode: "scheduled" });
+    return fromSyncOzonAllResult(companyId, result);
   } catch (error) {
-    return {
-      companyId,
-      ok: false,
-      skipped: false,
-      reason: isOzonRateLimitText(error) ? "OZON_RATE_LIMIT" : "OZON_SYNC_ERROR",
-      message: null,
-      error: getErrorMessage(error),
-    };
+    return fromSyncOzonThrownError(companyId, error);
   }
 }
 
@@ -144,22 +102,28 @@ export async function GET(request: Request) {
     },
   });
 
-  const results: OzonCronResult[] = [];
+  const results = await mapCompaniesSequentially(connections, (connection) =>
+    syncCompanyOzon(connection.companyId)
+  );
 
-  for (const connection of connections) {
-    const result = await syncCompanyOzon(connection.companyId);
-    results.push(result);
-  }
-
+  const contract = summarizeOzonCronResults(results);
   const syncedCompanies = results.filter((result) => !result.skipped).length;
-  const skippedCompanies = results.filter((result) => result.skipped).length;
 
-  return NextResponse.json({
-    success: results.every((result) => result.ok),
-    totalCompanies: results.length,
-    syncedCompanies,
-    skippedCompanies,
-    results,
-    executedAt: new Date().toISOString(),
-  });
+  return NextResponse.json(
+    {
+      success: contract.success,
+      mode: SCHEDULED_MODE,
+      ownedDomains: SCHEDULED_OWNED_DOMAINS,
+      deferredDomains: SCHEDULED_DEFERRED_DOMAINS,
+      adsOwner: "retry-ozon-report-ads",
+      totalCompanies: results.length,
+      syncedCompanies,
+      skippedCompanies: contract.skippedCompanies,
+      failedCompanies: contract.failedCompanies,
+      retryable: contract.retryable,
+      results,
+      executedAt: new Date().toISOString(),
+    },
+    { status: contract.httpStatus }
+  );
 }

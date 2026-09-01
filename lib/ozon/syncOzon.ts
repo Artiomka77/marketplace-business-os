@@ -2,6 +2,10 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { normalizeOzonFinance } from "@/lib/import/normalizers/ozonFinanceNormalizer";
 import { syncOzonDailyEconomicTotalsRange } from "@/lib/ozon/syncOzonDailyEconomicTotals";
+import {
+  runSyncOzonAllSequence,
+  type SyncOzonAllOptions,
+} from "@/lib/ozon/syncOzonAllSequence";
 
 type CompanyRow = { id: string; name: string };
 
@@ -2168,28 +2172,16 @@ export async function syncOzonAds(
 
 /* -------------------- ALL -------------------- */
 
-export async function syncOzonAll(companyId: string) {
-  const results = [];
-
-  try {
-    results.push(await syncOzonFinance(companyId));
-    results.push(await syncOzonProducts(companyId));
-    results.push(await syncOzonStocks(companyId));
-    results.push(await syncOzonAds(companyId));
-
-    await setOzonConnected(companyId);
-
-    return {
-      ok: true,
-      results,
-    };
-  } catch (error) {
-    await setOzonError(companyId, error);
-
-    return {
-      ok: false,
-      results,
-      error: getErrorMessage(error),
-    };
-  }
+export async function syncOzonAll(
+  companyId: string,
+  options: SyncOzonAllOptions = {}
+) {
+  return runSyncOzonAllSequence(companyId, options, {
+    finance: syncOzonFinance,
+    products: syncOzonProducts,
+    stocks: syncOzonStocks,
+    ads: syncOzonAds,
+    setConnected: setOzonConnected,
+    setError: setOzonError,
+  });
 }

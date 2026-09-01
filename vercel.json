@@ -60,6 +60,10 @@
     {
       "path": "/api/cron/sync-wb-ads",
       "schedule": "0 6 * * *"
+    },
+    {
+      "path": "/api/cron/retry-ozon-report-ads",
+      "schedule": "50 4,8,12 * * *"
     }
   ]
 }

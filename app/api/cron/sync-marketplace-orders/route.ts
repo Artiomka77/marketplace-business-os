@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
 import { rejectUnauthorizedCron } from "@/lib/security/cronAuth";
 
-import { syncMarketplaceDailyOrders } from "@/lib/marketplaceOrders/syncMarketplaceDailyOrders";
+import {
+  marketplaceOrdersHttpStatus,
+  syncMarketplaceDailyOrders,
+} from "@/lib/marketplaceOrders/syncMarketplaceDailyOrders";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -31,5 +34,7 @@ export async function GET(req: Request) {
     dateTo: dateTo ?? undefined,
   });
 
-  return NextResponse.json(result);
+  return NextResponse.json(result, {
+    status: marketplaceOrdersHttpStatus(result),
+  });
 }

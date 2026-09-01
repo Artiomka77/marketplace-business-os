@@ -209,6 +209,88 @@ function isRateLimitError(error: unknown) {
   );
 }
 
+export type MarketplaceOrderWorkStatus =
+  | "completed"
+  | "not_configured"
+  | "skipped"
+  | "failed";
+
+const NOT_CONFIGURED_ORDER_REASONS = new Set([
+  "WB token is not configured",
+  "Ozon Client-Id or Api-Key is not configured",
+]);
+
+type MarketplaceOrderRowLike = {
+  skipped?: boolean;
+  isRateLimit?: boolean;
+  reason?: string;
+  companyName?: string;
+  marketplace?: string;
+  date?: string;
+};
+
+export function classifyMarketplaceOrderRow(row: MarketplaceOrderRowLike) {
+  if (!row.skipped) {
+    return {
+      status: "completed" as const,
+      requiredIncomplete: false,
+      retryable: false,
+    };
+  }
+
+  if (NOT_CONFIGURED_ORDER_REASONS.has(String(row.reason ?? ""))) {
+    return {
+      status: "not_configured" as const,
+      requiredIncomplete: false,
+      retryable: false,
+    };
+  }
+
+  const retryable = Boolean(row.isRateLimit);
+  return {
+    status: (retryable ? "skipped" : "failed") as "skipped" | "failed",
+    requiredIncomplete: true,
+    retryable,
+  };
+}
+
+export function summarizeMarketplaceOrderRows(results: MarketplaceOrderRowLike[]) {
+  const annotated = results.map((row) => {
+    const classified = classifyMarketplaceOrderRow(row);
+    return {
+      ...row,
+      status: classified.status,
+    };
+  });
+  const incomplete = results
+    .map((row) => ({ row, classified: classifyMarketplaceOrderRow(row) }))
+    .filter((item) => item.classified.requiredIncomplete);
+  const ok = incomplete.length === 0;
+  const retryable = !ok && incomplete.every((item) => item.classified.retryable);
+
+  return {
+    ok,
+    retryable,
+    annotated,
+    incompleteRequired: incomplete.map(({ row, classified }) => ({
+      companyName: row.companyName ?? null,
+      marketplace: row.marketplace ?? null,
+      date: row.date ?? null,
+      reason: row.reason ?? null,
+      status: classified.status,
+      retryable: classified.retryable,
+    })),
+  };
+}
+
+export function marketplaceOrdersHttpStatus(result: {
+  ok: boolean;
+  retryable?: boolean;
+}): 200 | 503 | 500 {
+  if (result.ok) return 200;
+  return result.retryable ? 503 : 500;
+}
+
 function shouldSyncMarketplace(
   filter: MarketplaceFilter | undefined,
   marketplace: MarketplaceName
@@ -746,14 +828,18 @@ export async function syncMarketplaceDailyOrders(
     }
   }
 
+  const summary = summarizeMarketplaceOrderRows(results);
+
   return {
-    ok: true,
+    ok: summary.ok,
+    retryable: summary.retryable,
     mode: options.mode ?? (options.dateFrom || options.dateTo ? "manual" : "daily"),
     marketplace: marketplaceFilter,
     dates: dates.map(formatDateOnly),
     safeRecheckDays:
       options.mode === "recheck" ? getSafeRecheckDays(options.recheckDays) : null,
     wbStoppedByRateLimit: wbRateLimited,
-    results,
+    incompleteRequired: summary.incompleteRequired,
+    results: summary.annotated,
   };
 }

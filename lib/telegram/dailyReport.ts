@@ -2327,6 +2327,49 @@ function isPreliminaryFinancialResult(report: DailyReport) {
   );
 }
 
+const LOADED_DATA_SUFFIX = " · по загруженным данным";
+
+function marketplaceHasIncompleteTaxableRevenueSource(
+  metrics: MarketplaceDailyMetrics
+) {
+  if (metrics.marketplace === "OZON" && metrics.taxRevenueCoverageComplete === false) {
+    return true;
+  }
+  if (metrics.marketplace === "WB" && metrics.salesDataMissing) {
+    return true;
+  }
+  return false;
+}
+
+function marketplaceHasIncompleteProfitSource(metrics: MarketplaceDailyMetrics) {
+  if (marketplaceHasIncompleteTaxableRevenueSource(metrics)) return true;
+  if (metrics.marketplace === "OZON") {
+    if (metrics.discountPointsCoverageComplete === false) return true;
+    if (metrics.taxesEstimated === true) return true;
+  }
+  return false;
+}
+
+function marketplaceHasIncompleteRequiredSource(
+  metrics: MarketplaceDailyMetrics
+) {
+  if (metrics.ordersDataMissing || metrics.ordersDataIncomplete) return true;
+  return marketplaceHasIncompleteProfitSource(metrics);
+}
+
+function companyHasIncompleteRequiredSource(
+  company: DailyReport["companies"][number]
+) {
+  return (
+    marketplaceHasIncompleteRequiredSource(company.wb) ||
+    marketplaceHasIncompleteRequiredSource(company.ozon)
+  );
+}
+
+function reportHasIncompleteRequiredSource(report: DailyReport) {
+  return report.companies.some(companyHasIncompleteRequiredSource);
+}
+
 function buildWarnings(report: DailyReport) {
   const warnings: string[] = [];
   const suppressReadinessWarnings = Boolean(
@@ -2688,13 +2731,17 @@ export function formatPercent(value: number) {
 }
 
 function marketplaceSalesLine(metrics: MarketplaceDailyMetrics) {
+  const loadedDataSuffix = marketplaceHasIncompleteRequiredSource(metrics)
+    ? LOADED_DATA_SUFFIX
+    : "";
+
   if (metrics.salesDataMissing) {
     return `${metrics.salesLabel}: данные ещё не загружены`;
   }
 
   if (metrics.economicTurnover !== undefined) {
     if (metrics.marketplace === "OZON" && metrics.ozonEconomicsWarning) {
-      return `Экономический оборот: ${formatMoney(metrics.economicTurnover)} (${metrics.ozonEconomicsWarning})`;
+      return `Экономический оборот: ${formatMoney(metrics.economicTurnover)} (${metrics.ozonEconomicsWarning})${loadedDataSuffix}`;
     }
 
     const details: string[] = [];
@@ -2726,7 +2773,7 @@ function marketplaceSalesLine(metrics: MarketplaceDailyMetrics) {
 
     return `Экономический оборот: ${formatMoney(metrics.economicTurnover)}${
       details.length > 0 ? ` (${details.join(" + ")})` : ""
-    }`;
+    }${loadedDataSuffix}`;
   }
 
   if (metrics.salesQtyIsReliable) {
@@ -2857,7 +2904,9 @@ function getCashFlowConclusion(report: DailyReport) {
 }
 
 function getProfitConclusion(report: DailyReport) {
-  const preliminary = isPreliminaryFinancialResult(report);
+  const preliminary =
+    isPreliminaryFinancialResult(report) ||
+    reportHasIncompleteRequiredSource(report);
   const label = preliminary
     ? "Предварительная прибыль"
     : "Чистая прибыль";
@@ -3042,8 +3091,11 @@ function marketplaceLine(
       metrics.marketplace === "WB"
         ? "Расходы и удержания WB без рекламы"
         : "Расходы Ozon без рекламы";
+    const requiredIncomplete =
+      marketplaceHasIncompleteRequiredSource(metrics);
     const preliminary =
-      metrics.netProfitStatus === "PRELIMINARY";
+      metrics.netProfitStatus === "PRELIMINARY" ||
+      requiredIncomplete;
     const economicTurnover =
       metrics.economicTurnover ??
       metrics.salesAmount;
@@ -3070,7 +3122,7 @@ function marketplaceLine(
         metrics.netProfitAfterTax
       )} · рентабельность ${formatPercent(
         profitability
-      )}`
+      )}${requiredIncomplete ? LOADED_DATA_SUFFIX : ""}`
     );
   }
 
@@ -3370,8 +3422,11 @@ export function formatDailyReportForTelegram(report: DailyReport) {
   const comparison = report.comparison?.totals ?? null;
   const profitAfterOwnerWithdrawal =
     report.totals.netProfitImpact - report.totals.ownerWithdrawals;
-  const preliminary = isPreliminaryFinancialResult(report);
+  const requiredSliceIncomplete = reportHasIncompleteRequiredSource(report);
+  const preliminary =
+    isPreliminaryFinancialResult(report) || requiredSliceIncomplete;
   const estimatedOzonTax = hasEstimatedOzonTaxes(report);
+  const loadedDataSuffix = requiredSliceIncomplete ? LOADED_DATA_SUFFIX : "";
 
   const dataReadinessText = preliminary
     ? estimatedOzonTax
@@ -3394,10 +3449,16 @@ export function formatDailyReportForTelegram(report: DailyReport) {
     "ИТОГО ПО БИЗНЕСУ",
     `Заказы: ${formatNumber(report.totals.ordersQty)} шт / ${formatMoney(
       report.totals.ordersAmount
-    )}${inlinePercentChange(comparison?.ordersAmountPercent ?? null)}`,
-    `Экономический оборот: ${formatMoney(report.totals.economicTurnover)}${inlinePercentChange(
-      comparison?.economicTurnoverPercent ?? null
-    )}`,
+    )}${
+      requiredSliceIncomplete
+        ? loadedDataSuffix
+        : inlinePercentChange(comparison?.ordersAmountPercent ?? null)
+    }`,
+    `Экономический оборот: ${formatMoney(report.totals.economicTurnover)}${
+      requiredSliceIncomplete
+        ? loadedDataSuffix
+        : inlinePercentChange(comparison?.economicTurnoverPercent ?? null)
+    }`,
     estimatedOzonTax
       ? `Налоговая выручка: ${formatMoney(
           report.totals.taxableRevenue
@@ -3425,7 +3486,8 @@ export function formatDailyReportForTelegram(report: DailyReport) {
     )}`,
     `${preliminary ? "Предварительная чистая прибыль" : "Чистая прибыль"}: ${formatMoney(
       report.totals.netProfitImpact
-    )}${preliminary ? "" : inlinePercentChange(
+    )}${requiredSliceIncomplete ? loadedDataSuffix : ""}${
+      preliminary ? "" : inlinePercentChange(
       comparison?.netProfitImpactPercent ?? null
     )}`,
     `Рентабельность: ${formatPercent(
@@ -3467,16 +3529,23 @@ export function formatDailyReportForTelegram(report: DailyReport) {
       company.finance.netProfitImpact;
     const companyProfitAfterOwnerWithdrawal =
       companyNetProfit - company.finance.ownerWithdrawals;
+    const companyIncomplete = companyHasIncompleteRequiredSource(company);
     const companyPreliminary =
       company.wb.netProfitStatus ===
         "PRELIMINARY" ||
       company.ozon.netProfitStatus ===
-        "PRELIMINARY";
+        "PRELIMINARY" ||
+      companyIncomplete;
 
     lines.push(
       "",
       `━━━━━━━━━━━━━━`,
       `${company.companyName}`,
+      `${
+        companyIncomplete
+          ? "Итого (предварительно, по загруженным данным)"
+          : "Итого"
+      }: ${formatMoney(companyNetProfit)}`,
       "",
       marketplaceLine("WB", company.wb),
       "",
@@ -3486,7 +3555,7 @@ export function formatDailyReportForTelegram(report: DailyReport) {
       `ДДС: ${formatMoney(company.finance.netCashFlow)}`,
       `${companyPreliminary ? "Предварительная чистая прибыль" : "Чистая прибыль"}: ${formatMoney(
         companyNetProfit
-      )}`,
+      )}${companyIncomplete ? LOADED_DATA_SUFFIX : ""}`,
       `Вывод собственника: ${formatMoney(company.finance.ownerWithdrawals)}`,
       `${
         companyPreliminary
