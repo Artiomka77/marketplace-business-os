@@ -1,0 +1,5 @@
+
+> marketplace-business-os@0.1.0 financial-core:verify
+> node scripts/financial-core/verify-financial-core-v6.mjs
+
+FINANCIAL CORE V6 LOCAL CANDIDATE: VERIFIED (24 protected files, SERVER VERIFY REQUIRED)
