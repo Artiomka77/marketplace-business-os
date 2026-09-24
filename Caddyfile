@@ -1,0 +1,8 @@
+﻿www.ardelo.su {
+  redir https://ardelo.su{uri} permanent
+}
+
+ardelo.su {
+  encode gzip zstd
+  reverse_proxy app:3000
+}
