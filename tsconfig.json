@@ -1,0 +1,47 @@
+{
+  "compilerOptions": {
+    "target": "ES2017",
+    "lib": ["dom", "dom.iterable", "esnext"],
+    "allowJs": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "jsx": "react-jsx",
+    "incremental": true,
+    "plugins": [
+      {
+        "name": "next"
+      }
+    ],
+    "paths": {
+      "@/*": ["./*"]
+    }
+  },
+  "include": [
+    "next-env.d.ts",
+    "**/*.ts",
+    "**/*.tsx",
+    ".next/types/**/*.ts",
+    ".next/dev/types/**/*.ts",
+    "**/*.mts"
+  ],
+  "exclude": [
+    "node_modules",
+    "scripts/dashboard",
+    "financial-core/v5/snapshot",
+    "financial-core/v6/snapshot",
+    "__ozon_accrual_20260820_audit",
+    "__ozon_accrual_restore",
+    "__telegram_v22_audit",
+    "__v6_harness_final",
+    "scripts/architecture/certOzon2308Eval.ts",
+    "scripts/architecture/certOzonWeekEval.ts",
+    "scripts/architecture/certWbShadowEval.ts",
+    "scripts/architecture/certSyntheticUnknownFinality.ts"
+  ]
+}

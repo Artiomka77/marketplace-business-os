@@ -1,0 +1,398 @@
+﻿C:\AI-PROJECTS\marketplace-business-os\app\abc\page.tsx:154: profit: row.marginProfit,
+C:\AI-PROJECTS\marketplace-business-os\app\abc\page.tsx:164: profit: row.marginProfit,
+C:\AI-PROJECTS\marketplace-business-os\app\abc\page.tsx:338: Прибыль:{" "}
+C:\AI-PROJECTS\marketplace-business-os\app\abc\page.tsx:363: Прибыль:{" "}
+C:\AI-PROJECTS\marketplace-business-os\app\abc\page.tsx:388: Прибыль:{" "}
+C:\AI-PROJECTS\marketplace-business-os\app\abc\page.tsx:413: Прибыль:{" "}
+C:\AI-PROJECTS\marketplace-business-os\app\abc\page.tsx:441: <div className="text-sm text-slate-500">Слабая прибыль C-SKU</div>
+C:\AI-PROJECTS\marketplace-business-os\app\abc\page.tsx:456: Группа C: отрицательная прибыль, доля прибыли меньше 0.2% или
+C:\AI-PROJECTS\marketplace-business-os\app\abc\page.tsx:488: <th className="p-3 text-right">Прибыль</th>
+C:\AI-PROJECTS\marketplace-business-os\app\abc\page.tsx:576: <th className="p-3 text-right">Прибыль</th>
+C:\AI-PROJECTS\marketplace-business-os\app\analytics\page.tsx:5: title: "Прибыль по SKU WB",
+C:\AI-PROJECTS\marketplace-business-os\app\analytics\page.tsx:21: title: "Прибыль по SKU Ozon",
+C:\AI-PROJECTS\marketplace-business-os\app\analytics\page.tsx:24: "Где прибыль съедают комиссии, логистика и реклама на Ozon.",
+C:\AI-PROJECTS\marketplace-business-os\app\analytics\page.tsx:32: "Маржинальность и прибыль",
+C:\AI-PROJECTS\marketplace-business-os\app\analytics\page.tsx:72: title: "Сначала прибыль",
+C:\AI-PROJECTS\marketplace-business-os\app\analytics\page.tsx:74: "Найдите прибыльные и убыточные SKU. Проверьте маржинальность, налоги и себестоимость.",
+C:\AI-PROJECTS\marketplace-business-os\app\analytics\page.tsx:137: text: "Смотрите на чистую прибыль и маржинальность, а не только на оборот.",
+C:\AI-PROJECTS\marketplace-business-os\app\analytics\page.tsx:143: text: "Высокий ДРР допустим, если он окупается прибылью.",
+C:\AI-PROJECTS\marketplace-business-os\app\analytics\page.tsx:247: Выберите, что хотите проверить: прибыль, рекламу, ассортимент
+C:\AI-PROJECTS\marketplace-business-os\app\analytics\page.tsx:259: Прибыль
+C:\AI-PROJECTS\marketplace-business-os\app\analytics\page.tsx:262: Что приносит прибыль
+C:\AI-PROJECTS\marketplace-business-os\app\analytics\page.tsx:367: Максимизировать прибыль, управляя рекламой, ассортиментом и
+C:\AI-PROJECTS\marketplace-business-os\app\finance\budget\page.tsx:309: Прибыль:{" "}
+C:\AI-PROJECTS\marketplace-business-os\app\finance\cashflow\page.tsx:778: Уменьшает деньги, но не чистую прибыль.
+C:\AI-PROJECTS\marketplace-business-os\app\finance\cashflow\page.tsx:790: Уменьшают и ДДС, и чистую прибыль.
+C:\AI-PROJECTS\marketplace-business-os\app\finance\categories\page.tsx:15: description: "Расход уменьшает ДДС и чистую прибыль бизнеса.",
+C:\AI-PROJECTS\marketplace-business-os\app\finance\categories\page.tsx:21: "Деньги ушли, но в прибыль не вычитаем повторно. Например: фулфилмент, закупка, упаковка.",
+C:\AI-PROJECTS\marketplace-business-os\app\finance\categories\page.tsx:26: description: "Учитывается в ДДС, но не уменьшает чистую прибыль.",
+C:\AI-PROJECTS\marketplace-business-os\app\finance\categories\page.tsx:31: description: "Учитывается в ДДС и уменьшает чистую прибыль.",
+C:\AI-PROJECTS\marketplace-business-os\app\finance\categories\page.tsx:36: description: "Денежное поступление в ДДС, но не доход и не чистая прибыль.",
+C:\AI-PROJECTS\marketplace-business-os\app\finance\categories\page.tsx:230: чистую прибыль и вывод собственника.
+C:\AI-PROJECTS\marketplace-business-os\app\finance\categories\page.tsx:394: Изменяй роль статьи аккуратно: это влияет на чистую прибыль,
+C:\AI-PROJECTS\marketplace-business-os\app\finance\operations\edit\[id]\page.tsx:16: description: "Влияет на ДДС и чистую прибыль бизнеса.",
+C:\AI-PROJECTS\marketplace-business-os\app\finance\operations\edit\[id]\page.tsx:21: description: "Деньги ушли/пришли, но в прибыль повторно не включается.",
+C:\AI-PROJECTS\marketplace-business-os\app\finance\operations\edit\[id]\page.tsx:26: description: "Влияет на ДДС, но не уменьшает чистую прибыль.",
+C:\AI-PROJECTS\marketplace-business-os\app\finance\operations\edit\[id]\page.tsx:31: description: "Влияет на ДДС и уменьшает чистую прибыль.",
+C:\AI-PROJECTS\marketplace-business-os\app\finance\operations\FinanceOperationForm.tsx:37: label: "В чистую прибыль",
+C:\AI-PROJECTS\marketplace-business-os\app\finance\operations\FinanceOperationForm.tsx:38: description: "Влияет на ДДС и чистую прибыль бизнеса.",
+C:\AI-PROJECTS\marketplace-business-os\app\finance\operations\FinanceOperationForm.tsx:43: description: "Деньги ушли/пришли, но в прибыль повторно не включается.",
+C:\AI-PROJECTS\marketplace-business-os\app\finance\operations\FinanceOperationForm.tsx:48: description: "Влияет на ДДС, но не уменьшает чистую прибыль.",
+C:\AI-PROJECTS\marketplace-business-os\app\finance\operations\FinanceOperationForm.tsx:53: description: "Влияет на ДДС и уменьшает чистую прибыль.",
+C:\AI-PROJECTS\marketplace-business-os\app\finance\operations\page.tsx:77: | "netProfitImpact"
+C:\AI-PROJECTS\marketplace-business-os\app\finance\operations\page.tsx:107: key: "netProfitImpact",
+C:\AI-PROJECTS\marketplace-business-os\app\finance\operations\page.tsx:108: title: "Влияние на чистую прибыль",
+C:\AI-PROJECTS\marketplace-business-os\app\finance\operations\page.tsx:109: description: "Операции, которые влияют на P&L и чистую прибыль бизнеса.",
+C:\AI-PROJECTS\marketplace-business-os\app\finance\operations\page.tsx:125: "Расходы, которые уменьшают деньги, но не уменьшают прибыль повторно.",
+C:\AI-PROJECTS\marketplace-business-os\app\finance\operations\page.tsx:131: "Погашение основного долга: влияет на деньги, но не на чистую прибыль.",
+C:\AI-PROJECTS\marketplace-business-os\app\finance\operations\page.tsx:136: description: "Проценты по кредитам: влияют и на ДДС, и на чистую прибыль.",
+C:\AI-PROJECTS\marketplace-business-os\app\finance\operations\page.tsx:415: if (metric === "netProfitImpact") {
+C:\AI-PROJECTS\marketplace-business-os\app\finance\operations\page.tsx:417: treatment.includes("чистая прибыль") ||
+C:\AI-PROJECTS\marketplace-business-os\app\finance\operations\page.tsx:418: treatment.includes("ддс + прибыль") ||
+C:\AI-PROJECTS\marketplace-business-os\app\finance\operations\page.tsx:419: treatment.includes("прибыль") ||
+C:\AI-PROJECTS\marketplace-business-os\app\finance\operations\page.tsx:469: netProfitImpact: number;
+C:\AI-PROJECTS\marketplace-business-os\app\finance\operations\page.tsx:899: Роль статьи определяет влияние на ДДС, чистую прибыль и вывод
+C:\AI-PROJECTS\marketplace-business-os\app\finance\operations\page.tsx:1129: href={`${buildHref(params, { metric: "netProfitImpact" })}#journal`}
+C:\AI-PROJECTS\marketplace-business-os\app\finance\operations\page.tsx:1131: selectedMetric === "netProfitImpact"
+C:\AI-PROJECTS\marketplace-business-os\app\finance\operations\page.tsx:1137: title="Влияние на чистую прибыль"
+C:\AI-PROJECTS\marketplace-business-os\app\finance\operations\page.tsx:1138: value={formatMoney(metrics.netProfitImpact)}
+C:\AI-PROJECTS\marketplace-business-os\app\finance\operations\page.tsx:1140: tone={metrics.netProfitImpact >= 0 ? "emerald" : "violet"}
+C:\AI-PROJECTS\marketplace-business-os\app\finance\plan-fact\page.tsx:106: function isNetProfitExpenseTreatment(treatment: string) {
+C:\AI-PROJECTS\marketplace-business-os\app\finance\plan-fact\page.tsx:617: const financeNetProfitExpenseTransactions = financeTransactions.filter((row) => {
+C:\AI-PROJECTS\marketplace-business-os\app\finance\plan-fact\page.tsx:625: isNetProfitExpenseTreatment(treatment)
+C:\AI-PROJECTS\marketplace-business-os\app\finance\plan-fact\page.tsx:629: const financeTax = financeNetProfitExpenseTransactions
+C:\AI-PROJECTS\marketplace-business-os\app\finance\plan-fact\page.tsx:633: const financeSalary = financeNetProfitExpenseTransactions
+C:\AI-PROJECTS\marketplace-business-os\app\finance\plan-fact\page.tsx:647: financeMetrics.netProfitExpense -
+C:\AI-PROJECTS\marketplace-business-os\app\finance\plan-fact\page.tsx:653: const operatingProfit =
+C:\AI-PROJECTS\marketplace-business-os\app\finance\plan-fact\page.tsx:654: contributionProfit + financeMetrics.netProfitIncome - financeMetrics.netProfitExpense;
+C:\AI-PROJECTS\marketplace-business-os\app\finance\plan-fact\page.tsx:708: financeNetProfitIncome: financeMetrics.netProfitIncome,
+C:\AI-PROJECTS\marketplace-business-os\app\finance\plan-fact\page.tsx:709: financeNetProfitExpense: financeMetrics.netProfitExpense,
+C:\AI-PROJECTS\marketplace-business-os\app\finance\plan-fact\page.tsx:714: operatingProfit,
+C:\AI-PROJECTS\marketplace-business-os\app\finance\plan-fact\page.tsx:797: const profitExecution = getExecution(planProfit, fact.operatingProfit);
+C:\AI-PROJECTS\marketplace-business-os\app\finance\plan-fact\page.tsx:816: title: "Операционная прибыль",
+C:\AI-PROJECTS\marketplace-business-os\app\finance\plan-fact\page.tsx:818: fact: fact.operatingProfit,
+C:\AI-PROJECTS\marketplace-business-os\app\finance\plan-fact\page.tsx:1019: title="Опер. прибыль"
+C:\AI-PROJECTS\marketplace-business-os\app\finance\plan-fact\page.tsx:1020: value={formatMoney(fact.operatingProfit)}
+C:\AI-PROJECTS\marketplace-business-os\app\finance\plan-fact\page.tsx:1022: fact.operatingProfit - prevFact.operatingProfit
+C:\AI-PROJECTS\marketplace-business-os\app\finance\plan-fact\page.tsx:1025: fact.operatingProfit >= 0 ? "text-emerald-600" : "text-red-600"
+C:\AI-PROJECTS\marketplace-business-os\app\finance\plan-fact\page.tsx:1031: value={formatMoney(fact.operatingProfit - planProfit)}
+C:\AI-PROJECTS\marketplace-business-os\app\finance\plan-fact\page.tsx:1032: className={diffClass(fact.operatingProfit - planProfit)}
+C:\AI-PROJECTS\marketplace-business-os\app\finance\plan-fact\page.tsx:1125: title="Валовая прибыль"
+C:\AI-PROJECTS\marketplace-business-os\app\finance\plan-fact\page.tsx:1132: title="Маржинальная прибыль"
+C:\AI-PROJECTS\marketplace-business-os\app\finance\plan-fact\page.tsx:1344: Операционная прибыль = маржинальная прибыль WB/Ozon + доходы из
+C:\AI-PROJECTS\marketplace-business-os\app\finance\plan-fact\page.tsx:1345: финансовых операций, которые входят в чистую прибыль − расходы из
+C:\AI-PROJECTS\marketplace-business-os\app\finance\plan-fact\page.tsx:1346: финансовых операций, которые входят в чистую прибыль. Фулфилмент,
+C:\AI-PROJECTS\marketplace-business-os\app\finance\page.tsx:618: Увеличивает ДДС, но не является прибылью.
+C:\AI-PROJECTS\marketplace-business-os\app\finance\page.tsx:630: Уменьшают и ДДС, и чистую прибыль.
+C:\AI-PROJECTS\marketplace-business-os\app\insights\page.tsx:144: <th className="p-3 text-right">Прибыль</th>
+C:\AI-PROJECTS\marketplace-business-os\app\insights\page.tsx:326: const profit = getAmount(row.marginProfit);
+C:\AI-PROJECTS\marketplace-business-os\app\insights\page.tsx:342: const profit = getAmount(row.marginProfit);
+C:\AI-PROJECTS\marketplace-business-os\app\insights\page.tsx:464: ? `ТОП-${profitableRows.length} прибыльных SKU стоит рассмотреть для масштабирования.`
+C:\AI-PROJECTS\marketplace-business-os\app\insights\page.tsx:465: : "Прибыльных SKU в выбранном периоде не найдено.",
+C:\AI-PROJECTS\marketplace-business-os\app\insights\page.tsx:547: title="Маржинальная прибыль"
+C:\AI-PROJECTS\marketplace-business-os\app\insights\page.tsx:558: subtitle="Товары с отрицательной прибылью"
+C:\AI-PROJECTS\marketplace-business-os\app\insights\page.tsx:588: title="ТОП-20 прибыльных SKU"
+C:\AI-PROJECTS\marketplace-business-os\app\insights\page.tsx:590: emptyText="Прибыльных SKU не найдено."
+C:\AI-PROJECTS\marketplace-business-os\app\profit-ozon\page.tsx:11: | "netProfitAfterTax"
+C:\AI-PROJECTS\marketplace-business-os\app\profit-ozon\page.tsx:53: netProfitAfterTax: number;
+C:\AI-PROJECTS\marketplace-business-os\app\profit-ozon\page.tsx:239: return row.revenue - row.netProfitAfterTax;
+C:\AI-PROJECTS\marketplace-business-os\app\profit-ozon\page.tsx:311: sort: params.sort ?? "netProfitAfterTax",
+C:\AI-PROJECTS\marketplace-business-os\app\profit-ozon\page.tsx:339: netProfitAfterTax: "прибыли",
+C:\AI-PROJECTS\marketplace-business-os\app\profit-ozon\page.tsx:668: value: row.netProfitAfterTax * share,
+C:\AI-PROJECTS\marketplace-business-os\app\profit-ozon\page.tsx:688: const allocatedProfit = row.netProfitAfterTax * share;
+C:\AI-PROJECTS\marketplace-business-os\app\profit-ozon\page.tsx:704: netProfitAfterTax: allocatedProfit,
+C:\AI-PROJECTS\marketplace-business-os\app\profit-ozon\page.tsx:732: netProfitAfterTax: row.netProfitAfterTax,
+C:\AI-PROJECTS\marketplace-business-os\app\profit-ozon\page.tsx:742: row.marginProfitPercent =
+C:\AI-PROJECTS\marketplace-business-os\app\profit-ozon\page.tsx:743: row.revenue > 0 ? (row.marginProfit / row.revenue) * 100 : 0;
+C:\AI-PROJECTS\marketplace-business-os\app\profit-ozon\page.tsx:745: row.revenue > 0 ? (row.netProfitAfterTax / row.revenue) * 100 : 0;
+C:\AI-PROJECTS\marketplace-business-os\app\profit-ozon\page.tsx:791: existing.marginProfit += row.marginProfit;
+C:\AI-PROJECTS\marketplace-business-os\app\profit-ozon\page.tsx:793: existing.netProfitAfterTax += row.netProfitAfterTax;
+C:\AI-PROJECTS\marketplace-business-os\app\profit-ozon\page.tsx:814: (row) => row.netProfitAfterTax
+C:\AI-PROJECTS\marketplace-business-os\app\profit-ozon\page.tsx:833: (row) => row.netProfitAfterTax
+C:\AI-PROJECTS\marketplace-business-os\app\profit-ozon\page.tsx:1286: Прибыль
+C:\AI-PROJECTS\marketplace-business-os\app\profit-ozon\page.tsx:1287: <InfoTooltip text="Прибыль — прибыль после налогов: выручка минус все расходы. Процент под суммой показывает долю прибыли в выручке артикула. Бейдж A/B/C — ABC по прибыли." />
+C:\AI-PROJECTS\marketplace-business-os\app\profit-ozon\page.tsx:1295: <InfoTooltip text="Маржинальность — прибыль после налогов / выручка артикула × 100% за выбранный период. Шкала помогает быстро увидеть качество маржи." />
+C:\AI-PROJECTS\marketplace-business-os\app\profit-ozon\page.tsx:1338: value={row.netProfitAfterTax}
+C:\AI-PROJECTS\marketplace-business-os\app\profit-ozon\page.tsx:1339: share={formatShare(row.netProfitAfterTax, row.revenue)}
+C:\AI-PROJECTS\marketplace-business-os\app\profit-ozon\page.tsx:1340: valueClassName={profitTextColor(row.netProfitAfterTax)}
+C:\AI-PROJECTS\marketplace-business-os\app\profit-ozon\page.tsx:1411: value={row.netProfitAfterTax}
+C:\AI-PROJECTS\marketplace-business-os\app\profit-ozon\page.tsx:1412: share={formatShare(row.netProfitAfterTax, row.revenue)}
+C:\AI-PROJECTS\marketplace-business-os\app\profit-ozon\page.tsx:1413: valueClassName={profitTextColor(row.netProfitAfterTax)}
+C:\AI-PROJECTS\marketplace-business-os\app\profit-ozon\page.tsx:1455: const sort = (params.sort ?? "netProfitAfterTax") as SortKey;
+C:\AI-PROJECTS\marketplace-business-os\app\profit-ozon\page.tsx:1517: if (abc === "LOSS") return row.netProfitAfterTax < 0;
+C:\AI-PROJECTS\marketplace-business-os\app\profit-ozon\page.tsx:1538: const lossRows = rows.filter((row) => row.netProfitAfterTax < 0);
+C:\AI-PROJECTS\marketplace-business-os\app\profit-ozon\page.tsx:1591: Прибыль Ozon по SKU
+C:\AI-PROJECTS\marketplace-business-os\app\profit-ozon\page.tsx:1681: title="Марж. прибыль"
+C:\AI-PROJECTS\marketplace-business-os\app\profit-ozon\page.tsx:1682: value={formatMoney(totals.marginProfit)}
+C:\AI-PROJECTS\marketplace-business-os\app\profit-ozon\page.tsx:1683: helper={`${formatPercent(totals.marginProfitPercent)} от выручки`}
+C:\AI-PROJECTS\marketplace-business-os\app\profit-ozon\page.tsx:1684: delta={comparison.marginProfit.diffPercent}
+C:\AI-PROJECTS\marketplace-business-os\app\profit-ozon\page.tsx:1690: title="Прибыль после налогов"
+C:\AI-PROJECTS\marketplace-business-os\app\profit-ozon\page.tsx:1691: value={formatMoney(totals.netProfitAfterTax)}
+C:\AI-PROJECTS\marketplace-business-os\app\profit-ozon\page.tsx:1693: delta={comparison.netProfitAfterTax.diffPercent}
+C:\AI-PROJECTS\marketplace-business-os\app\profit-ozon\page.tsx:1765: Прибыль после налогов
+C:\AI-PROJECTS\marketplace-business-os\app\profit-ozon\page.tsx:1768: {formatMoney(totals.netProfitAfterTax)}
+C:\AI-PROJECTS\marketplace-business-os\app\profit-ozon\page.tsx:1798: text={`${formatNumber(lossRows.length)} SKU с отрицательной прибылью`}
+C:\AI-PROJECTS\marketplace-business-os\app\profit-ozon\page.tsx:1799: value={formatMoney(lossRows.reduce((sum, row) => sum + row.netProfitAfterTax, 0))}
+C:\AI-PROJECTS\marketplace-business-os\app\profit-ozon\page.tsx:1819: text={`${formatNumber(cRows.length)} SKU с низким вкладом в прибыль`}
+C:\AI-PROJECTS\marketplace-business-os\app\profit-ozon\page.tsx:1919: <option value="netProfitAfterTax">прибыли</option>
+C:\AI-PROJECTS\marketplace-business-os\app\profit-wb\page.tsx:11: | "netProfitAfterTax"
+C:\AI-PROJECTS\marketplace-business-os\app\profit-wb\page.tsx:50: netProfitAfterTax: number;
+C:\AI-PROJECTS\marketplace-business-os\app\profit-wb\page.tsx:230: return row.revenue - row.netProfitAfterTax;
+C:\AI-PROJECTS\marketplace-business-os\app\profit-wb\page.tsx:298: sort: params.sort ?? "netProfitAfterTax",
+C:\AI-PROJECTS\marketplace-business-os\app\profit-wb\page.tsx:324: netProfitAfterTax: "прибыли",
+C:\AI-PROJECTS\marketplace-business-os\app\profit-wb\page.tsx:634: value: row.netProfitAfterTax * share,
+C:\AI-PROJECTS\marketplace-business-os\app\profit-wb\page.tsx:654: const allocatedProfit = row.netProfitAfterTax * share;
+C:\AI-PROJECTS\marketplace-business-os\app\profit-wb\page.tsx:667: netProfitAfterTax: allocatedProfit,
+C:\AI-PROJECTS\marketplace-business-os\app\profit-wb\page.tsx:1026: Прибыль
+C:\AI-PROJECTS\marketplace-business-os\app\profit-wb\page.tsx:1027: <InfoTooltip text="Прибыль — прибыль после налогов: выручка минус все расходы. Процент под суммой показывает долю прибыли в выручке артикула. Бейдж A/B/C — ABC по прибыли." />
+C:\AI-PROJECTS\marketplace-business-os\app\profit-wb\page.tsx:1035: <InfoTooltip text="Маржинальность — прибыль после налогов / выручка артикула × 100% за выбранный период. Шкала помогает быстро увидеть качество маржи." />
+C:\AI-PROJECTS\marketplace-business-os\app\profit-wb\page.tsx:1077: value={row.netProfitAfterTax}
+C:\AI-PROJECTS\marketplace-business-os\app\profit-wb\page.tsx:1078: share={formatShare(row.netProfitAfterTax, row.revenue)}
+C:\AI-PROJECTS\marketplace-business-os\app\profit-wb\page.tsx:1079: valueClassName={profitTextColor(row.netProfitAfterTax)}
+C:\AI-PROJECTS\marketplace-business-os\app\profit-wb\page.tsx:1153: value={row.netProfitAfterTax}
+C:\AI-PROJECTS\marketplace-business-os\app\profit-wb\page.tsx:1154: share={formatShare(row.netProfitAfterTax, row.revenue)}
+C:\AI-PROJECTS\marketplace-business-os\app\profit-wb\page.tsx:1155: valueClassName={profitTextColor(row.netProfitAfterTax)}
+C:\AI-PROJECTS\marketplace-business-os\app\profit-wb\page.tsx:1283: const sort = (params.sort ?? "netProfitAfterTax") as SortKey;
+C:\AI-PROJECTS\marketplace-business-os\app\profit-wb\page.tsx:1340: if (abc === "LOSS") return row.netProfitAfterTax < 0;
+C:\AI-PROJECTS\marketplace-business-os\app\profit-wb\page.tsx:1360: const profitableSkuCount = rows.filter((row) => row.netProfitAfterTax > 0).length;
+C:\AI-PROJECTS\marketplace-business-os\app\profit-wb\page.tsx:1363: row.netProfitAfterTax <= 0 ||
+C:\AI-PROJECTS\marketplace-business-os\app\profit-wb\page.tsx:1368: const lossRows = rows.filter((row) => row.netProfitAfterTax < 0);
+C:\AI-PROJECTS\marketplace-business-os\app\profit-wb\page.tsx:1439: Прибыль по SKU WB
+C:\AI-PROJECTS\marketplace-business-os\app\profit-wb\page.tsx:1527: title="Марж. прибыль"
+C:\AI-PROJECTS\marketplace-business-os\app\profit-wb\page.tsx:1528: value={formatMoney(totals.marginProfit)}
+C:\AI-PROJECTS\marketplace-business-os\app\profit-wb\page.tsx:1529: helper={`${formatPercent(totals.marginProfitPercent)} от выручки`}
+C:\AI-PROJECTS\marketplace-business-os\app\profit-wb\page.tsx:1530: delta={comparison.marginProfit.diffPercent}
+C:\AI-PROJECTS\marketplace-business-os\app\profit-wb\page.tsx:1536: title="Прибыль после налогов"
+C:\AI-PROJECTS\marketplace-business-os\app\profit-wb\page.tsx:1537: value={formatMoney(totals.netProfitAfterTax)}
+C:\AI-PROJECTS\marketplace-business-os\app\profit-wb\page.tsx:1539: delta={comparison.netProfitAfterTax.diffPercent}
+C:\AI-PROJECTS\marketplace-business-os\app\profit-wb\page.tsx:1605: <div className="font-black text-emerald-600">Прибыль после налогов</div>
+C:\AI-PROJECTS\marketplace-business-os\app\profit-wb\page.tsx:1607: {formatMoney(totals.netProfitAfterTax)}
+C:\AI-PROJECTS\marketplace-business-os\app\profit-wb\page.tsx:1637: text={`${formatNumber(lossRows.length)} SKU с отрицательной прибылью`}
+C:\AI-PROJECTS\marketplace-business-os\app\profit-wb\page.tsx:1638: value={formatMoney(lossRows.reduce((sum, row) => sum + row.netProfitAfterTax, 0))}
+C:\AI-PROJECTS\marketplace-business-os\app\profit-wb\page.tsx:1658: text={`${formatNumber(cRows.length)} SKU с низким вкладом в прибыль`}
+C:\AI-PROJECTS\marketplace-business-os\app\profit-wb\page.tsx:1675: Рабочий список товаров: выкупы, расходы, прибыль, процент выкупа и
+C:\AI-PROJECTS\marketplace-business-os\app\profit-wb\page.tsx:1757: <option value="netProfitAfterTax">прибыли</option>
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:1460: netProfitAfterTax: number;
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:1475: netProfitAfterTax: 0,
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:1481: netProfitAfterTax: number;
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:1486: current.netProfitAfterTax += row.netProfitAfterTax;
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:1499: (row) => row.netProfitAfterTax
+C:\AI-PROJECTS\marketplace-business-os\app\page.tsx:42: operatingProfitAfterTax: number;
+C:\AI-PROJECTS\marketplace-business-os\app\page.tsx:43: netProfit: number;
+C:\AI-PROJECTS\marketplace-business-os\app\page.tsx:69: operatingProfitAfterTax: number;
+C:\AI-PROJECTS\marketplace-business-os\app\page.tsx:70: netProfit: number;
+C:\AI-PROJECTS\marketplace-business-os\app\page.tsx:155: title: "Выручка и прибыль",
+C:\AI-PROJECTS\marketplace-business-os\app\page.tsx:156: description: "Сравнение оборота с операционной прибылью.",
+C:\AI-PROJECTS\marketplace-business-os\app\page.tsx:167: label: "Опер. прибыль",
+C:\AI-PROJECTS\marketplace-business-os\app\page.tsx:201: title: "Прибыль и ДДС",
+C:\AI-PROJECTS\marketplace-business-os\app\page.tsx:202: description: "Чистая прибыль рядом с денежным потоком.",
+C:\AI-PROJECTS\marketplace-business-os\app\page.tsx:204: label: "Чистая прибыль",
+C:\AI-PROJECTS\marketplace-business-os\app\page.tsx:402: if (metric.label === "Опер. прибыль") return point.operatingProfitAfterTax;
+C:\AI-PROJECTS\marketplace-business-os\app\page.tsx:404: if (metric.label === "Чистая прибыль") return point.netProfit;
+C:\AI-PROJECTS\marketplace-business-os\app\page.tsx:427: if (metric.label === "Опер. прибыль") {
+C:\AI-PROJECTS\marketplace-business-os\app\page.tsx:428: return sumDailyValue(points, (point) => point.operatingProfitAfterTax);
+C:\AI-PROJECTS\marketplace-business-os\app\page.tsx:431: if (metric.label === "Чистая прибыль") return sumDailyValue(points, (point) => point.netProfit);
+C:\AI-PROJECTS\marketplace-business-os\app\page.tsx:861: row.operatingProfitAfterTax !== 0 ||
+C:\AI-PROJECTS\marketplace-business-os\app\page.tsx:862: row.netProfit !== 0 ||
+C:\AI-PROJECTS\marketplace-business-os\app\page.tsx:1781: const operatingProfitAfterTax = sumDailyValue(points, (point) => point.operatingProfitAfterTax);
+C:\AI-PROJECTS\marketplace-business-os\app\page.tsx:1782: const netProfit = sumDailyValue(points, (point) => point.netProfit);
+C:\AI-PROJECTS\marketplace-business-os\app\page.tsx:1792: operatingProfitAfterTax,
+C:\AI-PROJECTS\marketplace-business-os\app\page.tsx:1793: netProfit,
+C:\AI-PROJECTS\marketplace-business-os\app\page.tsx:1838: makeMoneyReconciliationRow("Опер. прибыль", summary.operatingProfitAfterTax, daily.operatingProfitAfterTax),
+C:\AI-PROJECTS\marketplace-business-os\app\page.tsx:1839: makeMoneyReconciliationRow("Чистая прибыль", summary.netProfit, daily.netProfit),
+C:\AI-PROJECTS\marketplace-business-os\app\page.tsx:1851: operatingProfitAfterTax: summary.operatingProfitAfterTax,
+C:\AI-PROJECTS\marketplace-business-os\app\page.tsx:1852: netProfit: summary.netProfit,
+C:\AI-PROJECTS\marketplace-business-os\app\page.tsx:2142: <div className="text-xs font-bold text-slate-500">Опер. прибыль</div>
+C:\AI-PROJECTS\marketplace-business-os\app\page.tsx:2143: <div className="mt-1 text-base font-black text-slate-950">{formatCurrency(current.operatingProfitAfterTax)}</div>
+C:\AI-PROJECTS\marketplace-business-os\app\page.tsx:2144: <div className="mt-1 text-xs font-black text-emerald-600">{formatDelta(percentDelta(current.operatingProfitAfterTax, previous.operatingProfitAfterTax), "money")}</div>
+C:\AI-PROJECTS\marketplace-business-os\app\page.tsx:2260: <div className="text-[10px] font-bold text-slate-500">Опер. прибыль</div>
+C:\AI-PROJECTS\marketplace-business-os\app\page.tsx:2261: <div className={`mt-1 text-base font-black ${valueColor(row.operatingProfitAfterTax)}`}>
+C:\AI-PROJECTS\marketplace-business-os\app\page.tsx:2262: {formatCurrency(row.operatingProfitAfterTax)}
+C:\AI-PROJECTS\marketplace-business-os\app\page.tsx:2265: revenuePercent={formatRevenuePercent(row.operatingProfitAfterTax, row.totalRevenue)}
+C:\AI-PROJECTS\marketplace-business-os\app\page.tsx:2266: current={row.operatingProfitAfterTax}
+C:\AI-PROJECTS\marketplace-business-os\app\page.tsx:2267: previous={previousRow?.operatingProfitAfterTax}
+C:\AI-PROJECTS\marketplace-business-os\app\page.tsx:2272: <div className="text-[10px] font-bold text-slate-500">Чистая прибыль</div>
+C:\AI-PROJECTS\marketplace-business-os\app\page.tsx:2273: <div className={`mt-1 text-base font-black ${valueColor(row.netProfit)}`}>
+C:\AI-PROJECTS\marketplace-business-os\app\page.tsx:2274: {formatCurrency(row.netProfit)}
+C:\AI-PROJECTS\marketplace-business-os\app\page.tsx:2277: revenuePercent={formatRevenuePercent(row.netProfit, row.totalRevenue)}
+C:\AI-PROJECTS\marketplace-business-os\app\page.tsx:2278: current={row.netProfit}
+C:\AI-PROJECTS\marketplace-business-os\app\page.tsx:2279: previous={previousRow?.netProfit}
+C:\AI-PROJECTS\marketplace-business-os\app\page.tsx:2431: financialExpenses: Math.max(0, metrics.netProfitExpense - metrics.creditInterest),
+C:\AI-PROJECTS\marketplace-business-os\app\page.tsx:2433: netProfitIncludedIncome: metrics.netProfitIncome,
+C:\AI-PROJECTS\marketplace-business-os\app\page.tsx:2434: netProfitIncludedExpenses: metrics.netProfitExpense,
+C:\AI-PROJECTS\marketplace-business-os\app\page.tsx:2549: const operatingProfitAfterTax =
+C:\AI-PROJECTS\marketplace-business-os\app\page.tsx:2550: wb.totals.netProfitAfterTax + ozon.totals.netProfitAfterTax;
+C:\AI-PROJECTS\marketplace-business-os\app\page.tsx:2555: const netProfit =
+C:\AI-PROJECTS\marketplace-business-os\app\page.tsx:2556: operatingProfitAfterTax +
+C:\AI-PROJECTS\marketplace-business-os\app\page.tsx:2557: cash.netProfitIncludedIncome -
+C:\AI-PROJECTS\marketplace-business-os\app\page.tsx:2558: cash.netProfitIncludedExpenses;
+C:\AI-PROJECTS\marketplace-business-os\app\page.tsx:2560: const profitAfterOwnerWithdrawal = netProfit - cash.personalExpenses;
+C:\AI-PROJECTS\marketplace-business-os\app\page.tsx:2567: operatingProfitAfterTax,
+C:\AI-PROJECTS\marketplace-business-os\app\page.tsx:2568: netProfit,
+C:\AI-PROJECTS\marketplace-business-os\app\page.tsx:2600: const operatingProfitAfterTax = companyRows.reduce(
+C:\AI-PROJECTS\marketplace-business-os\app\page.tsx:2601: (sum, row) => sum + row.operatingProfitAfterTax,
+C:\AI-PROJECTS\marketplace-business-os\app\page.tsx:2605: const netProfit = companyRows.reduce((sum, row) => sum + row.netProfit, 0);
+C:\AI-PROJECTS\marketplace-business-os\app\page.tsx:2668: operatingProfitAfterTax,
+C:\AI-PROJECTS\marketplace-business-os\app\page.tsx:2669: netProfit,
+C:\AI-PROJECTS\marketplace-business-os\app\page.tsx:2835: level: current.netProfit < 0 ? "danger" : "ok",
+C:\AI-PROJECTS\marketplace-business-os\app\page.tsx:2836: title: "Чистая прибыль",
+C:\AI-PROJECTS\marketplace-business-os\app\page.tsx:2838: current.netProfit < 0
+C:\AI-PROJECTS\marketplace-business-os\app\page.tsx:2839: ? `Чистая прибыль отрицательная: ${formatCurrency(current.netProfit)}.`
+C:\AI-PROJECTS\marketplace-business-os\app\page.tsx:2840: : `Чистая прибыль: ${formatCurrency(current.netProfit)}.`,
+C:\AI-PROJECTS\marketplace-business-os\app\page.tsx:3039: title="Операционная прибыль"
+C:\AI-PROJECTS\marketplace-business-os\app\page.tsx:3040: value={formatCurrency(current.operatingProfitAfterTax)}
+C:\AI-PROJECTS\marketplace-business-os\app\page.tsx:3041: subtitle={`После себестоимости, рекламы, логистики и налогов · ${formatRevenuePercent(current.operatingProfitAfterTax, current.totalRevenue)}`}
+C:\AI-PROJECTS\marketplace-business-os\app\page.tsx:3044: valueClassName={valueColor(current.operatingProfitAfterTax)}
+C:\AI-PROJECTS\marketplace-business-os\app\page.tsx:3046: trend={buildMoneyTrend({ current: current.operatingProfitAfterTax, previous: previous.operatingProfitAfterTax, goodWhen: "up" })}
+C:\AI-PROJECTS\marketplace-business-os\app\page.tsx:3050: title="Чистая прибыль"
+C:\AI-PROJECTS\marketplace-business-os\app\page.tsx:3051: value={formatCurrency(current.netProfit)}
+C:\AI-PROJECTS\marketplace-business-os\app\page.tsx:3052: subtitle={`Опер. прибыль ± финансовые статьи · ${formatRevenuePercent(current.netProfit, current.totalRevenue)}`}
+C:\AI-PROJECTS\marketplace-business-os\app\page.tsx:3055: valueClassName={valueColor(current.netProfit)}
+C:\AI-PROJECTS\marketplace-business-os\app\page.tsx:3057: trend={buildMoneyTrend({ current: current.netProfit, previous: previous.netProfit, goodWhen: "up" })}
+C:\AI-PROJECTS\marketplace-business-os\app\page.tsx:3063: subtitle={`Чистая прибыль минус личные расходы: ${formatCurrency(current.personalExpenses)} · ${formatRevenuePercent(current.profitAfterOwnerWithdrawal, current.totalRevenue)}`}
+C:\AI-PROJECTS\marketplace-business-os\app\page.tsx:3228: Главное по каждой компании: выручка, прибыль, ДДС, реклама, кредиты и ассортимент.
+C:\AI-PROJECTS\marketplace-business-os\components\app\AppNav.tsx:45: title: "Прибыль WB",
+C:\AI-PROJECTS\marketplace-business-os\components\app\AppNav.tsx:49: title: "Прибыль Ozon",
+C:\AI-PROJECTS\marketplace-business-os\components\marketplaces\MarketplaceNav.tsx:7: { title: "Прибыль WB", href: "/profit-wb" },
+C:\AI-PROJECTS\marketplace-business-os\components\marketplaces\MarketplaceNav.tsx:8: { title: "Прибыль Ozon", href: "/profit-ozon" },
+C:\AI-PROJECTS\marketplace-business-os\lib\analytics\dashboardDailyAnalytics.ts:11: operatingProfitAfterTax: number;
+C:\AI-PROJECTS\marketplace-business-os\lib\analytics\dashboardDailyAnalytics.ts:12: netProfit: number;
+C:\AI-PROJECTS\marketplace-business-os\lib\analytics\dashboardDailyAnalytics.ts:24: operatingProfitAfterTax: number;
+C:\AI-PROJECTS\marketplace-business-os\lib\analytics\dashboardDailyAnalytics.ts:25: netProfit: number;
+C:\AI-PROJECTS\marketplace-business-os\lib\analytics\dashboardDailyAnalytics.ts:35: financeNetProfitIncome: number;
+C:\AI-PROJECTS\marketplace-business-os\lib\analytics\dashboardDailyAnalytics.ts:36: financeNetProfitExpense: number;
+C:\AI-PROJECTS\marketplace-business-os\lib\analytics\dashboardDailyAnalytics.ts:116: operatingProfitAfterTax: 0,
+C:\AI-PROJECTS\marketplace-business-os\lib\analytics\dashboardDailyAnalytics.ts:117: netProfit: 0,
+C:\AI-PROJECTS\marketplace-business-os\lib\analytics\dashboardDailyAnalytics.ts:124: financeNetProfitIncome: 0,
+C:\AI-PROJECTS\marketplace-business-os\lib\analytics\dashboardDailyAnalytics.ts:125: financeNetProfitExpense: 0,
+C:\AI-PROJECTS\marketplace-business-os\lib\analytics\dashboardDailyAnalytics.ts:294: point.operatingProfitAfterTax =
+C:\AI-PROJECTS\marketplace-business-os\lib\analytics\dashboardDailyAnalytics.ts:296: point.netProfit =
+C:\AI-PROJECTS\marketplace-business-os\lib\analytics\dashboardDailyAnalytics.ts:297: point.operatingProfitAfterTax +
+C:\AI-PROJECTS\marketplace-business-os\lib\analytics\dashboardDailyAnalytics.ts:298: point.financeNetProfitIncome -
+C:\AI-PROJECTS\marketplace-business-os\lib\analytics\dashboardDailyAnalytics.ts:299: point.financeNetProfitExpense;
+C:\AI-PROJECTS\marketplace-business-os\lib\analytics\dashboardDailyAnalytics.ts:394: expectedTotal: expectedTotals.operatingProfitAfterTax,
+C:\AI-PROJECTS\marketplace-business-os\lib\analytics\dashboardDailyAnalytics.ts:395: getValue: (point) => point.operatingProfitAfterTax,
+C:\AI-PROJECTS\marketplace-business-os\lib\analytics\dashboardDailyAnalytics.ts:397: point.operatingProfitAfterTax = value;
+C:\AI-PROJECTS\marketplace-business-os\lib\analytics\dashboardDailyAnalytics.ts:403: expectedTotal: expectedTotals.netProfit,
+C:\AI-PROJECTS\marketplace-business-os\lib\analytics\dashboardDailyAnalytics.ts:404: getValue: (point) => point.netProfit,
+C:\AI-PROJECTS\marketplace-business-os\lib\analytics\dashboardDailyAnalytics.ts:406: point.netProfit = value;
+C:\AI-PROJECTS\marketplace-business-os\lib\analytics\dashboardDailyAnalytics.ts:712: point.financeNetProfitIncome = metrics.netProfitIncome;
+C:\AI-PROJECTS\marketplace-business-os\lib\analytics\dashboardDailyAnalytics.ts:713: point.financeNetProfitExpense = metrics.netProfitExpense;
+C:\AI-PROJECTS\marketplace-business-os\lib\analytics\dashboardDailyAnalytics.ts:729: operatingProfitAfterTax: point.operatingProfitAfterTax,
+C:\AI-PROJECTS\marketplace-business-os\lib\analytics\dashboardDailyAnalytics.ts:730: netProfit: point.netProfit,
+C:\AI-PROJECTS\marketplace-business-os\lib\analytics\profitAnalytics.ts:164: marginProfit: number;
+C:\AI-PROJECTS\marketplace-business-os\lib\analytics\profitAnalytics.ts:165: marginProfitPercent: number;
+C:\AI-PROJECTS\marketplace-business-os\lib\analytics\profitAnalytics.ts:169: netProfitAfterTax: number;
+C:\AI-PROJECTS\marketplace-business-os\lib\analytics\profitAnalytics.ts:201: marginProfit: number;
+C:\AI-PROJECTS\marketplace-business-os\lib\analytics\profitAnalytics.ts:202: marginProfitPercent: number;
+C:\AI-PROJECTS\marketplace-business-os\lib\analytics\profitAnalytics.ts:206: netProfitAfterTax: number;
+C:\AI-PROJECTS\marketplace-business-os\lib\analytics\profitAnalytics.ts:353: marginProfit: 0,
+C:\AI-PROJECTS\marketplace-business-os\lib\analytics\profitAnalytics.ts:354: marginProfitPercent: 0,
+C:\AI-PROJECTS\marketplace-business-os\lib\analytics\profitAnalytics.ts:358: netProfitAfterTax: 0,
+C:\AI-PROJECTS\marketplace-business-os\lib\analytics\profitAnalytics.ts:368: (sum, row) => sum + Math.max(0, row.marginProfit),
+C:\AI-PROJECTS\marketplace-business-os\lib\analytics\profitAnalytics.ts:382: const positiveProfit = Math.max(0, row.marginProfit);
+C:\AI-PROJECTS\marketplace-business-os\lib\analytics\profitAnalytics.ts:462: marginProfit: 0,
+C:\AI-PROJECTS\marketplace-business-os\lib\analytics\profitAnalytics.ts:463: marginProfitPercent: 0,
+C:\AI-PROJECTS\marketplace-business-os\lib\analytics\profitAnalytics.ts:467: netProfitAfterTax: 0,
+C:\AI-PROJECTS\marketplace-business-os\lib\analytics\profitAnalytics.ts:504: current.marginProfit =
+C:\AI-PROJECTS\marketplace-business-os\lib\analytics\profitAnalytics.ts:516: current.marginProfitPercent =
+C:\AI-PROJECTS\marketplace-business-os\lib\analytics\profitAnalytics.ts:517: current.revenue > 0 ? (current.marginProfit / current.revenue) * 100 : 0;
+C:\AI-PROJECTS\marketplace-business-os\lib\analytics\profitAnalytics.ts:527: current.netProfitAfterTax = current.marginProfit - current.taxesAmount;
+C:\AI-PROJECTS\marketplace-business-os\lib\analytics\profitAnalytics.ts:531: ? (current.netProfitAfterTax / current.revenue) * 100
+C:\AI-PROJECTS\marketplace-business-os\lib\analytics\profitAnalytics.ts:539: .sort((a, b) => b.marginProfit - a.marginProfit);
+C:\AI-PROJECTS\marketplace-business-os\lib\analytics\profitAnalytics.ts:570: acc.marginProfit += row.marginProfit;
+C:\AI-PROJECTS\marketplace-business-os\lib\analytics\profitAnalytics.ts:572: acc.netProfitAfterTax += row.netProfitAfterTax;
+C:\AI-PROJECTS\marketplace-business-os\lib\analytics\profitAnalytics.ts:579: totals.marginProfitPercent =
+C:\AI-PROJECTS\marketplace-business-os\lib\analytics\profitAnalytics.ts:580: totals.revenue > 0 ? (totals.marginProfit / totals.revenue) * 100 : 0;
+C:\AI-PROJECTS\marketplace-business-os\lib\analytics\profitAnalytics.ts:584: ? (totals.netProfitAfterTax / totals.revenue) * 100
+C:\AI-PROJECTS\marketplace-business-os\lib\analytics\profitAnalytics.ts:752: result.totals.marginProfit =
+C:\AI-PROJECTS\marketplace-business-os\lib\analytics\profitAnalytics.ts:770: result.totals.netProfitAfterTax =
+C:\AI-PROJECTS\marketplace-business-os\lib\analytics\profitAnalytics.ts:771: result.totals.marginProfit - result.totals.taxesAmount;
+C:\AI-PROJECTS\marketplace-business-os\lib\analytics\profitAnalytics.ts:773: result.totals.marginProfitPercent =
+C:\AI-PROJECTS\marketplace-business-os\lib\analytics\profitAnalytics.ts:775: ? (result.totals.marginProfit / result.totals.revenue) * 100
+C:\AI-PROJECTS\marketplace-business-os\lib\analytics\profitAnalytics.ts:780: ? (result.totals.netProfitAfterTax / result.totals.revenue) * 100
+C:\AI-PROJECTS\marketplace-business-os\lib\analytics\profitAnalytics.ts:936: marginProfit: createComparison(
+C:\AI-PROJECTS\marketplace-business-os\lib\analytics\profitAnalytics.ts:937: current.totals.marginProfit,
+C:\AI-PROJECTS\marketplace-business-os\lib\analytics\profitAnalytics.ts:938: previous.totals.marginProfit
+C:\AI-PROJECTS\marketplace-business-os\lib\analytics\profitAnalytics.ts:941: netProfitAfterTax: createComparison(
+C:\AI-PROJECTS\marketplace-business-os\lib\analytics\profitAnalytics.ts:942: current.totals.netProfitAfterTax,
+C:\AI-PROJECTS\marketplace-business-os\lib\analytics\profitAnalytics.ts:943: previous.totals.netProfitAfterTax
+C:\AI-PROJECTS\marketplace-business-os\lib\analytics\profitAnalyticsOzon.ts:139: marginProfit: number;
+C:\AI-PROJECTS\marketplace-business-os\lib\analytics\profitAnalyticsOzon.ts:140: marginProfitPercent: number;
+C:\AI-PROJECTS\marketplace-business-os\lib\analytics\profitAnalyticsOzon.ts:144: netProfitAfterTax: number;
+C:\AI-PROJECTS\marketplace-business-os\lib\analytics\profitAnalyticsOzon.ts:176: marginProfit: number;
+C:\AI-PROJECTS\marketplace-business-os\lib\analytics\profitAnalyticsOzon.ts:177: marginProfitPercent: number;
+C:\AI-PROJECTS\marketplace-business-os\lib\analytics\profitAnalyticsOzon.ts:181: netProfitAfterTax: number;
+C:\AI-PROJECTS\marketplace-business-os\lib\analytics\profitAnalyticsOzon.ts:319: marginProfit: 0,
+C:\AI-PROJECTS\marketplace-business-os\lib\analytics\profitAnalyticsOzon.ts:320: marginProfitPercent: 0,
+C:\AI-PROJECTS\marketplace-business-os\lib\analytics\profitAnalyticsOzon.ts:324: netProfitAfterTax: 0,
+C:\AI-PROJECTS\marketplace-business-os\lib\analytics\profitAnalyticsOzon.ts:334: (sum, row) => sum + Math.max(0, row.marginProfit),
+C:\AI-PROJECTS\marketplace-business-os\lib\analytics\profitAnalyticsOzon.ts:348: const positiveProfit = Math.max(0, row.marginProfit);
+C:\AI-PROJECTS\marketplace-business-os\lib\analytics\profitAnalyticsOzon.ts:441: marginProfit: 0,
+C:\AI-PROJECTS\marketplace-business-os\lib\analytics\profitAnalyticsOzon.ts:442: marginProfitPercent: 0,
+C:\AI-PROJECTS\marketplace-business-os\lib\analytics\profitAnalyticsOzon.ts:446: netProfitAfterTax: 0,
+C:\AI-PROJECTS\marketplace-business-os\lib\analytics\profitAnalyticsOzon.ts:497: current.marginProfit =
+C:\AI-PROJECTS\marketplace-business-os\lib\analytics\profitAnalyticsOzon.ts:500: current.marginProfitPercent =
+C:\AI-PROJECTS\marketplace-business-os\lib\analytics\profitAnalyticsOzon.ts:501: current.revenue > 0 ? (current.marginProfit / current.revenue) * 100 : 0;
+C:\AI-PROJECTS\marketplace-business-os\lib\analytics\profitAnalyticsOzon.ts:511: current.netProfitAfterTax = current.marginProfit - current.taxesAmount;
+C:\AI-PROJECTS\marketplace-business-os\lib\analytics\profitAnalyticsOzon.ts:515: ? (current.netProfitAfterTax / current.revenue) * 100
+C:\AI-PROJECTS\marketplace-business-os\lib\analytics\profitAnalyticsOzon.ts:556: marginProfit: -adsCost,
+C:\AI-PROJECTS\marketplace-business-os\lib\analytics\profitAnalyticsOzon.ts:557: marginProfitPercent: 0,
+C:\AI-PROJECTS\marketplace-business-os\lib\analytics\profitAnalyticsOzon.ts:561: netProfitAfterTax: -adsCost,
+C:\AI-PROJECTS\marketplace-business-os\lib\analytics\profitAnalyticsOzon.ts:576: .sort((a, b) => b.marginProfit - a.marginProfit);
+C:\AI-PROJECTS\marketplace-business-os\lib\analytics\profitAnalyticsOzon.ts:608: acc.marginProfit += row.marginProfit;
+C:\AI-PROJECTS\marketplace-business-os\lib\analytics\profitAnalyticsOzon.ts:612: acc.netProfitAfterTax += row.netProfitAfterTax;
+C:\AI-PROJECTS\marketplace-business-os\lib\analytics\profitAnalyticsOzon.ts:619: totals.marginProfitPercent =
+C:\AI-PROJECTS\marketplace-business-os\lib\analytics\profitAnalyticsOzon.ts:620: totals.revenue > 0 ? (totals.marginProfit / totals.revenue) * 100 : 0;
+C:\AI-PROJECTS\marketplace-business-os\lib\analytics\profitAnalyticsOzon.ts:624: ? (totals.netProfitAfterTax / totals.revenue) * 100
+C:\AI-PROJECTS\marketplace-business-os\lib\analytics\profitAnalyticsOzon.ts:949: marginProfit: createComparison(
+C:\AI-PROJECTS\marketplace-business-os\lib\analytics\profitAnalyticsOzon.ts:950: current.totals.marginProfit,
+C:\AI-PROJECTS\marketplace-business-os\lib\analytics\profitAnalyticsOzon.ts:951: previous.totals.marginProfit
+C:\AI-PROJECTS\marketplace-business-os\lib\analytics\profitAnalyticsOzon.ts:954: netProfitAfterTax: createComparison(
+C:\AI-PROJECTS\marketplace-business-os\lib\analytics\profitAnalyticsOzon.ts:955: current.totals.netProfitAfterTax,
+C:\AI-PROJECTS\marketplace-business-os\lib\analytics\profitAnalyticsOzon.ts:956: previous.totals.netProfitAfterTax
+C:\AI-PROJECTS\marketplace-business-os\lib\finance\financeMetrics.ts:34: netProfitIncome: number;
+C:\AI-PROJECTS\marketplace-business-os\lib\finance\financeMetrics.ts:35: netProfitExpense: number;
+C:\AI-PROJECTS\marketplace-business-os\lib\finance\financeMetrics.ts:36: netProfitImpact: number;
+C:\AI-PROJECTS\marketplace-business-os\lib\finance\financeMetrics.ts:58: INCLUDE_IN_NET_PROFIT: "Чистая прибыль",
+C:\AI-PROJECTS\marketplace-business-os\lib\finance\financeMetrics.ts:70: CASH_ONLY: "Участвует только в ДДС, не влияет на чистую прибыль.",
+C:\AI-PROJECTS\marketplace-business-os\lib\finance\financeMetrics.ts:71: CREDIT_PRINCIPAL: "Тело кредита: участвует в ДДС, не влияет на прибыль.",
+C:\AI-PROJECTS\marketplace-business-os\lib\finance\financeMetrics.ts:72: CREDIT_INTEREST: "Проценты: участвует в ДДС и уменьшает чистую прибыль.",
+C:\AI-PROJECTS\marketplace-business-os\lib\finance\financeMetrics.ts:74: "Получение кредита или займа: увеличивает ДДС, но не является прибылью.",
+C:\AI-PROJECTS\marketplace-business-os\lib\finance\financeMetrics.ts:372: netProfitIncome: 0,
+C:\AI-PROJECTS\marketplace-business-os\lib\finance\financeMetrics.ts:373: netProfitExpense: 0,
+C:\AI-PROJECTS\marketplace-business-os\lib\finance\financeMetrics.ts:374: netProfitImpact: 0,
+C:\AI-PROJECTS\marketplace-business-os\lib\finance\financeMetrics.ts:412: result.netProfitIncome += amount;
+C:\AI-PROJECTS\marketplace-business-os\lib\finance\financeMetrics.ts:425: result.netProfitExpense += amount;
+C:\AI-PROJECTS\marketplace-business-os\lib\finance\financeMetrics.ts:441: result.netProfitExpense += amount;
+C:\AI-PROJECTS\marketplace-business-os\lib\finance\financeMetrics.ts:456: result.netProfitImpact = result.netProfitIncome - result.netProfitExpense;
+C:\AI-PROJECTS\marketplace-business-os\lib\telegram\dailyReport.ts:45: netProfitAfterTax: number;
+C:\AI-PROJECTS\marketplace-business-os\lib\telegram\dailyReport.ts:56: netProfitImpact: number;
+C:\AI-PROJECTS\marketplace-business-os\lib\telegram\dailyReport.ts:77: netProfitImpact: number;
+C:\AI-PROJECTS\marketplace-business-os\lib\telegram\dailyReport.ts:750: function calculateWbNetProfitAfterTax(params: {
+C:\AI-PROJECTS\marketplace-business-os\lib\telegram\dailyReport.ts:800: function calculateOzonNetProfitAfterTax(params: {
+C:\AI-PROJECTS\marketplace-business-os\lib\telegram\dailyReport.ts:899: netProfitImpact: metrics.netProfitImpact,
+C:\AI-PROJECTS\marketplace-business-os\lib\telegram\dailyReport.ts:1114: const netProfitAfterTax = calculateWbNetProfitAfterTax({
+C:\AI-PROJECTS\marketplace-business-os\lib\telegram\dailyReport.ts:1141: netProfitAfterTax,
+C:\AI-PROJECTS\marketplace-business-os\lib\telegram\dailyReport.ts:1279: const netProfitAfterTax = calculateOzonNetProfitAfterTax({
+C:\AI-PROJECTS\marketplace-business-os\lib\telegram\dailyReport.ts:1320: netProfitAfterTax,
+C:\AI-PROJECTS\marketplace-business-os\lib\telegram\dailyReport.ts:1357: if (report.totals.netProfitImpact < 0) {
+C:\AI-PROJECTS\marketplace-business-os\lib\telegram\dailyReport.ts:1359: `отрицательная чистая прибыль: ${formatMoney(
+C:\AI-PROJECTS\marketplace-business-os\lib\telegram\dailyReport.ts:1360: report.totals.netProfitImpact
+C:\AI-PROJECTS\marketplace-business-os\lib\telegram\dailyReport.ts:1438: netProfitImpact: 0,
+C:\AI-PROJECTS\marketplace-business-os\lib\telegram\dailyReport.ts:1454: const realNetProfit =
+C:\AI-PROJECTS\marketplace-business-os\lib\telegram\dailyReport.ts:1455: wb.netProfitAfterTax + ozon.netProfitAfterTax + finance.netProfitImpact;
+C:\AI-PROJECTS\marketplace-business-os\lib\telegram\dailyReport.ts:1459: netProfitImpact: realNetProfit,
+C:\AI-PROJECTS\marketplace-business-os\lib\telegram\dailyReport.ts:1475: report.totals.netProfitImpact += realNetProfit;
+C:\AI-PROJECTS\marketplace-business-os\lib\telegram\dailyReport.ts:1631: if (report.totals.netProfitImpact < 0) {
+C:\AI-PROJECTS\marketplace-business-os\lib\telegram\dailyReport.ts:1632: return `Прибыль под давлением: ${formatMoney(
+C:\AI-PROJECTS\marketplace-business-os\lib\telegram\dailyReport.ts:1633: report.totals.netProfitImpact
+C:\AI-PROJECTS\marketplace-business-os\lib\telegram\dailyReport.ts:1637: if (report.totals.netProfitImpact > 0) {
+C:\AI-PROJECTS\marketplace-business-os\lib\telegram\dailyReport.ts:1638: return `Чистая прибыль за день положительная: ${formatMoney(
+C:\AI-PROJECTS\marketplace-business-os\lib\telegram\dailyReport.ts:1639: report.totals.netProfitImpact
+C:\AI-PROJECTS\marketplace-business-os\lib\telegram\dailyReport.ts:1643: return "Чистая прибыль около нуля.";
+C:\AI-PROJECTS\marketplace-business-os\lib\telegram\dailyReport.ts:1791: `Чистая прибыль: ${formatMoney(report.totals.netProfitImpact)}`,
+C:\AI-PROJECTS\marketplace-business-os\lib\telegram\dailyReport.ts:1816: `Чистая прибыль: ${formatMoney(company.finance.netProfitImpact)}`,
+C:\AI-PROJECTS\marketplace-business-os\lib\telegram\dailyReportAi.ts:156: netProfitImpact: toSafeNumber(report?.totals?.netProfitImpact),
+C:\AI-PROJECTS\marketplace-business-os\lib\telegram\dailyReportAi.ts:169: netProfitImpact: toSafeNumber(company?.finance?.netProfitImpact),
+C:\AI-PROJECTS\marketplace-business-os\lib\telegram\dailyReportAi.ts:187: profitImpactIsNegative: totals.netProfitImpact < 0,
