@@ -1,0 +1,86 @@
+[
+    {
+        "Id": "sha256:450020b483b8f9e5ac9b11b5a54c1ed0804c5bdfd5ab51c6e75c6a20a3675283",
+        "RepoTags": [
+            "avorofin-financial-candidate:36034258198"
+        ],
+        "RepoDigests": [],
+        "Parent": "",
+        "Comment": "buildkit.dockerfile.v0",
+        "Created": "2026-09-24T17:29:20.639807493Z",
+        "DockerVersion": "",
+        "Author": "",
+        "Config": {
+            "Hostname": "",
+            "Domainname": "",
+            "User": "nextjs",
+            "AttachStdin": false,
+            "AttachStdout": false,
+            "AttachStderr": false,
+            "ExposedPorts": {
+                "3000/tcp": {}
+            },
+            "Tty": false,
+            "OpenStdin": false,
+            "StdinOnce": false,
+            "Env": [
+                "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+                "NODE_VERSION=24.21.0",
+                "YARN_VERSION=1.22.22",
+                "NEXT_TELEMETRY_DISABLED=1",
+                "NODE_ENV=production",
+                "PORT=3000",
+                "HOSTNAME=0.0.0.0"
+            ],
+            "Cmd": [
+                "node",
+                "server.js"
+            ],
+            "ArgsEscaped": true,
+            "Image": "",
+            "Volumes": null,
+            "WorkingDir": "/app",
+            "Entrypoint": [
+                "docker-entrypoint.sh"
+            ],
+            "OnBuild": null,
+            "Labels": {
+                "avorofin.candidate.run_id": "36034258198",
+                "avorofin.candidate.sha": "25a1c510ff398d0c932f8c69653f5f41c1e13cd0"
+            }
+        },
+        "Architecture": "amd64",
+        "Os": "linux",
+        "Size": 287095049,
+        "GraphDriver": {
+            "Data": {
+                "LowerDir": "/var/lib/docker/overlay2/ou4u02ojqseel9dzm943c9lse/diff:/var/lib/docker/overlay2/mkk48dz3etyod4nh9uj5d8o58/diff:/var/lib/docker/overlay2/ou5za3c2vvlmxmoas6m9s0bqg/diff:/var/lib/docker/overlay2/ampbdtkazu6l0rel0aoltsest/diff:/var/lib/docker/overlay2/lzyx9b13qc2pth52bqll7ki1z/diff:/var/lib/docker/overlay2/08j5w4e1cqmopais1ak4qxqu3/diff:/var/lib/docker/overlay2/0le9uluoawlye38b0wv9gy3gr/diff:/var/lib/docker/overlay2/5fe4cc5650d681c7772784edeb8abec7fccf120ef07200572b44128b7bf3fb41/diff:/var/lib/docker/overlay2/785f2a2bcfc6534d69af4aefd9904c6c23c09f95953972bd56fa81916bf2985b/diff:/var/lib/docker/overlay2/3f92dc4b7e88a2bbc2b4e924d51ba117d620297f3b0deed15b224cff14450683/diff:/var/lib/docker/overlay2/e0b7891048affd459f88133b9ae188c6077b5fd826365b749a71a784691f3638/diff:/var/lib/docker/overlay2/90ad178b172822328f1e7546c7be9b78f75fb1d80e7406598fa47f1e233893e9/diff",
+                "MergedDir": "/var/lib/docker/overlay2/113jpg8d5scha8db1n1v2kkoa/merged",
+                "UpperDir": "/var/lib/docker/overlay2/113jpg8d5scha8db1n1v2kkoa/diff",
+                "WorkDir": "/var/lib/docker/overlay2/113jpg8d5scha8db1n1v2kkoa/work"
+            },
+            "Name": "overlay2"
+        },
+        "RootFS": {
+            "Type": "layers",
+            "Layers": [
+                "sha256:34467cc93912af891dfee8a3902adf9b4f355a9bca4eaa46f658d1181a21de0d",
+                "sha256:d4538219a5351d13fddbd63f69f91967df4615ce1920c8a0f981a6a1382e9c2b",
+                "sha256:be63ab2861093aeb3c3b7a85e837d5d562510736ba39c00c5ad6b9d5714c9035",
+                "sha256:429894d93c7696cccc056cc2caa20da017bbb4f604ad1226327aa060d78b3bd9",
+                "sha256:362feb000ea275c02b50abdf827ccf034ae1f7d50989852ea8fc3cd9b80fd7b3",
+                "sha256:3ad621356180a92bb23538368b11945e8ca558863b9fe626a380daab0ef0e6ad",
+                "sha256:a6d09d8b6cfd5ce0f8fbfde1dd1fbd2a6f07a8263253ff9e5c8d5ca9ec0947a7",
+                "sha256:5f70bf18a086007016e948b04aed3b82103a36bea41755b6cddfaf10ace3c6ef",
+                "sha256:34b1198c42e78f4099413480ce13a9d306b6d4ecd2ea1fabc999cce6f0676a84",
+                "sha256:9d6afedc8bdac6b4772a68a101767a5d795fa1b80e6958eef837bf53d08f0174",
+                "sha256:2e7ad9e609b7c10bd120bbfd88024ef08e99d068dcbcc1fdcc9cfbd937b8f1e6",
+                "sha256:1496030ad9cc057a3d130d49561d6bba3c23b4d30875cfbdce113c14859b1aaf",
+                "sha256:8ad8bc99446bc91fc1f2c848f565d560aa98a247c819517c6d7b4a9eb679350d"
+            ]
+        },
+        "Metadata": {
+            "LastTagTime": "2026-09-24T17:29:21.867447647Z"
+        }
+    }
+]

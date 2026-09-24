@@ -1,0 +1,1 @@
+ccf42ce2d3f928792ec28b34805b835d2ec43934622b8c10463ed7ca960f5a08  /home/runner/work/marketplace-business-os/marketplace-business-os/candidate-image.tar.gz

@@ -1,0 +1,9 @@
+{
+  "status": "PASS",
+  "containerStatus": "running",
+  "oomKilled": "false",
+  "restartCount": "0",
+  "loginHttp": "200",
+  "productionDbUsed": false,
+  "boundedWindowSec": 25
+}
