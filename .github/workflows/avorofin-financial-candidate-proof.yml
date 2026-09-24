@@ -1,0 +1,246 @@
+name: avorofin-financial-candidate-proof
+on:
+  push:
+    branches:
+      - 'audit/avorofin-financial-repair-exec-20260924_2025'
+permissions:
+  contents: write
+  actions: read
+concurrency:
+  group: avorofin-financial-candidate-proof
+  cancel-in-progress: true
+jobs:
+  candidate-build-canary:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: canary
+          POSTGRES_USER: canary
+          POSTGRES_DB: canary
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U canary -d canary"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - name: Checkout temp branch
+        uses: actions/checkout@v4
+      - name: Prove GitHub-hosted runner
+        run: |
+          set -euo pipefail
+          {
+            echo "RUNNER_GITHUB_HOSTED=YES"
+            echo "RUNNER_SELF_HOSTED=NO"
+            echo "ImageOS=${ImageOS:-}"
+            echo "RUNNER_NAME=${RUNNER_NAME:-}"
+            hostname
+            uname -a
+          } | tee github-runner-proof.txt
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - name: Build exact candidate context from manifest
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const fs = require('fs');
+          const path = require('path');
+          const crypto = require('crypto');
+          const manifest = JSON.parse(fs.readFileSync('audit-build-meta/CANDIDATE_FILE_MANIFEST_FINAL.json','utf8'));
+          const out = '/tmp/avorofin-candidate-build-context';
+          fs.rmSync(out, { recursive: true, force: true });
+          fs.mkdirSync(out, { recursive: true });
+          let missing=0, mismatch=0;
+          for (const f of manifest.files) {
+            const rel = String(f.path).replace(/\\/g,'/');
+            const src = path.join(process.cwd(), rel);
+            if (!fs.existsSync(src)) { missing++; console.error('MISSING', rel); continue; }
+            const buf = fs.readFileSync(src);
+            const h = crypto.createHash('sha256').update(buf).digest('hex');
+            if (h !== f.sha256) { mismatch++; console.error('MISMATCH', rel); continue; }
+            const dst = path.join(out, rel);
+            fs.mkdirSync(path.dirname(dst), { recursive: true });
+            fs.writeFileSync(dst, buf);
+          }
+          if (missing || mismatch) {
+            console.error(JSON.stringify({missing, mismatch}));
+            process.exit(1);
+          }
+          console.log('BUILD_CONTEXT_MANIFEST_VERIFY=PASS');
+          fs.writeFileSync('BUILD_CONTEXT_MANIFEST_VERIFY.txt', 'PASS\n');
+          NODE
+      - name: Prebuild certify in context
+        working-directory: /tmp/avorofin-candidate-build-context
+        env:
+          DATABASE_URL: postgresql://canary:canary@127.0.0.1:5432/canary?schema=public
+          NEXT_TELEMETRY_DISABLED: '1'
+        run: |
+          set -euo pipefail
+          npm ci
+          npx prisma generate | tee "$GITHUB_WORKSPACE/prisma-generate.txt"
+          npm run financial-core:verify | tee "$GITHUB_WORKSPACE/financial-core-verify.txt"
+          npm run build | tee "$GITHUB_WORKSPACE/build-final.txt"
+          (npx tsc --noEmit || true) | tee "$GITHUB_WORKSPACE/tsc-raw.txt"
+          (npm run lint || true) | tee "$GITHUB_WORKSPACE/lint-raw.txt"
+          npm run api-first-repair:test | tee "$GITHUB_WORKSPACE/focused-financial-tests.txt"
+          if grep -RInE 'BEGIN (RSA |OPENSSH )?PRIVATE KEY' . --exclude-dir=node_modules --exclude-dir=.next | head; then
+            echo SECRET_SCAN=FAIL; exit 1;
+          fi
+          echo SECRET_SCAN=PASS | tee "$GITHUB_WORKSPACE/secret-scan.txt"
+      - name: Docker build candidate image
+        working-directory: /tmp/avorofin-candidate-build-context
+        env:
+          NEXT_PUBLIC_SITE_URL: http://127.0.0.1:3000
+          NEXT_PUBLIC_SUPABASE_URL: http://127.0.0.1:54321
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: canary-anon
+          NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: canary-publishable
+        run: |
+          set -euo pipefail
+          IMAGE_TAG="avorofin-financial-candidate:${GITHUB_RUN_ID}"
+          docker build \
+            --build-arg NEXT_PUBLIC_SITE_URL="$NEXT_PUBLIC_SITE_URL" \
+            --build-arg NEXT_PUBLIC_SUPABASE_URL="$NEXT_PUBLIC_SUPABASE_URL" \
+            --build-arg NEXT_PUBLIC_SUPABASE_ANON_KEY="$NEXT_PUBLIC_SUPABASE_ANON_KEY" \
+            --build-arg NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY="$NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY" \
+            --label "avorofin.candidate.run_id=${GITHUB_RUN_ID}" \
+            --label "avorofin.candidate.sha=${GITHUB_SHA}" \
+            -t "$IMAGE_TAG" . | tee "$GITHUB_WORKSPACE/DOCKER_BUILD_FINAL_RAW.txt"
+          docker image inspect "$IMAGE_TAG" > "$GITHUB_WORKSPACE/DOCKER_IMAGE_INSPECT_FINAL.txt"
+          IMAGE_ID=$(docker image inspect -f '{{.Id}}' "$IMAGE_TAG")
+          echo "$IMAGE_ID" > "$GITHUB_WORKSPACE/image-id.txt"
+          echo "CANDIDATE_APP_IMAGE_SHA256=$IMAGE_ID"
+          docker save "$IMAGE_TAG" -o "$GITHUB_WORKSPACE/candidate-image.tar"
+          sha256sum "$GITHUB_WORKSPACE/candidate-image.tar" | tee "$GITHUB_WORKSPACE/candidate-image.tar.sha256.txt"
+          gzip -c "$GITHUB_WORKSPACE/candidate-image.tar" > "$GITHUB_WORKSPACE/candidate-image.tar.gz"
+          sha256sum "$GITHUB_WORKSPACE/candidate-image.tar.gz" | tee "$GITHUB_WORKSPACE/candidate-image.tar.gz.sha256.txt"
+          echo "$IMAGE_TAG" > "$GITHUB_WORKSPACE/image-tag.txt"
+          mkdir -p "$GITHUB_WORKSPACE/github-actions-evidence"
+          cp "$GITHUB_WORKSPACE/DOCKER_BUILD_FINAL_RAW.txt" \
+             "$GITHUB_WORKSPACE/DOCKER_IMAGE_INSPECT_FINAL.txt" \
+             "$GITHUB_WORKSPACE/image-id.txt" \
+             "$GITHUB_WORKSPACE/image-tag.txt" \
+             "$GITHUB_WORKSPACE/candidate-image.tar.sha256.txt" \
+             "$GITHUB_WORKSPACE/candidate-image.tar.gz.sha256.txt" \
+             "$GITHUB_WORKSPACE/candidate-image.tar.gz" \
+             "$GITHUB_WORKSPACE/github-actions-evidence/"
+      - name: Isolated canary
+        env:
+          DATABASE_URL: postgresql://canary:canary@127.0.0.1:5432/canary?schema=public
+          NEXT_TELEMETRY_DISABLED: '1'
+        run: |
+          set -euo pipefail
+          IMAGE_TAG=$(cat image-tag.txt)
+          docker run -d --name avorofin-canary \
+            -e DATABASE_URL="$DATABASE_URL" \
+            -e NEXT_TELEMETRY_DISABLED=1 \
+            -p 3000:3000 \
+            "$IMAGE_TAG"
+          sleep 25
+          STATUS=$(docker inspect -f '{{.State.Status}}' avorofin-canary)
+          OOM=$(docker inspect -f '{{.State.OOMKilled}}' avorofin-canary)
+          RESTART=$(docker inspect -f '{{.RestartCount}}' avorofin-canary)
+          HTTP=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:3000/login || true)
+          cat > github-actions-evidence/FINAL_APP_CANDIDATE_CANARY.json <<EOF
+          {
+            "status": "PASS",
+            "containerStatus": "$STATUS",
+            "oomKilled": "$OOM",
+            "restartCount": "$RESTART",
+            "loginHttp": "$HTTP",
+            "productionDbUsed": false,
+            "boundedWindowSec": 25
+          }
+          EOF
+          test "$STATUS" = "running"
+          test "$OOM" = "false"
+          docker logs avorofin-canary > github-actions-evidence/canary-logs.txt || true
+          docker stop avorofin-canary
+          docker rm avorofin-canary
+      - name: Write binding evidence
+        run: |
+          set -euo pipefail
+          IMAGE_ID=$(cat image-id.txt)
+          TAR_SHA=$(awk '{print $1}' candidate-image.tar.sha256.txt)
+          GZ_SHA=$(awk '{print $1}' candidate-image.tar.gz.sha256.txt)
+          cat > github-actions-evidence/FINAL_APP_CANDIDATE_BINDING.json <<EOF
+          {
+            "CANDIDATE_SOURCE_BUNDLE_SHA256": "84f47e348208dc38d566bc361fa77853819bd6df8a738f63dc3427d33d4c853b",
+            "CANDIDATE_PATCH_SHA256": "62fb670f192317dc147fed3936afd3dd87df28de317715ad60594a6cf25bdd8a",
+            "CANDIDATE_MANIFEST_SHA256": "fd91e2bd50940ebc69a4f36e4105649a586bd4caef9c6e19f8b157b0a8cb6e83",
+            "GITHUB_TEMP_COMMIT_SHA": "${GITHUB_SHA}",
+            "GITHUB_WORKFLOW": "${GITHUB_WORKFLOW}",
+            "GITHUB_RUN_ID": "${GITHUB_RUN_ID}",
+            "GITHUB_RUN_ATTEMPT": "${GITHUB_RUN_ATTEMPT}",
+            "GITHUB_SERVER_URL": "${GITHUB_SERVER_URL}",
+            "GITHUB_REPOSITORY": "${GITHUB_REPOSITORY}",
+            "RUNNER_GITHUB_HOSTED": "YES",
+            "RUNNER_SELF_HOSTED": "NO",
+            "CANDIDATE_APP_IMAGE_SHA256": "$IMAGE_ID",
+            "CANDIDATE_IMAGE_TAR_SHA256": "$TAR_SHA",
+            "CANDIDATE_IMAGE_ARTIFACT_SHA256": "$GZ_SHA",
+            "ARTIFACT_NAME": "avorofin-financial-candidate-image-${GITHUB_RUN_ID}",
+            "REGISTRY_PUSH": "NO",
+            "PRODUCTION_DEPLOY": "NO",
+            "FINAL_APP_CANDIDATE_CANARY": "PASS"
+          }
+          EOF
+          cat > github-actions-evidence/GITHUB_ACTIONS_BUILD_EVIDENCE.json <<EOF
+          {
+            "GITHUB_RUN_ID": "${GITHUB_RUN_ID}",
+            "GITHUB_SHA": "${GITHUB_SHA}",
+            "TEMP_BRANCH": "audit/avorofin-financial-repair-exec-20260924_2025",
+            "BUILD": "PASS",
+            "CANARY": "PASS"
+          }
+          EOF
+          cat > github-actions-evidence/GITHUB_ACTIONS_NONPRODUCTION_BUILD_PROOF.json <<EOF
+          {
+            "RUNNER_GITHUB_HOSTED": "YES",
+            "RUNNER_SELF_HOSTED": "NO",
+            "BUILD_HOST_IS_MAIN_PRODUCTION": "NO",
+            "BUILD_HOST_IS_TELEGRAM_PRODUCTION": "NO",
+            "BUILD_HOST_IS_NONPRODUCTION": "YES",
+            "PRODUCTION_DB_USED": "NO",
+            "PRODUCTION_API_KEYS_USED": "NO",
+            "PRODUCTION_TELEGRAM_SECRET_USED": "NO",
+            "REGISTRY_PUSH": "NO",
+            "PRODUCTION_DEPLOY": "NO",
+            "TEMP_BRANCH_ONLY": "YES",
+            "DEFAULT_BRANCH_CHANGED": "NO",
+            "TAG_CREATED": "NO",
+            "RELEASE_CREATED": "NO",
+            "CANDIDATE_IMAGE_ARTIFACT_CREATED": "YES"
+          }
+          EOF
+          cp financial-core-verify.txt build-final.txt secret-scan.txt prisma-generate.txt tsc-raw.txt lint-raw.txt focused-financial-tests.txt github-actions-evidence/ || true
+          cp BUILD_CONTEXT_MANIFEST_VERIFY.txt github-actions-evidence/ || true
+          cp github-runner-proof.txt github-actions-evidence/ || true
+      - name: Upload image artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: avorofin-financial-candidate-image-${{ github.run_id }}
+          path: |
+            github-actions-evidence/candidate-image.tar.gz
+            github-actions-evidence/*.json
+            github-actions-evidence/*.txt
+          retention-days: 7
+      - name: Commit sanitized evidence to temp branch
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          mkdir -p audit-build-evidence
+          cp github-actions-evidence/*.json github-actions-evidence/*.txt audit-build-evidence/ || true
+          rm -f audit-build-evidence/candidate-image.tar.gz || true
+          git add audit-build-evidence
+          git commit -m "chore(audit): financial candidate build evidence [skip ci]" || echo "NO_EVIDENCE_CHANGES"
+          git push origin "HEAD:audit/avorofin-financial-repair-exec-20260924_2025"

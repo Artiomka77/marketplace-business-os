@@ -1,0 +1,1975 @@
+[
+  {
+    "fixtureKind": "REAL_AMORTIZING",
+    "loanId": "loan_4a576e763f",
+    "bankName": "Авто кредит УралСиб",
+    "companyName": "",
+    "currentDebt": 3064221.93,
+    "monthlyPayment": 98000,
+    "endDate": "2030-08-12",
+    "creditLimit": 3379251,
+    "paymentFrequency": "MONTHLY",
+    "payments": [
+      {
+        "id": "p0",
+        "loanId": "loan_4a576e763f",
+        "paymentDate": "2026-07-13",
+        "principalAmount": 40644.48,
+        "interestAmount": 57355.52,
+        "totalAmount": 98000,
+        "paid": false
+      },
+      {
+        "id": "p1",
+        "loanId": "loan_4a576e763f",
+        "paymentDate": "2026-08-12",
+        "principalAmount": 37362.77,
+        "interestAmount": 60637.23,
+        "totalAmount": 98000,
+        "paid": false
+      },
+      {
+        "id": "p2",
+        "loanId": "loan_4a576e763f",
+        "paymentDate": "2026-09-14",
+        "principalAmount": 32123.29,
+        "interestAmount": 65876.71,
+        "totalAmount": 98000,
+        "paid": false
+      },
+      {
+        "id": "p3",
+        "loanId": "loan_4a576e763f",
+        "paymentDate": "2026-10-12",
+        "principalAmount": 42705.88,
+        "interestAmount": 55294.12,
+        "totalAmount": 98000,
+        "paid": false
+      },
+      {
+        "id": "p4",
+        "loanId": "loan_4a576e763f",
+        "paymentDate": "2026-11-12",
+        "principalAmount": 37666.52,
+        "interestAmount": 60333.48,
+        "totalAmount": 98000,
+        "paid": false
+      },
+      {
+        "id": "p5",
+        "loanId": "loan_4a576e763f",
+        "paymentDate": "2026-12-14",
+        "principalAmount": 36526.04,
+        "interestAmount": 61473.96,
+        "totalAmount": 98000,
+        "paid": false
+      },
+      {
+        "id": "p6",
+        "loanId": "loan_4a576e763f",
+        "paymentDate": "2027-01-12",
+        "principalAmount": 42997.32,
+        "interestAmount": 55002.68,
+        "totalAmount": 98000,
+        "paid": false
+      },
+      {
+        "id": "p7",
+        "loanId": "loan_4a576e763f",
+        "paymentDate": "2027-02-12",
+        "principalAmount": 40095.08,
+        "interestAmount": 57904.92,
+        "totalAmount": 98000,
+        "paid": false
+      },
+      {
+        "id": "p8",
+        "loanId": "loan_4a576e763f",
+        "paymentDate": "2027-03-12",
+        "principalAmount": 46449.27,
+        "interestAmount": 51550.73,
+        "totalAmount": 98000,
+        "paid": false
+      },
+      {
+        "id": "p9",
+        "loanId": "loan_4a576e763f",
+        "paymentDate": "2027-04-12",
+        "principalAmount": 41888.57,
+        "interestAmount": 56111.43,
+        "totalAmount": 98000,
+        "paid": false
+      },
+      {
+        "id": "p10",
+        "loanId": "loan_4a576e763f",
+        "paymentDate": "2027-05-12",
+        "principalAmount": 44538.67,
+        "interestAmount": 53461.33,
+        "totalAmount": 98000,
+        "paid": false
+      },
+      {
+        "id": "p11",
+        "loanId": "loan_4a576e763f",
+        "paymentDate": "2027-06-14",
+        "principalAmount": 40175.08,
+        "interestAmount": 57824.92,
+        "totalAmount": 98000,
+        "paid": false
+      },
+      {
+        "id": "p12",
+        "loanId": "loan_4a576e763f",
+        "paymentDate": "2027-07-12",
+        "principalAmount": 49688.42,
+        "interestAmount": 48311.58,
+        "totalAmount": 98000,
+        "paid": false
+      },
+      {
+        "id": "p13",
+        "loanId": "loan_4a576e763f",
+        "paymentDate": "2027-08-12",
+        "principalAmount": 45541.89,
+        "interestAmount": 52458.11,
+        "totalAmount": 98000,
+        "paid": false
+      },
+      {
+        "id": "p14",
+        "loanId": "loan_4a576e763f",
+        "paymentDate": "2027-09-13",
+        "principalAmount": 44823.91,
+        "interestAmount": 53176.09,
+        "totalAmount": 98000,
+        "paid": false
+      },
+      {
+        "id": "p15",
+        "loanId": "loan_4a576e763f",
+        "paymentDate": "2027-10-12",
+        "principalAmount": 50678.14,
+        "interestAmount": 47321.86,
+        "totalAmount": 98000,
+        "paid": false
+      },
+      {
+        "id": "p16",
+        "loanId": "loan_4a576e763f",
+        "paymentDate": "2027-11-12",
+        "principalAmount": 48464.79,
+        "interestAmount": 49535.21,
+        "totalAmount": 98000,
+        "paid": false
+      },
+      {
+        "id": "p17",
+        "loanId": "loan_4a576e763f",
+        "paymentDate": "2027-12-13",
+        "principalAmount": 49469.13,
+        "interestAmount": 48530.87,
+        "totalAmount": 98000,
+        "paid": false
+      },
+      {
+        "id": "p18",
+        "loanId": "loan_4a576e763f",
+        "paymentDate": "2028-01-12",
+        "principalAmount": 52076.98,
+        "interestAmount": 45923.02,
+        "totalAmount": 98000,
+        "paid": false
+      },
+      {
+        "id": "p19",
+        "loanId": "loan_4a576e763f",
+        "paymentDate": "2028-02-14",
+        "principalAmount": 48713.27,
+        "interestAmount": 49286.73,
+        "totalAmount": 98000,
+        "paid": false
+      },
+      {
+        "id": "p20",
+        "loanId": "loan_4a576e763f",
+        "paymentDate": "2028-03-13",
+        "principalAmount": 57090.28,
+        "interestAmount": 40909.72,
+        "totalAmount": 98000,
+        "paid": false
+      },
+      {
+        "id": "p21",
+        "loanId": "loan_4a576e763f",
+        "paymentDate": "2028-04-12",
+        "principalAmount": 55309.95,
+        "interestAmount": 42690.05,
+        "totalAmount": 98000,
+        "paid": false
+      },
+      {
+        "id": "p22",
+        "loanId": "loan_4a576e763f",
+        "paymentDate": "2028-05-12",
+        "principalAmount": 56416.16,
+        "interestAmount": 41583.84,
+        "totalAmount": 98000,
+        "paid": false
+      },
+      {
+        "id": "p23",
+        "loanId": "loan_4a576e763f",
+        "paymentDate": "2028-06-13",
+        "principalAmount": 54847.44,
+        "interestAmount": 43152.56,
+        "totalAmount": 98000,
+        "paid": false
+      },
+      {
+        "id": "p24",
+        "loanId": "loan_4a576e763f",
+        "paymentDate": "2028-07-12",
+        "principalAmount": 59953.38,
+        "interestAmount": 38046.62,
+        "totalAmount": 98000,
+        "paid": false
+      },
+      {
+        "id": "p25",
+        "loanId": "loan_4a576e763f",
+        "paymentDate": "2028-08-14",
+        "principalAmount": 56024.55,
+        "interestAmount": 41975.45,
+        "totalAmount": 98000,
+        "paid": false
+      },
+      {
+        "id": "p26",
+        "loanId": "loan_4a576e763f",
+        "paymentDate": "2028-09-12",
+        "principalAmount": 62195.62,
+        "interestAmount": 35804.38,
+        "totalAmount": 98000,
+        "paid": false
+      },
+      {
+        "id": "p27",
+        "loanId": "loan_4a576e763f",
+        "paymentDate": "2028-10-12",
+        "principalAmount": 62204.9,
+        "interestAmount": 35795.1,
+        "totalAmount": 98000,
+        "paid": false
+      },
+      {
+        "id": "p28",
+        "loanId": "loan_4a576e763f",
+        "paymentDate": "2028-11-13",
+        "principalAmount": 61145.6,
+        "interestAmount": 36854.4,
+        "totalAmount": 98000,
+        "paid": false
+      },
+      {
+        "id": "p29",
+        "loanId": "loan_4a576e763f",
+        "paymentDate": "2028-12-12",
+        "principalAmount": 65782.84,
+        "interestAmount": 32217.16,
+        "totalAmount": 98000,
+        "paid": false
+      },
+      {
+        "id": "p30",
+        "loanId": "loan_4a576e763f",
+        "paymentDate": "2029-01-12",
+        "principalAmount": 64885.4,
+        "interestAmount": 33114.6,
+        "totalAmount": 98000,
+        "paid": false
+      },
+      {
+        "id": "p31",
+        "loanId": "loan_4a576e763f",
+        "paymentDate": "2029-02-12",
+        "principalAmount": 66174.5,
+        "interestAmount": 31825.5,
+        "totalAmount": 98000,
+        "paid": false
+      },
+      {
+        "id": "p32",
+        "loanId": "loan_4a576e763f",
+        "paymentDate": "2029-03-12",
+        "principalAmount": 70493.02,
+        "interestAmount": 27506.98,
+        "totalAmount": 98000,
+        "paid": false
+      },
+      {
+        "id": "p33",
+        "loanId": "loan_4a576e763f",
+        "paymentDate": "2029-04-12",
+        "principalAmount": 69006.7,
+        "interestAmount": 28993.3,
+        "totalAmount": 98000,
+        "paid": false
+      },
+      {
+        "id": "p34",
+        "loanId": "loan_4a576e763f",
+        "paymentDate": "2029-05-14",
+        "principalAmount": 69547.6,
+        "interestAmount": 28452.4,
+        "totalAmount": 98000,
+        "paid": false
+      },
+      {
+        "id": "p35",
+        "loanId": "loan_4a576e763f",
+        "paymentDate": "2029-06-13",
+        "principalAmount": 72720.64,
+        "interestAmount": 25279.36,
+        "totalAmount": 98000,
+        "paid": false
+      },
+      {
+        "id": "p36",
+        "loanId": "loan_4a576e763f",
+        "paymentDate": "2029-07-12",
+        "principalAmount": 74973.07,
+        "interestAmount": 23026.93,
+        "totalAmount": 98000,
+        "paid": false
+      },
+      {
+        "id": "p37",
+        "loanId": "loan_4a576e763f",
+        "paymentDate": "2029-08-13",
+        "principalAmount": 74194.78,
+        "interestAmount": 23805.22,
+        "totalAmount": 98000,
+        "paid": false
+      },
+      {
+        "id": "p38",
+        "loanId": "loan_4a576e763f",
+        "paymentDate": "2029-09-12",
+        "principalAmount": 77170.57,
+        "interestAmount": 20829.43,
+        "totalAmount": 98000,
+        "paid": false
+      },
+      {
+        "id": "p39",
+        "loanId": "loan_4a576e763f",
+        "paymentDate": "2029-10-12",
+        "principalAmount": 78718.21,
+        "interestAmount": 19281.79,
+        "totalAmount": 98000,
+        "paid": false
+      },
+      {
+        "id": "p40",
+        "loanId": "loan_4a576e763f",
+        "paymentDate": "2029-11-12",
+        "principalAmount": 79706.78,
+        "interestAmount": 18293.22,
+        "totalAmount": 98000,
+        "paid": false
+      },
+      {
+        "id": "p41",
+        "loanId": "loan_4a576e763f",
+        "paymentDate": "2029-12-12",
+        "principalAmount": 81895.39,
+        "interestAmount": 16104.61,
+        "totalAmount": 98000,
+        "paid": false
+      },
+      {
+        "id": "p42",
+        "loanId": "loan_4a576e763f",
+        "paymentDate": "2030-01-14",
+        "principalAmount": 82091.57,
+        "interestAmount": 15908.43,
+        "totalAmount": 98000,
+        "paid": false
+      },
+      {
+        "id": "p43",
+        "loanId": "loan_4a576e763f",
+        "paymentDate": "2030-02-12",
+        "principalAmount": 85611.31,
+        "interestAmount": 12388.69,
+        "totalAmount": 98000,
+        "paid": false
+      },
+      {
+        "id": "p44",
+        "loanId": "loan_4a576e763f",
+        "paymentDate": "2030-03-12",
+        "principalAmount": 87640.96,
+        "interestAmount": 10359.04,
+        "totalAmount": 98000,
+        "paid": false
+      },
+      {
+        "id": "p45",
+        "loanId": "loan_4a576e763f",
+        "paymentDate": "2030-04-12",
+        "principalAmount": 88347.28,
+        "interestAmount": 9652.72,
+        "totalAmount": 98000,
+        "paid": false
+      },
+      {
+        "id": "p46",
+        "loanId": "loan_4a576e763f",
+        "paymentDate": "2030-05-13",
+        "principalAmount": 90178.12,
+        "interestAmount": 7821.88,
+        "totalAmount": 98000,
+        "paid": false
+      },
+      {
+        "id": "p47",
+        "loanId": "loan_4a576e763f",
+        "paymentDate": "2030-06-13",
+        "principalAmount": 92046.9,
+        "interestAmount": 5953.1,
+        "totalAmount": 98000,
+        "paid": false
+      },
+      {
+        "id": "p48",
+        "loanId": "loan_4a576e763f",
+        "paymentDate": "2030-07-12",
+        "principalAmount": 94215.43,
+        "interestAmount": 3784.57,
+        "totalAmount": 98000,
+        "paid": false
+      },
+      {
+        "id": "p49",
+        "loanId": "loan_4a576e763f",
+        "paymentDate": "2030-08-12",
+        "principalAmount": 101003.48,
+        "interestAmount": 2093.12,
+        "totalAmount": 103096.6,
+        "paid": false
+      }
+    ]
+  },
+  {
+    "fixtureKind": "REAL_AMORTIZING",
+    "loanId": "loan_cf6b9d061f",
+    "bankName": "Альфа кредит",
+    "companyName": "",
+    "currentDebt": 367805.41,
+    "monthlyPayment": 42000,
+    "endDate": "2027-04-22",
+    "creditLimit": 1799000,
+    "paymentFrequency": "MONTHLY",
+    "payments": [
+      {
+        "id": "p0",
+        "loanId": "loan_cf6b9d061f",
+        "paymentDate": "2026-07-22",
+        "principalAmount": 37770.74,
+        "interestAmount": 4229.26,
+        "totalAmount": 42000,
+        "paid": false
+      },
+      {
+        "id": "p1",
+        "loanId": "loan_cf6b9d061f",
+        "paymentDate": "2026-08-24",
+        "principalAmount": 37825.56,
+        "interestAmount": 4174.44,
+        "totalAmount": 42000,
+        "paid": false
+      },
+      {
+        "id": "p2",
+        "loanId": "loan_cf6b9d061f",
+        "paymentDate": "2026-09-22",
+        "principalAmount": 38751.99,
+        "interestAmount": 3248.01,
+        "totalAmount": 42000,
+        "paid": false
+      },
+      {
+        "id": "p3",
+        "loanId": "loan_cf6b9d061f",
+        "paymentDate": "2026-10-22",
+        "principalAmount": 39085.59,
+        "interestAmount": 2914.41,
+        "totalAmount": 42000,
+        "paid": false
+      },
+      {
+        "id": "p4",
+        "loanId": "loan_cf6b9d061f",
+        "paymentDate": "2026-11-23",
+        "principalAmount": 39370.69,
+        "interestAmount": 2629.31,
+        "totalAmount": 42000,
+        "paid": false
+      },
+      {
+        "id": "p5",
+        "loanId": "loan_cf6b9d061f",
+        "paymentDate": "2026-12-22",
+        "principalAmount": 40054.81,
+        "interestAmount": 1945.19,
+        "totalAmount": 42000,
+        "paid": false
+      },
+      {
+        "id": "p6",
+        "loanId": "loan_cf6b9d061f",
+        "paymentDate": "2027-01-22",
+        "principalAmount": 40396.58,
+        "interestAmount": 1603.42,
+        "totalAmount": 42000,
+        "paid": false
+      },
+      {
+        "id": "p7",
+        "loanId": "loan_cf6b9d061f",
+        "paymentDate": "2027-02-22",
+        "principalAmount": 40876.57,
+        "interestAmount": 1123.43,
+        "totalAmount": 42000,
+        "paid": false
+      },
+      {
+        "id": "p8",
+        "loanId": "loan_cf6b9d061f",
+        "paymentDate": "2027-03-22",
+        "principalAmount": 41423.98,
+        "interestAmount": 576.02,
+        "totalAmount": 42000,
+        "paid": false
+      },
+      {
+        "id": "p9",
+        "loanId": "loan_cf6b9d061f",
+        "paymentDate": "2027-04-22",
+        "principalAmount": 12248.9,
+        "interestAmount": 145.54,
+        "totalAmount": 12394.44,
+        "paid": false
+      }
+    ]
+  },
+  {
+    "fixtureKind": "REAL_AMORTIZING",
+    "loanId": "loan_bfec61bbc7",
+    "bankName": "Сбер ИП - 5 млн",
+    "companyName": "",
+    "currentDebt": 1645873.07,
+    "monthlyPayment": 188734.11,
+    "endDate": "2027-04-09",
+    "creditLimit": 5000000,
+    "paymentFrequency": "MONTHLY",
+    "payments": [
+      {
+        "id": "p0",
+        "loanId": "loan_bfec61bbc7",
+        "paymentDate": "2026-07-09",
+        "principalAmount": 151895.28,
+        "interestAmount": 36838.83,
+        "totalAmount": 188734.11,
+        "paid": false
+      },
+      {
+        "id": "p1",
+        "loanId": "loan_bfec61bbc7",
+        "paymentDate": "2026-08-10",
+        "principalAmount": 153733.01,
+        "interestAmount": 35001.1,
+        "totalAmount": 188734.11,
+        "paid": false
+      },
+      {
+        "id": "p2",
+        "loanId": "loan_bfec61bbc7",
+        "paymentDate": "2026-09-09",
+        "principalAmount": 156500.2,
+        "interestAmount": 32233.91,
+        "totalAmount": 188734.11,
+        "paid": false
+      },
+      {
+        "id": "p3",
+        "loanId": "loan_bfec61bbc7",
+        "paymentDate": "2026-10-09",
+        "principalAmount": 160213.6,
+        "interestAmount": 28520.51,
+        "totalAmount": 188734.11,
+        "paid": false
+      },
+      {
+        "id": "p4",
+        "loanId": "loan_bfec61bbc7",
+        "paymentDate": "2026-11-09",
+        "principalAmount": 162483.32,
+        "interestAmount": 26250.79,
+        "totalAmount": 188734.11,
+        "paid": false
+      },
+      {
+        "id": "p5",
+        "loanId": "loan_bfec61bbc7",
+        "paymentDate": "2026-12-09",
+        "principalAmount": 166022.14,
+        "interestAmount": 22711.97,
+        "totalAmount": 188734.11,
+        "paid": false
+      },
+      {
+        "id": "p6",
+        "loanId": "loan_bfec61bbc7",
+        "paymentDate": "2027-01-11",
+        "principalAmount": 168593.53,
+        "interestAmount": 20517.82,
+        "totalAmount": 189111.35,
+        "paid": false
+      },
+      {
+        "id": "p7",
+        "loanId": "loan_bfec61bbc7",
+        "paymentDate": "2027-02-09",
+        "principalAmount": 171527.05,
+        "interestAmount": 17634.06,
+        "totalAmount": 189161.11,
+        "paid": false
+      },
+      {
+        "id": "p8",
+        "loanId": "loan_bfec61bbc7",
+        "paymentDate": "2027-03-09",
+        "principalAmount": 175558.6,
+        "interestAmount": 13602.51,
+        "totalAmount": 189161.11,
+        "paid": false
+      },
+      {
+        "id": "p9",
+        "loanId": "loan_bfec61bbc7",
+        "paymentDate": "2027-04-09",
+        "principalAmount": 179346.34,
+        "interestAmount": 10975.79,
+        "totalAmount": 190322.13,
+        "paid": false
+      }
+    ]
+  },
+  {
+    "fixtureKind": "REAL_AMORTIZING",
+    "loanId": "loan_b05af6c78b",
+    "bankName": "Сбер ИП - 600 тр",
+    "companyName": "",
+    "currentDebt": 438022.31,
+    "monthlyPayment": 39120,
+    "endDate": "2027-07-30",
+    "creditLimit": 600000,
+    "paymentFrequency": "MONTHLY",
+    "payments": [
+      {
+        "id": "p0",
+        "loanId": "loan_b05af6c78b",
+        "paymentDate": "2026-07-30",
+        "principalAmount": 29579.51,
+        "interestAmount": 9540.49,
+        "totalAmount": 39120,
+        "paid": false
+      },
+      {
+        "id": "p1",
+        "loanId": "loan_b05af6c78b",
+        "paymentDate": "2026-08-31",
+        "principalAmount": 29927.24,
+        "interestAmount": 9192.76,
+        "totalAmount": 39120,
+        "paid": false
+      },
+      {
+        "id": "p2",
+        "loanId": "loan_b05af6c78b",
+        "paymentDate": "2026-09-30",
+        "principalAmount": 30579.08,
+        "interestAmount": 8540.92,
+        "totalAmount": 39120,
+        "paid": false
+      },
+      {
+        "id": "p3",
+        "loanId": "loan_b05af6c78b",
+        "paymentDate": "2026-10-30",
+        "principalAmount": 31541.66,
+        "interestAmount": 7578.34,
+        "totalAmount": 39120,
+        "paid": false
+      },
+      {
+        "id": "p4",
+        "loanId": "loan_b05af6c78b",
+        "paymentDate": "2026-11-30",
+        "principalAmount": 31998.95,
+        "interestAmount": 7121.05,
+        "totalAmount": 39120,
+        "paid": false
+      },
+      {
+        "id": "p5",
+        "loanId": "loan_b05af6c78b",
+        "paymentDate": "2026-12-30",
+        "principalAmount": 32925.62,
+        "interestAmount": 6194.38,
+        "totalAmount": 39120,
+        "paid": false
+      },
+      {
+        "id": "p6",
+        "loanId": "loan_b05af6c78b",
+        "paymentDate": "2027-02-01",
+        "principalAmount": 33460.2,
+        "interestAmount": 5659.8,
+        "totalAmount": 39120,
+        "paid": false
+      },
+      {
+        "id": "p7",
+        "loanId": "loan_b05af6c78b",
+        "paymentDate": "2027-03-01",
+        "principalAmount": 34481.26,
+        "interestAmount": 4638.74,
+        "totalAmount": 39120,
+        "paid": false
+      },
+      {
+        "id": "p8",
+        "loanId": "loan_b05af6c78b",
+        "paymentDate": "2027-03-30",
+        "principalAmount": 35097.56,
+        "interestAmount": 4022.44,
+        "totalAmount": 39120,
+        "paid": false
+      },
+      {
+        "id": "p9",
+        "loanId": "loan_b05af6c78b",
+        "paymentDate": "2027-04-30",
+        "principalAmount": 35779.28,
+        "interestAmount": 3340.72,
+        "totalAmount": 39120,
+        "paid": false
+      },
+      {
+        "id": "p10",
+        "loanId": "loan_b05af6c78b",
+        "paymentDate": "2027-05-31",
+        "principalAmount": 36666.35,
+        "interestAmount": 2453.65,
+        "totalAmount": 39120,
+        "paid": false
+      },
+      {
+        "id": "p11",
+        "loanId": "loan_b05af6c78b",
+        "paymentDate": "2027-06-30",
+        "principalAmount": 37383.18,
+        "interestAmount": 1736.82,
+        "totalAmount": 39120,
+        "paid": false
+      },
+      {
+        "id": "p12",
+        "loanId": "loan_b05af6c78b",
+        "paymentDate": "2027-07-30",
+        "principalAmount": 38602.42,
+        "interestAmount": 840.79,
+        "totalAmount": 39443.21,
+        "paid": false
+      }
+    ]
+  },
+  {
+    "fixtureKind": "REAL_AMORTIZING",
+    "loanId": "loan_60debb8fb1",
+    "bankName": "Сбер ООО - 5 млн",
+    "companyName": "",
+    "currentDebt": 1744975.44,
+    "monthlyPayment": 201265.72,
+    "endDate": "2027-04-27",
+    "creditLimit": 5000000,
+    "paymentFrequency": "MONTHLY",
+    "payments": [
+      {
+        "id": "p0",
+        "loanId": "loan_60debb8fb1",
+        "paymentDate": "2026-07-27",
+        "principalAmount": 160339.97,
+        "interestAmount": 40925.75,
+        "totalAmount": 201265.72,
+        "paid": false
+      },
+      {
+        "id": "p1",
+        "loanId": "loan_60debb8fb1",
+        "paymentDate": "2026-08-27",
+        "principalAmount": 162559.93,
+        "interestAmount": 38705.79,
+        "totalAmount": 201265.72,
+        "paid": false
+      },
+      {
+        "id": "p2",
+        "loanId": "loan_60debb8fb1",
+        "paymentDate": "2026-09-28",
+        "principalAmount": 165721.6,
+        "interestAmount": 35544.12,
+        "totalAmount": 201265.72,
+        "paid": false
+      },
+      {
+        "id": "p3",
+        "loanId": "loan_60debb8fb1",
+        "paymentDate": "2026-10-27",
+        "principalAmount": 169629.03,
+        "interestAmount": 31636.69,
+        "totalAmount": 201265.72,
+        "paid": false
+      },
+      {
+        "id": "p4",
+        "loanId": "loan_60debb8fb1",
+        "paymentDate": "2026-11-27",
+        "principalAmount": 172243.94,
+        "interestAmount": 29021.78,
+        "totalAmount": 201265.72,
+        "paid": false
+      },
+      {
+        "id": "p5",
+        "loanId": "loan_60debb8fb1",
+        "paymentDate": "2026-12-28",
+        "principalAmount": 176167.71,
+        "interestAmount": 25098.01,
+        "totalAmount": 201265.72,
+        "paid": false
+      },
+      {
+        "id": "p6",
+        "loanId": "loan_60debb8fb1",
+        "paymentDate": "2027-01-27",
+        "principalAmount": 178909.79,
+        "interestAmount": 22355.93,
+        "totalAmount": 201265.72,
+        "paid": false
+      },
+      {
+        "id": "p7",
+        "loanId": "loan_60debb8fb1",
+        "paymentDate": "2027-03-01",
+        "principalAmount": 182499.99,
+        "interestAmount": 18765.73,
+        "totalAmount": 201265.72,
+        "paid": false
+      },
+      {
+        "id": "p8",
+        "loanId": "loan_60debb8fb1",
+        "paymentDate": "2027-03-29",
+        "principalAmount": 186529.89,
+        "interestAmount": 14735.83,
+        "totalAmount": 201265.72,
+        "paid": false
+      },
+      {
+        "id": "p9",
+        "loanId": "loan_60debb8fb1",
+        "paymentDate": "2027-04-27",
+        "principalAmount": 190373.59,
+        "interestAmount": 11822.52,
+        "totalAmount": 202196.11,
+        "paid": false
+      }
+    ]
+  },
+  {
+    "fixtureKind": "REAL_AMORTIZING",
+    "loanId": "loan_ffd0c8aa4f",
+    "bankName": "Сбер ООО - 600 р",
+    "companyName": "",
+    "currentDebt": 380725.03,
+    "monthlyPayment": 34026,
+    "endDate": "2027-08-06",
+    "creditLimit": 600000,
+    "paymentFrequency": "MONTHLY",
+    "payments": [
+      {
+        "id": "p0",
+        "loanId": "loan_ffd0c8aa4f",
+        "paymentDate": "2026-08-07",
+        "principalAmount": 25457.08,
+        "interestAmount": 8568.92,
+        "totalAmount": 34026,
+        "paid": false
+      },
+      {
+        "id": "p1",
+        "loanId": "loan_ffd0c8aa4f",
+        "paymentDate": "2026-09-07",
+        "principalAmount": 26030.04,
+        "interestAmount": 7995.96,
+        "totalAmount": 34026,
+        "paid": false
+      },
+      {
+        "id": "p2",
+        "loanId": "loan_ffd0c8aa4f",
+        "paymentDate": "2026-10-07",
+        "principalAmount": 26854.93,
+        "interestAmount": 7171.07,
+        "totalAmount": 34026,
+        "paid": false
+      },
+      {
+        "id": "p3",
+        "loanId": "loan_ffd0c8aa4f",
+        "paymentDate": "2026-11-09",
+        "principalAmount": 27220.31,
+        "interestAmount": 6805.69,
+        "totalAmount": 34026,
+        "paid": false
+      },
+      {
+        "id": "p4",
+        "loanId": "loan_ffd0c8aa4f",
+        "paymentDate": "2026-12-07",
+        "principalAmount": 27993.2,
+        "interestAmount": 6032.8,
+        "totalAmount": 34026,
+        "paid": false
+      },
+      {
+        "id": "p5",
+        "loanId": "loan_ffd0c8aa4f",
+        "paymentDate": "2027-01-11",
+        "principalAmount": 28462.99,
+        "interestAmount": 5563.01,
+        "totalAmount": 34026,
+        "paid": false
+      },
+      {
+        "id": "p6",
+        "loanId": "loan_ffd0c8aa4f",
+        "paymentDate": "2027-02-08",
+        "principalAmount": 29020.94,
+        "interestAmount": 5005.06,
+        "totalAmount": 34026,
+        "paid": false
+      },
+      {
+        "id": "p7",
+        "loanId": "loan_ffd0c8aa4f",
+        "paymentDate": "2027-03-09",
+        "principalAmount": 30148.85,
+        "interestAmount": 3877.15,
+        "totalAmount": 34026,
+        "paid": false
+      },
+      {
+        "id": "p8",
+        "loanId": "loan_ffd0c8aa4f",
+        "paymentDate": "2027-04-07",
+        "principalAmount": 30391.56,
+        "interestAmount": 3634.44,
+        "totalAmount": 34026,
+        "paid": false
+      },
+      {
+        "id": "p9",
+        "loanId": "loan_ffd0c8aa4f",
+        "paymentDate": "2027-05-07",
+        "principalAmount": 31213.11,
+        "interestAmount": 2812.89,
+        "totalAmount": 34026,
+        "paid": false
+      },
+      {
+        "id": "p10",
+        "loanId": "loan_ffd0c8aa4f",
+        "paymentDate": "2027-06-07",
+        "principalAmount": 31821.86,
+        "interestAmount": 2204.14,
+        "totalAmount": 34026,
+        "paid": false
+      },
+      {
+        "id": "p11",
+        "loanId": "loan_ffd0c8aa4f",
+        "paymentDate": "2027-07-07",
+        "principalAmount": 32586.07,
+        "interestAmount": 1439.93,
+        "totalAmount": 34026,
+        "paid": false
+      },
+      {
+        "id": "p12",
+        "loanId": "loan_ffd0c8aa4f",
+        "paymentDate": "2027-08-06",
+        "principalAmount": 33524.09,
+        "interestAmount": 730.18,
+        "totalAmount": 34254.27,
+        "paid": false
+      }
+    ]
+  },
+  {
+    "fixtureKind": "REAL_AMORTIZING",
+    "loanId": "loan_d335592b95",
+    "bankName": "Озон кредит 2 200 тыс",
+    "companyName": "ИП Петров",
+    "currentDebt": 365180.97,
+    "monthlyPayment": 215480,
+    "endDate": "2026-07-24",
+    "creditLimit": 4200000,
+    "paymentFrequency": "TWICE_MONTHLY_15_25",
+    "payments": [
+      {
+        "id": "p0",
+        "loanId": "loan_d335592b95",
+        "paymentDate": "2026-07-15",
+        "principalAmount": 182610.43,
+        "interestAmount": 32869.57,
+        "totalAmount": 215480,
+        "paid": false
+      },
+      {
+        "id": "p1",
+        "loanId": "loan_d335592b95",
+        "paymentDate": "2026-07-24",
+        "principalAmount": 182570.54,
+        "interestAmount": 32869.46,
+        "totalAmount": 215440,
+        "paid": false
+      }
+    ]
+  },
+  {
+    "fixtureKind": "REAL_AMORTIZING",
+    "loanId": "loan_c6e408881b",
+    "bankName": "Озон кредит 990 тыс",
+    "companyName": "ИП Петров",
+    "currentDebt": 715000,
+    "monthlyPayment": 70840,
+    "endDate": "2027-07-28",
+    "creditLimit": 990000,
+    "paymentFrequency": "MONTHLY",
+    "payments": [
+      {
+        "id": "p0",
+        "loanId": "loan_c6e408881b",
+        "paymentDate": "2026-07-28",
+        "principalAmount": 55000,
+        "interestAmount": 15840,
+        "totalAmount": 70840,
+        "paid": false
+      },
+      {
+        "id": "p1",
+        "loanId": "loan_c6e408881b",
+        "paymentDate": "2026-08-28",
+        "principalAmount": 55000,
+        "interestAmount": 15840,
+        "totalAmount": 70840,
+        "paid": false
+      },
+      {
+        "id": "p2",
+        "loanId": "loan_c6e408881b",
+        "paymentDate": "2026-09-28",
+        "principalAmount": 55000,
+        "interestAmount": 15840,
+        "totalAmount": 70840,
+        "paid": false
+      },
+      {
+        "id": "p3",
+        "loanId": "loan_c6e408881b",
+        "paymentDate": "2026-10-28",
+        "principalAmount": 55000,
+        "interestAmount": 15840,
+        "totalAmount": 70840,
+        "paid": false
+      },
+      {
+        "id": "p4",
+        "loanId": "loan_c6e408881b",
+        "paymentDate": "2026-11-30",
+        "principalAmount": 55000,
+        "interestAmount": 15840,
+        "totalAmount": 70840,
+        "paid": false
+      },
+      {
+        "id": "p5",
+        "loanId": "loan_c6e408881b",
+        "paymentDate": "2026-12-28",
+        "principalAmount": 55000,
+        "interestAmount": 15840,
+        "totalAmount": 70840,
+        "paid": false
+      },
+      {
+        "id": "p6",
+        "loanId": "loan_c6e408881b",
+        "paymentDate": "2027-01-28",
+        "principalAmount": 55000,
+        "interestAmount": 15840,
+        "totalAmount": 70840,
+        "paid": false
+      },
+      {
+        "id": "p7",
+        "loanId": "loan_c6e408881b",
+        "paymentDate": "2027-03-02",
+        "principalAmount": 55000,
+        "interestAmount": 15840,
+        "totalAmount": 70840,
+        "paid": false
+      },
+      {
+        "id": "p8",
+        "loanId": "loan_c6e408881b",
+        "paymentDate": "2027-03-29",
+        "principalAmount": 55000,
+        "interestAmount": 15840,
+        "totalAmount": 70840,
+        "paid": false
+      },
+      {
+        "id": "p9",
+        "loanId": "loan_c6e408881b",
+        "paymentDate": "2027-04-28",
+        "principalAmount": 55000,
+        "interestAmount": 15840,
+        "totalAmount": 70840,
+        "paid": false
+      },
+      {
+        "id": "p10",
+        "loanId": "loan_c6e408881b",
+        "paymentDate": "2027-05-28",
+        "principalAmount": 55000,
+        "interestAmount": 15840,
+        "totalAmount": 70840,
+        "paid": false
+      },
+      {
+        "id": "p11",
+        "loanId": "loan_c6e408881b",
+        "paymentDate": "2027-06-28",
+        "principalAmount": 55000,
+        "interestAmount": 15840,
+        "totalAmount": 70840,
+        "paid": false
+      },
+      {
+        "id": "p12",
+        "loanId": "loan_c6e408881b",
+        "paymentDate": "2027-07-28",
+        "principalAmount": 55000,
+        "interestAmount": 15840,
+        "totalAmount": 70840,
+        "paid": false
+      }
+    ]
+  },
+  {
+    "fixtureKind": "REAL_AMORTIZING",
+    "loanId": "loan_dfd0049677",
+    "bankName": "Wb Кредит Петров 1,2 млн",
+    "companyName": "ИП Петров",
+    "currentDebt": 718905.26,
+    "monthlyPayment": 25863,
+    "endDate": "2027-02-01",
+    "creditLimit": null,
+    "paymentFrequency": "WEEKLY",
+    "payments": [
+      {
+        "id": "p0",
+        "loanId": "loan_dfd0049677",
+        "paymentDate": "2026-07-13",
+        "principalAmount": 22355.53,
+        "interestAmount": 3507.47,
+        "totalAmount": 25863,
+        "paid": false
+      },
+      {
+        "id": "p1",
+        "loanId": "loan_dfd0049677",
+        "paymentDate": "2026-07-20",
+        "principalAmount": 22464.6,
+        "interestAmount": 3398.4,
+        "totalAmount": 25863,
+        "paid": false
+      },
+      {
+        "id": "p2",
+        "loanId": "loan_dfd0049677",
+        "paymentDate": "2026-07-27",
+        "principalAmount": 22574.2,
+        "interestAmount": 3288.8,
+        "totalAmount": 25863,
+        "paid": false
+      },
+      {
+        "id": "p3",
+        "loanId": "loan_dfd0049677",
+        "paymentDate": "2026-08-03",
+        "principalAmount": 22684.34,
+        "interestAmount": 3178.66,
+        "totalAmount": 25863,
+        "paid": false
+      },
+      {
+        "id": "p4",
+        "loanId": "loan_dfd0049677",
+        "paymentDate": "2026-08-10",
+        "principalAmount": 22795.02,
+        "interestAmount": 3067.98,
+        "totalAmount": 25863,
+        "paid": false
+      },
+      {
+        "id": "p5",
+        "loanId": "loan_dfd0049677",
+        "paymentDate": "2026-08-17",
+        "principalAmount": 22906.23,
+        "interestAmount": 2956.77,
+        "totalAmount": 25863,
+        "paid": false
+      },
+      {
+        "id": "p6",
+        "loanId": "loan_dfd0049677",
+        "paymentDate": "2026-08-24",
+        "principalAmount": 23017.99,
+        "interestAmount": 2845.01,
+        "totalAmount": 25863,
+        "paid": false
+      },
+      {
+        "id": "p7",
+        "loanId": "loan_dfd0049677",
+        "paymentDate": "2026-08-31",
+        "principalAmount": 23130.29,
+        "interestAmount": 2732.71,
+        "totalAmount": 25863,
+        "paid": false
+      },
+      {
+        "id": "p8",
+        "loanId": "loan_dfd0049677",
+        "paymentDate": "2026-09-07",
+        "principalAmount": 23243.14,
+        "interestAmount": 2619.86,
+        "totalAmount": 25863,
+        "paid": false
+      },
+      {
+        "id": "p9",
+        "loanId": "loan_dfd0049677",
+        "paymentDate": "2026-09-14",
+        "principalAmount": 23356.54,
+        "interestAmount": 2506.46,
+        "totalAmount": 25863,
+        "paid": false
+      },
+      {
+        "id": "p10",
+        "loanId": "loan_dfd0049677",
+        "paymentDate": "2026-09-21",
+        "principalAmount": 23470.5,
+        "interestAmount": 2392.5,
+        "totalAmount": 25863,
+        "paid": false
+      },
+      {
+        "id": "p11",
+        "loanId": "loan_dfd0049677",
+        "paymentDate": "2026-09-28",
+        "principalAmount": 23585.01,
+        "interestAmount": 2277.99,
+        "totalAmount": 25863,
+        "paid": false
+      },
+      {
+        "id": "p12",
+        "loanId": "loan_dfd0049677",
+        "paymentDate": "2026-10-05",
+        "principalAmount": 23700.08,
+        "interestAmount": 2162.92,
+        "totalAmount": 25863,
+        "paid": false
+      },
+      {
+        "id": "p13",
+        "loanId": "loan_dfd0049677",
+        "paymentDate": "2026-10-12",
+        "principalAmount": 23815.71,
+        "interestAmount": 2047.29,
+        "totalAmount": 25863,
+        "paid": false
+      },
+      {
+        "id": "p14",
+        "loanId": "loan_dfd0049677",
+        "paymentDate": "2026-10-19",
+        "principalAmount": 23931.9,
+        "interestAmount": 1931.1,
+        "totalAmount": 25863,
+        "paid": false
+      },
+      {
+        "id": "p15",
+        "loanId": "loan_dfd0049677",
+        "paymentDate": "2026-10-26",
+        "principalAmount": 24048.66,
+        "interestAmount": 1814.34,
+        "totalAmount": 25863,
+        "paid": false
+      },
+      {
+        "id": "p16",
+        "loanId": "loan_dfd0049677",
+        "paymentDate": "2026-11-02",
+        "principalAmount": 24165.99,
+        "interestAmount": 1697.01,
+        "totalAmount": 25863,
+        "paid": false
+      },
+      {
+        "id": "p17",
+        "loanId": "loan_dfd0049677",
+        "paymentDate": "2026-11-09",
+        "principalAmount": 24283.9,
+        "interestAmount": 1579.1,
+        "totalAmount": 25863,
+        "paid": false
+      },
+      {
+        "id": "p18",
+        "loanId": "loan_dfd0049677",
+        "paymentDate": "2026-11-16",
+        "principalAmount": 24402.38,
+        "interestAmount": 1460.62,
+        "totalAmount": 25863,
+        "paid": false
+      },
+      {
+        "id": "p19",
+        "loanId": "loan_dfd0049677",
+        "paymentDate": "2026-11-23",
+        "principalAmount": 24521.43,
+        "interestAmount": 1341.57,
+        "totalAmount": 25863,
+        "paid": false
+      },
+      {
+        "id": "p20",
+        "loanId": "loan_dfd0049677",
+        "paymentDate": "2026-11-30",
+        "principalAmount": 24641.07,
+        "interestAmount": 1221.93,
+        "totalAmount": 25863,
+        "paid": false
+      },
+      {
+        "id": "p21",
+        "loanId": "loan_dfd0049677",
+        "paymentDate": "2026-12-07",
+        "principalAmount": 24761.29,
+        "interestAmount": 1101.71,
+        "totalAmount": 25863,
+        "paid": false
+      },
+      {
+        "id": "p22",
+        "loanId": "loan_dfd0049677",
+        "paymentDate": "2026-12-14",
+        "principalAmount": 24882.1,
+        "interestAmount": 980.9,
+        "totalAmount": 25863,
+        "paid": false
+      },
+      {
+        "id": "p23",
+        "loanId": "loan_dfd0049677",
+        "paymentDate": "2026-12-21",
+        "principalAmount": 25003.5,
+        "interestAmount": 859.5,
+        "totalAmount": 25863,
+        "paid": false
+      },
+      {
+        "id": "p24",
+        "loanId": "loan_dfd0049677",
+        "paymentDate": "2026-12-28",
+        "principalAmount": 25125.49,
+        "interestAmount": 737.51,
+        "totalAmount": 25863,
+        "paid": false
+      },
+      {
+        "id": "p25",
+        "loanId": "loan_dfd0049677",
+        "paymentDate": "2027-01-11",
+        "principalAmount": 50496.14,
+        "interestAmount": 1229.86,
+        "totalAmount": 51726,
+        "paid": false
+      },
+      {
+        "id": "p26",
+        "loanId": "loan_dfd0049677",
+        "paymentDate": "2027-01-18",
+        "principalAmount": 25494.44,
+        "interestAmount": 368.56,
+        "totalAmount": 25863,
+        "paid": false
+      },
+      {
+        "id": "p27",
+        "loanId": "loan_dfd0049677",
+        "paymentDate": "2027-01-25",
+        "principalAmount": 25618.82,
+        "interestAmount": 244.18,
+        "totalAmount": 25863,
+        "paid": false
+      },
+      {
+        "id": "p28",
+        "loanId": "loan_dfd0049677",
+        "paymentDate": "2027-02-01",
+        "principalAmount": 24428.97,
+        "interestAmount": 119.19,
+        "totalAmount": 24548.16,
+        "paid": false
+      }
+    ]
+  },
+  {
+    "fixtureKind": "REAL_AMORTIZING",
+    "loanId": "loan_a476637be3",
+    "bankName": "Wb Кредит Лебедева 1,4 млн",
+    "companyName": "ИП Лебедева",
+    "currentDebt": 1137241.13,
+    "monthlyPayment": 24869.1,
+    "endDate": "2027-06-28",
+    "creditLimit": null,
+    "paymentFrequency": "WEEKLY",
+    "payments": [
+      {
+        "id": "p0",
+        "loanId": "loan_a476637be3",
+        "paymentDate": "2026-07-13",
+        "principalAmount": 18023.22,
+        "interestAmount": 6845.88,
+        "totalAmount": 24869.1,
+        "paid": false
+      },
+      {
+        "id": "p1",
+        "loanId": "loan_a476637be3",
+        "paymentDate": "2026-07-20",
+        "principalAmount": 20155.51,
+        "interestAmount": 4713.59,
+        "totalAmount": 24869.1,
+        "paid": false
+      },
+      {
+        "id": "p2",
+        "loanId": "loan_a476637be3",
+        "paymentDate": "2026-07-27",
+        "principalAmount": 20240.39,
+        "interestAmount": 4628.71,
+        "totalAmount": 24869.1,
+        "paid": false
+      },
+      {
+        "id": "p3",
+        "loanId": "loan_a476637be3",
+        "paymentDate": "2026-08-03",
+        "principalAmount": 20325.63,
+        "interestAmount": 4543.47,
+        "totalAmount": 24869.1,
+        "paid": false
+      },
+      {
+        "id": "p4",
+        "loanId": "loan_a476637be3",
+        "paymentDate": "2026-08-10",
+        "principalAmount": 20411.24,
+        "interestAmount": 4457.86,
+        "totalAmount": 24869.1,
+        "paid": false
+      },
+      {
+        "id": "p5",
+        "loanId": "loan_a476637be3",
+        "paymentDate": "2026-08-17",
+        "principalAmount": 20497.2,
+        "interestAmount": 4371.9,
+        "totalAmount": 24869.1,
+        "paid": false
+      },
+      {
+        "id": "p6",
+        "loanId": "loan_a476637be3",
+        "paymentDate": "2026-08-24",
+        "principalAmount": 20583.52,
+        "interestAmount": 4285.58,
+        "totalAmount": 24869.1,
+        "paid": false
+      },
+      {
+        "id": "p7",
+        "loanId": "loan_a476637be3",
+        "paymentDate": "2026-08-31",
+        "principalAmount": 20670.21,
+        "interestAmount": 4198.89,
+        "totalAmount": 24869.1,
+        "paid": false
+      },
+      {
+        "id": "p8",
+        "loanId": "loan_a476637be3",
+        "paymentDate": "2026-09-07",
+        "principalAmount": 20757.26,
+        "interestAmount": 4111.84,
+        "totalAmount": 24869.1,
+        "paid": false
+      },
+      {
+        "id": "p9",
+        "loanId": "loan_a476637be3",
+        "paymentDate": "2026-09-14",
+        "principalAmount": 20844.68,
+        "interestAmount": 4024.42,
+        "totalAmount": 24869.1,
+        "paid": false
+      },
+      {
+        "id": "p10",
+        "loanId": "loan_a476637be3",
+        "paymentDate": "2026-09-21",
+        "principalAmount": 20932.47,
+        "interestAmount": 3936.63,
+        "totalAmount": 24869.1,
+        "paid": false
+      },
+      {
+        "id": "p11",
+        "loanId": "loan_a476637be3",
+        "paymentDate": "2026-09-28",
+        "principalAmount": 21020.63,
+        "interestAmount": 3848.47,
+        "totalAmount": 24869.1,
+        "paid": false
+      },
+      {
+        "id": "p12",
+        "loanId": "loan_a476637be3",
+        "paymentDate": "2026-10-05",
+        "principalAmount": 21109.15,
+        "interestAmount": 3759.95,
+        "totalAmount": 24869.1,
+        "paid": false
+      },
+      {
+        "id": "p13",
+        "loanId": "loan_a476637be3",
+        "paymentDate": "2026-10-12",
+        "principalAmount": 21198.06,
+        "interestAmount": 3671.04,
+        "totalAmount": 24869.1,
+        "paid": false
+      },
+      {
+        "id": "p14",
+        "loanId": "loan_a476637be3",
+        "paymentDate": "2026-10-19",
+        "principalAmount": 21287.33,
+        "interestAmount": 3581.77,
+        "totalAmount": 24869.1,
+        "paid": false
+      },
+      {
+        "id": "p15",
+        "loanId": "loan_a476637be3",
+        "paymentDate": "2026-10-26",
+        "principalAmount": 21376.98,
+        "interestAmount": 3492.12,
+        "totalAmount": 24869.1,
+        "paid": false
+      },
+      {
+        "id": "p16",
+        "loanId": "loan_a476637be3",
+        "paymentDate": "2026-11-02",
+        "principalAmount": 21467.01,
+        "interestAmount": 3402.09,
+        "totalAmount": 24869.1,
+        "paid": false
+      },
+      {
+        "id": "p17",
+        "loanId": "loan_a476637be3",
+        "paymentDate": "2026-11-09",
+        "principalAmount": 21557.42,
+        "interestAmount": 3311.68,
+        "totalAmount": 24869.1,
+        "paid": false
+      },
+      {
+        "id": "p18",
+        "loanId": "loan_a476637be3",
+        "paymentDate": "2026-11-16",
+        "principalAmount": 21648.21,
+        "interestAmount": 3220.89,
+        "totalAmount": 24869.1,
+        "paid": false
+      },
+      {
+        "id": "p19",
+        "loanId": "loan_a476637be3",
+        "paymentDate": "2026-11-23",
+        "principalAmount": 21739.38,
+        "interestAmount": 3129.72,
+        "totalAmount": 24869.1,
+        "paid": false
+      },
+      {
+        "id": "p20",
+        "loanId": "loan_a476637be3",
+        "paymentDate": "2026-11-30",
+        "principalAmount": 21830.94,
+        "interestAmount": 3038.16,
+        "totalAmount": 24869.1,
+        "paid": false
+      },
+      {
+        "id": "p21",
+        "loanId": "loan_a476637be3",
+        "paymentDate": "2026-12-07",
+        "principalAmount": 21922.88,
+        "interestAmount": 2946.22,
+        "totalAmount": 24869.1,
+        "paid": false
+      },
+      {
+        "id": "p22",
+        "loanId": "loan_a476637be3",
+        "paymentDate": "2026-12-14",
+        "principalAmount": 22015.21,
+        "interestAmount": 2853.89,
+        "totalAmount": 24869.1,
+        "paid": false
+      },
+      {
+        "id": "p23",
+        "loanId": "loan_a476637be3",
+        "paymentDate": "2026-12-21",
+        "principalAmount": 22107.92,
+        "interestAmount": 2761.18,
+        "totalAmount": 24869.1,
+        "paid": false
+      },
+      {
+        "id": "p24",
+        "loanId": "loan_a476637be3",
+        "paymentDate": "2026-12-28",
+        "principalAmount": 22201.03,
+        "interestAmount": 2668.07,
+        "totalAmount": 24869.1,
+        "paid": false
+      },
+      {
+        "id": "p25",
+        "loanId": "loan_a476637be3",
+        "paymentDate": "2027-01-11",
+        "principalAmount": 44589.06,
+        "interestAmount": 5149.14,
+        "totalAmount": 49738.2,
+        "paid": false
+      },
+      {
+        "id": "p26",
+        "loanId": "loan_a476637be3",
+        "paymentDate": "2027-01-18",
+        "principalAmount": 22482.32,
+        "interestAmount": 2386.78,
+        "totalAmount": 24869.1,
+        "paid": false
+      },
+      {
+        "id": "p27",
+        "loanId": "loan_a476637be3",
+        "paymentDate": "2027-01-25",
+        "principalAmount": 22577,
+        "interestAmount": 2292.1,
+        "totalAmount": 24869.1,
+        "paid": false
+      },
+      {
+        "id": "p28",
+        "loanId": "loan_a476637be3",
+        "paymentDate": "2027-02-01",
+        "principalAmount": 22672.09,
+        "interestAmount": 2197.01,
+        "totalAmount": 24869.1,
+        "paid": false
+      },
+      {
+        "id": "p29",
+        "loanId": "loan_a476637be3",
+        "paymentDate": "2027-02-08",
+        "principalAmount": 22767.57,
+        "interestAmount": 2101.53,
+        "totalAmount": 24869.1,
+        "paid": false
+      },
+      {
+        "id": "p30",
+        "loanId": "loan_a476637be3",
+        "paymentDate": "2027-02-15",
+        "principalAmount": 22863.46,
+        "interestAmount": 2005.64,
+        "totalAmount": 24869.1,
+        "paid": false
+      },
+      {
+        "id": "p31",
+        "loanId": "loan_a476637be3",
+        "paymentDate": "2027-02-24",
+        "principalAmount": 22959.75,
+        "interestAmount": 1909.35,
+        "totalAmount": 24869.1,
+        "paid": false
+      },
+      {
+        "id": "p32",
+        "loanId": "loan_a476637be3",
+        "paymentDate": "2027-03-01",
+        "principalAmount": 23028.81,
+        "interestAmount": 1840.29,
+        "totalAmount": 24869.1,
+        "paid": false
+      },
+      {
+        "id": "p33",
+        "loanId": "loan_a476637be3",
+        "paymentDate": "2027-03-09",
+        "principalAmount": 23153.43,
+        "interestAmount": 1715.67,
+        "totalAmount": 24869.1,
+        "paid": false
+      },
+      {
+        "id": "p34",
+        "loanId": "loan_a476637be3",
+        "paymentDate": "2027-03-15",
+        "principalAmount": 23237.01,
+        "interestAmount": 1632.09,
+        "totalAmount": 24869.1,
+        "paid": false
+      },
+      {
+        "id": "p35",
+        "loanId": "loan_a476637be3",
+        "paymentDate": "2027-03-22",
+        "principalAmount": 23348.8,
+        "interestAmount": 1520.3,
+        "totalAmount": 24869.1,
+        "paid": false
+      },
+      {
+        "id": "p36",
+        "loanId": "loan_a476637be3",
+        "paymentDate": "2027-03-29",
+        "principalAmount": 23447.13,
+        "interestAmount": 1421.97,
+        "totalAmount": 24869.1,
+        "paid": false
+      },
+      {
+        "id": "p37",
+        "loanId": "loan_a476637be3",
+        "paymentDate": "2027-04-05",
+        "principalAmount": 23545.88,
+        "interestAmount": 1323.22,
+        "totalAmount": 24869.1,
+        "paid": false
+      },
+      {
+        "id": "p38",
+        "loanId": "loan_a476637be3",
+        "paymentDate": "2027-04-12",
+        "principalAmount": 23645.05,
+        "interestAmount": 1224.05,
+        "totalAmount": 24869.1,
+        "paid": false
+      },
+      {
+        "id": "p39",
+        "loanId": "loan_a476637be3",
+        "paymentDate": "2027-04-19",
+        "principalAmount": 23744.63,
+        "interestAmount": 1124.47,
+        "totalAmount": 24869.1,
+        "paid": false
+      },
+      {
+        "id": "p40",
+        "loanId": "loan_a476637be3",
+        "paymentDate": "2027-04-26",
+        "principalAmount": 23844.63,
+        "interestAmount": 1024.47,
+        "totalAmount": 24869.1,
+        "paid": false
+      },
+      {
+        "id": "p41",
+        "loanId": "loan_a476637be3",
+        "paymentDate": "2027-05-04",
+        "principalAmount": 23945.05,
+        "interestAmount": 924.05,
+        "totalAmount": 24869.1,
+        "paid": false
+      },
+      {
+        "id": "p42",
+        "loanId": "loan_a476637be3",
+        "paymentDate": "2027-05-11",
+        "principalAmount": 24031.49,
+        "interestAmount": 837.61,
+        "totalAmount": 24869.1,
+        "paid": false
+      },
+      {
+        "id": "p43",
+        "loanId": "loan_a476637be3",
+        "paymentDate": "2027-05-17",
+        "principalAmount": 24132.64,
+        "interestAmount": 736.46,
+        "totalAmount": 24869.1,
+        "paid": false
+      },
+      {
+        "id": "p44",
+        "loanId": "loan_a476637be3",
+        "paymentDate": "2027-05-24",
+        "principalAmount": 24248.74,
+        "interestAmount": 620.36,
+        "totalAmount": 24869.1,
+        "paid": false
+      },
+      {
+        "id": "p45",
+        "loanId": "loan_a476637be3",
+        "paymentDate": "2027-05-31",
+        "principalAmount": 24350.86,
+        "interestAmount": 518.24,
+        "totalAmount": 24869.1,
+        "paid": false
+      },
+      {
+        "id": "p46",
+        "loanId": "loan_a476637be3",
+        "paymentDate": "2027-06-07",
+        "principalAmount": 24453.41,
+        "interestAmount": 415.69,
+        "totalAmount": 24869.1,
+        "paid": false
+      },
+      {
+        "id": "p47",
+        "loanId": "loan_a476637be3",
+        "paymentDate": "2027-06-15",
+        "principalAmount": 24556.4,
+        "interestAmount": 312.7,
+        "totalAmount": 24869.1,
+        "paid": false
+      },
+      {
+        "id": "p48",
+        "loanId": "loan_a476637be3",
+        "paymentDate": "2027-06-21",
+        "principalAmount": 24645.05,
+        "interestAmount": 224.05,
+        "totalAmount": 24869.1,
+        "paid": false
+      },
+      {
+        "id": "p49",
+        "loanId": "loan_a476637be3",
+        "paymentDate": "2027-06-28",
+        "principalAmount": 25047.39,
+        "interestAmount": 105.49,
+        "totalAmount": 25152.88,
+        "paid": false
+      }
+    ]
+  },
+  {
+    "fixtureKind": "REAL_AMORTIZING",
+    "loanId": "loan_7e9056bf74",
+    "bankName": "Sell Plus",
+    "companyName": "ИП Петров",
+    "currentDebt": 0,
+    "monthlyPayment": 0,
+    "endDate": "2026-07-03",
+    "earlyRepaymentDate": "2026-07-03",
+    "payments": [
+      {
+        "id": "sp1",
+        "loanId": "loan_7e9056bf74",
+        "paymentDate": "2026-08-21",
+        "principalAmount": 85948.53,
+        "interestAmount": 4719.9,
+        "totalAmount": 90668.43,
+        "paid": true
+      }
+    ]
+  },
+  {
+    "fixtureKind": "CARD_BEHAVIOR",
+    "loanId": "loan_card_behavior_active",
+    "bankName": "Альфа кредитка 4337",
+    "companyName": "ИП Петров",
+    "currentDebt": 250000,
+    "monthlyPayment": 46406.74,
+    "endDate": null,
+    "creditLimit": 500000,
+    "payments": []
+  },
+  {
+    "fixtureKind": "CARD_BEHAVIOR",
+    "loanId": "loan_card_behavior_zero",
+    "bankName": "Сбер Кредитка",
+    "companyName": "ИП Петров",
+    "currentDebt": 0,
+    "monthlyPayment": 0,
+    "endDate": null,
+    "creditLimit": 300000,
+    "payments": []
+  }
+]

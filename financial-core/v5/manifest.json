@@ -1,0 +1,230 @@
+{
+  "version": "financial-core-v5",
+  "parentVersion": "financial-core-v4",
+  "createdAt": "2026-08-19T16:42:06.319Z",
+  "tagName": "financial-core-v5-wb-official-weekly-priority-2026-08-19",
+  "status": "AUDITED_SOURCE_LOCK",
+  "sourceCommit": "623ccb3f256faad084d315dec23c3c368ba1a49a",
+  "workingTreeDirty": true,
+  "policy": {
+    "purpose": "Protect the audited WB official weekly finance priority and retain all Financial Core V4 contracts.",
+    "requireNewAuditFor": [
+      "WB official finance interval selection or weekly/daily precedence",
+      "WB detailed logistics distribution or reconciliation to official totals",
+      "WB/Ozon profit, tax, DRR and source precedence formulas",
+      "ProductCost resolution and marketplace financial normalizers",
+      "data readiness and Telegram/Dashboard financial consumers"
+    ]
+  },
+  "wbOfficialFinancePolicy": {
+    "closedPeriodTotalsSource": "WB_FINANCE_MINIMAL_NON_OVERLAPPING_INTERVAL_COVER",
+    "weeklyPriority": true,
+    "detailedLogisticsRole": "SKU_DISTRIBUTION_RECONCILED_TO_OFFICIAL_TOTAL",
+    "reconciliationScope": "PER_LEGAL_ENTITY",
+    "directDatabaseMutation": false,
+    "targetPeriod": "2026-08-10..2026-08-16",
+    "targetOfficialLogisticsRub": 668336.55,
+    "targetNetProfitAfterTaxRub": -501339.95,
+    "historicalWeekCompanyCases": 30
+  },
+  "protectedFiles": [
+    {
+      "path": "lib/analytics/profitAnalytics.ts",
+      "role": "Канонический расчёт прибыли Wildberries",
+      "sha256": "68d02185e842b0be7c30779e9398c7052d645ef49d1d324ffbd65610891dc22a",
+      "snapshotSha256": "68d02185e842b0be7c30779e9398c7052d645ef49d1d324ffbd65610891dc22a",
+      "sizeBytes": 68710
+    },
+    {
+      "path": "lib/analytics/profitAnalyticsOzon.ts",
+      "role": "Канонический расчёт прибыли Ozon",
+      "sha256": "4c80c7190c34b9bf7665a0cdcd70230a037b2671cfec260e3a19a1a250bcdce3",
+      "snapshotSha256": "4c80c7190c34b9bf7665a0cdcd70230a037b2671cfec260e3a19a1a250bcdce3",
+      "sizeBytes": 68894
+    },
+    {
+      "path": "lib/analytics/dataReadiness.ts",
+      "role": "Определение полноты и финальности данных периода",
+      "sha256": "100dcd757defbce1538cf6380fe9bb328e9ce3f751fc834e5c98d81abbd512bc",
+      "snapshotSha256": "100dcd757defbce1538cf6380fe9bb328e9ce3f751fc834e5c98d81abbd512bc",
+      "sizeBytes": 18137
+    },
+    {
+      "path": "lib/finance/financeMetrics.ts",
+      "role": "ДДС, влияние финансовых операций и выводы собственника",
+      "sha256": "ea9d671f620f3af4849577b75d10b5e9636a86b5a5ada34eb4dd687eba3d94f3",
+      "snapshotSha256": "ea9d671f620f3af4849577b75d10b5e9636a86b5a5ada34eb4dd687eba3d94f3",
+      "sizeBytes": 12812
+    },
+    {
+      "path": "lib/telegram/dailyReport.ts",
+      "role": "Единая финансовая сводка Dashboard и Telegram",
+      "sha256": "a503d35a402975d2fd0f2be4834190b35af834bb3dec40c5e153201d8bf42942",
+      "snapshotSha256": "a503d35a402975d2fd0f2be4834190b35af834bb3dec40c5e153201d8bf42942",
+      "sizeBytes": 111798
+    },
+    {
+      "path": "lib/import/detectReportType.ts",
+      "role": "Распознавание типов импортируемых отчётов",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "snapshotSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "sizeBytes": 0
+    },
+    {
+      "path": "lib/import/reportDetector.ts",
+      "role": "Контракт определения финансовых источников",
+      "sha256": "f32adb4dce27e7667778dd4b7cc3b4c6e75a78caaabdae231a80090f5879928d",
+      "snapshotSha256": "f32adb4dce27e7667778dd4b7cc3b4c6e75a78caaabdae231a80090f5879928d",
+      "sizeBytes": 14888
+    },
+    {
+      "path": "lib/import/normalizers/productCostNormalizer.ts",
+      "role": "Нормализация себестоимости и Excel-дат",
+      "sha256": "e5b7db3ca0f2ac37ababec3ace7575b1834533dee21d4122225b77f95e76bba2",
+      "snapshotSha256": "e5b7db3ca0f2ac37ababec3ace7575b1834533dee21d4122225b77f95e76bba2",
+      "sizeBytes": 3920
+    },
+    {
+      "path": "lib/import/normalizers/wbSalesNormalizer.ts",
+      "role": "Нормализация продаж Wildberries",
+      "sha256": "3ceccc2c93e1a6f8f2e63686638eaa4727011bcbe4e2b90e3c5051530aef486e",
+      "snapshotSha256": "3ceccc2c93e1a6f8f2e63686638eaa4727011bcbe4e2b90e3c5051530aef486e",
+      "sizeBytes": 10402
+    },
+    {
+      "path": "lib/import/normalizers/wbFinanceNormalizer.ts",
+      "role": "Нормализация финансового отчёта Wildberries",
+      "sha256": "b8c8d5747bcbf33b2bdb0e8ad4eac3a53dd9c3dcf5971fd8d3df3f59390dd5c9",
+      "snapshotSha256": "b8c8d5747bcbf33b2bdb0e8ad4eac3a53dd9c3dcf5971fd8d3df3f59390dd5c9",
+      "sizeBytes": 4653
+    },
+    {
+      "path": "lib/import/normalizers/wbAdsNormalizer.ts",
+      "role": "Нормализация рекламы Wildberries",
+      "sha256": "86f733ac864c5ceccc0a8257904e94b85ecd3183177954cd56edef9dd4fc0e66",
+      "snapshotSha256": "86f733ac864c5ceccc0a8257904e94b85ecd3183177954cd56edef9dd4fc0e66",
+      "sizeBytes": 6495
+    },
+    {
+      "path": "lib/import/normalizers/ozonFinanceNormalizer.ts",
+      "role": "Нормализация финансового отчёта Ozon",
+      "sha256": "1d60270c20875273b6f32c4034c2e0b40e14c795f8302ba00c288e97917d24f4",
+      "snapshotSha256": "1d60270c20875273b6f32c4034c2e0b40e14c795f8302ba00c288e97917d24f4",
+      "sizeBytes": 5710
+    },
+    {
+      "path": "lib/import/normalizers/ozonAdsNormalizer.ts",
+      "role": "Нормализация рекламы Ozon",
+      "sha256": "e4ec16a9cf29f37c886d205eb898e2007716d1eb810ccb4895e34ffb54c88733",
+      "snapshotSha256": "e4ec16a9cf29f37c886d205eb898e2007716d1eb810ccb4895e34ffb54c88733",
+      "sizeBytes": 2607
+    },
+    {
+      "path": "lib/import/normalizers/financeTransactionNormalizer.ts",
+      "role": "Нормализация внутренних финансовых операций",
+      "sha256": "2d79d46fb4152ed30870f7d28bb30a11f1960ae7b7d6795549dce1230707b3ce",
+      "snapshotSha256": "2d79d46fb4152ed30870f7d28bb30a11f1960ae7b7d6795549dce1230707b3ce",
+      "sizeBytes": 10720
+    }
+  ],
+  "consumerContracts": [
+    {
+      "path": "app/page.tsx",
+      "requiredPatterns": [
+        "buildDailyReport",
+        "@/lib/telegram/dailyReport"
+      ],
+      "forbiddenPatterns": []
+    },
+    {
+      "path": "app/insights/page.tsx",
+      "requiredPatterns": [
+        "getProfitAnalytics",
+        "@/lib/analytics/profitAnalytics",
+        "getProfitAnalyticsOzon",
+        "@/lib/analytics/profitAnalyticsOzon"
+      ],
+      "forbiddenPatterns": [
+        "buildDailyReport"
+      ]
+    },
+    {
+      "path": "app/profit-wb/page.tsx",
+      "requiredPatterns": [
+        "getProfitAnalytics",
+        "@/lib/analytics/profitAnalytics"
+      ],
+      "forbiddenPatterns": []
+    },
+    {
+      "path": "app/profit-ozon/page.tsx",
+      "requiredPatterns": [
+        "getProfitAnalyticsOzon",
+        "@/lib/analytics/profitAnalyticsOzon"
+      ],
+      "forbiddenPatterns": []
+    }
+  ],
+  "externalRuntimeContracts": [
+    {
+      "server": "TELEGRAM_VPS",
+      "path": "/root/avorofin-bot-test/run-daily-telegram-report.sh",
+      "sha256": "e115e4d65d323662a79d1b06db85f572c6472f9eab15370e97336ea30ee137eb",
+      "sourceAudit": "v191",
+      "liveRecheckInV195": false
+    }
+  ],
+  "packageScriptContract": {
+    "financial-core:verify": "node scripts/financial-core/verify-financial-core-v5.mjs",
+    "financial-core:regression": "bash scripts/financial-core/run-financial-core-regression-v1.sh",
+    "financial-core:restore": "node scripts/financial-core/restore-financial-core-v5.mjs",
+    "wb-finance:verify": "node scripts/wb/verify-wb-official-finance-priority.mjs",
+    "prebuild": "npm run financial-core:verify",
+    "predev": "npm run financial-core:verify"
+  },
+  "toolingFiles": [
+    {
+      "path": "scripts/financial-core/verify-financial-core-v5.mjs",
+      "sha256": "e59178ade6b156de50131b103822cffe0839d3cd4dc34e766b1d6801dfbd055a",
+      "sizeBytes": 4411
+    },
+    {
+      "path": "scripts/financial-core/restore-financial-core-v5.mjs",
+      "sha256": "06d2e96e0790fb9bb50f7175c47bc7ae1f86f2a9d78ee30e1234f14eac8ffac6",
+      "sizeBytes": 1849
+    },
+    {
+      "path": "scripts/wb/verify-wb-official-finance-priority.mjs",
+      "sha256": "99817426a8c5863254fea7a23d778cc33b6d46b411960ddc3056a8e91bcf30d7",
+      "sizeBytes": 2475
+    }
+  ],
+  "validationEvidence": {
+    "sourceAudit": "AVOROFIN_WB_FINANCIAL_INTEGRITY_AUDIT_V3",
+    "auditPeriod": "2026-08-10..2026-08-16",
+    "historicalWindow": "2026-05-01..2026-08-16",
+    "periodsAudited": 20,
+    "companyPeriodCalculations": 40,
+    "impactedCalculations": 30,
+    "impactedClosedWeeks": 28,
+    "targetOfficialLogisticsRub": 668336.55,
+    "targetNetProfitAfterTaxRub": -501339.95,
+    "targetMarginPercent": -4,
+    "databaseChanges": "NONE"
+  },
+  "controlValues": {
+    "currency": "RUB",
+    "2026-08-10..2026-08-16|ALL": {
+      "wbTaxableRevenue": 9028400.18,
+      "wbEconomicTurnover": 12525962.9,
+      "wbOfficialLogistics": 668336.55,
+      "wbNetProfitAfterTax": -501339.95
+    },
+    "2026-08-03..2026-08-09|ALL": {
+      "wbNetProfitAfterTax": 640414.06
+    }
+  },
+  "databaseChanges": "NONE",
+  "productionChanges": "CONTROLLED_BY_AVOROFIN_WB_OFFICIAL_PRIORITY_DEPLOY_V1_4",
+  "telegramChanges": "NONE"
+}
