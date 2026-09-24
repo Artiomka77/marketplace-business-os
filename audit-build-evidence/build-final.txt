@@ -1,0 +1,151 @@
+
+> marketplace-business-os@0.1.0 prebuild
+> npm run financial-core:verify
+
+
+> marketplace-business-os@0.1.0 financial-core:verify
+> node scripts/financial-core/verify-financial-core-v6.mjs
+
+FINANCIAL CORE V6 LOCAL CANDIDATE: VERIFIED (24 protected files, SERVER VERIFY REQUIRED)
+
+> marketplace-business-os@0.1.0 build
+> prisma generate && next build
+
+
+✔ Generated Prisma Client (v7.8.0) to ./node_modules/@prisma/client in 320ms
+
+Start by importing your Prisma Client (See: https://pris.ly/d/importing-client)
+
+
+⚠ No build cache found. Please configure build caching for faster rebuilds. Read more: https://nextjs.org/docs/messages/no-cache
+▲ Next.js 16.2.6 (Turbopack)
+
+  Creating an optimized production build ...
+✓ Compiled successfully in 8.4s
+  Running TypeScript ...
+  Finished TypeScript in 12.9s ...
+  Collecting page data using 3 workers ...
+  Generating static pages using 3 workers (0/54) ...
+  Generating static pages using 3 workers (13/54) 
+  Generating static pages using 3 workers (26/54) 
+  Generating static pages using 3 workers (40/54) 
+✓ Generating static pages using 3 workers (54/54) in 395ms
+  Finalizing page optimization ...
+
+Route (app)
+┌ ƒ /
+├ ○ /_not-found
+├ ƒ /abc
+├ ƒ /ads-mapping
+├ ○ /analytics
+├ ƒ /api/analytics/profit
+├ ƒ /api/cost-coverage/manual-fix
+├ ƒ /api/cron/auth-probe
+├ ƒ /api/cron/current-priority-sync
+├ ƒ /api/cron/daily-data-completeness-retry
+├ ƒ /api/cron/daily-priority-sync
+├ ƒ /api/cron/ensure-closed-week-profit-job-matrix
+├ ƒ /api/cron/finalize-wb-closed-week
+├ ƒ /api/cron/historical-sync
+├ ƒ /api/cron/historical-sync-ozon-ads
+├ ƒ /api/cron/historical-sync-wb-ads
+├ ƒ /api/cron/historical-sync-wb-finance
+├ ƒ /api/cron/historical-sync-wb-sales
+├ ƒ /api/cron/priority-wb-ads
+├ ƒ /api/cron/retry-ozon-report-ads
+├ ƒ /api/cron/sync-marketplace-orders
+├ ƒ /api/cron/sync-ozon
+├ ƒ /api/cron/sync-ozon-accruals
+├ ƒ /api/cron/sync-ozon-realization
+├ ƒ /api/cron/sync-wb
+├ ƒ /api/cron/sync-wb-ads
+├ ƒ /api/cron/sync-wb-daily-financial-detail
+├ ƒ /api/cron/sync-wb-daily-sales
+├ ƒ /api/cron/sync-wb-finance
+├ ƒ /api/cron/sync-wb-operational-detail
+├ ƒ /api/cron/sync-wb-sales
+├ ƒ /api/cron/sync-wb-stock
+├ ƒ /api/debug-companies
+├ ƒ /api/debug/ozon-supply-recommendations
+├ ƒ /api/debug/wb-daily-sales-backfill
+├ ƒ /api/debug/wb-daily-sales-one-day
+├ ƒ /api/finance/accounts
+├ ƒ /api/finance/budget
+├ ƒ /api/finance/companies
+├ ƒ /api/finance/loan-payments
+├ ƒ /api/finance/loans
+├ ƒ /api/finance/loans/credit-card
+├ ƒ /api/finance/loans/credit-card/create
+├ ƒ /api/finance/loans/early-repayment
+├ ƒ /api/finance/operations
+├ ƒ /api/finance/sync-loan-payments
+├ ƒ /api/finance/transfers
+├ ƒ /api/historical-sync/create-jobs
+├ ƒ /api/historical-sync/create-wb-sales-jobs
+├ ƒ /api/historical-sync/run-batch
+├ ƒ /api/historical-sync/run-next
+├ ƒ /api/historical-sync/run-wb-ads-next
+├ ƒ /api/historical-sync/run-wb-sales-next
+├ ƒ /api/historical-sync/start
+├ ƒ /api/historical-sync/status
+├ ƒ /api/local-auth/login
+├ ƒ /api/settings/api-connections
+├ ƒ /api/settings/api-connections/sync-ozon-ads
+├ ƒ /api/settings/api-connections/sync-ozon-all
+├ ƒ /api/settings/api-connections/sync-ozon-finance
+├ ƒ /api/settings/api-connections/sync-ozon-products
+├ ƒ /api/settings/api-connections/sync-ozon-stocks
+├ ƒ /api/settings/api-connections/sync-wb
+├ ƒ /api/settings/api-connections/sync-wb-ads
+├ ƒ /api/settings/api-connections/sync-wb-finance
+├ ƒ /api/settings/api-connections/sync-wb-product-cards
+├ ƒ /api/settings/api-connections/sync-wb-stock
+├ ƒ /api/settings/api-connections/test-ozon-finance
+├ ƒ /api/settings/api-connections/test-ozon-performance
+├ ƒ /api/settings/api-connections/test-ozon-performance-stats
+├ ƒ /api/settings/api-connections/test-ozon-products
+├ ƒ /api/settings/api-connections/test-ozon-stocks
+├ ƒ /api/settings/api-connections/test-wb-ads
+├ ƒ /api/settings/api-connections/test-wb-ads-stat
+├ ƒ /api/settings/api-connections/test-wb-finance
+├ ƒ /api/settings/api-connections/test-wb-sales
+├ ƒ /api/settings/api-connections/test-wb-stock
+├ ƒ /api/stocks/production-plan/export
+├ ƒ /api/stocks/supply-plan/export
+├ ƒ /api/telegram/daily-report
+├ ƒ /api/telegram/webhook
+├ ƒ /api/templates/finance-transactions
+├ ƒ /api/templates/ozon-warehouse-stock
+├ ƒ /api/upload
+├ ƒ /auth/sign-out
+├ ƒ /finance
+├ ƒ /finance/accounts
+├ ƒ /finance/budget
+├ ƒ /finance/calendar
+├ ƒ /finance/cashflow
+├ ƒ /finance/categories
+├ ○ /finance/companies
+├ ƒ /finance/forecast
+├ ƒ /finance/loans
+├ ƒ /finance/loans/[id]/schedule
+├ ƒ /finance/operations
+├ ƒ /finance/operations/edit/[id]
+├ ƒ /finance/plan-fact
+├ ○ /import
+├ ƒ /imports
+├ ƒ /imports/[id]
+├ ƒ /insights
+├ ○ /login
+├ ○ /profit
+├ ƒ /profit-ozon
+├ ƒ /profit-wb
+├ ƒ /settings/api-connections
+├ ƒ /settings/companies
+└ ƒ /stocks
+
+
+ƒ Proxy (Middleware)
+
+○  (Static)   prerendered as static content
+ƒ  (Dynamic)  server-rendered on demand
+

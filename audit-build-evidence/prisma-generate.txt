@@ -1,0 +1,6 @@
+
+✔ Generated Prisma Client (v7.8.0) to ./node_modules/@prisma/client in 326ms
+
+Start by importing your Prisma Client (See: https://pris.ly/d/importing-client)
+
+
