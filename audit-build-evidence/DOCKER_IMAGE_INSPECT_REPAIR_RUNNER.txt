@@ -1,0 +1,90 @@
+[
+    {
+        "Id": "sha256:b32b838f14352ab53679f4267bd9d366bb8226f224c7098cee5bf4586328960d",
+        "RepoTags": [
+            "avorofin-financial-repair-runner:36040033743"
+        ],
+        "RepoDigests": [],
+        "Parent": "",
+        "Comment": "buildkit.dockerfile.v0",
+        "Created": "2026-09-24T18:21:50.723214922Z",
+        "DockerVersion": "",
+        "Author": "",
+        "Config": {
+            "Hostname": "",
+            "Domainname": "",
+            "User": "repair",
+            "AttachStdin": false,
+            "AttachStdout": false,
+            "AttachStderr": false,
+            "Tty": false,
+            "OpenStdin": false,
+            "StdinOnce": false,
+            "Env": [
+                "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+                "NODE_VERSION=24.21.0",
+                "YARN_VERSION=1.22.22",
+                "NEXT_TELEMETRY_DISABLED=1",
+                "DATABASE_URL=postgresql://REDACTED",
+                "NEXT_PUBLIC_SITE_URL=http://127.0.0.1:3000",
+                "NEXT_PUBLIC_SUPABASE_URL=http://127.0.0.1:54321",
+                "NEXT_PUBLIC_SUPABASE_ANON_KEY=canary-anon",
+                "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=canary-publishable",
+                "NODE_ENV=production"
+            ],
+            "Cmd": [
+                "node",
+                "--import",
+                "tsx",
+                "scripts/financialRepair/runOzonHistoricalFinancialRepair.ts"
+            ],
+            "ArgsEscaped": true,
+            "Image": "",
+            "Volumes": null,
+            "WorkingDir": "/app",
+            "Entrypoint": [
+                "docker-entrypoint.sh"
+            ],
+            "OnBuild": null,
+            "Labels": {
+                "avorofin.candidate.run_id": "36040033743",
+                "avorofin.candidate.sha": "445b02b1d60e64c9446f85dc72fd62768bd49d67",
+                "avorofin.image": "financial-repair-runner"
+            }
+        },
+        "Architecture": "amd64",
+        "Os": "linux",
+        "Size": 2209886440,
+        "GraphDriver": {
+            "Data": {
+                "LowerDir": "/var/lib/docker/overlay2/kzfhszj7g05iufjo9i69dl0uw/diff:/var/lib/docker/overlay2/ppilno604b64el2g8uqx4ltqo/diff:/var/lib/docker/overlay2/wxmaqebw9pm53khhkysndv5z6/diff:/var/lib/docker/overlay2/evvfheqdqwc00ttcggywpgj30/diff:/var/lib/docker/overlay2/eiqxnabkvxycursnxsr2lknki/diff:/var/lib/docker/overlay2/q5t881c3ryq69by7qyut9lu3n/diff:/var/lib/docker/overlay2/zr5jqjz0b4s5e9gyllhcrmeyc/diff:/var/lib/docker/overlay2/da0dkf8v21l8apjy82kxw41z0/diff:/var/lib/docker/overlay2/ee673142e40486cb73e15fcce918775e5e13661ca98112d6898aa94c27d98c07/diff:/var/lib/docker/overlay2/e4eba070c2cd59fc45be51ed1bc3c4d612e82c009174fc1324fb65e6ddf3ac9f/diff:/var/lib/docker/overlay2/04baee88e7d0f373c903fdf085627bb00e7a1f1c89de975e1143faaff9a831ef/diff:/var/lib/docker/overlay2/5cd56b2af2abe7e1deb0d05200f43bca023e4fad15255017004cd5fa3452c4fc/diff:/var/lib/docker/overlay2/d470b4a78304d73c11c397f546973ed8b4e5cf6b58414d6bc275cd61760610df/diff",
+                "MergedDir": "/var/lib/docker/overlay2/xbny0s6y9vvafvp741ge5wp2p/merged",
+                "UpperDir": "/var/lib/docker/overlay2/xbny0s6y9vvafvp741ge5wp2p/diff",
+                "WorkDir": "/var/lib/docker/overlay2/xbny0s6y9vvafvp741ge5wp2p/work"
+            },
+            "Name": "overlay2"
+        },
+        "RootFS": {
+            "Type": "layers",
+            "Layers": [
+                "sha256:34467cc93912af891dfee8a3902adf9b4f355a9bca4eaa46f658d1181a21de0d",
+                "sha256:d4538219a5351d13fddbd63f69f91967df4615ce1920c8a0f981a6a1382e9c2b",
+                "sha256:be63ab2861093aeb3c3b7a85e837d5d562510736ba39c00c5ad6b9d5714c9035",
+                "sha256:429894d93c7696cccc056cc2caa20da017bbb4f604ad1226327aa060d78b3bd9",
+                "sha256:362feb000ea275c02b50abdf827ccf034ae1f7d50989852ea8fc3cd9b80fd7b3",
+                "sha256:c15f740c5284d52109593abcab55f60558f06703e7a4344b2180503623945ed8",
+                "sha256:8e659ca095c824c82f7c45ef25e555aeca5e5384e1779f61e995fbaa50c7531e",
+                "sha256:d75ddd7498a26383eeb9a9dde9b0b0568dffee63dbe720f121d9d0c931fd2ce1",
+                "sha256:b21d933ef12bda5e9f1926b78c335855e46546bf7a033b02f7a6c24798640275",
+                "sha256:5f70bf18a086007016e948b04aed3b82103a36bea41755b6cddfaf10ace3c6ef",
+                "sha256:edf4e6a88a8b06cc8bc4ed90427199491acbb0b7e357de0cff652e4c75712a23",
+                "sha256:5f70bf18a086007016e948b04aed3b82103a36bea41755b6cddfaf10ace3c6ef",
+                "sha256:5f70bf18a086007016e948b04aed3b82103a36bea41755b6cddfaf10ace3c6ef",
+                "sha256:a5557bf7cbab7253d6b260c1b38ecae64123e51504673d1b7a59ec6fab4f860a"
+            ]
+        },
+        "Metadata": {
+            "LastTagTime": "2026-09-24T18:21:59.248365294Z"
+        }
+    }
+]

@@ -1,0 +1,36 @@
+
+> marketplace-business-os@0.1.0 api-first-repair:test
+> tsx --test scripts/architecture/apiFirstDurableRepair.test.ts scripts/architecture/managementRevenue.test.ts scripts/architecture/ozonAccrualType76.test.ts
+
+✔ WB Finance list/details helpers use current sales-reports endpoints and paginate rrdId (1.5113ms)
+✔ WB 429 retries then succeeds (16.884316ms)
+✔ WB Finance 401/403 is a credential/scope gate, not fake success (0.08369ms)
+✔ closed-week exact report IDs are additive and idempotent (0.294998ms)
+✔ missing one closed-week report stays PRELIMINARY and must not present latest day as the week (0.141116ms)
+✔ weekly exact finance sessions outrank daily finance sessions (1.139968ms)
+✔ Dashboard uses eco for WB and Ozon; salesAmount aliases eco; tax stays separate (0.224019ms)
+✔ Dashboard incomplete closed week is not shown as FINAL (0.191062ms)
+✔ closed week promotes to FINAL when exact reports arrive (0.234488ms)
+✔ type 76 maps to OZON_OTHER_SERVICES with dynamic source amount and canonical expense sign (5.870648ms)
+✔ unknown Ozon type is quarantined, known facts remain, finality fails, ingest continues (0.3691ms)
+✔ replay after mapper update clears type 76 quarantine (0.185871ms)
+✔ Dashboard WB revenue prefers economicTurnover when it differs from taxable salesAmount (0.87957ms)
+✔ Combined Dashboard revenue is WB eco + Ozon eco (0.308464ms)
+✔ Marketplace share is computed from eco on both sides (0.114759ms)
+✔ DRR denominator is combined eco, not WB taxable + Ozon eco (0.125496ms)
+✔ taxableRevenue remains available separately after salesAmount alias (0.115173ms)
+✔ unavailable marketplace is not a numeric zero and does not become the combined total (0.180968ms)
+✔ financial dynamics stay hidden when marketplace total is incomplete (0.133851ms)
+✔ periodSnapshot/dashboard helper cannot silently fall back to taxable when eco is present (0.066055ms)
+✔ typeId 76 maps explicitly to OZON_OTHER_SERVICES as product insurance (1.576981ms)
+✔ typeId 76 amount is dynamic source amount, not a hardcoded premium (6.56228ms)
+✔ typeId 76 preserves canonical expense sign from the Ozon source amount (0.260194ms)
+✔ unknown meaningful Ozon typeIds still fail closed (0.267745ms)
+ℹ tests 24
+ℹ suites 0
+ℹ pass 24
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 392.728992

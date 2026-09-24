@@ -1,0 +1,18 @@
+✔ NORMAL ingest still invalidates snapshots and profit (3.824503ms)
+✔ DEFERRED_OWNER_REPAIR does not per-target invalidate (0.155037ms)
+✔ 78 intrinsic statuses are not separately rewritten (0.102241ms)
+✔ only ALL V2 rows may be numerically promoted (0.10403ms)
+✔ regression: NORMAL remains default; repair-only requires deferred (0.16718ms)
+✔ EXECUTE binding fail-closed on manifest mismatch; marker required (0.980849ms)
+✔ EXECUTABLE: mutation helpers exist and EXECUTE rejects defaults (3.478525ms)
+✔ SOURCE_DRIFT always STOP (0.418374ms)
+✔ ephemeral E2E: PREPARE cache -> EXECUTE_FROM_CACHE idempotent resume (4.075474ms)
+✔ EXECUTE binding rejects self-accepting file defaults (0.528262ms)
+ℹ tests 10
+ℹ suites 0
+ℹ pass 10
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 404.672844
