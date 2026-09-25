@@ -1,0 +1,820 @@
+POSTGRES_E2E scenario=SCHEMA_BOOTSTRAP outcome=PASS
+{
+  "mode": "DRY_RUN",
+  "ok": true,
+  "executableMutationCode": true
+}
+POSTGRES_E2E scenario=DRY_RUN outcome=PASS
+POSTGRES_E2E scenario=PREPARE_DB_READONLY_PREFLIGHT outcome=PASS
+{
+  "mode": "PREPARE",
+  "ok": true,
+  "prepareMode": "EXTERNAL_CACHE_IN",
+  "ozonApiCalls": 0,
+  "prepareCacheContentSha256": "9506e6489d0f5205f03838927077d692171e80f5aeffde3dcc85243d32e153f2",
+  "prepareCacheManifestSha256": "9506e6489d0f5205f03838927077d692171e80f5aeffde3dcc85243d32e153f2",
+  "PREPARE_DB_PREFLIGHT": "NOT_RUN"
+}
+POSTGRES_E2E scenario=PREPARE_INJECTED_FETCH outcome=PASS
+POSTGRES_E2E scenario=PREPARE_DRIFT_STOPS outcome=PASS
+POSTGRES_E2E scenario=BINDING_MISMATCH_ZERO_WRITES outcome=PASS
+POSTGRES_E2E scenario=CACHE_DRIFT_ZERO_WRITES outcome=PASS
+POSTGRES_E2E scenario=V2_COMPANY_SCOPE_REFUSED outcome=PASS
+POSTGRES_E2E scenario=V2_FINGERPRINT_DRIFT_ZERO_WRITES outcome=PASS
+{
+  "mode": "EXECUTE_FROM_CACHE",
+  "ok": true,
+  "operationStartedAt": "2026-09-25T10:19:04.760Z",
+  "OZON_NETWORK_CALLS": 0,
+  "persisted": 78,
+  "noopComplete": 0,
+  "resumed": 0,
+  "intrinsicStatuses": 78,
+  "separateStatusUpserts": 0,
+  "statusResult": {
+    "written": 10,
+    "noop": 0
+  },
+  "post": {
+    "snapshotDeleted": 35,
+    "snapshotRequeued": 35,
+    "v2Rebuilt": 2
+  }
+}
+POSTGRES_E2E scenario=EXECUTE_FROM_CACHE_ALL_MISSING outcome=PASS
+{
+  "mode": "VERIFY",
+  "verifyPhase": "ALL",
+  "ok": true,
+  "DATABASE_READ": "YES",
+  "checks": [
+    {
+      "name": "intrinsic_source_days_final",
+      "ok": true,
+      "expected": 78,
+      "actual": 78,
+      "detail": []
+    },
+    {
+      "name": "standalone_status_days_final",
+      "ok": true,
+      "expected": 10,
+      "actual": 10,
+      "detail": []
+    },
+    {
+      "name": "duplicate_canonical_import_sessions",
+      "ok": true,
+      "expected": 0,
+      "actual": 0,
+      "detail": []
+    },
+    {
+      "name": "snapshot_rows_deleted",
+      "ok": true,
+      "expected": 0,
+      "actual": 0
+    },
+    {
+      "name": "snapshot_union_requeued_once",
+      "ok": true,
+      "expected": 35,
+      "actual": 35,
+      "detail": []
+    },
+    {
+      "name": "v2_all_scope_rebuild_queued",
+      "ok": true,
+      "expected": 2,
+      "actual": 2,
+      "detail": []
+    },
+    {
+      "name": "profit_readmodel_jobs_created_during_repair",
+      "ok": true,
+      "expected": 0,
+      "actual": 0
+    },
+    {
+      "name": "owner_oracle_2026-07_canonicalWb",
+      "ok": true,
+      "expected": 15708958.04,
+      "actual": 15708958.04,
+      "detail": [
+        "dataMode=FINAL",
+        "coverageStatus=COMPLETE"
+      ]
+    },
+    {
+      "name": "owner_oracle_2026-07_canonicalOzon",
+      "ok": true,
+      "expected": 29465148.86,
+      "actual": 29465148.86,
+      "detail": [
+        "dataMode=FINAL",
+        "coverageStatus=COMPLETE"
+      ]
+    },
+    {
+      "name": "owner_oracle_2026-07_total",
+      "ok": true,
+      "expected": 45174106.9,
+      "actual": 45174106.9,
+      "detail": [
+        "dataMode=FINAL",
+        "coverageStatus=COMPLETE"
+      ]
+    },
+    {
+      "name": "owner_oracle_2026-08_canonicalWb",
+      "ok": true,
+      "expected": 27649638.17,
+      "actual": 27649638.17,
+      "detail": [
+        "dataMode=FINAL",
+        "coverageStatus=COMPLETE"
+      ]
+    },
+    {
+      "name": "owner_oracle_2026-08_canonicalOzon",
+      "ok": true,
+      "expected": 64190278.77,
+      "actual": 64190278.77,
+      "detail": [
+        "dataMode=FINAL",
+        "coverageStatus=COMPLETE"
+      ]
+    },
+    {
+      "name": "owner_oracle_2026-08_total",
+      "ok": true,
+      "expected": 91839916.94,
+      "actual": 91839916.94,
+      "detail": [
+        "dataMode=FINAL",
+        "coverageStatus=COMPLETE"
+      ]
+    }
+  ]
+}
+POSTGRES_E2E scenario=VERIFY outcome=PASS
+{
+  "mode": "VERIFY_MUTATION_POSTCONDITIONS",
+  "verifyPhase": "MUTATION_POSTCONDITIONS",
+  "ok": true,
+  "DATABASE_READ": "YES",
+  "checks": [
+    {
+      "name": "intrinsic_source_days_final",
+      "ok": true,
+      "expected": 78,
+      "actual": 78,
+      "detail": []
+    },
+    {
+      "name": "standalone_status_days_final",
+      "ok": true,
+      "expected": 10,
+      "actual": 10,
+      "detail": []
+    },
+    {
+      "name": "duplicate_canonical_import_sessions",
+      "ok": true,
+      "expected": 0,
+      "actual": 0,
+      "detail": []
+    },
+    {
+      "name": "snapshot_rows_deleted",
+      "ok": true,
+      "expected": 0,
+      "actual": 0
+    },
+    {
+      "name": "snapshot_union_requeued_once",
+      "ok": true,
+      "expected": 35,
+      "actual": 35,
+      "detail": []
+    },
+    {
+      "name": "v2_all_scope_rebuild_queued",
+      "ok": true,
+      "expected": 2,
+      "actual": 2,
+      "detail": []
+    },
+    {
+      "name": "profit_readmodel_jobs_created_during_repair",
+      "ok": true,
+      "expected": 0,
+      "actual": 0
+    }
+  ]
+}
+{
+  "mode": "VERIFY_FINAL_FINANCIAL_OUTPUT",
+  "verifyPhase": "FINAL_FINANCIAL_OUTPUT",
+  "ok": true,
+  "DATABASE_READ": "YES",
+  "checks": [
+    {
+      "name": "owner_oracle_2026-07_canonicalWb",
+      "ok": true,
+      "expected": 15708958.04,
+      "actual": 15708958.04,
+      "detail": [
+        "dataMode=FINAL",
+        "coverageStatus=COMPLETE"
+      ]
+    },
+    {
+      "name": "owner_oracle_2026-07_canonicalOzon",
+      "ok": true,
+      "expected": 29465148.86,
+      "actual": 29465148.86,
+      "detail": [
+        "dataMode=FINAL",
+        "coverageStatus=COMPLETE"
+      ]
+    },
+    {
+      "name": "owner_oracle_2026-07_total",
+      "ok": true,
+      "expected": 45174106.9,
+      "actual": 45174106.9,
+      "detail": [
+        "dataMode=FINAL",
+        "coverageStatus=COMPLETE"
+      ]
+    },
+    {
+      "name": "owner_oracle_2026-08_canonicalWb",
+      "ok": true,
+      "expected": 27649638.17,
+      "actual": 27649638.17,
+      "detail": [
+        "dataMode=FINAL",
+        "coverageStatus=COMPLETE"
+      ]
+    },
+    {
+      "name": "owner_oracle_2026-08_canonicalOzon",
+      "ok": true,
+      "expected": 64190278.77,
+      "actual": 64190278.77,
+      "detail": [
+        "dataMode=FINAL",
+        "coverageStatus=COMPLETE"
+      ]
+    },
+    {
+      "name": "owner_oracle_2026-08_total",
+      "ok": true,
+      "expected": 91839916.94,
+      "actual": 91839916.94,
+      "detail": [
+        "dataMode=FINAL",
+        "coverageStatus=COMPLETE"
+      ]
+    }
+  ]
+}
+POSTGRES_E2E scenario=VERIFY_TWO_STAGE outcome=PASS
+{
+  "mode": "VERIFY",
+  "verifyPhase": "ALL",
+  "ok": false,
+  "DATABASE_READ": "YES",
+  "checks": [
+    {
+      "name": "intrinsic_source_days_final",
+      "ok": true,
+      "expected": 78,
+      "actual": 78,
+      "detail": []
+    },
+    {
+      "name": "standalone_status_days_final",
+      "ok": true,
+      "expected": 10,
+      "actual": 10,
+      "detail": []
+    },
+    {
+      "name": "duplicate_canonical_import_sessions",
+      "ok": true,
+      "expected": 0,
+      "actual": 0,
+      "detail": []
+    },
+    {
+      "name": "snapshot_rows_deleted",
+      "ok": true,
+      "expected": 0,
+      "actual": 0
+    },
+    {
+      "name": "snapshot_union_requeued_once",
+      "ok": true,
+      "expected": 35,
+      "actual": 35,
+      "detail": []
+    },
+    {
+      "name": "v2_all_scope_rebuild_queued",
+      "ok": true,
+      "expected": 2,
+      "actual": 2,
+      "detail": []
+    },
+    {
+      "name": "profit_readmodel_jobs_created_during_repair",
+      "ok": false,
+      "expected": 0,
+      "actual": 1
+    },
+    {
+      "name": "owner_oracle_2026-07_canonicalWb",
+      "ok": true,
+      "expected": 15708958.04,
+      "actual": 15708958.04,
+      "detail": [
+        "dataMode=FINAL",
+        "coverageStatus=COMPLETE"
+      ]
+    },
+    {
+      "name": "owner_oracle_2026-07_canonicalOzon",
+      "ok": true,
+      "expected": 29465148.86,
+      "actual": 29465148.86,
+      "detail": [
+        "dataMode=FINAL",
+        "coverageStatus=COMPLETE"
+      ]
+    },
+    {
+      "name": "owner_oracle_2026-07_total",
+      "ok": true,
+      "expected": 45174106.9,
+      "actual": 45174106.9,
+      "detail": [
+        "dataMode=FINAL",
+        "coverageStatus=COMPLETE"
+      ]
+    },
+    {
+      "name": "owner_oracle_2026-08_canonicalWb",
+      "ok": true,
+      "expected": 27649638.17,
+      "actual": 27649638.17,
+      "detail": [
+        "dataMode=FINAL",
+        "coverageStatus=COMPLETE"
+      ]
+    },
+    {
+      "name": "owner_oracle_2026-08_canonicalOzon",
+      "ok": true,
+      "expected": 64190278.77,
+      "actual": 64190278.77,
+      "detail": [
+        "dataMode=FINAL",
+        "coverageStatus=COMPLETE"
+      ]
+    },
+    {
+      "name": "owner_oracle_2026-08_total",
+      "ok": true,
+      "expected": 91839916.94,
+      "actual": 91839916.94,
+      "detail": [
+        "dataMode=FINAL",
+        "coverageStatus=COMPLETE"
+      ]
+    }
+  ]
+}
+POSTGRES_E2E scenario=VERIFY_PROFIT_GUARD_BITES outcome=PASS
+{
+  "mode": "EXECUTE_FROM_CACHE",
+  "ok": true,
+  "operationStartedAt": "2026-09-25T10:19:06.330Z",
+  "OZON_NETWORK_CALLS": 0,
+  "persisted": 0,
+  "noopComplete": 78,
+  "resumed": 0,
+  "intrinsicStatuses": 78,
+  "separateStatusUpserts": 0,
+  "statusResult": {
+    "written": 0,
+    "noop": 10
+  },
+  "post": {
+    "snapshotDeleted": 35,
+    "snapshotRequeued": 35,
+    "v2Rebuilt": 2
+  }
+}
+{
+  "mode": "VERIFY",
+  "verifyPhase": "ALL",
+  "ok": true,
+  "DATABASE_READ": "YES",
+  "checks": [
+    {
+      "name": "intrinsic_source_days_final",
+      "ok": true,
+      "expected": 78,
+      "actual": 78,
+      "detail": []
+    },
+    {
+      "name": "standalone_status_days_final",
+      "ok": true,
+      "expected": 10,
+      "actual": 10,
+      "detail": []
+    },
+    {
+      "name": "duplicate_canonical_import_sessions",
+      "ok": true,
+      "expected": 0,
+      "actual": 0,
+      "detail": []
+    },
+    {
+      "name": "snapshot_rows_deleted",
+      "ok": true,
+      "expected": 0,
+      "actual": 0
+    },
+    {
+      "name": "snapshot_union_requeued_once",
+      "ok": true,
+      "expected": 35,
+      "actual": 35,
+      "detail": []
+    },
+    {
+      "name": "v2_all_scope_rebuild_queued",
+      "ok": true,
+      "expected": 2,
+      "actual": 2,
+      "detail": []
+    },
+    {
+      "name": "profit_readmodel_jobs_created_during_repair",
+      "ok": true,
+      "expected": 0,
+      "actual": 0
+    },
+    {
+      "name": "owner_oracle_2026-07_canonicalWb",
+      "ok": true,
+      "expected": 15708958.04,
+      "actual": 15708958.04,
+      "detail": [
+        "dataMode=FINAL",
+        "coverageStatus=COMPLETE"
+      ]
+    },
+    {
+      "name": "owner_oracle_2026-07_canonicalOzon",
+      "ok": true,
+      "expected": 29465148.86,
+      "actual": 29465148.86,
+      "detail": [
+        "dataMode=FINAL",
+        "coverageStatus=COMPLETE"
+      ]
+    },
+    {
+      "name": "owner_oracle_2026-07_total",
+      "ok": true,
+      "expected": 45174106.9,
+      "actual": 45174106.9,
+      "detail": [
+        "dataMode=FINAL",
+        "coverageStatus=COMPLETE"
+      ]
+    },
+    {
+      "name": "owner_oracle_2026-08_canonicalWb",
+      "ok": true,
+      "expected": 27649638.17,
+      "actual": 27649638.17,
+      "detail": [
+        "dataMode=FINAL",
+        "coverageStatus=COMPLETE"
+      ]
+    },
+    {
+      "name": "owner_oracle_2026-08_canonicalOzon",
+      "ok": true,
+      "expected": 64190278.77,
+      "actual": 64190278.77,
+      "detail": [
+        "dataMode=FINAL",
+        "coverageStatus=COMPLETE"
+      ]
+    },
+    {
+      "name": "owner_oracle_2026-08_total",
+      "ok": true,
+      "expected": 91839916.94,
+      "actual": 91839916.94,
+      "detail": [
+        "dataMode=FINAL",
+        "coverageStatus=COMPLETE"
+      ]
+    }
+  ]
+}
+POSTGRES_E2E scenario=FULL_RERUN_IDEMPOTENT outcome=PASS
+{
+  "mode": "EXECUTE_FROM_CACHE",
+  "ok": true,
+  "operationStartedAt": "2026-09-25T10:19:06.741Z",
+  "OZON_NETWORK_CALLS": 0,
+  "persisted": 42,
+  "noopComplete": 36,
+  "resumed": 0,
+  "intrinsicStatuses": 78,
+  "separateStatusUpserts": 0,
+  "statusResult": {
+    "written": 0,
+    "noop": 10
+  },
+  "post": {
+    "snapshotDeleted": 35,
+    "snapshotRequeued": 35,
+    "v2Rebuilt": 2
+  }
+}
+{
+  "mode": "VERIFY",
+  "verifyPhase": "ALL",
+  "ok": true,
+  "DATABASE_READ": "YES",
+  "checks": [
+    {
+      "name": "intrinsic_source_days_final",
+      "ok": true,
+      "expected": 78,
+      "actual": 78,
+      "detail": []
+    },
+    {
+      "name": "standalone_status_days_final",
+      "ok": true,
+      "expected": 10,
+      "actual": 10,
+      "detail": []
+    },
+    {
+      "name": "duplicate_canonical_import_sessions",
+      "ok": true,
+      "expected": 0,
+      "actual": 0,
+      "detail": []
+    },
+    {
+      "name": "snapshot_rows_deleted",
+      "ok": true,
+      "expected": 0,
+      "actual": 0
+    },
+    {
+      "name": "snapshot_union_requeued_once",
+      "ok": true,
+      "expected": 35,
+      "actual": 35,
+      "detail": []
+    },
+    {
+      "name": "v2_all_scope_rebuild_queued",
+      "ok": true,
+      "expected": 2,
+      "actual": 2,
+      "detail": []
+    },
+    {
+      "name": "profit_readmodel_jobs_created_during_repair",
+      "ok": true,
+      "expected": 0,
+      "actual": 0
+    },
+    {
+      "name": "owner_oracle_2026-07_canonicalWb",
+      "ok": true,
+      "expected": 15708958.04,
+      "actual": 15708958.04,
+      "detail": [
+        "dataMode=FINAL",
+        "coverageStatus=COMPLETE"
+      ]
+    },
+    {
+      "name": "owner_oracle_2026-07_canonicalOzon",
+      "ok": true,
+      "expected": 29465148.86,
+      "actual": 29465148.86,
+      "detail": [
+        "dataMode=FINAL",
+        "coverageStatus=COMPLETE"
+      ]
+    },
+    {
+      "name": "owner_oracle_2026-07_total",
+      "ok": true,
+      "expected": 45174106.9,
+      "actual": 45174106.9,
+      "detail": [
+        "dataMode=FINAL",
+        "coverageStatus=COMPLETE"
+      ]
+    },
+    {
+      "name": "owner_oracle_2026-08_canonicalWb",
+      "ok": true,
+      "expected": 27649638.17,
+      "actual": 27649638.17,
+      "detail": [
+        "dataMode=FINAL",
+        "coverageStatus=COMPLETE"
+      ]
+    },
+    {
+      "name": "owner_oracle_2026-08_canonicalOzon",
+      "ok": true,
+      "expected": 64190278.77,
+      "actual": 64190278.77,
+      "detail": [
+        "dataMode=FINAL",
+        "coverageStatus=COMPLETE"
+      ]
+    },
+    {
+      "name": "owner_oracle_2026-08_total",
+      "ok": true,
+      "expected": 91839916.94,
+      "actual": 91839916.94,
+      "detail": [
+        "dataMode=FINAL",
+        "coverageStatus=COMPLETE"
+      ]
+    }
+  ]
+}
+POSTGRES_E2E scenario=MIXED_NOOP_AND_FRESH outcome=PASS
+{
+  "mode": "EXECUTE_FROM_CACHE",
+  "ok": true,
+  "operationStartedAt": "2026-09-25T10:19:07.566Z",
+  "OZON_NETWORK_CALLS": 0,
+  "persisted": 0,
+  "noopComplete": 77,
+  "resumed": 1,
+  "intrinsicStatuses": 78,
+  "separateStatusUpserts": 0,
+  "statusResult": {
+    "written": 0,
+    "noop": 10
+  },
+  "post": {
+    "snapshotDeleted": 35,
+    "snapshotRequeued": 35,
+    "v2Rebuilt": 2
+  }
+}
+{
+  "mode": "VERIFY",
+  "verifyPhase": "ALL",
+  "ok": true,
+  "DATABASE_READ": "YES",
+  "checks": [
+    {
+      "name": "intrinsic_source_days_final",
+      "ok": true,
+      "expected": 78,
+      "actual": 78,
+      "detail": []
+    },
+    {
+      "name": "standalone_status_days_final",
+      "ok": true,
+      "expected": 10,
+      "actual": 10,
+      "detail": []
+    },
+    {
+      "name": "duplicate_canonical_import_sessions",
+      "ok": true,
+      "expected": 0,
+      "actual": 0,
+      "detail": []
+    },
+    {
+      "name": "snapshot_rows_deleted",
+      "ok": true,
+      "expected": 0,
+      "actual": 0
+    },
+    {
+      "name": "snapshot_union_requeued_once",
+      "ok": true,
+      "expected": 35,
+      "actual": 35,
+      "detail": []
+    },
+    {
+      "name": "v2_all_scope_rebuild_queued",
+      "ok": true,
+      "expected": 2,
+      "actual": 2,
+      "detail": []
+    },
+    {
+      "name": "profit_readmodel_jobs_created_during_repair",
+      "ok": true,
+      "expected": 0,
+      "actual": 0
+    },
+    {
+      "name": "owner_oracle_2026-07_canonicalWb",
+      "ok": true,
+      "expected": 15708958.04,
+      "actual": 15708958.04,
+      "detail": [
+        "dataMode=FINAL",
+        "coverageStatus=COMPLETE"
+      ]
+    },
+    {
+      "name": "owner_oracle_2026-07_canonicalOzon",
+      "ok": true,
+      "expected": 29465148.86,
+      "actual": 29465148.86,
+      "detail": [
+        "dataMode=FINAL",
+        "coverageStatus=COMPLETE"
+      ]
+    },
+    {
+      "name": "owner_oracle_2026-07_total",
+      "ok": true,
+      "expected": 45174106.9,
+      "actual": 45174106.9,
+      "detail": [
+        "dataMode=FINAL",
+        "coverageStatus=COMPLETE"
+      ]
+    },
+    {
+      "name": "owner_oracle_2026-08_canonicalWb",
+      "ok": true,
+      "expected": 27649638.17,
+      "actual": 27649638.17,
+      "detail": [
+        "dataMode=FINAL",
+        "coverageStatus=COMPLETE"
+      ]
+    },
+    {
+      "name": "owner_oracle_2026-08_canonicalOzon",
+      "ok": true,
+      "expected": 64190278.77,
+      "actual": 64190278.77,
+      "detail": [
+        "dataMode=FINAL",
+        "coverageStatus=COMPLETE"
+      ]
+    },
+    {
+      "name": "owner_oracle_2026-08_total",
+      "ok": true,
+      "expected": 91839916.94,
+      "actual": 91839916.94,
+      "detail": [
+        "dataMode=FINAL",
+        "coverageStatus=COMPLETE"
+      ]
+    }
+  ]
+}
+POSTGRES_E2E scenario=CRASH_RESUME_AFTER_RAW outcome=PASS
+POSTGRES_E2E=PASS report=/home/runner/work/marketplace-business-os/marketplace-business-os/FINANCIAL_REPAIR_POSTGRES_E2E_FINAL.json
+▶ POSTGRES E2E: real adapters repair 78/10/35/2 against an ephemeral Postgres
+  ✔ evidence file is written (0.922298ms)
+✔ POSTGRES E2E: real adapters repair 78/10/35/2 against an ephemeral Postgres (5349.573026ms)
+ℹ tests 2
+ℹ suites 0
+ℹ pass 2
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 15739.6818

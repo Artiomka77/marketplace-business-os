@@ -1,0 +1,292 @@
+{
+  "EPHEMERAL_STORE": "POSTGRES",
+  "EPHEMERAL_E2E": "PASS",
+  "EPHEMERAL_MEMORY_STORE": "UNSET",
+  "PRODUCTION_ADAPTERS": "lib/ozon/financialRepairProductionAdapters.ts",
+  "PRODUCTION_MUTATION": "NO",
+  "DATABASE_WRITE": "EPHEMERAL_POSTGRES",
+  "PRODUCTION_DB_USED": "NO",
+  "schemaBootstrap": "node node_modules/prisma/build/index.js db push --accept-data-loss",
+  "schemaParityStatements": [
+    "ALTER TABLE \"OzonFinancialCategoryFact\" ALTER COLUMN \"createdAt\" SET DEFAULT NOW()"
+  ],
+  "adapterReadinessProfile": "PRODUCTION_PRISMA",
+  "OZON_NETWORK_CALLS_ON_EXECUTE": 0,
+  "preMutationGate": {
+    "ok": true,
+    "WRITES_PERFORMED": 0,
+    "inspectedSourceTargets": 78,
+    "sourceStates": {
+      "MISSING": 78,
+      "NOOP_COMPLETE": 0,
+      "RAW_PERSISTED_RESUME": 0,
+      "CONFLICT": 0
+    },
+    "conflicts": [],
+    "statusStandaloneTargets": 10,
+    "snapshotUniqueKeys": 35,
+    "v2MatrixRows": 6,
+    "v2FingerprintsMatched": 6,
+    "v2Fingerprints": [
+      {
+        "dbId": "pcmm_e2e_202607_b5c7aed7cd2a",
+        "period": "2026-07",
+        "scope": "ALL",
+        "found": true,
+        "sealedFingerprint": "93f2941effa270a63b359064ff40734a1b3a8b86c62dff976dc9c28f601c0b2e",
+        "observedFingerprint": "93f2941effa270a63b359064ff40734a1b3a8b86c62dff976dc9c28f601c0b2e",
+        "observedDataMode": "FINAL",
+        "observedCoverageStatus": "COMPLETE",
+        "match": true
+      },
+      {
+        "dbId": "pcmm_e2e_202608_b5c7aed7cd2a",
+        "period": "2026-08",
+        "scope": "ALL",
+        "found": true,
+        "sealedFingerprint": "19f1faa386b6834e9d3083956ae3f669326bf76a97fada48d07b8d65de342ac2",
+        "observedFingerprint": "19f1faa386b6834e9d3083956ae3f669326bf76a97fada48d07b8d65de342ac2",
+        "observedDataMode": "FINAL",
+        "observedCoverageStatus": "COMPLETE",
+        "match": true
+      },
+      {
+        "dbId": "pcmm_e2e_202607_3623d82536bd",
+        "period": "2026-07",
+        "scope": "ИП Петров",
+        "found": true,
+        "sealedFingerprint": "5377b40b9679987e31cd1af9d913093665e56ef27db6f1e1655ad79862d96624",
+        "observedFingerprint": "5377b40b9679987e31cd1af9d913093665e56ef27db6f1e1655ad79862d96624",
+        "observedDataMode": "PRELIMINARY",
+        "observedCoverageStatus": "PARTIAL",
+        "match": true
+      },
+      {
+        "dbId": "pcmm_e2e_202607_bffb6e147980",
+        "period": "2026-07",
+        "scope": "ИП Лебедева",
+        "found": true,
+        "sealedFingerprint": "2ae721040d4647a9d2f6f385848d976cb9957d7ed4312e69ec50dcc1a41e7088",
+        "observedFingerprint": "2ae721040d4647a9d2f6f385848d976cb9957d7ed4312e69ec50dcc1a41e7088",
+        "observedDataMode": "PRELIMINARY",
+        "observedCoverageStatus": "PARTIAL",
+        "match": true
+      },
+      {
+        "dbId": "pcmm_e2e_202608_3623d82536bd",
+        "period": "2026-08",
+        "scope": "ИП Петров",
+        "found": true,
+        "sealedFingerprint": "74d995c99933bcd21aeeead8ac9aba9e9e983179934d1e5247ff14d041fd8305",
+        "observedFingerprint": "74d995c99933bcd21aeeead8ac9aba9e9e983179934d1e5247ff14d041fd8305",
+        "observedDataMode": "PRELIMINARY",
+        "observedCoverageStatus": "PARTIAL",
+        "match": true
+      },
+      {
+        "dbId": "pcmm_e2e_202608_bffb6e147980",
+        "period": "2026-08",
+        "scope": "ИП Лебедева",
+        "found": true,
+        "sealedFingerprint": "44e73f93d8b9e227cd72bc1d76675ae450c8aad50b35e671999e497b2183a3bf",
+        "observedFingerprint": "44e73f93d8b9e227cd72bc1d76675ae450c8aad50b35e671999e497b2183a3bf",
+        "observedDataMode": "PRELIMINARY",
+        "observedCoverageStatus": "PARTIAL",
+        "match": true
+      }
+    ],
+    "profitReadModelTargets": 0,
+    "failures": []
+  },
+  "verifyStages": {
+    "MUTATION_POSTCONDITIONS": 7,
+    "FINAL_FINANCIAL_OUTPUT": 6
+  },
+  "counts": {
+    "sourceTargets": 78,
+    "sourceTargetsInitialMissing": 78,
+    "sourcePersistedFirstRun": 78,
+    "sourceNoopFirstRun": 0,
+    "sourceNoopOnRerun": 78,
+    "sourceMixedNoop": 36,
+    "sourceMixedPersisted": 42,
+    "sourceResumedAfterCrash": 1,
+    "intrinsicStatuses": 78,
+    "standaloneStatusesWritten": 10,
+    "standaloneStatusesNoopOnRerun": 10,
+    "duplicateSeparateStatuses": 0,
+    "snapshotRowsSeeded": 35,
+    "snapshotJobsSeeded": 20,
+    "snapshotDelete": 35,
+    "snapshotRequeue": 35,
+    "snapshotRowsRemaining": 0,
+    "v2ReadModelRowsSeeded": 6,
+    "v2AllScopeRebuilt": 2,
+    "v2CompanyScopeRebuilt": 0,
+    "profitReadModelJobsDuringRepair": 0,
+    "profitDailyExplosion": 0
+  },
+  "scenarios": [
+    {
+      "name": "SCHEMA_BOOTSTRAP",
+      "outcome": "PASS",
+      "detail": "node node_modules/prisma/build/index.js db push --accept-data-loss"
+    },
+    {
+      "name": "DRY_RUN",
+      "outcome": "PASS",
+      "detail": "zero database writes"
+    },
+    {
+      "name": "PREPARE_DB_READONLY_PREFLIGHT",
+      "outcome": "PASS",
+      "detail": "zero writes, 6 V2 fingerprints"
+    },
+    {
+      "name": "PREPARE_INJECTED_FETCH",
+      "outcome": "PASS",
+      "detail": "ozonApiCalls=78"
+    },
+    {
+      "name": "PREPARE_DRIFT_STOPS",
+      "outcome": "PASS",
+      "detail": "rowCount + clientIdSha256, zero writes"
+    },
+    {
+      "name": "BINDING_MISMATCH_ZERO_WRITES",
+      "outcome": "PASS",
+      "detail": "3 refusals, zero writes"
+    },
+    {
+      "name": "CACHE_DRIFT_ZERO_WRITES",
+      "outcome": "PASS",
+      "detail": "rowCount drift, zero writes"
+    },
+    {
+      "name": "V2_COMPANY_SCOPE_REFUSED",
+      "outcome": "PASS",
+      "detail": "zero writes"
+    },
+    {
+      "name": "V2_FINGERPRINT_DRIFT_ZERO_WRITES",
+      "outcome": "PASS",
+      "detail": "6 rows checked, zero writes"
+    },
+    {
+      "name": "EXECUTE_FROM_CACHE_ALL_MISSING",
+      "outcome": "PASS",
+      "detail": "initialMissing=78 persisted=78"
+    },
+    {
+      "name": "VERIFY",
+      "outcome": "PASS",
+      "detail": "13 checks"
+    },
+    {
+      "name": "VERIFY_TWO_STAGE",
+      "outcome": "PASS",
+      "detail": "7+6 checks"
+    },
+    {
+      "name": "VERIFY_PROFIT_GUARD_BITES",
+      "outcome": "PASS",
+      "detail": "profit job in window fails VERIFY"
+    },
+    {
+      "name": "FULL_RERUN_IDEMPOTENT",
+      "outcome": "PASS",
+      "detail": "persisted=0 noop=78"
+    },
+    {
+      "name": "MIXED_NOOP_AND_FRESH",
+      "outcome": "PASS",
+      "detail": "persisted=42 noop=36"
+    },
+    {
+      "name": "CRASH_RESUME_AFTER_RAW",
+      "outcome": "PASS",
+      "detail": "resumed=1 from RAW_PERSISTED session"
+    }
+  ],
+  "verifyChecks": [
+    {
+      "name": "intrinsic_source_days_final",
+      "ok": true,
+      "expected": 78,
+      "actual": 78
+    },
+    {
+      "name": "standalone_status_days_final",
+      "ok": true,
+      "expected": 10,
+      "actual": 10
+    },
+    {
+      "name": "duplicate_canonical_import_sessions",
+      "ok": true,
+      "expected": 0,
+      "actual": 0
+    },
+    {
+      "name": "snapshot_rows_deleted",
+      "ok": true,
+      "expected": 0,
+      "actual": 0
+    },
+    {
+      "name": "snapshot_union_requeued_once",
+      "ok": true,
+      "expected": 35,
+      "actual": 35
+    },
+    {
+      "name": "v2_all_scope_rebuild_queued",
+      "ok": true,
+      "expected": 2,
+      "actual": 2
+    },
+    {
+      "name": "profit_readmodel_jobs_created_during_repair",
+      "ok": true,
+      "expected": 0,
+      "actual": 0
+    },
+    {
+      "name": "owner_oracle_2026-07_canonicalWb",
+      "ok": true,
+      "expected": 15708958.04,
+      "actual": 15708958.04
+    },
+    {
+      "name": "owner_oracle_2026-07_canonicalOzon",
+      "ok": true,
+      "expected": 29465148.86,
+      "actual": 29465148.86
+    },
+    {
+      "name": "owner_oracle_2026-07_total",
+      "ok": true,
+      "expected": 45174106.9,
+      "actual": 45174106.9
+    },
+    {
+      "name": "owner_oracle_2026-08_canonicalWb",
+      "ok": true,
+      "expected": 27649638.17,
+      "actual": 27649638.17
+    },
+    {
+      "name": "owner_oracle_2026-08_canonicalOzon",
+      "ok": true,
+      "expected": 64190278.77,
+      "actual": 64190278.77
+    },
+    {
+      "name": "owner_oracle_2026-08_total",
+      "ok": true,
+      "expected": 91839916.94,
+      "actual": 91839916.94
+    }
+  ],
+  "generatedAt": "2026-09-25T10:19:07.921Z"
+}

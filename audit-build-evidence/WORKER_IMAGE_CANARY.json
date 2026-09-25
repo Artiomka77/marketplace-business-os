@@ -1,0 +1,9 @@
+{
+  "WORKER_IMAGE_CANARY": "PASS",
+  "productionDbUsed": false,
+  "v6FailClosedNoTargetDb": {"exitCode": 1, "refused": true},
+  "v6FailClosedProdPersist": {"exitCode": 1, "refused": true},
+  "dashboardFailClosedUnknownFormula": {"exitCode": 1, "refused": true},
+  "dashboardOneshotAgainstServicePostgres": "STARTED",
+  "v6QueueOnceAgainstServicePostgres": {"exitCode": 0, "startEventObserved": true, "boundedWindowSec": 90}
+}

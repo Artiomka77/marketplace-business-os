@@ -1,0 +1,693 @@
+
+> marketplace-business-os@0.1.0 lint
+> eslint
+
+
+/tmp/avorofin-candidate-build-context/app/ads-mapping/AdsMappingForm.tsx
+   35:3  warning  'savedMappings' is defined but never used                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      @typescript-eslint/no-unused-vars
+  312:7  error    Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+/tmp/avorofin-candidate-build-context/app/ads-mapping/AdsMappingForm.tsx:312:7
+  310 |   useEffect(() => {
+  311 |     if (!open) {
+> 312 |       setInputValue(selected.join(", "));
+      |       ^^^^^^^^^^^^^ Avoid calling setState() directly within an effect
+  313 |     }
+  314 |   }, [selected, open]);
+  315 |  react-hooks/set-state-in-effect
+
+/tmp/avorofin-candidate-build-context/app/api/analytics/profit/route.ts
+  81:43  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  82:27  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/tmp/avorofin-candidate-build-context/app/api/cron/sync-ozon-realization/route.ts
+  101:10  warning  'startOfUtcDay' is defined but never used          @typescript-eslint/no-unused-vars
+  141:10  warning  'getCommissionQuantity' is defined but never used  @typescript-eslint/no-unused-vars
+
+/tmp/avorofin-candidate-build-context/app/api/settings/api-connections/sync-ozon-ads/route.ts
+  488:43  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/tmp/avorofin-candidate-build-context/app/api/settings/api-connections/sync-ozon-finance/route.ts
+  286:43  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/tmp/avorofin-candidate-build-context/app/api/stocks/production-plan/export/route.ts
+  144:10  warning  'toAbcCategory' is defined but never used                @typescript-eslint/no-unused-vars
+  247:10  warning  'getWbConservativeTargetQty' is defined but never used   @typescript-eslint/no-unused-vars
+  327:10  warning  'calculateAbcByPositiveValue' is defined but never used  @typescript-eslint/no-unused-vars
+  578:7   error    'wbAbcMap' is never reassigned. Use 'const' instead      prefer-const
+  579:7   error    'ozonAbcMap' is never reassigned. Use 'const' instead    prefer-const
+
+/tmp/avorofin-candidate-build-context/app/api/stocks/supply-plan/export/route.ts
+  131:10  warning  'toAbcCategory' is defined but never used                @typescript-eslint/no-unused-vars
+  234:10  warning  'getWbConservativeTargetQty' is defined but never used   @typescript-eslint/no-unused-vars
+  444:10  warning  'calculateAbcByPositiveValue' is defined but never used  @typescript-eslint/no-unused-vars
+  807:7   error    'wbAbcMap' is never reassigned. Use 'const' instead      prefer-const
+  808:7   error    'ozonAbcMap' is never reassigned. Use 'const' instead    prefer-const
+
+/tmp/avorofin-candidate-build-context/app/api/telegram/daily-report/route.ts
+  72:47  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/tmp/avorofin-candidate-build-context/app/api/telegram/webhook/route.ts
+  1061:60  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  2448:59  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  2490:59  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/tmp/avorofin-candidate-build-context/app/finance/cashflow/page.tsx
+  231:16  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  253:22  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/tmp/avorofin-candidate-build-context/app/finance/operations/FinanceOperationForm.tsx
+  81:10  warning  'typeClassName' is defined but never used  @typescript-eslint/no-unused-vars
+
+/tmp/avorofin-candidate-build-context/app/finance/operations/page.tsx
+  566:10  warning  'compactNumber' is defined but never used  @typescript-eslint/no-unused-vars
+
+/tmp/avorofin-candidate-build-context/app/finance/plan-fact/page.tsx
+    3:10  warning  'isProfitAnalyticsUnavailable' is defined but never used  @typescript-eslint/no-unused-vars
+    3:39  warning  '_v' is defined but never used                            @typescript-eslint/no-unused-vars
+   63:10  warning  'hasPreliminaryTax' is defined but never used             @typescript-eslint/no-unused-vars
+   70:10  warning  'hasPreliminaryProfitOrCogs' is defined but never used    @typescript-eslint/no-unused-vars
+   86:10  warning  'normalizeVendorCode' is defined but never used           @typescript-eslint/no-unused-vars
+   95:10  warning  'isReturn' is defined but never used                      @typescript-eslint/no-unused-vars
+  100:10  warning  'expense' is defined but never used                       @typescript-eslint/no-unused-vars
+  469:10  warning  'dedupeWbSalesByLatestImport' is defined but never used   @typescript-eslint/no-unused-vars
+  561:7   error    'wb' is never reassigned. Use 'const' instead             prefer-const
+  561:7   warning  'wb' is assigned a value but never used                   @typescript-eslint/no-unused-vars
+  561:11  error    Unexpected any. Specify a different type                  @typescript-eslint/no-explicit-any
+  562:7   error    'ozon' is never reassigned. Use 'const' instead           prefer-const
+  562:7   warning  'ozon' is assigned a value but never used                 @typescript-eslint/no-unused-vars
+  562:13  error    Unexpected any. Specify a different type                  @typescript-eslint/no-explicit-any
+  626:27  error    Unexpected any. Specify a different type                  @typescript-eslint/no-explicit-any
+  642:9   warning  'ozonSellerPayout' is assigned a value but never used     @typescript-eslint/no-unused-vars
+
+/tmp/avorofin-candidate-build-context/app/insights/page.tsx
+   54:10  warning  'startOfMonth' is defined but never used  @typescript-eslint/no-unused-vars
+   58:10  warning  'endOfMonth' is defined but never used    @typescript-eslint/no-unused-vars
+   62:10  warning  'toInputDate' is defined but never used   @typescript-eslint/no-unused-vars
+  306:9   warning  'now' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+/tmp/avorofin-candidate-build-context/app/page.tsx
+    40:6   warning  'CompanyForDashboard' is defined but never used                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  @typescript-eslint/no-unused-vars
+   340:10  warning  'getChartDates' is defined but never used                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        @typescript-eslint/no-unused-vars
+   800:10  warning  'safeNumber' is defined but never used                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           @typescript-eslint/no-unused-vars
+   813:10  warning  'valueTone' is defined but never used                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            @typescript-eslint/no-unused-vars
+   888:10  warning  'countAbc' is defined but never used                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             @typescript-eslint/no-unused-vars
+  1063:10  warning  'MiniMetric' is defined but never used                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           @typescript-eslint/no-unused-vars
+  1092:10  warning  'CompactStat' is defined but never used                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          @typescript-eslint/no-unused-vars
+  1131:10  warning  'AbcPills' is defined but never used                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             @typescript-eslint/no-unused-vars
+  1191:10  warning  'InteractiveDonut' is defined but never used                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     @typescript-eslint/no-unused-vars
+  1194:3   warning  'compact' is assigned a value but never used                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     @typescript-eslint/no-unused-vars
+  1276:10  warning  'InsightValue' is defined but never used                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         @typescript-eslint/no-unused-vars
+  1915:10  warning  'createDailyExpectedTotals' is defined but never used                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            @typescript-eslint/no-unused-vars
+  2234:3   warning  'previousPeriod' is defined but never used                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       @typescript-eslint/no-unused-vars
+  2237:3   warning  'selectedCompanyName' is defined but never used                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  @typescript-eslint/no-unused-vars
+  2261:47  error    Error: Cannot call impure function during render
+
+`Date.now` is an impure function. Calling an impure function can produce unstable results that update unpredictably when the component happens to re-render. (https://react.dev/reference/rules/components-and-hooks-must-be-pure#components-and-hooks-must-be-idempotent).
+
+/tmp/avorofin-candidate-build-context/app/page.tsx:2261:47
+  2259 |     if (!showDebug) return;
+  2260 |
+> 2261 |     console.log(`[dashboard-perf] ${label}: ${Date.now() - startedAt}ms`);
+       |                                               ^^^^^^^^^^ Cannot call impure function
+  2262 |   };
+  2263 |
+  2264 |   const dailyAnalyticsStartedAt = Date.now();                                                                                                          react-hooks/purity
+  2264:35  error    Error: Cannot call impure function during render
+
+`Date.now` is an impure function. Calling an impure function can produce unstable results that update unpredictably when the component happens to re-render. (https://react.dev/reference/rules/components-and-hooks-must-be-pure#components-and-hooks-must-be-idempotent).
+
+/tmp/avorofin-candidate-build-context/app/page.tsx:2264:35
+  2262 |   };
+  2263 |
+> 2264 |   const dailyAnalyticsStartedAt = Date.now();
+       |                                   ^^^^^^^^^^ Cannot call impure function
+  2265 |   const currentDailyPoints = currentDailyPointsInput;
+  2266 |   const previousDailyPoints = useLargePeriodStabilityMode
+  2267 |     ? []                                                                                                    react-hooks/purity
+  2538:10  warning  'CompanyDetailColumn' is defined but never used                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  @typescript-eslint/no-unused-vars
+  2965:34  error    Error: Cannot call impure function during render
+
+`Date.now` is an impure function. Calling an impure function can produce unstable results that update unpredictably when the component happens to re-render. (https://react.dev/reference/rules/components-and-hooks-must-be-pure#components-and-hooks-must-be-idempotent).
+
+/tmp/avorofin-candidate-build-context/app/page.tsx:2965:34
+  2963 |
+  2964 | async function HomePageInner({ searchParams }: Props) {
+> 2965 |   const dashboardPerfStartedAt = Date.now();
+       |                                  ^^^^^^^^^^ Cannot call impure function
+  2966 |   const params = searchParams ? await searchParams : {};
+  2967 |   const showDebug = params.debug === "1";
+  2968 |   const logDashboardPerf = (label: string, startedAt: number) => {      react-hooks/purity
+  2971:47  error    Error: Cannot call impure function during render
+
+`Date.now` is an impure function. Calling an impure function can produce unstable results that update unpredictably when the component happens to re-render. (https://react.dev/reference/rules/components-and-hooks-must-be-pure#components-and-hooks-must-be-idempotent).
+
+/tmp/avorofin-candidate-build-context/app/page.tsx:2971:47
+  2969 |     if (!showDebug) return;
+  2970 |
+> 2971 |     console.log(`[dashboard-perf] ${label}: ${Date.now() - startedAt}ms`);
+       |                                               ^^^^^^^^^^ Cannot call impure function
+  2972 |   };
+  2973 |
+  2974 |   const periodOptions = createPeriodOptions();                                                                                                         react-hooks/purity
+  3004:30  error    Error: Cannot call impure function during render
+
+`Date.now` is an impure function. Calling an impure function can produce unstable results that update unpredictably when the component happens to re-render. (https://react.dev/reference/rules/components-and-hooks-must-be-pure#components-and-hooks-must-be-idempotent).
+
+/tmp/avorofin-candidate-build-context/app/page.tsx:3004:30
+  3002 |   );
+  3003 |
+> 3004 |   const companiesStartedAt = Date.now();
+       |                              ^^^^^^^^^^ Cannot call impure function
+  3005 |   const companies = await prisma.company.findMany({
+  3006 |     orderBy: {
+  3007 |       name: "asc",                                                                                                                                                 react-hooks/purity
+  3024:34  error    Error: Cannot call impure function during render
+
+`Date.now` is an impure function. Calling an impure function can produce unstable results that update unpredictably when the component happens to re-render. (https://react.dev/reference/rules/components-and-hooks-must-be-pure#components-and-hooks-must-be-idempotent).
+
+/tmp/avorofin-candidate-build-context/app/page.tsx:3024:34
+  3022 |
+  3023 |   const repository = getDefaultV6PeriodReadModelRepository();
+> 3024 |   const dashboardRowsStartedAt = Date.now();
+       |                                  ^^^^^^^^^^ Cannot call impure function
+  3025 |   // Aggregate identity + company cards always load ALL period grain.
+  3026 |   const currentRead = await loadDashboardV6PeriodReadModel({
+  3027 |     repository,                   react-hooks/purity
+  3057:44  error    Error: Cannot call impure function during render
+
+`Date.now` is an impure function. Calling an impure function can produce unstable results that update unpredictably when the component happens to re-render. (https://react.dev/reference/rules/components-and-hooks-must-be-pure#components-and-hooks-must-be-idempotent).
+
+/tmp/avorofin-candidate-build-context/app/page.tsx:3057:44
+  3055 |
+  3056 |   if (!useLargePeriodStabilityMode) {
+> 3057 |     const previousDashboardRowsStartedAt = Date.now();
+       |                                            ^^^^^^^^^^ Cannot call impure function
+  3058 |     const previousRead = await loadDashboardV6PeriodReadModel({
+  3059 |       repository,
+  3060 |       dateFrom: previousPeriod.dateFrom,                                               react-hooks/purity
+  3174:34  error    Error: Cannot call impure function during render
+
+`Date.now` is an impure function. Calling an impure function can produce unstable results that update unpredictably when the component happens to re-render. (https://react.dev/reference/rules/components-and-hooks-must-be-pure#components-and-hooks-must-be-idempotent).
+
+/tmp/avorofin-candidate-build-context/app/page.tsx:3174:34
+  3172 |   const effectiveMeta = effectiveCurrentRead.bundle.meta;
+  3173 |
+> 3174 |   const dataReadinessStartedAt = Date.now();
+       |                                  ^^^^^^^^^^ Cannot call impure function
+  3175 |   // Prefer selected-scope readiness evidence on HIT so ordinary Dashboard stays snapshot-first.
+  3176 |   const dataReadiness = {
+  3177 |     isFinal: effectiveMeta.readinessIsFinal,  react-hooks/purity
+  3225:33  error    Error: Cannot call impure function during render
+
+`Date.now` is an impure function. Calling an impure function can produce unstable results that update unpredictably when the component happens to re-render. (https://react.dev/reference/rules/components-and-hooks-must-be-pure#components-and-hooks-must-be-idempotent).
+
+/tmp/avorofin-candidate-build-context/app/page.tsx:3225:33
+  3223 |   });
+  3224 |
+> 3225 |   const costCoverageStartedAt = Date.now();
+       |                                 ^^^^^^^^^^ Cannot call impure function
+  3226 |   const costCoverage = await getCostCoverageSummary({
+  3227 |     dateFrom: selectedPeriod.dateFrom,
+  3228 |     dateTo: selectedPeriod.dateTo,                                                                                                react-hooks/purity
+
+/tmp/avorofin-candidate-build-context/app/profit-wb/page.tsx
+   102:10  warning  'toNumber' is defined but never used                     @typescript-eslint/no-unused-vars
+   781:10  warning  'PriceBridgeCard' is defined but never used              @typescript-eslint/no-unused-vars
+  1693:9   warning  'wbInternalServices' is assigned a value but never used  @typescript-eslint/no-unused-vars
+  1700:9   warning  'profitableSkuCount' is assigned a value but never used  @typescript-eslint/no-unused-vars
+  1701:9   warning  'riskSkuCount' is assigned a value but never used        @typescript-eslint/no-unused-vars
+
+/tmp/avorofin-candidate-build-context/app/stocks/page.tsx
+   308:10  warning  'toAbcCategory' is defined but never used                                                                                                                                                                                                                                                @typescript-eslint/no-unused-vars
+   745:10  warning  'getWbConservativeTargetQty' is defined but never used                                                                                                                                                                                                                                   @typescript-eslint/no-unused-vars
+  1809:7   warning  Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+  1824:10  warning  'CompactAttention' is defined but never used                                                                                                                                                                                                                                             @typescript-eslint/no-unused-vars
+  2851:33  warning  Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+  3046:9   warning  'selectedProductionPlanQty' is assigned a value but never used                                                                                                                                                                                                                           @typescript-eslint/no-unused-vars
+  3276:39  warning  Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+  3424:5   warning  'stockPlanningMeta' is assigned a value but never used                                                                                                                                                                                                                                   @typescript-eslint/no-unused-vars
+  3442:7   warning  'stockAbcUnavailable' is assigned a value but never used                                                                                                                                                                                                                                 @typescript-eslint/no-unused-vars
+  4098:9   warning  'totalAvailableForSupplyQty' is assigned a value but never used                                                                                                                                                                                                                          @typescript-eslint/no-unused-vars
+  4101:9   warning  'totalAvailableForSupplyCost' is assigned a value but never used                                                                                                                                                                                                                         @typescript-eslint/no-unused-vars
+  4104:9   warning  'totalReservedQty' is assigned a value but never used                                                                                                                                                                                                                                    @typescript-eslint/no-unused-vars
+  5148:9   warning  'ownWarehouseMissingCount' is assigned a value but never used                                                                                                                                                                                                                            @typescript-eslint/no-unused-vars
+  5166:9   warning  'quickSizePreviewRows' is assigned a value but never used                                                                                                                                                                                                                                @typescript-eslint/no-unused-vars
+
+/tmp/avorofin-candidate-build-context/components/app/AppNav.tsx
+  215:5  error  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+/tmp/avorofin-candidate-build-context/components/app/AppNav.tsx:215:5
+  213 |     const nextCollapsed = savedValue === "true";
+  214 |
+> 215 |     setIsCollapsed(nextCollapsed);
+      |     ^^^^^^^^^^^^^^ Avoid calling setState() directly within an effect
+  216 |     document.documentElement.dataset.sidebar = nextCollapsed
+  217 |       ? "collapsed"
+  218 |       : "expanded";  react-hooks/set-state-in-effect
+  229:5  error  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+/tmp/avorofin-candidate-build-context/components/app/AppNav.tsx:229:5
+  227 |
+  228 |   useEffect(() => {
+> 229 |     setOpenSections((current) => {
+      |     ^^^^^^^^^^^^^^^ Avoid calling setState() directly within an effect
+  230 |       const next = { ...current };
+  231 |
+  232 |       for (const title of activeSectionTitles) {                                               react-hooks/set-state-in-effect
+
+/tmp/avorofin-candidate-build-context/financial-core/v5/snapshot/app/profit-wb/page.tsx
+    94:10  warning  'toNumber' is defined but never used                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                @typescript-eslint/no-unused-vars
+   773:10  warning  'PriceBridgeCard' is defined but never used                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         @typescript-eslint/no-unused-vars
+   984:5   error    Error: Cannot reassign variable after render completes
+
+Reassigning `cursor` after render has completed can cause inconsistent behavior on subsequent renders. Consider using state instead.
+
+/tmp/avorofin-candidate-build-context/financial-core/v5/snapshot/app/profit-wb/page.tsx:984:5
+  982 |     const startAngle = cursor;
+  983 |     const endAngle = cursor + Math.max(size, positiveRows.length === 1 ? 359.99 : 0);
+> 984 |     cursor += size;
+      |     ^^^^^^ Cannot reassign `cursor` after render completes
+  985 |
+  986 |     return {
+  987 |       ...row,  react-hooks/immutability
+  1573:9   warning  'wbInternalServices' is assigned a value but never used                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             @typescript-eslint/no-unused-vars
+  1580:9   warning  'profitableSkuCount' is assigned a value but never used                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             @typescript-eslint/no-unused-vars
+  1581:9   warning  'riskSkuCount' is assigned a value but never used                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   @typescript-eslint/no-unused-vars
+
+/tmp/avorofin-candidate-build-context/financial-core/v5/snapshot/lib/analytics/profitAnalytics.ts
+  324:10  warning  'isWbFinanceRowInSelectedPeriod' is defined but never used  @typescript-eslint/no-unused-vars
+  582:10  warning  'createDateFilterFromStrings' is defined but never used     @typescript-eslint/no-unused-vars
+  603:10  warning  'createDateFilterFromDates' is defined but never used       @typescript-eslint/no-unused-vars
+  642:10  warning  'prorateSpendByPeriod' is defined but never used            @typescript-eslint/no-unused-vars
+
+/tmp/avorofin-candidate-build-context/financial-core/v5/snapshot/lib/import/normalizers/ozonAdsNormalizer.ts
+  45:9  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/tmp/avorofin-candidate-build-context/financial-core/v5/snapshot/lib/import/normalizers/wbAdsNormalizer.ts
+  156:9  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/tmp/avorofin-candidate-build-context/financial-core/v5/snapshot/lib/import/normalizers/wbFinanceNormalizer.ts
+  83:9  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/tmp/avorofin-candidate-build-context/financial-core/v5/snapshot/lib/telegram/dailyReport.ts
+  1844:5   warning  'salesQty' is assigned a value but never used     @typescript-eslint/no-unused-vars
+  2862:10  warning  'buildOwnerConclusion' is defined but never used  @typescript-eslint/no-unused-vars
+  2927:10  warning  'buildOwnerActions' is defined but never used     @typescript-eslint/no-unused-vars
+  2971:10  warning  'marketplaceLine' is defined but never used       @typescript-eslint/no-unused-vars
+  3074:10  warning  'buildComparisonLines' is defined but never used  @typescript-eslint/no-unused-vars
+  3109:10  warning  'inlinePercentChange' is defined but never used   @typescript-eslint/no-unused-vars
+  3114:10  warning  'inlinePointDiff' is defined but never used       @typescript-eslint/no-unused-vars
+
+/tmp/avorofin-candidate-build-context/financial-core/v6/snapshot/app/api/stocks/production-plan/export/route.ts
+  144:10  warning  'toAbcCategory' is defined but never used                @typescript-eslint/no-unused-vars
+  247:10  warning  'getWbConservativeTargetQty' is defined but never used   @typescript-eslint/no-unused-vars
+  327:10  warning  'calculateAbcByPositiveValue' is defined but never used  @typescript-eslint/no-unused-vars
+  578:7   error    'wbAbcMap' is never reassigned. Use 'const' instead      prefer-const
+  579:7   error    'ozonAbcMap' is never reassigned. Use 'const' instead    prefer-const
+
+/tmp/avorofin-candidate-build-context/financial-core/v6/snapshot/app/api/stocks/supply-plan/export/route.ts
+  131:10  warning  'toAbcCategory' is defined but never used                @typescript-eslint/no-unused-vars
+  234:10  warning  'getWbConservativeTargetQty' is defined but never used   @typescript-eslint/no-unused-vars
+  444:10  warning  'calculateAbcByPositiveValue' is defined but never used  @typescript-eslint/no-unused-vars
+  807:7   error    'wbAbcMap' is never reassigned. Use 'const' instead      prefer-const
+  808:7   error    'ozonAbcMap' is never reassigned. Use 'const' instead    prefer-const
+
+/tmp/avorofin-candidate-build-context/financial-core/v6/snapshot/app/insights/page.tsx
+   49:10  warning  'startOfMonth' is defined but never used  @typescript-eslint/no-unused-vars
+   53:10  warning  'endOfMonth' is defined but never used    @typescript-eslint/no-unused-vars
+   57:10  warning  'toInputDate' is defined but never used   @typescript-eslint/no-unused-vars
+  269:9   warning  'now' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+/tmp/avorofin-candidate-build-context/financial-core/v6/snapshot/app/profit-wb/page.tsx
+   102:10  warning  'toNumber' is defined but never used                     @typescript-eslint/no-unused-vars
+   781:10  warning  'PriceBridgeCard' is defined but never used              @typescript-eslint/no-unused-vars
+  1693:9   warning  'wbInternalServices' is assigned a value but never used  @typescript-eslint/no-unused-vars
+  1700:9   warning  'profitableSkuCount' is assigned a value but never used  @typescript-eslint/no-unused-vars
+  1701:9   warning  'riskSkuCount' is assigned a value but never used        @typescript-eslint/no-unused-vars
+
+/tmp/avorofin-candidate-build-context/financial-core/v6/snapshot/lib/analytics/profitAnalytics.ts
+  324:10  warning  'isWbFinanceRowInSelectedPeriod' is defined but never used  @typescript-eslint/no-unused-vars
+  582:10  warning  'createDateFilterFromStrings' is defined but never used     @typescript-eslint/no-unused-vars
+  603:10  warning  'createDateFilterFromDates' is defined but never used       @typescript-eslint/no-unused-vars
+  642:10  warning  'prorateSpendByPeriod' is defined but never used            @typescript-eslint/no-unused-vars
+
+/tmp/avorofin-candidate-build-context/financial-core/v6/snapshot/lib/finance/effectiveFinanceTransactions.ts
+   65:11  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  277:63  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  278:61  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  279:55  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  347:31  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  480:17  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  481:15  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/tmp/avorofin-candidate-build-context/financial-core/v6/snapshot/lib/import/normalizers/ozonAdsNormalizer.ts
+  45:9  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/tmp/avorofin-candidate-build-context/financial-core/v6/snapshot/lib/import/normalizers/wbAdsNormalizer.ts
+  156:9  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/tmp/avorofin-candidate-build-context/financial-core/v6/snapshot/lib/import/normalizers/wbFinanceNormalizer.ts
+  83:9  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/tmp/avorofin-candidate-build-context/financial-core/v6/snapshot/lib/telegram/dailyReport.ts
+  1845:5   warning  'salesQty' is assigned a value but never used     @typescript-eslint/no-unused-vars
+  2947:10  warning  'buildOwnerConclusion' is defined but never used  @typescript-eslint/no-unused-vars
+  3012:10  warning  'buildOwnerActions' is defined but never used     @typescript-eslint/no-unused-vars
+  3056:10  warning  'marketplaceLine' is defined but never used       @typescript-eslint/no-unused-vars
+  3159:10  warning  'buildComparisonLines' is defined but never used  @typescript-eslint/no-unused-vars
+  3194:10  warning  'inlinePercentChange' is defined but never used   @typescript-eslint/no-unused-vars
+  3199:10  warning  'inlinePointDiff' is defined but never used       @typescript-eslint/no-unused-vars
+
+/tmp/avorofin-candidate-build-context/lib/analytics/dashboardDailyAnalytics.ts
+  269:10  warning  'keepLatestWbAdsRowsPerDate' is defined but never used  @typescript-eslint/no-unused-vars
+
+/tmp/avorofin-candidate-build-context/lib/analytics/profitAnalytics.ts
+  324:10  warning  'isWbFinanceRowInSelectedPeriod' is defined but never used  @typescript-eslint/no-unused-vars
+  582:10  warning  'createDateFilterFromStrings' is defined but never used     @typescript-eslint/no-unused-vars
+  603:10  warning  'createDateFilterFromDates' is defined but never used       @typescript-eslint/no-unused-vars
+  642:10  warning  'prorateSpendByPeriod' is defined but never used            @typescript-eslint/no-unused-vars
+
+/tmp/avorofin-candidate-build-context/lib/consumers/waveDE/periodFinancePack.ts
+  31:49  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/tmp/avorofin-candidate-build-context/lib/finance/effectiveFinanceTransactions.ts
+   65:11  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  277:63  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  278:61  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  279:55  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  347:31  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  480:17  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  481:15  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/tmp/avorofin-candidate-build-context/lib/historicalSync/createWbSalesHistoricalJobs.ts
+  27:10  warning  'formatDate' is defined but never used  @typescript-eslint/no-unused-vars
+
+/tmp/avorofin-candidate-build-context/lib/import/normalizers/ozonAdsNormalizer.ts
+  45:9  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/tmp/avorofin-candidate-build-context/lib/import/normalizers/ozonWarehouseStockNormalizer.ts
+  52:10  warning  'toInt' is defined but never used  @typescript-eslint/no-unused-vars
+
+/tmp/avorofin-candidate-build-context/lib/import/normalizers/wbAdsNormalizer.ts
+  156:9  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/tmp/avorofin-candidate-build-context/lib/import/normalizers/wbFinanceNormalizer.ts
+  83:9  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/tmp/avorofin-candidate-build-context/lib/import/normalizers/wbStockNormalizer.ts
+  11:24  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  20:9   error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  24:15  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/tmp/avorofin-candidate-build-context/lib/ozon/expectedOzonCompanies.ts
+  14:25  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  14:43  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/tmp/avorofin-candidate-build-context/lib/ozon/financialRepairProductionAdapters.ts
+  1251:9  warning  'targetPhase' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+/tmp/avorofin-candidate-build-context/lib/ozon/syncOzonAccrualByDay.ts
+  15:3  warning  'validateOzonAccrualIngest' is defined but never used  @typescript-eslint/no-unused-vars
+
+/tmp/avorofin-candidate-build-context/lib/telegram/dailyReport.ts
+  1845:5   warning  'salesQty' is assigned a value but never used     @typescript-eslint/no-unused-vars
+  2947:10  warning  'buildOwnerConclusion' is defined but never used  @typescript-eslint/no-unused-vars
+  3012:10  warning  'buildOwnerActions' is defined but never used     @typescript-eslint/no-unused-vars
+  3056:10  warning  'marketplaceLine' is defined but never used       @typescript-eslint/no-unused-vars
+  3159:10  warning  'buildComparisonLines' is defined but never used  @typescript-eslint/no-unused-vars
+  3194:10  warning  'inlinePercentChange' is defined but never used   @typescript-eslint/no-unused-vars
+  3199:10  warning  'inlinePointDiff' is defined but never used       @typescript-eslint/no-unused-vars
+
+/tmp/avorofin-candidate-build-context/lib/telegram/dailyReportAi.ts
+   26:38  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   49:42  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  143:37  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  161:38  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/tmp/avorofin-candidate-build-context/lib/wb/syncWbAds.ts
+  151:10  warning  'getErrorMessage' is defined but never used  @typescript-eslint/no-unused-vars
+
+/tmp/avorofin-candidate-build-context/scripts/_fc_main_cases.ts
+   7:68  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   9:13  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  16:16  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  34:47  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  35:45  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  36:63  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  64:36  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/tmp/avorofin-candidate-build-context/scripts/_fc_profit_cases.ts
+  3:68  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  5:13  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/tmp/avorofin-candidate-build-context/scripts/_profit_rm_probe.ts
+  8:15  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/tmp/avorofin-candidate-build-context/scripts/_wave_de_actual_path_parity.ts
+   5:3   warning  'buildFinanceCategoryTreatmentIndex' is defined but never used  @typescript-eslint/no-unused-vars
+  30:39  error    Unexpected any. Specify a different type                        @typescript-eslint/no-explicit-any
+  37:37  error    Unexpected any. Specify a different type                        @typescript-eslint/no-explicit-any
+  43:19  error    Unexpected any. Specify a different type                        @typescript-eslint/no-explicit-any
+  51:12  error    Unexpected any. Specify a different type                        @typescript-eslint/no-explicit-any
+  62:12  error    Unexpected any. Specify a different type                        @typescript-eslint/no-explicit-any
+
+/tmp/avorofin-candidate-build-context/scripts/_wave_de_auth_routes_v3.ts
+   8:19  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  13:15  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  20:15  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  44:15  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/tmp/avorofin-candidate-build-context/scripts/_wave_de_fail_closed_v3.ts
+  12:66  error    Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  16:15  error    Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  17:11  warning  'ok' is assigned a value but never used   @typescript-eslint/no-unused-vars
+  27:16  error    Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  65:35  error    Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/tmp/avorofin-candidate-build-context/scripts/apply_ozon_profit_q2_ui_fix.js
+  1:12  error  A `require()` style import is forbidden  @typescript-eslint/no-require-imports
+  2:14  error  A `require()` style import is forbidden  @typescript-eslint/no-require-imports
+
+/tmp/avorofin-candidate-build-context/scripts/architecture/d6AllFinancialConsumers.test.ts
+  11:3  warning  'WB_PNL_UNAVAILABLE_REASON' is defined but never used  @typescript-eslint/no-unused-vars
+
+/tmp/avorofin-candidate-build-context/scripts/architecture/d6ZombiePendingQueue.test.ts
+  44:23  warning  '_args' is defined but never used  @typescript-eslint/no-unused-vars
+  63:20  warning  '_args' is defined but never used  @typescript-eslint/no-unused-vars
+
+/tmp/avorofin-candidate-build-context/scripts/architecture/ozon0809TelegramRenderCanary.test.ts
+   99:24  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  100:30  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  112:24  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  119:14  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  165:24  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  166:28  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/tmp/avorofin-candidate-build-context/scripts/architecture/taxFormulaParityV1_2.test.ts
+  25:7  warning  'close' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+/tmp/avorofin-candidate-build-context/scripts/architecture/waveADashboardReadModel.test.ts
+  371:9  warning  'petrov' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+/tmp/avorofin-candidate-build-context/scripts/architecture/waveAQueueDaemon.test.ts
+  25:7  error  'processedIds' is never reassigned. Use 'const' instead  prefer-const
+
+/tmp/avorofin-candidate-build-context/scripts/audit-loan-finance-transactions.cjs
+  1:18  error  A `require()` style import is forbidden  @typescript-eslint/no-require-imports
+
+/tmp/avorofin-candidate-build-context/scripts/audit-wb-daily-financial-coverage.cjs
+  1:18  error  A `require()` style import is forbidden  @typescript-eslint/no-require-imports
+
+/tmp/avorofin-candidate-build-context/scripts/audit-wb-financial-consistency.cjs
+    1:20  error    A `require()` style import is forbidden   @typescript-eslint/no-require-imports
+   79:15  warning  'day' is assigned a value but never used  @typescript-eslint/no-unused-vars
+  335:45  warning  '_' is defined but never used             @typescript-eslint/no-unused-vars
+  344:10  warning  'pick' is defined but never used          @typescript-eslint/no-unused-vars
+
+/tmp/avorofin-candidate-build-context/scripts/audit-wb-operational-costs.cjs
+    1:18  error    A `require()` style import is forbidden  @typescript-eslint/no-require-imports
+   53:10  warning  'getDateSpan' is defined but never used  @typescript-eslint/no-unused-vars
+  306:14  warning  'error' is defined but never used        @typescript-eslint/no-unused-vars
+
+/tmp/avorofin-candidate-build-context/scripts/audit-wb-profit-data.cjs
+    1:18  error    A `require()` style import is forbidden         @typescript-eslint/no-require-imports
+   35:10  warning  'dateOnly' is defined but never used            @typescript-eslint/no-unused-vars
+  182:9   warning  'dailyDate' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+/tmp/avorofin-candidate-build-context/scripts/audit_cost_coverage.js
+   1:1   warning  Unused eslint-disable directive (no problems were reported from 'no-console')
+  13:20  error    A `require()` style import is forbidden                                        @typescript-eslint/no-require-imports
+
+/tmp/avorofin-candidate-build-context/scripts/audit_dashboard_profit_breakdown.js
+   1:20  error    A `require()` style import is forbidden  @typescript-eslint/no-require-imports
+  33:10  warning  'cleanText' is defined but never used    @typescript-eslint/no-unused-vars
+
+/tmp/avorofin-candidate-build-context/scripts/audit_ozon_financial_category_facts.js
+  1:20  error  A `require()` style import is forbidden  @typescript-eslint/no-require-imports
+
+/tmp/avorofin-candidate-build-context/scripts/audit_ozon_profit_q2.js
+    1:1   warning  Unused eslint-disable directive (no problems were reported from 'no-console')
+   12:20  error    A `require()` style import is forbidden                                        @typescript-eslint/no-require-imports
+  128:59  warning  'companyName' is defined but never used                                        @typescript-eslint/no-unused-vars
+
+/tmp/avorofin-candidate-build-context/scripts/audit_ozon_revenue_gap.js
+  2:1   warning  Unused eslint-disable directive (no problems were reported from 'no-console')
+  3:20  error    A `require()` style import is forbidden                                        @typescript-eslint/no-require-imports
+
+/tmp/avorofin-candidate-build-context/scripts/audit_ozon_revenue_sources.js
+  2:1   warning  Unused eslint-disable directive (no problems were reported from 'no-console')
+  3:20  error    A `require()` style import is forbidden                                        @typescript-eslint/no-require-imports
+
+/tmp/avorofin-candidate-build-context/scripts/audit_sell_plus_early_repayment.js
+  1:1   warning  Unused eslint-disable directive (no problems were reported from 'no-console')
+  8:20  error    A `require()` style import is forbidden                                        @typescript-eslint/no-require-imports
+
+/tmp/avorofin-candidate-build-context/scripts/audit_week_financial_result.js
+   2:20  error    A `require()` style import is forbidden  @typescript-eslint/no-require-imports
+  22:10  warning  'pct' is defined but never used          @typescript-eslint/no-unused-vars
+  26:10  warning  'fmtDate' is defined but never used      @typescript-eslint/no-unused-vars
+
+/tmp/avorofin-candidate-build-context/scripts/audit_week_financial_result_v2.js
+   1:20  error    A `require()` style import is forbidden  @typescript-eslint/no-require-imports
+  45:16  warning  'tableExists' is defined but never used  @typescript-eslint/no-unused-vars
+
+/tmp/avorofin-candidate-build-context/scripts/backfill_ozon_daily_economic_totals_from_finance.js
+  2:1   warning  Unused eslint-disable directive (no problems were reported from 'no-console')
+  3:20  error    A `require()` style import is forbidden                                        @typescript-eslint/no-require-imports
+  4:24  error    A `require()` style import is forbidden                                        @typescript-eslint/no-require-imports
+
+/tmp/avorofin-candidate-build-context/scripts/cleanup_sell_plus_duplicate_regular_payments.js
+  1:1   warning  Unused eslint-disable directive (no problems were reported from 'no-console')
+  8:20  error    A `require()` style import is forbidden                                        @typescript-eslint/no-require-imports
+
+/tmp/avorofin-candidate-build-context/scripts/create_dashboard_performance_indexes.js
+  1:20  error  A `require()` style import is forbidden  @typescript-eslint/no-require-imports
+
+/tmp/avorofin-candidate-build-context/scripts/diagnose_ozon_points_automation_gap.js
+  1:18  error  A `require()` style import is forbidden  @typescript-eslint/no-require-imports
+
+/tmp/avorofin-candidate-build-context/scripts/diagnose_ozon_realization_vs_finance.js
+  1:18  error  A `require()` style import is forbidden  @typescript-eslint/no-require-imports
+
+/tmp/avorofin-candidate-build-context/scripts/enrich_wb_sale_spp_vat.js
+  1:18  error  A `require()` style import is forbidden  @typescript-eslint/no-require-imports
+
+/tmp/avorofin-candidate-build-context/scripts/export-loans-db.cjs
+  1:18  error  A `require()` style import is forbidden  @typescript-eslint/no-require-imports
+
+/tmp/avorofin-candidate-build-context/scripts/fix-loan-schedules.ts
+  114:10  warning  'addDays' is defined but never used  @typescript-eslint/no-unused-vars
+
+/tmp/avorofin-candidate-build-context/scripts/fix-loans-from-bank-schedules.cjs
+    12:18  error    A `require()` style import is forbidden  @typescript-eslint/no-require-imports
+    13:16  error    A `require()` style import is forbidden  @typescript-eslint/no-require-imports
+  1076:14  warning  '_' is defined but never used            @typescript-eslint/no-unused-vars
+
+/tmp/avorofin-candidate-build-context/scripts/fix-ozon-loans-from-screenshots.cjs
+    1:18  error    A `require()` style import is forbidden  @typescript-eslint/no-require-imports
+  642:14  warning  '_' is defined but never used            @typescript-eslint/no-unused-vars
+
+/tmp/avorofin-candidate-build-context/scripts/fix-wb-loans-from-wbfinance-screenshots.cjs
+  1:18  error  A `require()` style import is forbidden  @typescript-eslint/no-require-imports
+
+/tmp/avorofin-candidate-build-context/scripts/fix_ozon_june_petrov_summary.js
+  1:18  error  A `require()` style import is forbidden  @typescript-eslint/no-require-imports
+
+/tmp/avorofin-candidate-build-context/scripts/import_ozon_accruals_economics_from_xlsx.js
+    2:1   warning  Unused eslint-disable directive (no problems were reported from 'no-console')
+    3:12  error    A `require()` style import is forbidden                                        @typescript-eslint/no-require-imports
+    4:14  error    A `require()` style import is forbidden                                        @typescript-eslint/no-require-imports
+    5:20  error    A `require()` style import is forbidden                                        @typescript-eslint/no-require-imports
+    6:24  error    A `require()` style import is forbidden                                        @typescript-eslint/no-require-imports
+    7:14  error    A `require()` style import is forbidden                                        @typescript-eslint/no-require-imports
+  317:9   warning  'sheet' is assigned a value but never used                                     @typescript-eslint/no-unused-vars
+
+/tmp/avorofin-candidate-build-context/scripts/import_ozon_realization_and_points.js
+  1:12  error  A `require()` style import is forbidden  @typescript-eslint/no-require-imports
+  2:14  error  A `require()` style import is forbidden  @typescript-eslint/no-require-imports
+  3:14  error  A `require()` style import is forbidden  @typescript-eslint/no-require-imports
+  4:18  error  A `require()` style import is forbidden  @typescript-eslint/no-require-imports
+
+/tmp/avorofin-candidate-build-context/scripts/patch_income_cash_only_treatment.js
+  1:20  error  A `require()` style import is forbidden  @typescript-eslint/no-require-imports
+
+/tmp/avorofin-candidate-build-context/scripts/patch_ozon_financial_category_fact.js
+  1:20  error  A `require()` style import is forbidden  @typescript-eslint/no-require-imports
+
+/tmp/avorofin-candidate-build-context/scripts/patch_ozon_realization_tables.js
+  1:18  error  A `require()` style import is forbidden  @typescript-eslint/no-require-imports
+
+/tmp/avorofin-candidate-build-context/scripts/patch_wb_sale_deduction_reason_columns.js
+  1:18  error  A `require()` style import is forbidden  @typescript-eslint/no-require-imports
+
+/tmp/avorofin-candidate-build-context/scripts/probe-wb-financial-detail-sources.cjs
+    1:18  error    A `require()` style import is forbidden  @typescript-eslint/no-require-imports
+  184:12  warning  '_' is defined but never used            @typescript-eslint/no-unused-vars
+
+/tmp/avorofin-candidate-build-context/scripts/probe-wb-reportdetail-pagination.cjs
+  7:20  error  A `require()` style import is forbidden  @typescript-eslint/no-require-imports
+
+/tmp/avorofin-candidate-build-context/scripts/probe_ozon_accruals_api_endpoints.js
+  1:18  error  A `require()` style import is forbidden  @typescript-eslint/no-require-imports
+
+/tmp/avorofin-candidate-build-context/scripts/sync-loan-finance-transactions.cjs
+    1:18  error    A `require()` style import is forbidden  @typescript-eslint/no-require-imports
+  403:14  warning  '_' is defined but never used            @typescript-eslint/no-unused-vars
+
+/tmp/avorofin-candidate-build-context/scripts/sync_ozon_realization_from_api.js
+  1:18  error  A `require()` style import is forbidden  @typescript-eslint/no-require-imports
+  2:24  error  A `require()` style import is forbidden  @typescript-eslint/no-require-imports
+
+/tmp/avorofin-candidate-build-context/scripts_wave_de_case8.ts
+  13:15  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/tmp/avorofin-candidate-build-context/scripts_wave_de_categories_parity_v2.ts
+  12:68  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  14:17  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  14:23  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  20:14  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/tmp/avorofin-candidate-build-context/scripts_wave_de_fail_closed_v2.ts
+  10:12   error    Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  15:129  error    Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  19:15   error    Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  20:11   warning  'ok' is assigned a value but never used   @typescript-eslint/no-unused-vars
+
+/tmp/avorofin-candidate-build-context/scripts_wave_de_mismatch_discover.ts
+   5:68   error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  18:32   error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  19:27   error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  20:82   error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  20:118  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+/tmp/avorofin-candidate-build-context/scripts_wave_de_planfact_parity_v2.ts
+   8:68  error    Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  13:15  error    Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  14:20  error    Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  17:15  error    Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  23:16  error    Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  37:75  error    Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  62:9   warning  'out' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+✖ 320 problems (166 errors, 154 warnings)
+  11 errors and 8 warnings potentially fixable with the `--fix` option.
+

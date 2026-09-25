@@ -1,0 +1,4 @@
+{"event":"v6_period_readmodel_worker_start","mode":"queue-once","formulaVersion":"FINANCIAL_CORE_V6_PERIOD_READMODEL_V2","concurrency":1,"maxJobs":1,"pollMs":1000,"workerId":"v6rm-1-f2bc07d5","persistTarget":"prisma_v6_readmodel_target","longLived":false}
+{"event":"v6_queue_job_claimed","id":"v6rmj_495e5ae72fa6226f5926429c3e4dfcaac7342caf011b4ed13db7c192f93752c1","companyScope":"ALL","dateFrom":"2026-07-01","dateTo":"2026-07-31","attempts":1}
+{"event":"v6_queue_job_success","id":"v6rmj_495e5ae72fa6226f5926429c3e4dfcaac7342caf011b4ed13db7c192f93752c1","dataMode":"FINAL","coverageStatus":"MISSING","issues":[],"fingerprint":"809070a7570d47d6b895d55938a2d5797955ae9c42b5500b0b028be60ca70742"}
+{"event":"v6_period_readmodel_worker_stop","mode":"queue-once","processed":1,"graceful":false}

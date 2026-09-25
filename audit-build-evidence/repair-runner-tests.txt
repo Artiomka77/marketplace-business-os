@@ -1,0 +1,102 @@
+✔ WRAPPER BINDING: every acted-on value comes from the approval (4.083191ms)
+✔ WRAPPER BINDING: refuses every way the approval can disagree with itself (8.165341ms)
+✔ WRAPPER BINDING: the stale pre-correction manifest sha stays banned (0.665875ms)
+✔ WRAPPER BINDING: a missing worker key is a refusal, not a default (1.171239ms)
+✔ SWAP SPEC: the production APP spec resolves to exact recreate arguments (2.067679ms)
+✔ SWAP SPEC: anything the wrapper cannot reproduce is refused, not dropped (0.731959ms)
+✔ SWAP SPEC: a spec for the wrong container or image is refused (1.010712ms)
+✔ WORKER DRAIN: settles only on exactly 2 and 35 SUCCESS jobs (0.409015ms)
+✔ WORKER DRAIN: a surplus, an ERROR or an unknown status is a hard failure (0.348162ms)
+✔ WRAPPER: single-writer lock is taken with flock -n (0.346147ms)
+✔ WRAPPER: the environment supplies paths only, never hashes or counts (0.831447ms)
+✔ WRAPPER: the approval is parsed by the node helper, never sourced or eval'd (0.357739ms)
+✔ WRAPPER: PREPARE runs before anything is swapped (0.222677ms)
+✔ WRAPPER: all four candidate images are pinned, loaded and identity-checked (0.355696ms)
+✔ WRAPPER: each manifest file is mounted directly at its own path (0.248575ms)
+✔ WRAPPER: the prepare-cache binding is the sidecar CONTENT sha (0.912417ms)
+✔ WRAPPER: no critical step is softened with || true (0.246101ms)
+✔ WRAPPER: every runner phase is invoked and failure is fatal (0.440464ms)
+✔ WRAPPER: the drain is polled for exact approved SUCCESS counts (0.262742ms)
+✔ WRAPPER: the failure trap is phase-aware (0.240109ms)
+✔ WRAPPER: Telegram is deferred and never claimed as PASS from a marker (0.234008ms)
+✔ WRAPPER: the July/August canary plan is authenticated and not executed (0.28854ms)
+✔ WRAPPER: no placeholder is left in the production path (0.395731ms)
+✔ DOCKERFILE: all four repair-relevant build targets exist (0.407903ms)
+✔ DOCKERFILE: the worker targets fail closed on their own entrypoints (0.212428ms)
+✔ NORMAL ingest still invalidates snapshots and profit (1.288031ms)
+✔ DEFERRED_OWNER_REPAIR does not per-target invalidate (0.199082ms)
+✔ 78 intrinsic statuses are not separately rewritten (0.241532ms)
+✔ only ALL V2 rows may be numerically promoted (0.193202ms)
+✔ regression: NORMAL remains default; repair-only requires deferred (0.213099ms)
+✔ EXECUTE binding fail-closed on manifest mismatch; marker required (2.898254ms)
+✔ VERIFY is addressable as two stages (0.311363ms)
+{
+  "mode": "EXECUTE_FROM_CACHE",
+  "ok": true,
+  "operationStartedAt": "2026-09-25T10:19:01.720Z",
+  "OZON_NETWORK_CALLS": 0,
+  "persisted": 78,
+  "noopComplete": 0,
+  "resumed": 0,
+  "intrinsicStatuses": 78,
+  "separateStatusUpserts": 0,
+  "statusResult": {
+    "written": 10,
+    "noop": 0
+  },
+  "post": {
+    "snapshotDeleted": 35,
+    "snapshotRequeued": 35,
+    "v2Rebuilt": 2
+  }
+}
+{
+  "mode": "EXECUTE_FROM_CACHE",
+  "ok": true,
+  "operationStartedAt": "2026-09-25T10:19:01.765Z",
+  "OZON_NETWORK_CALLS": 0,
+  "persisted": 78,
+  "noopComplete": 0,
+  "resumed": 0,
+  "intrinsicStatuses": 78,
+  "separateStatusUpserts": 0,
+  "statusResult": {
+    "written": 10,
+    "noop": 0
+  },
+  "post": {
+    "snapshotDeleted": 35,
+    "snapshotRequeued": 35,
+    "v2Rebuilt": 2
+  }
+}
+✔ EXECUTABLE: mutation helpers exist and EXECUTE rejects defaults (2.44239ms)
+✔ SOURCE_DRIFT always STOP (0.51858ms)
+✔ ephemeral E2E: PREPARE cache -> EXECUTE_FROM_CACHE idempotent resume (9.532429ms)
+✔ EXECUTE binding rejects self-accepting file defaults (2.652043ms)
+✔ ADAPTERS: certification rawResponseHash recipe is the sealed manifest recipe (0.389559ms)
+✔ ADAPTERS: inspectTargetState resolves every real Prisma state (2.098587ms)
+✔ ADAPTERS: NOOP and RESUME demand an exact payload sha, null is CONFLICT (1.462176ms)
+✔ ADAPTERS: exact-key snapshot union deletes and requeues once per unique key (1.249649ms)
+✔ ADAPTERS: V2 rebuild queues ALL scope and refuses anything else (1.330701ms)
+✔ ADAPTERS: tripwire counts Ozon requests, blocks them, and restores fetch (30.845233ms)
+✔ GATE: readiness gate refuses unbound adapters and prior Ozon traffic (0.865189ms)
+✔ PREPARE live: injected fetch seals the cache and stops on source drift (2.023748ms)
+✔ EXECUTE_FROM_CACHE: full CLI run gates, mutates, and makes zero Ozon calls (32.330382ms)
+✔ PRODUCTION: no adapter phase is a placeholder throw (0.468987ms)
+✔ V2: the row fingerprint reproduces the sealed certification vector (0.587359ms)
+✔ GATE: a conflict on the LAST source target stops with zero writes (6.703414ms)
+✔ GATE: blast radius counts and V2 fingerprints must match the approved plan (5.084986ms)
+✔ GATE: unbound standalone status payload sha256 blocks before any write (3.501202ms)
+✔ APPROVAL: strict whitelist parser rejects duplicates, unknown critical keys and junk (1.938788ms)
+✔ APPROVAL: runner binds immutable fields from the approval and refuses CLI drift (1.461755ms)
+✔ WRAPPER SHAPE: EXECUTE accepts the sidecar CONTENT sha and an approval file (21.8026ms)
+✔ VERIFY: two stages are addressable by mode and by --verifyPhase (0.290384ms)
+ℹ tests 54
+ℹ suites 0
+ℹ pass 54
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1052.561728
