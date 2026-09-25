@@ -1,0 +1,327 @@
+﻿C:\AI-PROJECTS\marketplace-business-os\app\abc\page.tsx:331: Выручка:{" "}
+C:\AI-PROJECTS\marketplace-business-os\app\abc\page.tsx:356: Выручка:{" "}
+C:\AI-PROJECTS\marketplace-business-os\app\abc\page.tsx:381: Выручка:{" "}
+C:\AI-PROJECTS\marketplace-business-os\app\abc\page.tsx:406: Выручка:{" "}
+C:\AI-PROJECTS\marketplace-business-os\app\abc\page.tsx:487: <th className="p-3 text-right">Выручка</th>
+C:\AI-PROJECTS\marketplace-business-os\app\abc\page.tsx:574: <th className="p-3 text-right">Выручка</th>
+C:\AI-PROJECTS\marketplace-business-os\app\analytics\page.tsx:24: "Где прибыль съедают комиссии, логистика и реклама на Ozon.",
+C:\AI-PROJECTS\marketplace-business-os\app\analytics\page.tsx:31: "Комиссии, логистика, реклама",
+C:\AI-PROJECTS\marketplace-business-os\app\analytics\page.tsx:52: title: "Остатки",
+C:\AI-PROJECTS\marketplace-business-os\app\analytics\page.tsx:62: "Остатки по складам и маркетплейсам",
+C:\AI-PROJECTS\marketplace-business-os\app\analytics\page.tsx:80: title: "Потом реклама",
+C:\AI-PROJECTS\marketplace-business-os\app\analytics\page.tsx:88: title: "Затем остатки и ABC",
+C:\AI-PROJECTS\marketplace-business-os\app\analytics\page.tsx:90: "Проверьте остатки и оборачиваемость. Используйте ABC для решений по ассортименту.",
+C:\AI-PROJECTS\marketplace-business-os\app\analytics\page.tsx:136: title: "Выручка без прибыли — не результат.",
+C:\AI-PROJECTS\marketplace-business-os\app\analytics\page.tsx:166: function AnalyticsModuleCard({
+C:\AI-PROJECTS\marketplace-business-os\app\analytics\page.tsx:209: function NextActionCard({ item }: { item: (typeof nextActions)[number] }) {
+C:\AI-PROJECTS\marketplace-business-os\app\analytics\page.tsx:248: или остатки. Начните с главного, затем углубляйтесь в детали.
+C:\AI-PROJECTS\marketplace-business-os\app\analytics\page.tsx:273: Реклама
+C:\AI-PROJECTS\marketplace-business-os\app\analytics\page.tsx:287: Остатки и ABC
+C:\AI-PROJECTS\marketplace-business-os\app\analytics\page.tsx:318: <AnalyticsModuleCard key={item.href} item={item} />
+C:\AI-PROJECTS\marketplace-business-os\app\analytics\page.tsx:387: <NextActionCard key={item.href + item.title} item={item} />
+C:\AI-PROJECTS\marketplace-business-os\app\api\cron\sync-wb-stock\route.ts:46: // Остатки — оперативные данные для сайта и Telegram-отчёта.
+C:\AI-PROJECTS\marketplace-business-os\app\api\settings\api-connections\sync-wb-product-cards\route.ts:3: import { syncWbProductCards } from "@/lib/wb/syncWbProductCards";
+C:\AI-PROJECTS\marketplace-business-os\app\api\settings\api-connections\sync-wb-product-cards\route.ts:17: wbCardsSync: status,
+C:\AI-PROJECTS\marketplace-business-os\app\api\settings\api-connections\sync-wb-product-cards\route.ts:62: const result = await syncWbProductCards(companyId);
+C:\AI-PROJECTS\marketplace-business-os\app\api\telegram\webhook\route.ts:452: "• поступило 4881996 лебедева ozon выручка",
+C:\AI-PROJECTS\marketplace-business-os\app\api\telegram\webhook\route.ts:473: "• реклама 5000 ozon",
+C:\AI-PROJECTS\marketplace-business-os\app\api\telegram\webhook\route.ts:486: "• поступило 4881996 лебедева ozon выручка",
+C:\AI-PROJECTS\marketplace-business-os\app\api\telegram\webhook\route.ts:527: "• поступило 4881996 лебедева ozon выручка",
+C:\AI-PROJECTS\marketplace-business-os\app\api\telegram\webhook\route.ts:1152: "поступило 4881996 лебедева ozon выручка",
+C:\AI-PROJECTS\marketplace-business-os\app\api\telegram\webhook\route.ts:1297: "реклама 5000 ozon",
+C:\AI-PROJECTS\marketplace-business-os\app\api\telegram\webhook\route.ts:1314: "поступило 4881996 лебедева ozon выручка",
+C:\AI-PROJECTS\marketplace-business-os\app\api\templates\finance-transactions\route.ts:209: "Реклама",
+C:\AI-PROJECTS\marketplace-business-os\app\api\templates\ozon-warehouse-stock\route.ts:104: const stockSheet = workbook.addWorksheet("Остатки_склада", {
+C:\AI-PROJECTS\marketplace-business-os\app\finance\accounts\page.tsx:213: движения идёт через единую модель ДДС: поступления минус выбытия,
+C:\AI-PROJECTS\marketplace-business-os\app\finance\accounts\page.tsx:223: ОДДС
+C:\AI-PROJECTS\marketplace-business-os\app\finance\accounts\page.tsx:323: <div className="text-sm text-slate-500">Без влияния на ДДС</div>
+C:\AI-PROJECTS\marketplace-business-os\app\finance\accounts\page.tsx:478: · без ДДС: {row.ignoredCount}
+C:\AI-PROJECTS\marketplace-business-os\app\finance\accounts\page.tsx:495: ОДДС →
+C:\AI-PROJECTS\marketplace-business-os\app\finance\accounts\page.tsx:517: Расчёт строится по единой модели ДДС: поступления − выбытия.
+C:\AI-PROJECTS\marketplace-business-os\app\finance\accounts\page.tsx:534: <th className="p-3 text-right">Без ДДС</th>
+C:\AI-PROJECTS\marketplace-business-os\app\finance\accounts\page.tsx:587: ОДДС
+C:\AI-PROJECTS\marketplace-business-os\app\finance\budget\page.tsx:302: Выручка:{" "}
+C:\AI-PROJECTS\marketplace-business-os\app\finance\calendar\page.tsx:176: if (params.treatment === "CASH_ONLY") return "Только ДДС";
+C:\AI-PROJECTS\marketplace-business-os\app\finance\calendar\page.tsx:716: ОДДС
+C:\AI-PROJECTS\marketplace-business-os\app\finance\cashflow\page.tsx:150: if (treatment === "CASH_ONLY") return parentLabel(parentName) || "Только ДДС";
+C:\AI-PROJECTS\marketplace-business-os\app\finance\cashflow\page.tsx:534: <h1 className="text-4xl font-bold text-slate-900">ОДДС</h1>
+C:\AI-PROJECTS\marketplace-business-os\app\finance\cashflow\page.tsx:726: <div className="text-sm text-slate-500">Поступления ДДС</div>
+C:\AI-PROJECTS\marketplace-business-os\app\finance\cashflow\page.tsx:733: <div className="text-sm text-slate-500">Выплаты ДДС</div>
+C:\AI-PROJECTS\marketplace-business-os\app\finance\cashflow\page.tsx:740: <div className="text-sm text-slate-500">Чистый ДДС</div>
+C:\AI-PROJECTS\marketplace-business-os\app\finance\cashflow\page.tsx:750: Рентабельность ДДС:{" "}
+C:\AI-PROJECTS\marketplace-business-os\app\finance\cashflow\page.tsx:760: <div className="text-sm font-semibold text-cyan-700">Только ДДС</div>
+C:\AI-PROJECTS\marketplace-business-os\app\finance\cashflow\page.tsx:790: Уменьшают и ДДС, и чистую прибыль.
+C:\AI-PROJECTS\marketplace-business-os\app\finance\cashflow\page.tsx:802: Уменьшает ДДС и показатель после вывода собственника.
+C:\AI-PROJECTS\marketplace-business-os\app\finance\cashflow\page.tsx:1046: Внутренние переводы меняют остатки счетов, но не меняют общий ОДДС.
+C:\AI-PROJECTS\marketplace-business-os\app\finance\cashflow\page.tsx:1104: <h2 className="text-xl font-bold text-slate-900">ДДС по месяцам</h2>
+C:\AI-PROJECTS\marketplace-business-os\app\finance\cashflow\page.tsx:1113: <th className="p-3 text-right">Чистый ДДС</th>
+C:\AI-PROJECTS\marketplace-business-os\app\finance\cashflow\page.tsx:1250: ? `Внутренний перевод, эффект для ОДДС: ${formatMoney(
+C:\AI-PROJECTS\marketplace-business-os\app\finance\categories\page.tsx:15: description: "Расход уменьшает ДДС и чистую прибыль бизнеса.",
+C:\AI-PROJECTS\marketplace-business-os\app\finance\categories\page.tsx:19: label: "Только ДДС",
+C:\AI-PROJECTS\marketplace-business-os\app\finance\categories\page.tsx:26: description: "Учитывается в ДДС, но не уменьшает чистую прибыль.",
+C:\AI-PROJECTS\marketplace-business-os\app\finance\categories\page.tsx:31: description: "Учитывается в ДДС и уменьшает чистую прибыль.",
+C:\AI-PROJECTS\marketplace-business-os\app\finance\categories\page.tsx:36: description: "Денежное поступление в ДДС, но не доход и не чистая прибыль.",
+C:\AI-PROJECTS\marketplace-business-os\app\finance\categories\page.tsx:42: "Учитывается в ДДС и в показателе после вывода собственника.",
+C:\AI-PROJECTS\marketplace-business-os\app\finance\categories\page.tsx:47: description: "Не участвует в расчётах прибыли и ДДС.",
+C:\AI-PROJECTS\marketplace-business-os\app\finance\categories\page.tsx:229: финансирования. Здесь задаётся, как каждая статья влияет на ДДС,
+C:\AI-PROJECTS\marketplace-business-os\app\finance\categories\page.tsx:395: показатель после вывода собственника и ДДС.
+C:\AI-PROJECTS\marketplace-business-os\app\finance\forecast\page.tsx:92: if (params.treatment === "CASH_ONLY") return "Только ДДС";
+C:\AI-PROJECTS\marketplace-business-os\app\finance\forecast\page.tsx:461: ОДДС
+C:\AI-PROJECTS\marketplace-business-os\app\finance\loans\page.tsx:212: ОДДС
+C:\AI-PROJECTS\marketplace-business-os\app\finance\operations\edit\[id]\page.tsx:16: description: "Влияет на ДДС и чистую прибыль бизнеса.",
+C:\AI-PROJECTS\marketplace-business-os\app\finance\operations\edit\[id]\page.tsx:20: label: "Только ДДС",
+C:\AI-PROJECTS\marketplace-business-os\app\finance\operations\edit\[id]\page.tsx:26: description: "Влияет на ДДС, но не уменьшает чистую прибыль.",
+C:\AI-PROJECTS\marketplace-business-os\app\finance\operations\edit\[id]\page.tsx:31: description: "Влияет на ДДС и уменьшает чистую прибыль.",
+C:\AI-PROJECTS\marketplace-business-os\app\finance\operations\edit\[id]\page.tsx:36: description: "Денежное поступление в ДДС, но не доход бизнеса.",
+C:\AI-PROJECTS\marketplace-business-os\app\finance\operations\edit\[id]\page.tsx:41: description: "Влияет на ДДС и показатель после вывода собственника.",
+C:\AI-PROJECTS\marketplace-business-os\app\finance\operations\edit\[id]\page.tsx:46: description: "Не участвует в расчётах прибыли и ДДС.",
+C:\AI-PROJECTS\marketplace-business-os\app\finance\operations\FinanceOperationForm.tsx:38: description: "Влияет на ДДС и чистую прибыль бизнеса.",
+C:\AI-PROJECTS\marketplace-business-os\app\finance\operations\FinanceOperationForm.tsx:42: label: "Только ДДС",
+C:\AI-PROJECTS\marketplace-business-os\app\finance\operations\FinanceOperationForm.tsx:48: description: "Влияет на ДДС, но не уменьшает чистую прибыль.",
+C:\AI-PROJECTS\marketplace-business-os\app\finance\operations\FinanceOperationForm.tsx:53: description: "Влияет на ДДС и уменьшает чистую прибыль.",
+C:\AI-PROJECTS\marketplace-business-os\app\finance\operations\FinanceOperationForm.tsx:58: description: "Денежное поступление в ДДС, но не доход бизнеса.",
+C:\AI-PROJECTS\marketplace-business-os\app\finance\operations\FinanceOperationForm.tsx:63: description: "Влияет на ДДС и показатель после вывода собственника.",
+C:\AI-PROJECTS\marketplace-business-os\app\finance\operations\FinanceOperationForm.tsx:68: description: "Не участвует в расчётах прибыли и ДДС.",
+C:\AI-PROJECTS\marketplace-business-os\app\finance\operations\FinanceOperationForm.tsx:76: if (type === "FINANCING") return "Финансы";
+C:\AI-PROJECTS\marketplace-business-os\app\finance\operations\FinanceOperationForm.tsx:280: Счета фильтруются по выбранной компании. Роль статьи влияет на ДДС,
+C:\AI-PROJECTS\marketplace-business-os\app\finance\operations\FinanceOperationForm.tsx:334: <option value="FINANCING">Финансы</option>
+C:\AI-PROJECTS\marketplace-business-os\app\finance\operations\page.tsx:92: title: "Поступления ДДС",
+C:\AI-PROJECTS\marketplace-business-os\app\finance\operations\page.tsx:97: title: "Выплаты ДДС",
+C:\AI-PROJECTS\marketplace-business-os\app\finance\operations\page.tsx:102: title: "Чистый ДДС",
+C:\AI-PROJECTS\marketplace-business-os\app\finance\operations\page.tsx:123: title: "Только ДДС",
+C:\AI-PROJECTS\marketplace-business-os\app\finance\operations\page.tsx:136: description: "Проценты по кредитам: влияют и на ДДС, и на чистую прибыль.",
+C:\AI-PROJECTS\marketplace-business-os\app\finance\operations\page.tsx:418: treatment.includes("ддс + прибыль") ||
+C:\AI-PROJECTS\marketplace-business-os\app\finance\operations\page.tsx:439: return treatment.includes("только ддс");
+C:\AI-PROJECTS\marketplace-business-os\app\finance\operations\page.tsx:568: function KpiCard({
+C:\AI-PROJECTS\marketplace-business-os\app\finance\operations\page.tsx:633: function TreatmentInfoCard({
+C:\AI-PROJECTS\marketplace-business-os\app\finance\operations\page.tsx:890: Финансы
+C:\AI-PROJECTS\marketplace-business-os\app\finance\operations\page.tsx:899: Роль статьи определяет влияние на ДДС, чистую прибыль и вывод
+C:\AI-PROJECTS\marketplace-business-os\app\finance\operations\page.tsx:1089: <KpiCard
+C:\AI-PROJECTS\marketplace-business-os\app\finance\operations\page.tsx:1090: title="Поступления (ДДС)"
+C:\AI-PROJECTS\marketplace-business-os\app\finance\operations\page.tsx:1104: <KpiCard
+C:\AI-PROJECTS\marketplace-business-os\app\finance\operations\page.tsx:1105: title="Выплаты (ДДС)"
+C:\AI-PROJECTS\marketplace-business-os\app\finance\operations\page.tsx:1119: <KpiCard
+C:\AI-PROJECTS\marketplace-business-os\app\finance\operations\page.tsx:1120: title="Чистый ДДС"
+C:\AI-PROJECTS\marketplace-business-os\app\finance\operations\page.tsx:1136: <KpiCard
+C:\AI-PROJECTS\marketplace-business-os\app\finance\operations\page.tsx:1153: <KpiCard
+C:\AI-PROJECTS\marketplace-business-os\app\finance\operations\page.tsx:1168: <KpiCard
+C:\AI-PROJECTS\marketplace-business-os\app\finance\operations\page.tsx:1185: <TreatmentInfoCard
+C:\AI-PROJECTS\marketplace-business-os\app\finance\operations\page.tsx:1186: title="Только ДДС"
+C:\AI-PROJECTS\marketplace-business-os\app\finance\operations\page.tsx:1199: <TreatmentInfoCard
+C:\AI-PROJECTS\marketplace-business-os\app\finance\operations\page.tsx:1215: <TreatmentInfoCard
+C:\AI-PROJECTS\marketplace-business-os\app\finance\operations\page.tsx:1229: <TreatmentInfoCard
+C:\AI-PROJECTS\marketplace-business-os\app\finance\plan-fact\page.tsx:133: function MetricCard({
+C:\AI-PROJECTS\marketplace-business-os\app\finance\plan-fact\page.tsx:163: function SplitMetricCard({
+C:\AI-PROJECTS\marketplace-business-os\app\finance\plan-fact\page.tsx:199: function MarketplaceProfitCard({
+C:\AI-PROJECTS\marketplace-business-os\app\finance\plan-fact\page.tsx:229: <span className="text-slate-500">Выручка</span>
+C:\AI-PROJECTS\marketplace-business-os\app\finance\plan-fact\page.tsx:244: <span className="text-slate-500">Реклама</span>
+C:\AI-PROJECTS\marketplace-business-os\app\finance\plan-fact\page.tsx:808: title: "Выручка WB/Ozon",
+C:\AI-PROJECTS\marketplace-business-os\app\finance\plan-fact\page.tsx:840: title: "Реклама WB/Ozon",
+C:\AI-PROJECTS\marketplace-business-os\app\finance\plan-fact\page.tsx:852: source: "Финансы / P&L",
+C:\AI-PROJECTS\marketplace-business-os\app\finance\plan-fact\page.tsx:860: source: "Финансы / P&L",
+C:\AI-PROJECTS\marketplace-business-os\app\finance\plan-fact\page.tsx:868: source: "Финансы / P&L",
+C:\AI-PROJECTS\marketplace-business-os\app\finance\plan-fact\page.tsx:876: source: "Финансы / P&L",
+C:\AI-PROJECTS\marketplace-business-os\app\finance\plan-fact\page.tsx:884: source: "Финансы / ДДС",
+C:\AI-PROJECTS\marketplace-business-os\app\finance\plan-fact\page.tsx:892: source: "Финансы / ДДС",
+C:\AI-PROJECTS\marketplace-business-os\app\finance\plan-fact\page.tsx:900: source: "Финансы / ДДС",
+C:\AI-PROJECTS\marketplace-business-os\app\finance\plan-fact\page.tsx:904: title: "Только ДДС",
+C:\AI-PROJECTS\marketplace-business-os\app\finance\plan-fact\page.tsx:908: source: "Финансы / ДДС",
+C:\AI-PROJECTS\marketplace-business-os\app\finance\plan-fact\page.tsx:1007: <MetricCard title="План выручки" value={formatMoney(planRevenue)} />
+C:\AI-PROJECTS\marketplace-business-os\app\finance\plan-fact\page.tsx:1009: <MetricCard
+C:\AI-PROJECTS\marketplace-business-os\app\finance\plan-fact\page.tsx:1016: <MetricCard title="План прибыли" value={formatMoney(planProfit)} />
+C:\AI-PROJECTS\marketplace-business-os\app\finance\plan-fact\page.tsx:1018: <MetricCard
+C:\AI-PROJECTS\marketplace-business-os\app\finance\plan-fact\page.tsx:1029: <MetricCard
+C:\AI-PROJECTS\marketplace-business-os\app\finance\plan-fact\page.tsx:1037: <SplitMetricCard
+C:\AI-PROJECTS\marketplace-business-os\app\finance\plan-fact\page.tsx:1038: title="Выручка"
+C:\AI-PROJECTS\marketplace-business-os\app\finance\plan-fact\page.tsx:1057: <SplitMetricCard
+C:\AI-PROJECTS\marketplace-business-os\app\finance\plan-fact\page.tsx:1078: <SplitMetricCard
+C:\AI-PROJECTS\marketplace-business-os\app\finance\plan-fact\page.tsx:1101: <SplitMetricCard
+C:\AI-PROJECTS\marketplace-business-os\app\finance\plan-fact\page.tsx:1102: title="Реклама WB/Ozon"
+C:\AI-PROJECTS\marketplace-business-os\app\finance\plan-fact\page.tsx:1124: <MetricCard
+C:\AI-PROJECTS\marketplace-business-os\app\finance\plan-fact\page.tsx:1127: subValue="Выручка − себестоимость"
+C:\AI-PROJECTS\marketplace-business-os\app\finance\plan-fact\page.tsx:1131: <MetricCard
+C:\AI-PROJECTS\marketplace-business-os\app\finance\plan-fact\page.tsx:1142: <MetricCard
+C:\AI-PROJECTS\marketplace-business-os\app\finance\plan-fact\page.tsx:1145: subValue="По финансовым операциям / ДДС"
+C:\AI-PROJECTS\marketplace-business-os\app\finance\plan-fact\page.tsx:1151: <MarketplaceProfitCard
+C:\AI-PROJECTS\marketplace-business-os\app\finance\plan-fact\page.tsx:1159: <MarketplaceProfitCard
+C:\AI-PROJECTS\marketplace-business-os\app\finance\plan-fact\page.tsx:1169: <MetricCard
+C:\AI-PROJECTS\marketplace-business-os\app\finance\plan-fact\page.tsx:1175: <MetricCard
+C:\AI-PROJECTS\marketplace-business-os\app\finance\plan-fact\page.tsx:1181: <MetricCard
+C:\AI-PROJECTS\marketplace-business-os\app\finance\plan-fact\page.tsx:1187: <MetricCard
+C:\AI-PROJECTS\marketplace-business-os\app\finance\plan-fact\page.tsx:1194: <MetricCard
+C:\AI-PROJECTS\marketplace-business-os\app\finance\plan-fact\page.tsx:1201: <MetricCard
+C:\AI-PROJECTS\marketplace-business-os\app\finance\plan-fact\page.tsx:1304: {row.isPnl ? "P&L" : "Только ДДС"}
+C:\AI-PROJECTS\marketplace-business-os\app\finance\plan-fact\page.tsx:1347: закупка, внутренняя реклама WB/Ozon, тело кредита и вывод
+C:\AI-PROJECTS\marketplace-business-os\app\finance\page.tsx:231: { title: "ОДДС", href: "/finance/cashflow" },
+C:\AI-PROJECTS\marketplace-business-os\app\finance\page.tsx:542: <div className="text-sm text-slate-500">Поступления ДДС</div>
+C:\AI-PROJECTS\marketplace-business-os\app\finance\page.tsx:560: <div className="text-sm text-slate-500">Выплаты ДДС</div>
+C:\AI-PROJECTS\marketplace-business-os\app\finance\page.tsx:578: <div className="text-sm text-slate-500">Чистый ДДС за период</div>
+C:\AI-PROJECTS\marketplace-business-os\app\finance\page.tsx:599: Только ДДС
+C:\AI-PROJECTS\marketplace-business-os\app\finance\page.tsx:618: Увеличивает ДДС, но не является прибылью.
+C:\AI-PROJECTS\marketplace-business-os\app\finance\page.tsx:630: Уменьшают и ДДС, и чистую прибыль.
+C:\AI-PROJECTS\marketplace-business-os\app\finance\page.tsx:642: Уменьшает ДДС и показатель после вывода собственника.
+C:\AI-PROJECTS\marketplace-business-os\app\finance\page.tsx:691: По средним выплатам ДДС за выбранный период
+C:\AI-PROJECTS\marketplace-business-os\app\import\page.tsx:34: path: "Финансы → Финансовые отчеты → Отчёты реализации → Еженедельные",
+C:\AI-PROJECTS\marketplace-business-os\app\import\page.tsx:38: title: "Wildberries — Реклама",
+C:\AI-PROJECTS\marketplace-business-os\app\import\page.tsx:40: path: "Продвижение → WB Продвижение → Финансы → История затрат",
+C:\AI-PROJECTS\marketplace-business-os\app\import\page.tsx:44: title: "Wildberries — Остатки",
+C:\AI-PROJECTS\marketplace-business-os\app\import\page.tsx:45: desc: "Остатки, товары в пути и возвраты",
+C:\AI-PROJECTS\marketplace-business-os\app\import\page.tsx:46: path: "Товары → Остатки → Скачать отчет",
+C:\AI-PROJECTS\marketplace-business-os\app\import\page.tsx:52: path: "Финансы → Экономика магазина → Скачать отчет → По товарам",
+C:\AI-PROJECTS\marketplace-business-os\app\import\page.tsx:56: title: "Ozon — Реклама",
+C:\AI-PROJECTS\marketplace-business-os\app\import\page.tsx:70: desc: "Остатки товаров на вашем складе для распределения поставок по кластерам.",
+C:\AI-PROJECTS\marketplace-business-os\app\import\page.tsx:71: path: "Скачать шаблон → заполнить артикулы и остатки → загрузить файл",
+C:\AI-PROJECTS\marketplace-business-os\app\import\page.tsx:81: if (reportType === "WB_FINANCE") return "WB финансы";
+C:\AI-PROJECTS\marketplace-business-os\app\import\page.tsx:82: if (reportType === "WB_ADS_STATS") return "WB реклама";
+C:\AI-PROJECTS\marketplace-business-os\app\import\page.tsx:83: if (reportType === "WB_STOCK") return "WB остатки";
+C:\AI-PROJECTS\marketplace-business-os\app\import\page.tsx:84: if (reportType === "OZON_FINANCE") return "Ozon финансы";
+C:\AI-PROJECTS\marketplace-business-os\app\import\page.tsx:85: if (reportType === "OZON_ADS") return "Ozon реклама";
+C:\AI-PROJECTS\marketplace-business-os\app\import\page.tsx:86: if (reportType === "OZON_STOCK") return "Ozon остатки";
+C:\AI-PROJECTS\marketplace-business-os\app\insights\page.tsx:95: function MetricCard({
+C:\AI-PROJECTS\marketplace-business-os\app\insights\page.tsx:143: <th className="p-3 text-right">Выручка</th>
+C:\AI-PROJECTS\marketplace-business-os\app\insights\page.tsx:539: <MetricCard
+C:\AI-PROJECTS\marketplace-business-os\app\insights\page.tsx:540: title="Выручка"
+C:\AI-PROJECTS\marketplace-business-os\app\insights\page.tsx:546: <MetricCard
+C:\AI-PROJECTS\marketplace-business-os\app\insights\page.tsx:555: <MetricCard
+C:\AI-PROJECTS\marketplace-business-os\app\insights\page.tsx:562: <MetricCard
+C:\AI-PROJECTS\marketplace-business-os\app\profit-ozon\page.tsx:961: function KpiCard({
+C:\AI-PROJECTS\marketplace-business-os\app\profit-ozon\page.tsx:1169: Выручка
+C:\AI-PROJECTS\marketplace-business-os\app\profit-ozon\page.tsx:1283: <InfoTooltip text="Расходы — все затраты по артикулу за выбранный период: себестоимость, комиссия Ozon, логистика, удержания/сторно, реклама и налоги." />
+C:\AI-PROJECTS\marketplace-business-os\app\profit-ozon\page.tsx:1287: <InfoTooltip text="Прибыль — прибыль после налогов: выручка минус все расходы. Процент под суммой показывает долю прибыли в выручке артикула. Бейдж A/B/C — ABC по прибыли." />
+C:\AI-PROJECTS\marketplace-business-os\app\profit-ozon\page.tsx:1295: <InfoTooltip text="Маржинальность — прибыль после налогов / выручка артикула × 100% за выбранный период. Шкала помогает быстро увидеть качество маржи." />
+C:\AI-PROJECTS\marketplace-business-os\app\profit-ozon\page.tsx:1562: label: "Реклама Ozon",
+C:\AI-PROJECTS\marketplace-business-os\app\profit-ozon\page.tsx:1671: <KpiCard
+C:\AI-PROJECTS\marketplace-business-os\app\profit-ozon\page.tsx:1672: title="Выручка"
+C:\AI-PROJECTS\marketplace-business-os\app\profit-ozon\page.tsx:1680: <KpiCard
+C:\AI-PROJECTS\marketplace-business-os\app\profit-ozon\page.tsx:1689: <KpiCard
+C:\AI-PROJECTS\marketplace-business-os\app\profit-ozon\page.tsx:1698: <KpiCard
+C:\AI-PROJECTS\marketplace-business-os\app\profit-ozon\page.tsx:1699: title="Реклама (ДРР)"
+C:\AI-PROJECTS\marketplace-business-os\app\profit-ozon\page.tsx:1708: <KpiCard
+C:\AI-PROJECTS\marketplace-business-os\app\profit-ozon\page.tsx:1718: <KpiCard
+C:\AI-PROJECTS\marketplace-business-os\app\profit-wb\page.tsx:471: const productCardWhere =
+C:\AI-PROJECTS\marketplace-business-os\app\profit-wb\page.tsx:486: const [salesRows, productCosts, productCards] = await Promise.all([
+C:\AI-PROJECTS\marketplace-business-os\app\profit-wb\page.tsx:502: prisma.wbProductCard.findMany({
+C:\AI-PROJECTS\marketplace-business-os\app\profit-wb\page.tsx:503: where: productCardWhere,
+C:\AI-PROJECTS\marketplace-business-os\app\profit-wb\page.tsx:513: for (const card of productCards) {
+C:\AI-PROJECTS\marketplace-business-os\app\profit-wb\page.tsx:514: const key = normalizeText(card.vendorCode || card.nmId);
+C:\AI-PROJECTS\marketplace-business-os\app\profit-wb\page.tsx:519: productName: card.title ?? card.vendorCode ?? card.nmId,
+C:\AI-PROJECTS\marketplace-business-os\app\profit-wb\page.tsx:520: subject: card.subjectName ?? "",
+C:\AI-PROJECTS\marketplace-business-os\app\profit-wb\page.tsx:521: nmId: card.nmId,
+C:\AI-PROJECTS\marketplace-business-os\app\profit-wb\page.tsx:522: vendorCode: card.vendorCode ?? "",
+C:\AI-PROJECTS\marketplace-business-os\app\profit-wb\page.tsx:523: imageUrl: card.photoSmallUrl ?? card.photoBigUrl,
+C:\AI-PROJECTS\marketplace-business-os\app\profit-wb\page.tsx:742: function KpiCard({
+C:\AI-PROJECTS\marketplace-business-os\app\profit-wb\page.tsx:1005: Выручка
+C:\AI-PROJECTS\marketplace-business-os\app\profit-wb\page.tsx:1023: <InfoTooltip text="Расходы — все затраты по артикулу за выбранный период: себестоимость, комиссия WB, логистика, хранение и приёмка, штрафы и удержания, платные услуги, реклама и налоги." />
+C:\AI-PROJECTS\marketplace-business-os\app\profit-wb\page.tsx:1027: <InfoTooltip text="Прибыль — прибыль после налогов: выручка минус все расходы. Процент под суммой показывает долю прибыли в выручке артикула. Бейдж A/B/C — ABC по прибыли." />
+C:\AI-PROJECTS\marketplace-business-os\app\profit-wb\page.tsx:1035: <InfoTooltip text="Маржинальность — прибыль после налогов / выручка артикула × 100% за выбранный период. Шкала помогает быстро увидеть качество маржи." />
+C:\AI-PROJECTS\marketplace-business-os\app\profit-wb\page.tsx:1395: label: "Реклама WB",
+C:\AI-PROJECTS\marketplace-business-os\app\profit-wb\page.tsx:1517: <KpiCard
+C:\AI-PROJECTS\marketplace-business-os\app\profit-wb\page.tsx:1518: title="Выручка"
+C:\AI-PROJECTS\marketplace-business-os\app\profit-wb\page.tsx:1526: <KpiCard
+C:\AI-PROJECTS\marketplace-business-os\app\profit-wb\page.tsx:1535: <KpiCard
+C:\AI-PROJECTS\marketplace-business-os\app\profit-wb\page.tsx:1544: <KpiCard
+C:\AI-PROJECTS\marketplace-business-os\app\profit-wb\page.tsx:1545: title="Реклама (ДРР)"
+C:\AI-PROJECTS\marketplace-business-os\app\profit-wb\page.tsx:1554: <KpiCard
+C:\AI-PROJECTS\marketplace-business-os\app\profit-wb\page.tsx:1564: <KpiCard
+C:\AI-PROJECTS\marketplace-business-os\app\settings\api-connections\page.tsx:95: { marketplace: "OZON", dataType: "FINANCE", title: "Финансы" },
+C:\AI-PROJECTS\marketplace-business-os\app\settings\api-connections\page.tsx:96: { marketplace: "OZON", dataType: "ADS", title: "Реклама" },
+C:\AI-PROJECTS\marketplace-business-os\app\settings\api-connections\page.tsx:98: { marketplace: "WB", dataType: "FINANCE", title: "Финансы" },
+C:\AI-PROJECTS\marketplace-business-os\app\settings\api-connections\page.tsx:100: { marketplace: "WB", dataType: "ADS", title: "Реклама" },
+C:\AI-PROJECTS\marketplace-business-os\app\settings\api-connections\page.tsx:515: if (dataType === "FINANCE") return "Финансы";
+C:\AI-PROJECTS\marketplace-business-os\app\settings\api-connections\page.tsx:516: if (dataType === "ADS") return "Реклама";
+C:\AI-PROJECTS\marketplace-business-os\app\settings\api-connections\page.tsx:977: formAction="/api/settings/api-connections/sync-wb-product-cards"
+C:\AI-PROJECTS\marketplace-business-os\app\settings\companies\page.tsx:438: Начальные остатки
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:1119: function ProductSizeSummaryCard({ group }: { group: ProductSizeSummary }) {
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:1241: function MetricCard({
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:1350: : "Складские остатки загружены."}
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:1704: const [ozonProducts, wbProductCards] = await Promise.all([
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:1719: prisma.wbProductCard.findMany({
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:1815: for (const product of wbProductCards) {
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:1884: for (const product of wbProductCards) {
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:2352: Остатки товаров
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:2355: Остатки WB, Ozon и собственного склада с оценкой по себестоимости.
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:2372: Загрузить остатки
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:2402: <MetricCard
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:2410: <MetricCard
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:2418: <MetricCard
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:2426: <MetricCard
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:2442: : "Остатки по компаниям"}
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:2652: Выберите товар, чтобы увидеть все размеры и остатки по
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:2826: <ProductSizeSummaryCard
+C:\AI-PROJECTS\marketplace-business-os\app\page.tsx:132: title: "Выручка и ДРР",
+C:\AI-PROJECTS\marketplace-business-os\app\page.tsx:135: label: "Выручка",
+C:\AI-PROJECTS\marketplace-business-os\app\page.tsx:155: title: "Выручка и прибыль",
+C:\AI-PROJECTS\marketplace-business-os\app\page.tsx:158: label: "Выручка",
+C:\AI-PROJECTS\marketplace-business-os\app\page.tsx:178: title: "Выручка и кредиты",
+C:\AI-PROJECTS\marketplace-business-os\app\page.tsx:181: label: "Выручка",
+C:\AI-PROJECTS\marketplace-business-os\app\page.tsx:201: title: "Прибыль и ДДС",
+C:\AI-PROJECTS\marketplace-business-os\app\page.tsx:256: title: "Склады и остатки",
+C:\AI-PROJECTS\marketplace-business-os\app\page.tsx:257: description: "Движение и остатки",
+C:\AI-PROJECTS\marketplace-business-os\app\page.tsx:400: if (metric.label === "Выручка") return point.revenue;
+C:\AI-PROJECTS\marketplace-business-os\app\page.tsx:421: if (metric.label === "Выручка") return sumDailyValue(points, (point) => point.revenue);
+C:\AI-PROJECTS\marketplace-business-os\app\page.tsx:509: function CompanyKpiMeta({
+C:\AI-PROJECTS\marketplace-business-os\app\page.tsx:944: function MetricCard({
+C:\AI-PROJECTS\marketplace-business-os\app\page.tsx:984: KPI
+C:\AI-PROJECTS\marketplace-business-os\app\page.tsx:1179: <div className="text-[10px] font-bold text-slate-400 sm:text-xs">Выручка всего</div>
+C:\AI-PROJECTS\marketplace-business-os\app\page.tsx:1254: if (preset.primary.label === "Выручка" && preset.secondary.kind === "money") {
+C:\AI-PROJECTS\marketplace-business-os\app\page.tsx:1710: <div>Реклама</div>
+C:\AI-PROJECTS\marketplace-business-os\app\page.tsx:1748: Выручка стабильна, но рекламную нагрузку стоит проверять в дни пиков.
+C:\AI-PROJECTS\marketplace-business-os\app\page.tsx:1833: makeMoneyReconciliationRow("Выручка всего", summary.totalRevenue, daily.revenue),
+C:\AI-PROJECTS\marketplace-business-os\app\page.tsx:1834: makeMoneyReconciliationRow("Выручка WB", summary.wbRevenue, daily.wbRevenue),
+C:\AI-PROJECTS\marketplace-business-os\app\page.tsx:1835: makeMoneyReconciliationRow("Выручка Ozon", summary.ozonRevenue, daily.ozonRevenue),
+C:\AI-PROJECTS\marketplace-business-os\app\page.tsx:1836: makeMoneyReconciliationRow("Реклама", summary.adsCost, daily.adsCost),
+C:\AI-PROJECTS\marketplace-business-os\app\page.tsx:2124: <div className="text-xs font-bold text-slate-500">Выручка всего</div>
+C:\AI-PROJECTS\marketplace-business-os\app\page.tsx:2133: <div className="text-xs font-bold text-slate-500">Реклама / ДРР</div>
+C:\AI-PROJECTS\marketplace-business-os\app\page.tsx:2191: function CompanyCard({
+C:\AI-PROJECTS\marketplace-business-os\app\page.tsx:2249: <div className="text-[10px] font-bold text-slate-500">Выручка</div>
+C:\AI-PROJECTS\marketplace-business-os\app\page.tsx:2253: <CompanyKpiMeta
+C:\AI-PROJECTS\marketplace-business-os\app\page.tsx:2264: <CompanyKpiMeta
+C:\AI-PROJECTS\marketplace-business-os\app\page.tsx:2276: <CompanyKpiMeta
+C:\AI-PROJECTS\marketplace-business-os\app\page.tsx:2288: <CompanyKpiMeta
+C:\AI-PROJECTS\marketplace-business-os\app\page.tsx:2321: <div className="text-xs font-black text-slate-950">Реклама</div>
+C:\AI-PROJECTS\marketplace-business-os\app\page.tsx:2819: ? `Отрицательный ДДС за период: ${formatCurrency(current.cashFlowResult)}.`
+C:\AI-PROJECTS\marketplace-business-os\app\page.tsx:2826: title: "Реклама",
+C:\AI-PROJECTS\marketplace-business-os\app\page.tsx:3028: <MetricCard
+C:\AI-PROJECTS\marketplace-business-os\app\page.tsx:3029: title="Выручка всего"
+C:\AI-PROJECTS\marketplace-business-os\app\page.tsx:3038: <MetricCard
+C:\AI-PROJECTS\marketplace-business-os\app\page.tsx:3049: <MetricCard
+C:\AI-PROJECTS\marketplace-business-os\app\page.tsx:3060: <MetricCard
+C:\AI-PROJECTS\marketplace-business-os\app\page.tsx:3071: <MetricCard
+C:\AI-PROJECTS\marketplace-business-os\app\page.tsx:3074: subtitle={`ДДС: поступления минус фактические выплаты · ${formatRevenuePercent(current.cashFlowResult, current.totalRevenue)}`}
+C:\AI-PROJECTS\marketplace-business-os\app\page.tsx:3082: <MetricCard
+C:\AI-PROJECTS\marketplace-business-os\app\page.tsx:3083: title="Реклама / ДРР"
+C:\AI-PROJECTS\marketplace-business-os\app\page.tsx:3085: subtitle={`Реклама всего: ${formatCurrency(current.adsCost)} · ${formatRevenuePercent(current.adsCost, current.totalRevenue)}`}
+C:\AI-PROJECTS\marketplace-business-os\app\page.tsx:3228: Главное по каждой компании: выручка, прибыль, ДДС, реклама, кредиты и ассортимент.
+C:\AI-PROJECTS\marketplace-business-os\app\page.tsx:3240: <CompanyCard
+C:\AI-PROJECTS\marketplace-business-os\components\app\AppNav.tsx:57: title: "Остатки",
+C:\AI-PROJECTS\marketplace-business-os\components\app\AppNav.tsx:63: title: "Реклама",
+C:\AI-PROJECTS\marketplace-business-os\components\app\AppNav.tsx:75: title: "Финансы",
+C:\AI-PROJECTS\marketplace-business-os\components\app\AppNav.tsx:89: title: "ОДДС",
+C:\AI-PROJECTS\marketplace-business-os\components\finance\FinanceNav.tsx:9: { title: "ОДДС", href: "/finance/cashflow" },
+C:\AI-PROJECTS\marketplace-business-os\components\marketplaces\MarketplaceNav.tsx:10: { title: "Остатки товаров", href: "/stocks" },
+C:\AI-PROJECTS\marketplace-business-os\components\ui\card.tsx:5: function Card({
+C:\AI-PROJECTS\marketplace-business-os\components\ui\card.tsx:12: data-slot="card"
+C:\AI-PROJECTS\marketplace-business-os\components\ui\card.tsx:15: "group/card flex flex-col gap-4 overflow-hidden rounded-xl bg-card py-4 text-sm text-card-foreground ring-1 ring-foreground/10 has-data-[slot=card-footer]:pb-0 has-[>img:first-child]:pt-0 data-[size=sm]:gap-3 data-[size=sm]:py-3 data-[size=sm]:has-data-[slot=card-footer]:pb-0 *:[img:first-child]:rounded-t-xl *:[img:last-child]:rounded-b-xl",
+C:\AI-PROJECTS\marketplace-business-os\components\ui\card.tsx:23: function CardHeader({ className, ...props }: React.ComponentProps<"div">) {
+C:\AI-PROJECTS\marketplace-business-os\components\ui\card.tsx:26: data-slot="card-header"
+C:\AI-PROJECTS\marketplace-business-os\components\ui\card.tsx:28: "group/card-header @container/card-header grid auto-rows-min items-start gap-1 rounded-t-xl px-4 group-data-[size=sm]/card:px-3 has-data-[slot=card-action]:grid-cols-[1fr_auto] has-data-[slot=card-description]:grid-rows-[auto_auto] [.border-b]:pb-4 group-data-[size=sm]/card:[.border-b]:pb-3",
+C:\AI-PROJECTS\marketplace-business-os\components\ui\card.tsx:36: function CardTitle({ className, ...props }: React.ComponentProps<"div">) {
+C:\AI-PROJECTS\marketplace-business-os\components\ui\card.tsx:39: data-slot="card-title"
+C:\AI-PROJECTS\marketplace-business-os\components\ui\card.tsx:41: "font-heading text-base leading-snug font-medium group-data-[size=sm]/card:text-sm",
+C:\AI-PROJECTS\marketplace-business-os\components\ui\card.tsx:49: function CardDescription({ className, ...props }: React.ComponentProps<"div">) {
+C:\AI-PROJECTS\marketplace-business-os\components\ui\card.tsx:52: data-slot="card-description"
+C:\AI-PROJECTS\marketplace-business-os\components\ui\card.tsx:59: function CardAction({ className, ...props }: React.ComponentProps<"div">) {
+C:\AI-PROJECTS\marketplace-business-os\components\ui\card.tsx:62: data-slot="card-action"
+C:\AI-PROJECTS\marketplace-business-os\components\ui\card.tsx:72: function CardContent({ className, ...props }: React.ComponentProps<"div">) {
+C:\AI-PROJECTS\marketplace-business-os\components\ui\card.tsx:75: data-slot="card-content"
+C:\AI-PROJECTS\marketplace-business-os\components\ui\card.tsx:76: className={cn("px-4 group-data-[size=sm]/card:px-3", className)}
+C:\AI-PROJECTS\marketplace-business-os\components\ui\card.tsx:82: function CardFooter({ className, ...props }: React.ComponentProps<"div">) {
+C:\AI-PROJECTS\marketplace-business-os\components\ui\card.tsx:85: data-slot="card-footer"
+C:\AI-PROJECTS\marketplace-business-os\components\ui\card.tsx:87: "flex items-center rounded-b-xl border-t bg-muted/50 p-4 group-data-[size=sm]/card:p-3",
+C:\AI-PROJECTS\marketplace-business-os\components\ui\card.tsx:96: Card,
+C:\AI-PROJECTS\marketplace-business-os\components\ui\card.tsx:97: CardHeader,
+C:\AI-PROJECTS\marketplace-business-os\components\ui\card.tsx:98: CardFooter,
+C:\AI-PROJECTS\marketplace-business-os\components\ui\card.tsx:99: CardTitle,
+C:\AI-PROJECTS\marketplace-business-os\components\ui\card.tsx:100: CardAction,
+C:\AI-PROJECTS\marketplace-business-os\components\ui\card.tsx:101: CardDescription,
+C:\AI-PROJECTS\marketplace-business-os\components\ui\card.tsx:102: CardContent,

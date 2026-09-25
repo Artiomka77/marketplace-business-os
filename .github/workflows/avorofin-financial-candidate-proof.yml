@@ -1,0 +1,581 @@
+name: avorofin-financial-candidate-proof
+on:
+  push:
+    branches:
+      - 'audit/avorofin-financial-true-runtime-20260925_1200'
+permissions:
+  contents: write
+  actions: read
+concurrency:
+  group: avorofin-financial-candidate-proof
+  cancel-in-progress: true
+jobs:
+  candidate-build-canary:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: canary
+          POSTGRES_USER: canary
+          POSTGRES_DB: canary
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U canary -d canary"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - name: Checkout temp branch
+        uses: actions/checkout@v4
+      - name: Prove GitHub-hosted runner
+        run: |
+          set -euo pipefail
+          {
+            echo "RUNNER_GITHUB_HOSTED=YES"
+            echo "RUNNER_SELF_HOSTED=NO"
+            echo "ImageOS=${ImageOS:-}"
+            echo "RUNNER_NAME=${RUNNER_NAME:-}"
+            hostname
+            uname -a
+          } | tee github-runner-proof.txt
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - name: Build exact candidate context from manifest
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const fs = require('fs');
+          const path = require('path');
+          const crypto = require('crypto');
+          const manifest = JSON.parse(fs.readFileSync('audit-build-meta/CANDIDATE_FILE_MANIFEST_FINAL.json','utf8'));
+          const out = '/tmp/avorofin-candidate-build-context';
+          fs.rmSync(out, { recursive: true, force: true });
+          fs.mkdirSync(out, { recursive: true });
+          let missing=0, mismatch=0;
+          for (const f of manifest.files) {
+            const rel = String(f.path).replace(/\\/g,'/');
+            const src = path.join(process.cwd(), rel);
+            if (!fs.existsSync(src)) { missing++; console.error('MISSING', rel); continue; }
+            const buf = fs.readFileSync(src);
+            const h = crypto.createHash('sha256').update(buf).digest('hex');
+            if (h !== f.sha256) { mismatch++; console.error('MISMATCH', rel); continue; }
+            const dst = path.join(out, rel);
+            fs.mkdirSync(path.dirname(dst), { recursive: true });
+            fs.writeFileSync(dst, buf);
+          }
+          if (missing || mismatch) {
+            console.error(JSON.stringify({missing, mismatch}));
+            process.exit(1);
+          }
+          console.log('BUILD_CONTEXT_MANIFEST_VERIFY=PASS');
+          fs.writeFileSync('BUILD_CONTEXT_MANIFEST_VERIFY.txt', 'PASS\n');
+          NODE
+      - name: Prebuild certify in context
+        working-directory: /tmp/avorofin-candidate-build-context
+        env:
+          DATABASE_URL: postgresql://canary:canary@127.0.0.1:5432/canary?schema=public
+          NEXT_TELEMETRY_DISABLED: '1'
+        run: |
+          set -euo pipefail
+          npm ci
+          npx prisma generate 2>&1 | tee "$GITHUB_WORKSPACE/prisma-generate.txt"
+          npm run financial-core:verify 2>&1 | tee "$GITHUB_WORKSPACE/financial-core-verify.txt"
+          npm run build 2>&1 | tee "$GITHUB_WORKSPACE/build-final.txt"
+          # Typecheck is a gate, not a log: a candidate that does not typecheck cannot
+          # be the image the owner approval pins. Lint stays advisory.
+          npx tsc --noEmit 2>&1 | tee "$GITHUB_WORKSPACE/tsc-raw.txt"
+          (npm run lint || true) 2>&1 | tee "$GITHUB_WORKSPACE/lint-raw.txt"
+          npm run api-first-repair:test 2>&1 | tee "$GITHUB_WORKSPACE/focused-financial-tests.txt"
+          if grep -RInE 'BEGIN (RSA |OPENSSH )?PRIVATE KEY' . --exclude-dir=node_modules --exclude-dir=.next | head; then
+            echo SECRET_SCAN=FAIL; exit 1;
+          fi
+          echo SECRET_SCAN=PASS | tee "$GITHUB_WORKSPACE/secret-scan.txt"
+      - name: Focused repair-runner tests
+        working-directory: /tmp/avorofin-candidate-build-context
+        env:
+          DATABASE_URL: postgresql://canary:canary@127.0.0.1:5432/canary?schema=public
+        run: |
+          set -euo pipefail
+          npx tsx --test \
+            scripts/architecture/ozonHistoricalRepairDeferred.test.ts \
+            scripts/architecture/ozonHistoricalRepairExecutable.test.ts \
+            scripts/architecture/financialRepairProductionWrapper.test.ts \
+            2>&1 | tee "$GITHUB_WORKSPACE/repair-runner-tests.txt"
+          test -s "$GITHUB_WORKSPACE/repair-runner-tests.txt"
+          grep -q 'fail 0' "$GITHUB_WORKSPACE/repair-runner-tests.txt"
+      - name: Financial repair Postgres E2E (real adapters, ephemeral DB)
+        working-directory: /tmp/avorofin-candidate-build-context
+        env:
+          DATABASE_URL: postgresql://canary:canary@127.0.0.1:5432/canary?schema=public
+          E2E_OUT: ${{ github.workspace }}
+          NEXT_TELEMETRY_DISABLED: '1'
+        run: |
+          set -euo pipefail
+          # EPHEMERAL_MEMORY_STORE stays unset: the run must go through the real
+          # Prisma adapters against the postgres service container.
+          test -z "${EPHEMERAL_MEMORY_STORE:-}"
+          test -z "${SKIP_POSTGRES_E2E:-}"
+          npx tsx --test scripts/architecture/ozonHistoricalRepairPostgresE2E.test.ts \
+            2>&1 | tee "$GITHUB_WORKSPACE/financial-repair-postgres-e2e.txt"
+          test -s "$GITHUB_WORKSPACE/financial-repair-postgres-e2e.txt"
+          if grep -q 'POSTGRES_E2E=SKIPPED' "$GITHUB_WORKSPACE/financial-repair-postgres-e2e.txt"; then
+            echo "POSTGRES_E2E_SKIPPED_IN_CI=FAIL"; exit 1;
+          fi
+          node -e '
+            const fs = require("fs");
+            const p = process.env.GITHUB_WORKSPACE + "/FINANCIAL_REPAIR_POSTGRES_E2E_FINAL.json";
+            const r = JSON.parse(fs.readFileSync(p, "utf8"));
+            const fail = [];
+            if (r.EPHEMERAL_STORE !== "POSTGRES") fail.push("EPHEMERAL_STORE=" + r.EPHEMERAL_STORE);
+            if (r.EPHEMERAL_E2E !== "PASS") fail.push("EPHEMERAL_E2E=" + r.EPHEMERAL_E2E);
+            if (r.adapterReadinessProfile !== "PRODUCTION_PRISMA") fail.push("profile=" + r.adapterReadinessProfile);
+            if (r.OZON_NETWORK_CALLS_ON_EXECUTE !== 0) fail.push("ozonCalls=" + r.OZON_NETWORK_CALLS_ON_EXECUTE);
+            if (r.counts.sourceTargets !== 78) fail.push("sourceTargets=" + r.counts.sourceTargets);
+            // Main path is the production shape: every source day starts MISSING.
+            if (r.counts.sourceTargetsInitialMissing !== 78) fail.push("initialMissing=" + r.counts.sourceTargetsInitialMissing);
+            if (r.counts.sourcePersistedFirstRun !== 78) fail.push("persistedFirstRun=" + r.counts.sourcePersistedFirstRun);
+            if (r.counts.sourceNoopFirstRun !== 0) fail.push("noopFirstRun=" + r.counts.sourceNoopFirstRun);
+            if (r.counts.sourceNoopOnRerun !== 78) fail.push("noopOnRerun=" + r.counts.sourceNoopOnRerun);
+            // Mixed already-FINAL run is kept as an additional scenario.
+            if (r.counts.sourceMixedNoop !== 36) fail.push("mixedNoop=" + r.counts.sourceMixedNoop);
+            if (r.counts.sourceMixedPersisted !== 42) fail.push("mixedPersisted=" + r.counts.sourceMixedPersisted);
+            if (r.counts.sourceResumedAfterCrash !== 1) fail.push("resumed=" + r.counts.sourceResumedAfterCrash);
+            if (r.counts.standaloneStatusesWritten !== 10) fail.push("statuses=" + r.counts.standaloneStatusesWritten);
+            if (r.counts.snapshotDelete !== 35 || r.counts.snapshotRequeue !== 35) fail.push("snapshot=" + r.counts.snapshotDelete + "/" + r.counts.snapshotRequeue);
+            if (r.counts.v2AllScopeRebuilt !== 2) fail.push("v2=" + r.counts.v2AllScopeRebuilt);
+            if (r.counts.profitReadModelJobsDuringRepair !== 0) fail.push("profitJobs=" + r.counts.profitReadModelJobsDuringRepair);
+            if (fail.length) { console.error("POSTGRES_E2E_EVIDENCE=FAIL " + fail.join(" ")); process.exit(1); }
+            console.log("POSTGRES_E2E_EVIDENCE=PASS");
+          '
+          mkdir -p "$GITHUB_WORKSPACE/github-actions-evidence"
+          cp "$GITHUB_WORKSPACE/FINANCIAL_REPAIR_POSTGRES_E2E_FINAL.json" \
+             "$GITHUB_WORKSPACE/FINANCIAL_REPAIR_POSTGRES_E2E_FINAL.json.sha256.txt" \
+             "$GITHUB_WORKSPACE/financial-repair-postgres-e2e.txt" \
+             "$GITHUB_WORKSPACE/github-actions-evidence/"
+      - name: Docker build four candidate images
+        working-directory: /tmp/avorofin-candidate-build-context
+        env:
+          NEXT_PUBLIC_SITE_URL: http://127.0.0.1:3000
+          NEXT_PUBLIC_SUPABASE_URL: http://127.0.0.1:54321
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: canary-anon
+          NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: canary-publishable
+        run: |
+          set -euo pipefail
+          EV="$GITHUB_WORKSPACE/github-actions-evidence"
+          mkdir -p "$EV"
+
+          # target | tag | slug | build log | inspect file. The APP uses the Dockerfile
+          # default stage (runner); the other three are explicit --target builds.
+          IMAGES=(
+            "DEFAULT|avorofin-financial-candidate:${GITHUB_RUN_ID}|candidate|DOCKER_BUILD_FINAL_RAW.txt|DOCKER_IMAGE_INSPECT_FINAL.txt"
+            "financial-repair-runner|avorofin-financial-repair-runner:${GITHUB_RUN_ID}|repair-runner|DOCKER_BUILD_REPAIR_RUNNER_RAW.txt|DOCKER_IMAGE_INSPECT_REPAIR_RUNNER.txt"
+            "v6-period-readmodel-worker|avorofin-v6-period-readmodel-worker:${GITHUB_RUN_ID}|v6-worker|DOCKER_BUILD_V6_WORKER_RAW.txt|DOCKER_IMAGE_INSPECT_V6_WORKER.txt"
+            "dashboard-period-snapshot-worker|avorofin-dashboard-period-snapshot-worker:${GITHUB_RUN_ID}|dashboard-worker|DOCKER_BUILD_DASHBOARD_WORKER_RAW.txt|DOCKER_IMAGE_INSPECT_DASHBOARD_WORKER.txt"
+          )
+
+          for row in "${IMAGES[@]}"; do
+            IFS='|' read -r target tag slug buildlog inspectfile <<< "$row"
+            target_args=()
+            label="$target"
+            if [ "$target" = "DEFAULT" ]; then
+              target_args=()
+              label="app-runner"
+            else
+              target_args=(--target "$target")
+            fi
+            # --progress=plain + 2>&1: buildkit writes progress to stderr, so without
+            # both the tee'd build log lands empty.
+            docker build \
+              --progress=plain \
+              "${target_args[@]}" \
+              --build-arg NEXT_PUBLIC_SITE_URL="$NEXT_PUBLIC_SITE_URL" \
+              --build-arg NEXT_PUBLIC_SUPABASE_URL="$NEXT_PUBLIC_SUPABASE_URL" \
+              --build-arg NEXT_PUBLIC_SUPABASE_ANON_KEY="$NEXT_PUBLIC_SUPABASE_ANON_KEY" \
+              --build-arg NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY="$NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY" \
+              --label "avorofin.candidate.run_id=${GITHUB_RUN_ID}" \
+              --label "avorofin.candidate.sha=${GITHUB_SHA}" \
+              --label "avorofin.image=${label}" \
+              -t "$tag" . 2>&1 | tee "$GITHUB_WORKSPACE/${buildlog}"
+
+            docker image inspect "$tag" > "$GITHUB_WORKSPACE/${inspectfile}"
+            id="$(docker image inspect -f '{{.Id}}' "$tag")"
+            case "$id" in
+              sha256:*) : ;;
+              *) echo "IMAGE_ID_SHAPE=FAIL ${slug}=${id}"; exit 1 ;;
+            esac
+            echo "$id"  > "$GITHUB_WORKSPACE/${slug}-image-id.txt"
+            echo "$tag" > "$GITHUB_WORKSPACE/${slug}-image-tag.txt"
+            docker save "$tag" -o "$GITHUB_WORKSPACE/${slug}-image.tar"
+            sha256sum "$GITHUB_WORKSPACE/${slug}-image.tar" \
+              | tee "$GITHUB_WORKSPACE/${slug}-image.tar.sha256.txt"
+            gzip -c "$GITHUB_WORKSPACE/${slug}-image.tar" > "$GITHUB_WORKSPACE/${slug}-image.tar.gz"
+            sha256sum "$GITHUB_WORKSPACE/${slug}-image.tar.gz" \
+              | tee "$GITHUB_WORKSPACE/${slug}-image.tar.gz.sha256.txt"
+            # The host wrapper loads the uncompressed tar, so the tar sha is the one
+            # the owner approval pins; the .gz sha pins the artifact bytes.
+            cp "$GITHUB_WORKSPACE/${slug}-image-id.txt" \
+               "$GITHUB_WORKSPACE/${slug}-image-tag.txt" \
+               "$GITHUB_WORKSPACE/${slug}-image.tar.sha256.txt" \
+               "$GITHUB_WORKSPACE/${slug}-image.tar.gz.sha256.txt" \
+               "$GITHUB_WORKSPACE/${slug}-image.tar.gz" \
+               "$GITHUB_WORKSPACE/${inspectfile}" \
+               "$GITHUB_WORKSPACE/${buildlog}" \
+               "$EV/"
+            echo "CANDIDATE_IMAGE ${slug}=${id}"
+          done
+
+          # The APP image keeps its historical file names so existing evidence readers
+          # and the owner approval key names do not shift under this change.
+          cp "$GITHUB_WORKSPACE/candidate-image-id.txt" "$GITHUB_WORKSPACE/image-id.txt"
+          cp "$GITHUB_WORKSPACE/candidate-image-tag.txt" "$GITHUB_WORKSPACE/image-tag.txt"
+          cp "$GITHUB_WORKSPACE/image-id.txt" "$GITHUB_WORKSPACE/image-tag.txt" "$EV/"
+
+          for log in \
+            "$GITHUB_WORKSPACE/DOCKER_BUILD_FINAL_RAW.txt" \
+            "$GITHUB_WORKSPACE/DOCKER_BUILD_REPAIR_RUNNER_RAW.txt" \
+            "$GITHUB_WORKSPACE/DOCKER_BUILD_V6_WORKER_RAW.txt" \
+            "$GITHUB_WORKSPACE/DOCKER_BUILD_DASHBOARD_WORKER_RAW.txt" \
+            "$GITHUB_WORKSPACE/prisma-generate.txt" \
+            "$GITHUB_WORKSPACE/financial-core-verify.txt" \
+            "$GITHUB_WORKSPACE/build-final.txt" \
+            "$GITHUB_WORKSPACE/focused-financial-tests.txt" \
+            "$GITHUB_WORKSPACE/repair-runner-tests.txt" \
+            "$GITHUB_WORKSPACE/financial-repair-postgres-e2e.txt"; do
+            test -s "$log" || { echo "EMPTY_BUILD_LOG=$log"; exit 1; }
+          done
+          echo BUILD_LOGS_NON_EMPTY=PASS | tee "$GITHUB_WORKSPACE/BUILD_LOGS_NON_EMPTY.txt"
+          cp "$GITHUB_WORKSPACE/repair-runner-tests.txt" "$EV/"
+      - name: Isolated canary
+        env:
+          DATABASE_URL: postgresql://canary:canary@127.0.0.1:5432/canary?schema=public
+          NEXT_TELEMETRY_DISABLED: '1'
+        run: |
+          set -euo pipefail
+          IMAGE_TAG=$(cat image-tag.txt)
+          docker run -d --name avorofin-canary \
+            -e DATABASE_URL="$DATABASE_URL" \
+            -e NEXT_TELEMETRY_DISABLED=1 \
+            -p 3000:3000 \
+            "$IMAGE_TAG"
+          sleep 25
+          STATUS=$(docker inspect -f '{{.State.Status}}' avorofin-canary)
+          OOM=$(docker inspect -f '{{.State.OOMKilled}}' avorofin-canary)
+          RESTART=$(docker inspect -f '{{.RestartCount}}' avorofin-canary)
+          HTTP=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:3000/login || true)
+          cat > github-actions-evidence/FINAL_APP_CANDIDATE_CANARY.json <<EOF
+          {
+            "status": "PASS",
+            "containerStatus": "$STATUS",
+            "oomKilled": "$OOM",
+            "restartCount": "$RESTART",
+            "loginHttp": "$HTTP",
+            "productionDbUsed": false,
+            "boundedWindowSec": 25
+          }
+          EOF
+          test "$STATUS" = "running"
+          test "$OOM" = "false"
+          docker logs avorofin-canary > github-actions-evidence/canary-logs.txt || true
+          docker stop avorofin-canary
+          docker rm avorofin-canary
+      - name: Worker image canaries
+        env:
+          DATABASE_URL: postgresql://canary:canary@127.0.0.1:5432/canary?schema=public
+        run: |
+          set -euo pipefail
+          V6_TAG=$(cat v6-worker-image-tag.txt)
+          DASHBOARD_TAG=$(cat dashboard-worker-image-tag.txt)
+
+          # 1. Fail-closed: the v6 worker must refuse to run without an explicit
+          # ephemeral target database, and must say so. An image that starts anyway is
+          # an image that could be pointed at production by omission.
+          set +e
+          docker run --rm --network none "$V6_TAG" > v6-failclosed.txt 2>&1
+          V6_FAILCLOSED_STATUS=$?
+          set -e
+          test "$V6_FAILCLOSED_STATUS" -ne 0
+          grep -q 'V6_READMODEL_TARGET_DATABASE_URL is required' v6-failclosed.txt
+
+          # 2. Fail-closed: the v6 worker must refuse an explicit production persist.
+          set +e
+          docker run --rm --network none \
+            -e V6_READMODEL_ALLOW_PROD_PERSIST=1 \
+            -e V6_READMODEL_TARGET_DATABASE_URL="$DATABASE_URL" \
+            "$V6_TAG" > v6-prodpersist.txt 2>&1
+          V6_PRODPERSIST_STATUS=$?
+          set -e
+          test "$V6_PRODPERSIST_STATUS" -ne 0
+          grep -q 'Wave A forbids production persist' v6-prodpersist.txt
+
+          # 3. Fail-closed: the dashboard worker must refuse an unknown formula version
+          # rather than silently claiming every job.
+          set +e
+          docker run --rm --network none \
+            -e DASHBOARD_SNAPSHOT_FORMULA_VERSIONS=NOT_A_REAL_FORMULA \
+            -e DATABASE_URL="$DATABASE_URL" \
+            "$DASHBOARD_TAG" > dashboard-badformula.txt 2>&1
+          DASHBOARD_BADFORMULA_STATUS=$?
+          set -e
+          test "$DASHBOARD_BADFORMULA_STATUS" -ne 0
+          grep -q 'DASHBOARD_SNAPSHOT_FORMULA_VERSIONS contains no supported values' \
+            dashboard-badformula.txt
+
+          # 4. Live oneshot against the postgres service container, using the schema the
+          # Postgres E2E pushed. --network host so 127.0.0.1:5432 reaches the service.
+          docker run --rm --network host \
+            -e DATABASE_URL="$DATABASE_URL" \
+            -e DASHBOARD_SNAPSHOT_WORKER_MODE=once \
+            -e DASHBOARD_SNAPSHOT_FORMULA_VERSIONS=FINANCIAL_CORE_V4_PERIOD_SNAPSHOT_V1 \
+            "$DASHBOARD_TAG" > dashboard-oneshot.txt 2>&1
+          grep -q 'WORKER_START' dashboard-oneshot.txt
+
+          # 5. Live queue-once against the same service database. The bounded window is
+          # enforced from outside, and the assertion is on the worker's own start event
+          # so an empty queue cannot be mistaken for a pass.
+          set +e
+          timeout 90 docker run --rm --network host \
+            -e V6_READMODEL_TARGET_DATABASE_URL="$DATABASE_URL" \
+            -e DATABASE_URL="$DATABASE_URL" \
+            -e V6_READMODEL_WORKER_MODE=queue-once \
+            -e V6_READMODEL_WORKER_MAX_JOBS=1 \
+            -e V6_READMODEL_WORKER_POLL_MS=1000 \
+            "$V6_TAG" > v6-queue-once.txt 2>&1
+          V6_QUEUE_STATUS=$?
+          set -e
+          grep -q '"event":"v6_period_readmodel_worker_start"' v6-queue-once.txt
+          grep -q 'FINANCIAL_CORE_V6_PERIOD_READMODEL_V2' v6-queue-once.txt
+
+          cat > github-actions-evidence/WORKER_IMAGE_CANARY.json <<EOF
+          {
+            "WORKER_IMAGE_CANARY": "PASS",
+            "productionDbUsed": false,
+            "v6FailClosedNoTargetDb": {"exitCode": $V6_FAILCLOSED_STATUS, "refused": true},
+            "v6FailClosedProdPersist": {"exitCode": $V6_PRODPERSIST_STATUS, "refused": true},
+            "dashboardFailClosedUnknownFormula": {"exitCode": $DASHBOARD_BADFORMULA_STATUS, "refused": true},
+            "dashboardOneshotAgainstServicePostgres": "STARTED",
+            "v6QueueOnceAgainstServicePostgres": {"exitCode": $V6_QUEUE_STATUS, "startEventObserved": true, "boundedWindowSec": 90}
+          }
+          EOF
+          cp v6-failclosed.txt v6-prodpersist.txt dashboard-badformula.txt \
+             dashboard-oneshot.txt v6-queue-once.txt github-actions-evidence/
+      - name: Write build evidence
+        run: |
+          set -euo pipefail
+          cat > github-actions-evidence/GITHUB_ACTIONS_BUILD_EVIDENCE.json <<EOF
+          {
+            "GITHUB_RUN_ID": "${GITHUB_RUN_ID}",
+            "GITHUB_SHA": "${GITHUB_SHA}",
+            "TEMP_BRANCH": "audit/avorofin-financial-true-runtime-20260925_1200",
+            "BUILD": "PASS",
+            "CANARY": "PASS",
+            "WORKER_IMAGE_CANARY": "PASS",
+            "FINANCIAL_REPAIR_POSTGRES_E2E": "PASS",
+            "BUILD_LOGS_NON_EMPTY": "PASS",
+            "IMAGES_BUILT": 4
+          }
+          EOF
+          cat > github-actions-evidence/GITHUB_ACTIONS_NONPRODUCTION_BUILD_PROOF.json <<EOF
+          {
+            "RUNNER_GITHUB_HOSTED": "YES",
+            "RUNNER_SELF_HOSTED": "NO",
+            "BUILD_HOST_IS_MAIN_PRODUCTION": "NO",
+            "BUILD_HOST_IS_TELEGRAM_PRODUCTION": "NO",
+            "BUILD_HOST_IS_NONPRODUCTION": "YES",
+            "PRODUCTION_DB_USED": "NO",
+            "PRODUCTION_API_KEYS_USED": "NO",
+            "PRODUCTION_TELEGRAM_SECRET_USED": "NO",
+            "REGISTRY_PUSH": "NO",
+            "PRODUCTION_DEPLOY": "NO",
+            "TEMP_BRANCH_ONLY": "YES",
+            "DEFAULT_BRANCH_CHANGED": "NO",
+            "TAG_CREATED": "NO",
+            "RELEASE_CREATED": "NO",
+            "CANDIDATE_IMAGE_ARTIFACT_CREATED": "YES",
+            "CANDIDATE_IMAGE_ARTIFACT_COUNT": 4
+          }
+          EOF
+          cp financial-core-verify.txt build-final.txt secret-scan.txt prisma-generate.txt tsc-raw.txt lint-raw.txt focused-financial-tests.txt BUILD_LOGS_NON_EMPTY.txt github-actions-evidence/
+          cp FINANCIAL_REPAIR_POSTGRES_E2E_FINAL.json FINANCIAL_REPAIR_POSTGRES_E2E_FINAL.json.sha256.txt financial-repair-postgres-e2e.txt github-actions-evidence/
+          test -s github-actions-evidence/FINANCIAL_REPAIR_POSTGRES_E2E_FINAL.json
+          cp BUILD_CONTEXT_MANIFEST_VERIFY.txt github-runner-proof.txt github-actions-evidence/
+      - name: Upload APP image artifact
+        id: upload_app_image
+        uses: actions/upload-artifact@v4
+        with:
+          name: avorofin-financial-candidate-image-${{ github.run_id }}
+          path: |
+            github-actions-evidence/candidate-image.tar.gz
+            github-actions-evidence/candidate-image*.txt
+            github-actions-evidence/image-id.txt
+            github-actions-evidence/image-tag.txt
+            github-actions-evidence/DOCKER_IMAGE_INSPECT_FINAL.txt
+            github-actions-evidence/DOCKER_BUILD_FINAL_RAW.txt
+          retention-days: 7
+      - name: Upload repair-runner image artifact
+        id: upload_repair_runner_image
+        uses: actions/upload-artifact@v4
+        with:
+          name: avorofin-financial-repair-runner-image-${{ github.run_id }}
+          path: |
+            github-actions-evidence/repair-runner-image.tar.gz
+            github-actions-evidence/repair-runner-image*.txt
+            github-actions-evidence/DOCKER_IMAGE_INSPECT_REPAIR_RUNNER.txt
+            github-actions-evidence/DOCKER_BUILD_REPAIR_RUNNER_RAW.txt
+          retention-days: 7
+      - name: Upload v6 period read-model worker image artifact
+        id: upload_v6_worker_image
+        uses: actions/upload-artifact@v4
+        with:
+          name: avorofin-v6-period-readmodel-worker-image-${{ github.run_id }}
+          path: |
+            github-actions-evidence/v6-worker-image.tar.gz
+            github-actions-evidence/v6-worker-image*.txt
+            github-actions-evidence/DOCKER_IMAGE_INSPECT_V6_WORKER.txt
+            github-actions-evidence/DOCKER_BUILD_V6_WORKER_RAW.txt
+          retention-days: 7
+      - name: Upload dashboard period snapshot worker image artifact
+        id: upload_dashboard_worker_image
+        uses: actions/upload-artifact@v4
+        with:
+          name: avorofin-dashboard-period-snapshot-worker-image-${{ github.run_id }}
+          path: |
+            github-actions-evidence/dashboard-worker-image.tar.gz
+            github-actions-evidence/dashboard-worker-image*.txt
+            github-actions-evidence/DOCKER_IMAGE_INSPECT_DASHBOARD_WORKER.txt
+            github-actions-evidence/DOCKER_BUILD_DASHBOARD_WORKER_RAW.txt
+          retention-days: 7
+      - name: Write binding evidence
+        # Runs after the uploads so the binding can carry the real artifact ids the
+        # owner approval has to pin; an id invented before the upload would be a guess.
+        env:
+          APP_ARTIFACT_ID: ${{ steps.upload_app_image.outputs.artifact-id }}
+          APP_ARTIFACT_DIGEST: ${{ steps.upload_app_image.outputs.artifact-digest }}
+          REPAIR_RUNNER_ARTIFACT_ID: ${{ steps.upload_repair_runner_image.outputs.artifact-id }}
+          REPAIR_RUNNER_ARTIFACT_DIGEST: ${{ steps.upload_repair_runner_image.outputs.artifact-digest }}
+          V6_WORKER_ARTIFACT_ID: ${{ steps.upload_v6_worker_image.outputs.artifact-id }}
+          V6_WORKER_ARTIFACT_DIGEST: ${{ steps.upload_v6_worker_image.outputs.artifact-digest }}
+          DASHBOARD_WORKER_ARTIFACT_ID: ${{ steps.upload_dashboard_worker_image.outputs.artifact-id }}
+          DASHBOARD_WORKER_ARTIFACT_DIGEST: ${{ steps.upload_dashboard_worker_image.outputs.artifact-digest }}
+        run: |
+          set -euo pipefail
+          tar_sha() { awk '{print $1}' "$1-image.tar.sha256.txt"; }
+          gz_sha()  { awk '{print $1}' "$1-image.tar.gz.sha256.txt"; }
+          image_id() { cat "$1-image-id.txt"; }
+
+          for id in "$APP_ARTIFACT_ID" "$REPAIR_RUNNER_ARTIFACT_ID" \
+                    "$V6_WORKER_ARTIFACT_ID" "$DASHBOARD_WORKER_ARTIFACT_ID"; do
+            test -n "$id" || { echo "MISSING_ARTIFACT_ID=FAIL"; exit 1; }
+          done
+
+          cat > github-actions-evidence/FINAL_APP_CANDIDATE_BINDING.json <<EOF
+          {
+            "CANDIDATE_SOURCE_BUNDLE_SHA256": "d4c4fe69e51568dd61b10bc20e7d17d019a8179db87d3a5a465eb3c70b80f16c",
+            "CANDIDATE_PATCH_SHA256": "fcb801f48350db147c015167abd84e27f871d8a40ebb8f762d54206f95e543f7",
+            "CANDIDATE_MANIFEST_SHA256": "3787e7af26c06ab3b581f3f578de65b66aa5886e1902bdf5ed092929e90a63f1",
+            "GITHUB_TEMP_COMMIT_SHA": "${GITHUB_SHA}",
+            "GITHUB_WORKFLOW": "${GITHUB_WORKFLOW}",
+            "GITHUB_RUN_ID": "${GITHUB_RUN_ID}",
+            "GITHUB_RUN_ATTEMPT": "${GITHUB_RUN_ATTEMPT}",
+            "GITHUB_SERVER_URL": "${GITHUB_SERVER_URL}",
+            "GITHUB_REPOSITORY": "${GITHUB_REPOSITORY}",
+            "RUNNER_GITHUB_HOSTED": "YES",
+            "RUNNER_SELF_HOSTED": "NO",
+            "IMAGES_BUILT": 4,
+
+            "CANDIDATE_APP_IMAGE_SHA256": "$(image_id candidate)",
+            "APP_IMAGE_TAR_SHA256": "$(tar_sha candidate)",
+            "APP_COMPRESSED_ARTIFACT_SHA256": "$(gz_sha candidate)",
+            "APP_ARTIFACT_NAME": "avorofin-financial-candidate-image-${GITHUB_RUN_ID}",
+            "APP_ARTIFACT_ID": "${APP_ARTIFACT_ID}",
+            "APP_ARTIFACT_DIGEST": "${APP_ARTIFACT_DIGEST}",
+
+            "CANDIDATE_REPAIR_RUNNER_IMAGE_SHA256": "$(image_id repair-runner)",
+            "REPAIR_RUNNER_IMAGE_TAR_SHA256": "$(tar_sha repair-runner)",
+            "REPAIR_RUNNER_COMPRESSED_ARTIFACT_SHA256": "$(gz_sha repair-runner)",
+            "REPAIR_RUNNER_ARTIFACT_NAME": "avorofin-financial-repair-runner-image-${GITHUB_RUN_ID}",
+            "REPAIR_RUNNER_ARTIFACT_ID": "${REPAIR_RUNNER_ARTIFACT_ID}",
+            "REPAIR_RUNNER_ARTIFACT_DIGEST": "${REPAIR_RUNNER_ARTIFACT_DIGEST}",
+
+            "CANDIDATE_V6_WORKER_IMAGE_SHA256": "$(image_id v6-worker)",
+            "V6_WORKER_IMAGE_TAR_SHA256": "$(tar_sha v6-worker)",
+            "V6_WORKER_COMPRESSED_ARTIFACT_SHA256": "$(gz_sha v6-worker)",
+            "V6_WORKER_ARTIFACT_NAME": "avorofin-v6-period-readmodel-worker-image-${GITHUB_RUN_ID}",
+            "V6_WORKER_ARTIFACT_ID": "${V6_WORKER_ARTIFACT_ID}",
+            "V6_WORKER_ARTIFACT_DIGEST": "${V6_WORKER_ARTIFACT_DIGEST}",
+
+            "CANDIDATE_DASHBOARD_WORKER_IMAGE_SHA256": "$(image_id dashboard-worker)",
+            "DASHBOARD_WORKER_IMAGE_TAR_SHA256": "$(tar_sha dashboard-worker)",
+            "DASHBOARD_WORKER_COMPRESSED_ARTIFACT_SHA256": "$(gz_sha dashboard-worker)",
+            "DASHBOARD_WORKER_ARTIFACT_NAME": "avorofin-dashboard-period-snapshot-worker-image-${GITHUB_RUN_ID}",
+            "DASHBOARD_WORKER_ARTIFACT_ID": "${DASHBOARD_WORKER_ARTIFACT_ID}",
+            "DASHBOARD_WORKER_ARTIFACT_DIGEST": "${DASHBOARD_WORKER_ARTIFACT_DIGEST}",
+
+            "REGISTRY_PUSH": "NO",
+            "PRODUCTION_DEPLOY": "NO",
+            "FINAL_APP_CANDIDATE_CANARY": "PASS",
+            "WORKER_IMAGE_CANARY": "PASS"
+          }
+          EOF
+          node -e '
+            const fs = require("fs");
+            const p = "github-actions-evidence/FINAL_APP_CANDIDATE_BINDING.json";
+            const b = JSON.parse(fs.readFileSync(p, "utf8"));
+            const fail = [];
+            const images = [
+              "CANDIDATE_APP_IMAGE_SHA256",
+              "CANDIDATE_REPAIR_RUNNER_IMAGE_SHA256",
+              "CANDIDATE_V6_WORKER_IMAGE_SHA256",
+              "CANDIDATE_DASHBOARD_WORKER_IMAGE_SHA256",
+            ];
+            const tars = [
+              "APP_IMAGE_TAR_SHA256",
+              "REPAIR_RUNNER_IMAGE_TAR_SHA256",
+              "V6_WORKER_IMAGE_TAR_SHA256",
+              "DASHBOARD_WORKER_IMAGE_TAR_SHA256",
+            ];
+            const artifactIds = [
+              "APP_ARTIFACT_ID",
+              "REPAIR_RUNNER_ARTIFACT_ID",
+              "V6_WORKER_ARTIFACT_ID",
+              "DASHBOARD_WORKER_ARTIFACT_ID",
+            ];
+            for (const k of images) if (!/^sha256:[0-9a-f]{64}$/.test(b[k] || "")) fail.push(k);
+            for (const k of tars) if (!/^[0-9a-f]{64}$/.test(b[k] || "")) fail.push(k);
+            for (const k of artifactIds) if (!/^[0-9]+$/.test(String(b[k] || ""))) fail.push(k);
+            if (new Set(images.map((k) => b[k])).size !== 4) fail.push("DUPLICATE_IMAGE_SHA");
+            if (fail.length) { console.error("BINDING_EVIDENCE=FAIL " + fail.join(" ")); process.exit(1); }
+            const body = JSON.stringify(b, null, 2) + "\n";
+            fs.writeFileSync(p, body);
+            fs.writeFileSync(p + ".sha256.txt",
+              require("crypto").createHash("sha256").update(body).digest("hex") + "\n");
+            console.log("BINDING_EVIDENCE=PASS images=4 artifacts=4");
+          '
+      - name: Upload binding and evidence artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: avorofin-financial-candidate-binding-${{ github.run_id }}
+          path: |
+            github-actions-evidence/*.json
+            github-actions-evidence/*.txt
+            !github-actions-evidence/*.tar.gz
+          retention-days: 7
+      - name: Commit sanitized evidence to temp branch
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          mkdir -p audit-build-evidence
+          cp github-actions-evidence/*.json github-actions-evidence/*.txt audit-build-evidence/
+          # Image tars are artifact-only: they must never enter git history.
+          rm -f audit-build-evidence/*.tar.gz
+          git add audit-build-evidence
+          git commit -m "chore(audit): financial candidate build evidence [skip ci]" || echo "NO_EVIDENCE_CHANGES"
+          git push origin "HEAD:audit/avorofin-financial-true-runtime-20260925_1200"

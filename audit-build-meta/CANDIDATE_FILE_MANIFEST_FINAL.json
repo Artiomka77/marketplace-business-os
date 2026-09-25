@@ -1,0 +1,2920 @@
+{
+  "fileCount": 583,
+  "files": [
+    {
+      "path": ".docker_bust",
+      "sha256": "89cee6d3782194f41319ccdf4d7e685b45f457edf7fb07e9a0e6c6e19fae9d34",
+      "size": 11
+    },
+    {
+      "path": ".dockerignore",
+      "sha256": "109ce5b4c44eb31feaa142fb3f634c7a364bab02ef36cbe43cbbdb5800d56c9c",
+      "size": 184
+    },
+    {
+      "path": ".waveb_true_final_build_bust",
+      "sha256": "4f1b8f3771a025b0a4a83f0a311d1fc0870205fdb1b098f74c6d2f4c4409e065",
+      "size": 15
+    },
+    {
+      "path": "AGENTS.md",
+      "sha256": "e3447d84251880fb34cfae09131cb4c57471529bbfe60976a3245793cf621627",
+      "size": 327
+    },
+    {
+      "path": "api-connections-full-list.txt",
+      "sha256": "f78f27bc21656af90c1add0a15888d8e9fd007acb88164524af662341c86e4c6",
+      "size": 3900
+    },
+    {
+      "path": "app/abc/page.tsx",
+      "sha256": "dd8cfe7415a4d5ff707883ec8b4b67520f593f3c651e11437ff98d50b34baff5",
+      "size": 23224
+    },
+    {
+      "path": "app/ads-mapping/AdsMappingForm.tsx",
+      "sha256": "c82cb57c4180c1a1542fa976eb226dc92e8c74323482078e4e4033bfe4d3ac00",
+      "size": 14126
+    },
+    {
+      "path": "app/ads-mapping/page.tsx",
+      "sha256": "66248e00b7c5730b35519f5b549b98e3d6a003a095225c132c5195c55ff8e00b",
+      "size": 15426
+    },
+    {
+      "path": "app/analytics/page.tsx",
+      "sha256": "67b25ee0c7c4a6505ca916e2544d5c62f98ac072b6ea5dc1da6d2779df51d8ac",
+      "size": 16747
+    },
+    {
+      "path": "app/api/analytics/profit/route.ts",
+      "sha256": "e4c340bec14c2dbbb56a9af9c483b26d49ff7e8ea02189a43b8730ffdf3d357d",
+      "size": 3281
+    },
+    {
+      "path": "app/api/cost-coverage/manual-fix/route.ts",
+      "sha256": "784f6e05ecc7a23470c2327adefff915587f9e6124581de665e880a94bfcab11",
+      "size": 3751
+    },
+    {
+      "path": "app/api/cron/auth-probe/route.ts",
+      "sha256": "ad76733e2d126536f71a2182f23960ed42947b29fab4b5b3f3c96dbf2946437b",
+      "size": 355
+    },
+    {
+      "path": "app/api/cron/current-priority-sync/route.ts",
+      "sha256": "ae620685c5cff52c31c0e46465b6a2ac15ebb7e04622a4c7debeb831fb0ce109",
+      "size": 2861
+    },
+    {
+      "path": "app/api/cron/daily-data-completeness-retry/route.ts",
+      "sha256": "6f8746e5cd59180c66290a872aa9267f22a5e404adcdc5eddcfd143939e09d39",
+      "size": 19119
+    },
+    {
+      "path": "app/api/cron/daily-priority-sync/route.ts",
+      "sha256": "2436ebf66e6ea5431ceb215f077c720b5f2eccc05ae2073b2d3e18812ff74fec",
+      "size": 11221
+    },
+    {
+      "path": "app/api/cron/ensure-closed-week-profit-job-matrix/route.ts",
+      "sha256": "9362cf7c26c9ea3f1bd26fe268c4ea04a83a12285210b6d41638818ede02f71e",
+      "size": 1115
+    },
+    {
+      "path": "app/api/cron/finalize-wb-closed-week/route.ts",
+      "sha256": "b7edc3509d0ddec2bd38409267a5eaee5f0113e155c931bad3b8a8e2b160028c",
+      "size": 4263
+    },
+    {
+      "path": "app/api/cron/historical-sync-ozon-ads/route.ts",
+      "sha256": "778768b20dee083e74220f01267a762656601fa96f578856af714fd9fe6e2cd0",
+      "size": 1867
+    },
+    {
+      "path": "app/api/cron/historical-sync-wb-ads/route.ts",
+      "sha256": "3101d792dcdf508fb8e2ba38d4c8b0571b8b59860dc5f2ae18feef3a6071cc88",
+      "size": 6694
+    },
+    {
+      "path": "app/api/cron/historical-sync-wb-finance/route.ts",
+      "sha256": "0397272b90fe17b3b77c687e31e8724b34edf146bf68912765e51ee9ab4c5169",
+      "size": 4107
+    },
+    {
+      "path": "app/api/cron/historical-sync-wb-sales/route.ts",
+      "sha256": "1191b2a450d5379e9d3a6962798c9f35843005613b64a291dd223d7a0a6496e6",
+      "size": 3477
+    },
+    {
+      "path": "app/api/cron/historical-sync/route.ts",
+      "sha256": "f754badc565d427e7f866de0dc2e5c77d41f452e102bd82d9fa03f32392e98dc",
+      "size": 3666
+    },
+    {
+      "path": "app/api/cron/priority-wb-ads/route.ts",
+      "sha256": "a480383984a28da432552bc74b9d4a57fe74f48b52924b9e4f5e5a14cd021adc",
+      "size": 8436
+    },
+    {
+      "path": "app/api/cron/retry-ozon-report-ads/route.ts",
+      "sha256": "4b2add2b5de009a4f28a1f9415c5fbd45100c887736d2499e7a7fde4101984ba",
+      "size": 1594
+    },
+    {
+      "path": "app/api/cron/sync-marketplace-orders/route.ts",
+      "sha256": "b65dc4f2c7114b0d7b36e5aea4831d7078baf9ff011bfda87e860c38f25810a4",
+      "size": 2788
+    },
+    {
+      "path": "app/api/cron/sync-ozon-accruals/route.ts",
+      "sha256": "7e5569955d1b91b0d14f20a851dd96384d3ba3059797e5d6be7d202fec07b297",
+      "size": 4660
+    },
+    {
+      "path": "app/api/cron/sync-ozon-realization/route.ts",
+      "sha256": "503b08030e0ec79e171ee98ac3fc3402e03601869c1c40c72c51e9b43b68a4c6",
+      "size": 17028
+    },
+    {
+      "path": "app/api/cron/sync-ozon/route.ts",
+      "sha256": "7b73c0eb930212edcb922b89f3f2731a890d5f5345e1c1ea333c0ef2041ff11d",
+      "size": 4151
+    },
+    {
+      "path": "app/api/cron/sync-wb-ads/route.ts",
+      "sha256": "503e116d1d00a4437ca3da763541a86fede48be76567516b7faed947e4eee25d",
+      "size": 2887
+    },
+    {
+      "path": "app/api/cron/sync-wb-daily-financial-detail/route.ts",
+      "sha256": "166994fd6eb0cc336427a9ba7ec323289b840ccd40ac2c5cbe4e729d4a0be60c",
+      "size": 4081
+    },
+    {
+      "path": "app/api/cron/sync-wb-daily-sales/route.ts",
+      "sha256": "e50686b6d144d6b76fae7ebc9d4de6b6027d4babe1ea9d048ba58c3b4457112e",
+      "size": 4002
+    },
+    {
+      "path": "app/api/cron/sync-wb-finance/route.ts",
+      "sha256": "054f855dca34084aff2e72f437809e076ee4c28e7dedf99539e411b56387590d",
+      "size": 2642
+    },
+    {
+      "path": "app/api/cron/sync-wb-operational-detail/route.ts",
+      "sha256": "d77143741be29da03ba83f49239fb26992df2489e82e56f52f9d10ad5a3f369d",
+      "size": 4288
+    },
+    {
+      "path": "app/api/cron/sync-wb-sales/route.ts",
+      "sha256": "f9188e73aafe2fba14c13c87253ea284c3b14446ee86ed9e7852589eccc2150d",
+      "size": 2632
+    },
+    {
+      "path": "app/api/cron/sync-wb-stock/route.ts",
+      "sha256": "21bbb64d97cee337088c8e24e6350df6d174acb18a9906932c12907153228b0c",
+      "size": 2999
+    },
+    {
+      "path": "app/api/cron/sync-wb/route.ts",
+      "sha256": "28d06f669afaa67da7a782402eb294b507c63aa354f021a1048e90bce571fe6e",
+      "size": 1122
+    },
+    {
+      "path": "app/api/debug-companies/route.ts",
+      "sha256": "1fdf399ce7d1a0e3d73890778142f462cadeb6dba3f4f2ea8aa907053fe43f10",
+      "size": 278
+    },
+    {
+      "path": "app/api/debug/ozon-supply-recommendations/route.ts",
+      "sha256": "df9fa1e2905ab7ad8a1979eb0904faa2f9293e1418cec8154d6ce4d9f51e7a6d",
+      "size": 8839
+    },
+    {
+      "path": "app/api/debug/wb-daily-sales-backfill/route.ts",
+      "sha256": "fd331f70a39b88c58b877816c492a4fccb28f9f9eb53d2d9e27b6cc477767edc",
+      "size": 8288
+    },
+    {
+      "path": "app/api/debug/wb-daily-sales-one-day/route.ts",
+      "sha256": "c685bdfc3400183f7d1755444b7e2e154abcca9cfb707f24635ea569b62efa34",
+      "size": 5156
+    },
+    {
+      "path": "app/api/finance/accounts/route.ts",
+      "sha256": "00ae081569087cd5c5017798798b942d26fec35bfe5116a931ed027e87ac8242",
+      "size": 983
+    },
+    {
+      "path": "app/api/finance/budget/route.ts",
+      "sha256": "299f0f323ddc25b16eedc12483489bd4bdbde09fec42563efc9758fd5b7e6ece",
+      "size": 2338
+    },
+    {
+      "path": "app/api/finance/companies/route.ts",
+      "sha256": "b89411a46d74099cf5031dae1322c1b45de082aaf40915809f2f84221f12ef64",
+      "size": 3268
+    },
+    {
+      "path": "app/api/finance/loan-payments/route.ts",
+      "sha256": "a376abfeca702265399b893d03ac9b20422e9c35389668a43b0ae66b7ce051a5",
+      "size": 9865
+    },
+    {
+      "path": "app/api/finance/loans/credit-card/create/route.ts",
+      "sha256": "fc8a7b0589a4a52b520bc8c9cc54adcd3aafbfa0c67a2abb4e2a5ae313ea5dc1",
+      "size": 4509
+    },
+    {
+      "path": "app/api/finance/loans/credit-card/route.ts",
+      "sha256": "dc5d1f09aa103d09d5916fe363af29608965496f5b324e6e023a1c3c6f55f858",
+      "size": 4823
+    },
+    {
+      "path": "app/api/finance/loans/early-repayment/route.ts",
+      "sha256": "f2d1725be4abcc23db03849160e52952ff4dcb80c98002c93e28eb752bf08e96",
+      "size": 20975
+    },
+    {
+      "path": "app/api/finance/loans/route.ts",
+      "sha256": "9ed6d78159b030f974802d109bcf655476dc7e615cdd387d53b0809dd3a0c275",
+      "size": 2171
+    },
+    {
+      "path": "app/api/finance/operations/route.ts",
+      "sha256": "c178202385546681671a377f0474f33c67c5757f5450447cb9dea77f576a021f",
+      "size": 2811
+    },
+    {
+      "path": "app/api/finance/sync-loan-payments/route.ts",
+      "sha256": "3eb0cca0281ae4c862b6195217b36dc9bd02efeb5e6af0f2f100a6a00210df3a",
+      "size": 2796
+    },
+    {
+      "path": "app/api/finance/transfers/route.ts",
+      "sha256": "ebba60e2ffc12bba543165636719878ec99f50b47e5375e57a00ede6716609e5",
+      "size": 3616
+    },
+    {
+      "path": "app/api/historical-sync/create-jobs/route.ts",
+      "sha256": "f118bf1a2ca782b9f4d92f31ab359703967c3746302029b874ab521586859c6c",
+      "size": 1068
+    },
+    {
+      "path": "app/api/historical-sync/create-wb-sales-jobs/route.ts",
+      "sha256": "7102a017890718acdc65cf73ae0fbe71ea193e638ba0f9cb2676adb4336923ff",
+      "size": 906
+    },
+    {
+      "path": "app/api/historical-sync/run-batch/route.ts",
+      "sha256": "d85953dcf065c73f2ef7b0155b5b85d9023d0571e3149a3801e36d7e9259fd34",
+      "size": 2028
+    },
+    {
+      "path": "app/api/historical-sync/run-next/route.ts",
+      "sha256": "2bcf03f6488bfb148582ddb1789dc6446633f4efdc0dd38658739d1458ac4029",
+      "size": 1223
+    },
+    {
+      "path": "app/api/historical-sync/run-wb-ads-next/route.ts",
+      "sha256": "82c266214f6f18ebf5b8e0391ac1b18419f6034507c4be06d13bd0aecaa60c7a",
+      "size": 794
+    },
+    {
+      "path": "app/api/historical-sync/run-wb-sales-next/route.ts",
+      "sha256": "9bc54dc41d6640a7f0a9aff553b4a647d3fd24ebab549cf79abe579880426c45",
+      "size": 796
+    },
+    {
+      "path": "app/api/historical-sync/start/route.ts",
+      "sha256": "a10d750c28346da529d3dd208d330ac504f64a8ac953925b606b2ffedad5817b",
+      "size": 3134
+    },
+    {
+      "path": "app/api/historical-sync/status/route.ts",
+      "sha256": "2f1ee408465658d897afc13c45821c90409f09d6aaf8148ae4c6f7cda97ce606",
+      "size": 12662
+    },
+    {
+      "path": "app/api/local-auth/login/route.ts",
+      "sha256": "add8eff084d8c60085b5dff975ad701c371b47ef3254f9e58bbcded85ac81f61",
+      "size": 1605
+    },
+    {
+      "path": "app/api/local-auth/login/route.ts.backup-before-remove-dollar-one-manual",
+      "sha256": "be1db7075af37f549e7e2a5987d6765ca8140bf60518a92c67027fddae039959",
+      "size": 1602
+    },
+    {
+      "path": "app/api/local-auth/login/route.ts.backup-permanent-local-auth",
+      "sha256": "ac3c12239f038d815605bb752a9df1d115099e16d6f5456b2e0c77e176041c35",
+      "size": 1226
+    },
+    {
+      "path": "app/api/local-auth/login/route.ts.backup-remove-bad-dollar-one",
+      "sha256": "be1db7075af37f549e7e2a5987d6765ca8140bf60518a92c67027fddae039959",
+      "size": 1602
+    },
+    {
+      "path": "app/api/local-auth/login/route.ts.backup-rewrite-correct-local-auth-login",
+      "sha256": "3f341072ee9d3d6c67af7b7753004f028e535d3f97a9586652436527551156a0",
+      "size": 1602
+    },
+    {
+      "path": "app/api/settings/api-connections/route.ts",
+      "sha256": "eae59c7d24a4143337bf22534efb8688e3c8a3a55f7b26eb1b3cf6372366e7bc",
+      "size": 5347
+    },
+    {
+      "path": "app/api/settings/api-connections/sync-ozon-ads/route.ts",
+      "sha256": "86cdd542a192771eff13c084e5a92804fdbc80f34f74f8747845821996403322",
+      "size": 11843
+    },
+    {
+      "path": "app/api/settings/api-connections/sync-ozon-all/route.ts",
+      "sha256": "6ca2e82181655542bec537cc48ccfd92baa7ee5573bc3b4683d3c3d10141cf9e",
+      "size": 4583
+    },
+    {
+      "path": "app/api/settings/api-connections/sync-ozon-finance/route.ts",
+      "sha256": "5c9f2c52eefb5274ef7650d3c74ed0dea2d8754a99486b4db40751815ec9ee99",
+      "size": 8257
+    },
+    {
+      "path": "app/api/settings/api-connections/sync-ozon-products/route.ts",
+      "sha256": "12f5f39e949460c3908bfe924a276aba2f49fe4128ffdfb938178360b1d1549b",
+      "size": 1486
+    },
+    {
+      "path": "app/api/settings/api-connections/sync-ozon-stocks/route.ts",
+      "sha256": "4bdfcea18b7121d9613e17e123d9d4afd52f3904f6843ce8e08ba5bc28c15735",
+      "size": 5519
+    },
+    {
+      "path": "app/api/settings/api-connections/sync-wb-ads/route.ts",
+      "sha256": "d6c3f08cedb56ef636ae1e604e802a814958d9caa72c44c7deaebc62c360f978",
+      "size": 7195
+    },
+    {
+      "path": "app/api/settings/api-connections/sync-wb-finance/route.ts",
+      "sha256": "4f7e075b7266564d3a532faeb71ff745c077f3ee503d4dd5e65049f605f06fc5",
+      "size": 6106
+    },
+    {
+      "path": "app/api/settings/api-connections/sync-wb-product-cards/route.ts",
+      "sha256": "dd8b2081a94d1a732c2e4b3c4e28cf9d65a7ffa5ff69b8997db776b5758b6dbb",
+      "size": 2297
+    },
+    {
+      "path": "app/api/settings/api-connections/sync-wb-stock/route.ts",
+      "sha256": "0d1b8d5d4a652f0dba60fc94d2dcbbe6a4279f9f4da86fad029ef8c590854ffa",
+      "size": 5353
+    },
+    {
+      "path": "app/api/settings/api-connections/sync-wb/route.ts",
+      "sha256": "55c8536bb24114856c59fdaf903d369e11437f543dec7461264511f4d44254cd",
+      "size": 5639
+    },
+    {
+      "path": "app/api/settings/api-connections/test-ozon-finance/route.ts",
+      "sha256": "3816b0f30f3b383f08b3890c58ce4c780a80ee47deaffc183576ff7674ca4c84",
+      "size": 2948
+    },
+    {
+      "path": "app/api/settings/api-connections/test-ozon-performance-stats/route.ts",
+      "sha256": "e9322c2e6071079276e7f5af149e202940bd3b3ff4e831ebc81782e0acfdc2f3",
+      "size": 10094
+    },
+    {
+      "path": "app/api/settings/api-connections/test-ozon-performance/route.ts",
+      "sha256": "03b608b9cdfb80fd67aa6c852bf85ebe0860989ca6a773a2097e5b248008b99b",
+      "size": 4452
+    },
+    {
+      "path": "app/api/settings/api-connections/test-ozon-products/route.ts",
+      "sha256": "3a3126680765ade76a0afd586da53925b15c751d9a1a315c798945281e0a812b",
+      "size": 2820
+    },
+    {
+      "path": "app/api/settings/api-connections/test-ozon-stocks/route.ts",
+      "sha256": "5e85d3c336f5df65e3e082e660a55d3fc4bef6a2be69e2c646958bd118f8921a",
+      "size": 2880
+    },
+    {
+      "path": "app/api/settings/api-connections/test-wb-ads-stat/route.ts",
+      "sha256": "7deb0f14c66d83dcc6dc21c8b3ba2148fa9b7ae7ec08a6002b60b8cd2f0b5285",
+      "size": 4517
+    },
+    {
+      "path": "app/api/settings/api-connections/test-wb-ads/route.ts",
+      "sha256": "0222ffb398314af20954edfab7184dbacec2a685a5a402a82e553f8ea710df96",
+      "size": 1915
+    },
+    {
+      "path": "app/api/settings/api-connections/test-wb-finance/route.ts",
+      "sha256": "9d010483fc376214f75d7478593f7c409485b482e2d7edc088743ad7de560a89",
+      "size": 3324
+    },
+    {
+      "path": "app/api/settings/api-connections/test-wb-sales/route.ts",
+      "sha256": "d39bcc70b663c932cffc0f78698b64a01d73281cb3fdb4ae6eb6f66c2cda80cd",
+      "size": 2863
+    },
+    {
+      "path": "app/api/settings/api-connections/test-wb-stock/route.ts",
+      "sha256": "bdf2125b0089f19ae02e066026d05443eff761730b79b0bc2b60d7da3d14bad8",
+      "size": 2341
+    },
+    {
+      "path": "app/api/stocks/production-plan/export/route.ts",
+      "sha256": "f4f3bb946fc9a2697da212c513a9b37d1d9155275b996ec2a9403d6343125065",
+      "size": 58359
+    },
+    {
+      "path": "app/api/stocks/supply-plan/export/route.ts",
+      "sha256": "f1cb94e3d50ab2e9f62f28377cc8bd42991ad51bba46b570149603dcc76ecafe",
+      "size": 76351
+    },
+    {
+      "path": "app/api/stocks/supply-plan/export/route.ts.backup-supply-direction-labels",
+      "sha256": "fada5da7db9b8963d37c3909853ea7c3b7b4c0388f343be098f13b75234ed3ee",
+      "size": 71290
+    },
+    {
+      "path": "app/api/stocks/supply-plan/export/route.ts.backup-supply-target-aliases",
+      "sha256": "0949bf4932a8c0242a3083e2934d3b2fb3158461246d4f5d05f3defab09e1da0",
+      "size": 73551
+    },
+    {
+      "path": "app/api/stocks/supply-plan/export/route.ts.backup-supply-target-multiselect",
+      "sha256": "64c2d00fee142718a4c748c7a8b345f4d62f70d1f5a4208bad096a4e9abd6362",
+      "size": 70629
+    },
+    {
+      "path": "app/api/stocks/supply-plan/export/route.ts.backup-wb-summary-own-article",
+      "sha256": "e175c7f8399de14e53d306f3088856e29d0ef8d89fd2e6c6b6cd2077547f35b8",
+      "size": 75057
+    },
+    {
+      "path": "app/api/telegram/daily-report/route.ts",
+      "sha256": "03290d0c94754ac777d024a2a19b2690084c6c805d2b12a058aaaf44f6b75892",
+      "size": 3509
+    },
+    {
+      "path": "app/api/telegram/webhook/route.ts",
+      "sha256": "86a2f2ff768a0462eb862c9cf8aed0189347c48b430ac1a8308f2e4abe0ec9fa",
+      "size": 70101
+    },
+    {
+      "path": "app/api/templates/finance-transactions/route.ts",
+      "sha256": "395e8c34a9e93b2411cc9c78391a3039e0cac7ad7959b6a40a814e51842d7f8e",
+      "size": 15078
+    },
+    {
+      "path": "app/api/templates/ozon-warehouse-stock/route.ts",
+      "sha256": "7408ef065f71c175242607439ce03b211bba487ac6d7af684cce3096ac4c4aaf",
+      "size": 9146
+    },
+    {
+      "path": "app/api/upload/route.ts",
+      "sha256": "b7bbd9974e950b818721a6ffda9e07da6f0ced78b322441755aff71a0d1afb0d",
+      "size": 16080
+    },
+    {
+      "path": "app/auth/sign-out/route.ts",
+      "sha256": "424ea3491cbb5cc9e4f3d1a51bf8e195f4999d5a418b0b131d126017beeb94d9",
+      "size": 530
+    },
+    {
+      "path": "app/auth/sign-out/route.ts.backup-local-cookie-auth",
+      "sha256": "c7e3c44f790f1c5322aaf54fc982bd4583314d3a14df7a8c2c7a5d54d8afc578",
+      "size": 318
+    },
+    {
+      "path": "app/error.tsx",
+      "sha256": "ad7b9188483d38b7301fd7ecc90c733a19fb0d46af3a68d5eb0f4e07b37c5bd9",
+      "size": 977
+    },
+    {
+      "path": "app/favicon.ico",
+      "sha256": "2b8ad2d33455a8f736fc3a8ebf8f0bdea8848ad4c0db48a2833bd0f9cd775932",
+      "size": 25931
+    },
+    {
+      "path": "app/finance/accounts/page.tsx",
+      "sha256": "4c2da18fbb60909979fb2aac73534a225707171598abb4047e230a7398cb1d34",
+      "size": 22915
+    },
+    {
+      "path": "app/finance/budget/page.tsx",
+      "sha256": "f2a45dacaa82c63ead2fe323b44e61d7ce7f741d57226aa37fc59cb240e73c01",
+      "size": 11510
+    },
+    {
+      "path": "app/finance/calendar/page.tsx",
+      "sha256": "8e8850559b00ef966ef8b2c029e396388e891047d6faadfeba847ece3fc27fea",
+      "size": 45086
+    },
+    {
+      "path": "app/finance/cashflow/page.tsx",
+      "sha256": "75acabf1c894e53371d837a531b48936e82861813061b86a1ec95e3962e2f963",
+      "size": 43949
+    },
+    {
+      "path": "app/finance/categories/page.tsx",
+      "sha256": "4e941c126d32bf10b61c69544ce3d204481d658b0baa591c8694747a60efc399",
+      "size": 12033
+    },
+    {
+      "path": "app/finance/companies/page.tsx",
+      "sha256": "f10231958729ac3a6a587620a806d22ddaf65056568cc5cc2ef4ae1532a76b1c",
+      "size": 138
+    },
+    {
+      "path": "app/finance/forecast/page.tsx",
+      "sha256": "d4aedaee0873c2592932e696e856a9ada2d541b8daa1842794561a6cec89b01b",
+      "size": 26560
+    },
+    {
+      "path": "app/finance/layout.tsx",
+      "sha256": "8158ad59ee0735585e2afa8937a30090487e68a337d37874996c741891a16531",
+      "size": 220
+    },
+    {
+      "path": "app/finance/loans/[id]/schedule/page.tsx",
+      "sha256": "b3af27842f5d2b0a3e888d76ef3f6de4b9acc7156dbe60fad01342bb0fc3f4b7",
+      "size": 21023
+    },
+    {
+      "path": "app/finance/loans/page.tsx",
+      "sha256": "9ad86de88d049ec00dec6dfdae190070310bf7bc8f5c7e1ee6a5cf6ae0e35ebd",
+      "size": 120172
+    },
+    {
+      "path": "app/finance/operations/edit/[id]/page.tsx",
+      "sha256": "205f6e28449581f392616b035c5793b92dd0ba160fbb03586757218dede19d28",
+      "size": 17405
+    },
+    {
+      "path": "app/finance/operations/FinanceOperationForm.tsx",
+      "sha256": "71a0269cafc8a4c06e642ae6598d6512c8c2777355a45fa6e1230e010793e718",
+      "size": 15578
+    },
+    {
+      "path": "app/finance/operations/FinanceTransferForm.tsx",
+      "sha256": "d1f127bf05decbb4bd726ed9a422577a7ae0e042a2e066bbafcfd016bde0418f",
+      "size": 5156
+    },
+    {
+      "path": "app/finance/operations/page.tsx",
+      "sha256": "974e0eb1bb61c6d342916732e4874eaee9eceb9b221bbbb4f9421e13f029639c",
+      "size": 61863
+    },
+    {
+      "path": "app/finance/operations/QuickAddFinanceHelper.tsx",
+      "sha256": "8ff6743105428fdcc78f36c1f2519f963914b4fe9beb93fc8fb65773212578bd",
+      "size": 2218
+    },
+    {
+      "path": "app/finance/page.tsx",
+      "sha256": "92fc6dacb2bf77cd26efbb23ee8eaf3d10bfb29735fe3e89a28f74ba33bc0d43",
+      "size": 49657
+    },
+    {
+      "path": "app/finance/plan-fact/page.tsx",
+      "sha256": "45865dcb7350b763e290932f590843c4bc61f2d4dd3843006cbac7b785bf6a4a",
+      "size": 49413
+    },
+    {
+      "path": "app/globals.css",
+      "sha256": "21e5c705c116f40f124469870a50192fad0b7c92e356b4b65f77d4c1ccb6235b",
+      "size": 8766
+    },
+    {
+      "path": "app/globals.css.backup-balanced-kpi-visual",
+      "sha256": "f5cffe311cacadff0cd8b6d7a25e7af36effa66f9abb936081679029cfec4e3b",
+      "size": 6328
+    },
+    {
+      "path": "app/globals.css.backup-dashboard-responsive-css",
+      "sha256": "f5cffe311cacadff0cd8b6d7a25e7af36effa66f9abb936081679029cfec4e3b",
+      "size": 6328
+    },
+    {
+      "path": "app/globals.css.backup-restore-visual-compact",
+      "sha256": "66046887486e6e2120f37bfa97c81db6f423f7de77db7cc707d72670c103d865",
+      "size": 8619
+    },
+    {
+      "path": "app/globals.css.backup-safe-responsive-css-only",
+      "sha256": "f5cffe311cacadff0cd8b6d7a25e7af36effa66f9abb936081679029cfec4e3b",
+      "size": 6328
+    },
+    {
+      "path": "app/import/page.tsx",
+      "sha256": "f788924892cb35b83395460102b3b3d8b79e06b0c82d2bd0faa9d5f1a89bb68a",
+      "size": 20345
+    },
+    {
+      "path": "app/imports/[id]/page.tsx",
+      "sha256": "1b808642f16fffec5138d034d774a397ff51d49c538c64b52b2254b7b02faa4c",
+      "size": 2699
+    },
+    {
+      "path": "app/imports/page.tsx",
+      "sha256": "51f40f6a9201ff97735b1cac2266ca98b7f0e639ab419f3e6a5f4a85df2b18aa",
+      "size": 2881
+    },
+    {
+      "path": "app/insights/page.tsx",
+      "sha256": "ecbc12790292efa5b6d7f81d16199ed03c19a51151f4928f4eb0ea2edba977f6",
+      "size": 23644
+    },
+    {
+      "path": "app/layout.tsx",
+      "sha256": "c6dccd2c8ad496d054d52d86c259d4c72c23bae93f1e64e2c6928d8e06ed9ad7",
+      "size": 573
+    },
+    {
+      "path": "app/login/page.tsx",
+      "sha256": "d28603e44321fe44caaa92e9846b17e9cc9267813f56ffd7e353949ad28d87f6",
+      "size": 4459
+    },
+    {
+      "path": "app/login/page.tsx.backup-auth-state",
+      "sha256": "bc16b0fb9797d1050306783d3a1602c4c880ec0b409db97cb932b5a7c2c48d81",
+      "size": 3030
+    },
+    {
+      "path": "app/login/page.tsx.backup-auth-state-ascii",
+      "sha256": "bc16b0fb9797d1050306783d3a1602c4c880ec0b409db97cb932b5a7c2c48d81",
+      "size": 3030
+    },
+    {
+      "path": "app/login/page.tsx.backup-local-cookie-auth",
+      "sha256": "dcd2d5392e4863040a766c26b56be60eaeb1b441c466bc6566817a671e2882b6",
+      "size": 3709
+    },
+    {
+      "path": "app/login/page.tsx.backup-permanent-local-auth",
+      "sha256": "06ed04ca90bdab924204e706b708bfe7feb977b466806b3389a208ee9379b722",
+      "size": 4458
+    },
+    {
+      "path": "app/page.tsx",
+      "sha256": "b822cfd463d6d21e41810a3a0e1cad1ee7b3cebcc283a9b6f4566854d370ed14",
+      "size": 143646
+    },
+    {
+      "path": "app/page.tsx.backup-balanced-kpi-visual",
+      "sha256": "bd9c89c43061df5cefb6701e1d525e39f6d0ef4135ec5304ad41dbfac1b637c5",
+      "size": 129468
+    },
+    {
+      "path": "app/page.tsx.backup-company-full-width-quick-actions-bottom",
+      "sha256": "bc98f3d659911a91180f5ce0ce57c2cf3a4f44d019f59300e5151c87030f339d",
+      "size": 129297
+    },
+    {
+      "path": "app/page.tsx.backup-company-full-width-quick-actions-bottom-v2",
+      "sha256": "bc98f3d659911a91180f5ce0ce57c2cf3a4f44d019f59300e5151c87030f339d",
+      "size": 129297
+    },
+    {
+      "path": "app/page.tsx.backup-daily-report-split-perf",
+      "sha256": "bd9c89c43061df5cefb6701e1d525e39f6d0ef4135ec5304ad41dbfac1b637c5",
+      "size": 129468
+    },
+    {
+      "path": "app/page.tsx.backup-dashboard-light-analytics",
+      "sha256": "7c7409acf06f0fd94e1bed2b9658323ca052e92e3ad89f025561e6187e25a6c0",
+      "size": 129416
+    },
+    {
+      "path": "app/page.tsx.backup-dashboard-parallel-skip-zero-companies",
+      "sha256": "875f548b186547976ead86de4e941be9e7a8ce93b9f9b7139107e84ff3597a60",
+      "size": 127545
+    },
+    {
+      "path": "app/page.tsx.backup-dashboard-perf",
+      "sha256": "06e365ff0d202ac880aa811c4085704db7e644d658a3c0ac47416eb65e8f9fcf",
+      "size": 126248
+    },
+    {
+      "path": "app/page.tsx.backup-dashboard-responsive-css",
+      "sha256": "f2111b21e555e5fac9abb3c8e13c964e9ea58b7f9cd363a44c77964ee34bb666",
+      "size": 134940
+    },
+    {
+      "path": "app/page.tsx.backup-dashboard-short-cache",
+      "sha256": "b3cd30e1fcfdc38282d97d891179ca86d4c37f9d59e6ac936917062070ce2429",
+      "size": 130071
+    },
+    {
+      "path": "app/page.tsx.backup-dashboard-split-company-perf",
+      "sha256": "7266655629fc04aa75c005d14ba759fdaec6cf710ac2729864a278143652943e",
+      "size": 128919
+    },
+    {
+      "path": "app/page.tsx.backup-responsive-dashboard",
+      "sha256": "f01a22d4fa6c5b009f8e6589f15ab3961238592f3260eed7845deafc97c68ca3",
+      "size": 133816
+    },
+    {
+      "path": "app/page.tsx.backup-restore-visual-compact",
+      "sha256": "ffea46cb1a20b6652d9e599b8849e81fc0ab4ad545af7ce0b2f9170796d5c4bb",
+      "size": 129650
+    },
+    {
+      "path": "app/page.tsx.backup-safe-responsive-css-only",
+      "sha256": "bd9c89c43061df5cefb6701e1d525e39f6d0ef4135ec5304ad41dbfac1b637c5",
+      "size": 129468
+    },
+    {
+      "path": "app/page.tsx.backup-skip-previous-abc",
+      "sha256": "9fd31e92c31bb1ed807d572b52e8f07bbd69844303a03ca7c1cb4dbdaa3dd8fa",
+      "size": 129493
+    },
+    {
+      "path": "app/page.tsx.backup-sync-company-filters",
+      "sha256": "7c7409acf06f0fd94e1bed2b9658323ca052e92e3ad89f025561e6187e25a6c0",
+      "size": 129416
+    },
+    {
+      "path": "app/profit-ozon/page.tsx",
+      "sha256": "0ddd2fec878ce6e9e2bf6a8f6329c891f41c5ebd99d3e02a2266b9b982a190cb",
+      "size": 81505
+    },
+    {
+      "path": "app/profit-wb/page.tsx",
+      "sha256": "070498ff3a0c3eecbf2beda21ecba551c74afcf55024ff2757f9e20ef97a280f",
+      "size": 100790
+    },
+    {
+      "path": "app/profit/page.tsx",
+      "sha256": "5d6ac182b2e094333dca3eab0f3db68d4c6da2761ec0ee299ed6ced8fc3b1f55",
+      "size": 119
+    },
+    {
+      "path": "app/settings/api-connections/page.tsx",
+      "sha256": "e0ca41b2cdb9fa7f390f5860fe3ddaf1410299d5501057b849a7a3165950bdd1",
+      "size": 53779
+    },
+    {
+      "path": "app/settings/api-connections/SubmitButton.tsx",
+      "sha256": "01a0a1d7b39eec03ace24a21d0dfde80bfd934d443df9f0870ef50e67492e387",
+      "size": 937
+    },
+    {
+      "path": "app/settings/companies/page.tsx",
+      "sha256": "22c4580569ef87ce2bf503832e54aadacc62cbccb62c214f8d36056dbf9b0c85",
+      "size": 18542
+    },
+    {
+      "path": "app/stocks/page.tsx",
+      "sha256": "9c0086716dacea78fe103328513b0bd86388152890885dba8fd9aa030e00f6dc",
+      "size": 231524
+    },
+    {
+      "path": "app/stocks/page.tsx.backup-supply-direction-labels",
+      "sha256": "62bc5059198703decef60d5262038eae8065c45d8ec0e1a40647e333d2726602",
+      "size": 229789
+    },
+    {
+      "path": "app/stocks/page.tsx.backup-supply-target-aliases",
+      "sha256": "ddf95bdb3af0a02df51ae9e270a2aa11d300bc11668d48197f6af95074d0cda4",
+      "size": 231958
+    },
+    {
+      "path": "app/stocks/page.tsx.backup-supply-target-multiselect",
+      "sha256": "8002dc007d3f8d1918b66f59aa20087746641ac11cd161ed276c43b99581bc6e",
+      "size": 227478
+    },
+    {
+      "path": "APPROVED_V4.patch",
+      "sha256": "73a21b1327c473260b944e92770b373d3e9c705b9d2017d769c22fa43d2d38ce",
+      "size": 135000
+    },
+    {
+      "path": "audit/financial-kpi-usage.txt",
+      "sha256": "2b1d7807ca316b2a38d2c8d5b31b3166d9f0d327ca7dd1d53a3993bc698fceb0",
+      "size": 40699
+    },
+    {
+      "path": "audit/netProfitImpact-usage.txt",
+      "sha256": "41d4f377613e233e64577df53d5c11c2b839a5991387dfe24e0c6e226324f797",
+      "size": 3400
+    },
+    {
+      "path": "audit/ozon-supply-api-search.txt",
+      "sha256": "6a40e26c78f5d6dc18bbb608b4eb7146dc482f7cbc163275a344da7d968ef7c7",
+      "size": 58773
+    },
+    {
+      "path": "audit/profit-mentions.txt",
+      "sha256": "2246485a557a73d71959b5de53939fd57c113bb05538f5da793b27e1aee652f2",
+      "size": 50349
+    },
+    {
+      "path": "audit/supply-region-fields-search.txt",
+      "sha256": "b3e3eee6c006ef29d8c50ff435d4e795bb08c6d51b4f9fb5c5245001d5f86fb5",
+      "size": 31188
+    },
+    {
+      "path": "audit/wb-geo-search.txt",
+      "sha256": "2f347b9d053fb78d9e9ebd7622c6058a5e5f54a121f0cfb45fac19847942d8ed",
+      "size": 25458
+    },
+    {
+      "path": "build.txt",
+      "sha256": "1e1782100f56f4c731c603001ebdbfd3bc6db47b5382ee7ff46278ada72b5c35",
+      "size": 6158
+    },
+    {
+      "path": "Caddyfile",
+      "sha256": "0b8158703220046012d8ab05dcae4bc1260719ecf15e144e73169b0ed3e11ff9",
+      "size": 121
+    },
+    {
+      "path": "Caddyfile.backup-www-redirect",
+      "sha256": "2d9987bd031ea9340879a208b85d4bfe045e3bca7781cc5327edecc46a6dc2cc",
+      "size": 56
+    },
+    {
+      "path": "Caddyfile.txt",
+      "sha256": "6c6bce2cbdb8851c509d9fa5bfbee5bc3d5679ef090ebb61b0bb5e02e1a3e2b8",
+      "size": 52
+    },
+    {
+      "path": "CLAUDE.md",
+      "sha256": "336cc4fbf19beaada7ccf9986414fa91851a8d7a07dfb3ccbe800a69eed0ab49",
+      "size": 11
+    },
+    {
+      "path": "collect_current_sync_source.ps1",
+      "sha256": "b2792dbb650996f0d3d55d8d895a78020d41e683e43645cc57c327f1e73dc13f",
+      "size": 3551
+    },
+    {
+      "path": "collect_wb_profit_calculation_source_fixed.ps1",
+      "sha256": "cd62605325368f6807cc5e5ed465c278747d229d6beaa9be5b639ccbad6f890e",
+      "size": 2585
+    },
+    {
+      "path": "components.json",
+      "sha256": "a39384a64384ceca47944248c992f4ab4d2ff565cfea3ff8daa89b2fc7b125e2",
+      "size": 517
+    },
+    {
+      "path": "components/analytics/AnalyticsTemporarilyUnavailable.tsx",
+      "sha256": "483a771b074daa87afc0a87aa251b884fa50b27dc7feea6663067e742bab1687",
+      "size": 2279
+    },
+    {
+      "path": "components/app/AppNav.tsx",
+      "sha256": "3b866fc01cdb4605cf42f41643c57f8e372fa0a8766246aa7ffe018d8766289f",
+      "size": 14377
+    },
+    {
+      "path": "components/app/AppNav.tsx.backup-auth-state",
+      "sha256": "b3c162a64af71addd08e7921fa3bce333a3391e42862ea9e81475a9fbeeefe32",
+      "size": 14085
+    },
+    {
+      "path": "components/app/AppNav.tsx.backup-auth-state-ascii",
+      "sha256": "b3c162a64af71addd08e7921fa3bce333a3391e42862ea9e81475a9fbeeefe32",
+      "size": 14085
+    },
+    {
+      "path": "components/app/AppNav.tsx.backup-fix-appnav-collapse-auth-leftover",
+      "sha256": "2c4cb6d3f5df7240c4aba296ea1d79ec0572acad09347d8d04d40c8dc255cf41",
+      "size": 14351
+    },
+    {
+      "path": "components/app/AppNav.tsx.backup-local-cookie-auth",
+      "sha256": "bd6dac82c9fa3006b131ffb19bc484b2742721feaa5642c519f070e74ebe8bfc",
+      "size": 15232
+    },
+    {
+      "path": "components/finance/FinanceNav.tsx",
+      "sha256": "0e60c8fc3ad0f0501e89d290c6af1fc7120cfbad80b51357dff3da72b5571fa7",
+      "size": 1691
+    },
+    {
+      "path": "components/marketplaces/MarketplaceNav.tsx",
+      "sha256": "0a6a6aa5ade31a19fb65fb29cafa0a1b6aa4fecbd4687bd65cb51fa322dd6aaa",
+      "size": 1204
+    },
+    {
+      "path": "components/ui/badge.tsx",
+      "sha256": "1b292cd64608eef62eab1e43621071b32f794988a8c4e40fd1086cfbf8d9ef5d",
+      "size": 1865
+    },
+    {
+      "path": "components/ui/button.tsx",
+      "sha256": "6f7d18705d50ab348f8d47fc040ed296503a6300fea6686c0acae42dbf20099a",
+      "size": 3342
+    },
+    {
+      "path": "components/ui/card.tsx",
+      "sha256": "a41b4d3d618416128d0093af2575048a2de8ef25c0926bcea4f19a24a59de476",
+      "size": 2641
+    },
+    {
+      "path": "components/ui/dialog.tsx",
+      "sha256": "13a5cddf294c6aa56391ebd5d474ee13e70cf9eebdd1ecf10c100c6555c8745a",
+      "size": 4234
+    },
+    {
+      "path": "components/ui/dropdown-menu.tsx",
+      "sha256": "47f754e1ab9e4e34a7ddbab035d7ed665dfac657ff5a2db4f3ab0923d340852b",
+      "size": 8831
+    },
+    {
+      "path": "components/ui/input.tsx",
+      "sha256": "c4902a8c4967875e30d9f1198175f4f5348a0cdd17e21b5e3d7c9e81d2996ed9",
+      "size": 968
+    },
+    {
+      "path": "components/ui/separator.tsx",
+      "sha256": "c924a82e99fda03684c17238d04eec857edc83977da2ee601795e94e52b4828f",
+      "size": 644
+    },
+    {
+      "path": "components/ui/sheet.tsx",
+      "sha256": "54e255b2dec4b8ad7c71a571f17700694df1533ad5c78f8b472ddd802c658877",
+      "size": 4570
+    },
+    {
+      "path": "components/ui/table.tsx",
+      "sha256": "a13f55a7c1406197608f223006cf16f211a257b213362caaef0d2abf3a389c8f",
+      "size": 2402
+    },
+    {
+      "path": "components/ui/tabs.tsx",
+      "sha256": "2a56759aa5573c65ad058e06800c22b80b4890bc51728d584fd711a2e3ddb06c",
+      "size": 3572
+    },
+    {
+      "path": "compose.yaml",
+      "sha256": "97db4d76135c1d5f088261b564de5a525981d4b369c1dde4be2dd86c904d542b",
+      "size": 940
+    },
+    {
+      "path": "daily-report-raw-check-2026-06-24.txt",
+      "sha256": "5d457aa8bb8b4bc85f4af2db061fc396124197d4559dbbe8f8e616e600860ad5",
+      "size": 815756
+    },
+    {
+      "path": "docker-compose.override.yml",
+      "sha256": "e073a48a3003db5d1464f26e866c8025902e16a8db1ed0cede3362e86438499a",
+      "size": 295
+    },
+    {
+      "path": "Dockerfile",
+      "sha256": "a1f05237898d02b318242230ba05607ad3d4a5d135cbdd705ff1f3fe2f62f88f",
+      "size": 3927
+    },
+    {
+      "path": "Dockerfile.txt",
+      "sha256": "b06dabfd31b643cba84fefb24d9599b64071ed8e19e7eecce9f765ed5697f94b",
+      "size": 1267
+    },
+    {
+      "path": "docs/WAVE_B_MODEL_BINDING.md",
+      "sha256": "518361bf0f14c338a82a47f981457df8d58aeaa0b7d7e154545d757ebaf889f6",
+      "size": 757
+    },
+    {
+      "path": "docs/WAVE_B_STRANGLER_BINDING.md",
+      "sha256": "af654e2603e3436ed53ddba80e7a7d89e1c50e5fc194281e4da7fc344a16419d",
+      "size": 591
+    },
+    {
+      "path": "docs/WAVE_B_WORKER_BINDING.md",
+      "sha256": "369e3052f13bcab9399d6924043e349f9f4bdd9ea0ebda4d378946e2222d3e96",
+      "size": 544
+    },
+    {
+      "path": "eslint.config.mjs",
+      "sha256": "870f1adccecf3051cbcd9fd307cef51d7633cf510979c181a81f4b1797273493",
+      "size": 465
+    },
+    {
+      "path": "finance-old-logic-check.txt",
+      "sha256": "9a5745c63e083784f6ecb1e4eccba12638638938005c4333aa98028456b357fe",
+      "size": 5921
+    },
+    {
+      "path": "financial-core/v5/LOCKED",
+      "sha256": "7cf87245c23dec09374de0850340b4fdc5d0d298e3cbd45c25d7cbdda60f9c62",
+      "size": 108
+    },
+    {
+      "path": "financial-core/v5/manifest.json",
+      "sha256": "8d114343754474f006af395bdc97e5abb347f00ed9a79ccc6d57c0733d719eff",
+      "size": 9579
+    },
+    {
+      "path": "financial-core/v5/README.txt",
+      "sha256": "216999b225397e6c1872459c10e4efb29bfd6833356543e92bbbd1420716c3d0",
+      "size": 219
+    },
+    {
+      "path": "financial-core/v5/snapshot/app/profit-wb/page.tsx",
+      "sha256": "09848568484a9b20f3aa166539d29a02113d2f2ff369b5ac1143da81defb0489",
+      "size": 96592
+    },
+    {
+      "path": "financial-core/v5/snapshot/lib/analytics/dataReadiness.ts",
+      "sha256": "100dcd757defbce1538cf6380fe9bb328e9ce3f751fc834e5c98d81abbd512bc",
+      "size": 18137
+    },
+    {
+      "path": "financial-core/v5/snapshot/lib/analytics/profitAnalytics.ts",
+      "sha256": "68d02185e842b0be7c30779e9398c7052d645ef49d1d324ffbd65610891dc22a",
+      "size": 89806
+    },
+    {
+      "path": "financial-core/v5/snapshot/lib/analytics/profitAnalyticsOzon.ts",
+      "sha256": "4c80c7190c34b9bf7665a0cdcd70230a037b2671cfec260e3a19a1a250bcdce3",
+      "size": 70823
+    },
+    {
+      "path": "financial-core/v5/snapshot/lib/finance/financeMetrics.ts",
+      "sha256": "6cae07353f1197f53299a181be9d189ba2464b84e34fd40e349caa8d5859ed9a",
+      "size": 12813
+    },
+    {
+      "path": "financial-core/v5/snapshot/lib/import/detectReportType.ts",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0
+    },
+    {
+      "path": "financial-core/v5/snapshot/lib/import/normalizers/financeTransactionNormalizer.ts",
+      "sha256": "2d79d46fb4152ed30870f7d28bb30a11f1960ae7b7d6795549dce1230707b3ce",
+      "size": 10720
+    },
+    {
+      "path": "financial-core/v5/snapshot/lib/import/normalizers/ozonAdsNormalizer.ts",
+      "sha256": "5b62889cfdb0ba866d10fe9cbc720d759768b62095b026e605c389915aa89f07",
+      "size": 2608
+    },
+    {
+      "path": "financial-core/v5/snapshot/lib/import/normalizers/ozonFinanceNormalizer.ts",
+      "sha256": "3b9516fb4fa9fdca960501f8c7a2d43e338bd4d1f81367ebea58ca20cadf40a9",
+      "size": 5711
+    },
+    {
+      "path": "financial-core/v5/snapshot/lib/import/normalizers/productCostNormalizer.ts",
+      "sha256": "bff741fc300439b45f5c2adc05b34ba5300adbf5193d24993ccad77ed91d9334",
+      "size": 3921
+    },
+    {
+      "path": "financial-core/v5/snapshot/lib/import/normalizers/wbAdsNormalizer.ts",
+      "sha256": "86f733ac864c5ceccc0a8257904e94b85ecd3183177954cd56edef9dd4fc0e66",
+      "size": 6495
+    },
+    {
+      "path": "financial-core/v5/snapshot/lib/import/normalizers/wbFinanceNormalizer.ts",
+      "sha256": "ce88355545f93cfb1d647637c1182bee878a074466eb71ed83dafcd07b50fe99",
+      "size": 4654
+    },
+    {
+      "path": "financial-core/v5/snapshot/lib/import/normalizers/wbSalesNormalizer.ts",
+      "sha256": "3ceccc2c93e1a6f8f2e63686638eaa4727011bcbe4e2b90e3c5051530aef486e",
+      "size": 10402
+    },
+    {
+      "path": "financial-core/v5/snapshot/lib/import/reportDetector.ts",
+      "sha256": "f32adb4dce27e7667778dd4b7cc3b4c6e75a78caaabdae231a80090f5879928d",
+      "size": 14888
+    },
+    {
+      "path": "financial-core/v5/snapshot/lib/telegram/dailyReport.ts",
+      "sha256": "a503d35a402975d2fd0f2be4834190b35af834bb3dec40c5e153201d8bf42942",
+      "size": 115360
+    },
+    {
+      "path": "financial-core/v6/LOCKED",
+      "sha256": "49b2bf7e4dafcca83c0f5b422a712583a021cbc2eec07ed219bf4eacbdc14702",
+      "size": 117
+    },
+    {
+      "path": "financial-core/v6/manifest.json",
+      "sha256": "3082ee38ed8da0db6f34d5690d6498b855471de37f23ba260ddea26fa4441b54",
+      "size": 21994
+    },
+    {
+      "path": "financial-core/v6/README.txt",
+      "sha256": "26bcb1f66bf0795eea3722ad87f9703c2ca2a777ff56636463fd030d149b59ed",
+      "size": 1177
+    },
+    {
+      "path": "financial-core/v6/snapshot/app/api/stocks/production-plan/export/route.ts",
+      "sha256": "f4f3bb946fc9a2697da212c513a9b37d1d9155275b996ec2a9403d6343125065",
+      "size": 58359
+    },
+    {
+      "path": "financial-core/v6/snapshot/app/api/stocks/supply-plan/export/route.ts",
+      "sha256": "f1cb94e3d50ab2e9f62f28377cc8bd42991ad51bba46b570149603dcc76ecafe",
+      "size": 76351
+    },
+    {
+      "path": "financial-core/v6/snapshot/app/insights/page.tsx",
+      "sha256": "ff4a9ff130127131ffd2ed7b2790ea609f3837dbb1cea2a0a12b0c9894adfcac",
+      "size": 23437
+    },
+    {
+      "path": "financial-core/v6/snapshot/app/profit-wb/page.tsx",
+      "sha256": "070498ff3a0c3eecbf2beda21ecba551c74afcf55024ff2757f9e20ef97a280f",
+      "size": 100790
+    },
+    {
+      "path": "financial-core/v6/snapshot/lib/analytics/costCoverage.ts",
+      "sha256": "eee6563f6a92316d2734ed63a1d6d72e46c5a5d29bfcb3c275d9c361efd535bd",
+      "size": 12256
+    },
+    {
+      "path": "financial-core/v6/snapshot/lib/analytics/dataReadiness.ts",
+      "sha256": "96db7e1f333efa12be0c21fecc169780baec9bed1281fe4bfd79be73e5658088",
+      "size": 18331
+    },
+    {
+      "path": "financial-core/v6/snapshot/lib/analytics/productCostResolver.ts",
+      "sha256": "adcff625bd21616ed15bdc76d9dd35304e06430afb5c66bd42eb721d38682a89",
+      "size": 2187
+    },
+    {
+      "path": "financial-core/v6/snapshot/lib/analytics/profitAnalytics.ts",
+      "sha256": "68d02185e842b0be7c30779e9398c7052d645ef49d1d324ffbd65610891dc22a",
+      "size": 89806
+    },
+    {
+      "path": "financial-core/v6/snapshot/lib/analytics/profitAnalyticsOzon.ts",
+      "sha256": "4c80c7190c34b9bf7665a0cdcd70230a037b2671cfec260e3a19a1a250bcdce3",
+      "size": 70823
+    },
+    {
+      "path": "financial-core/v6/snapshot/lib/analytics/wbFinality.ts",
+      "sha256": "f8674a0e6888c6959cc8f58474b4fbd26f47de0f8f1d861ef97868842bee1c5b",
+      "size": 1868
+    },
+    {
+      "path": "financial-core/v6/snapshot/lib/analytics/wbFinancialCoreV6.ts",
+      "sha256": "30845e28bbe196abe26a81c85e0c6f9be717f7088fa12a626356f2b3f2b67d05",
+      "size": 7966
+    },
+    {
+      "path": "financial-core/v6/snapshot/lib/analytics/wbSizeAllocation.ts",
+      "sha256": "545943b008333284953a9dca091a523f40a796b152a6fd42efa5aa829cca7ef2",
+      "size": 2945
+    },
+    {
+      "path": "financial-core/v6/snapshot/lib/finance/effectiveFinanceTransactions.ts",
+      "sha256": "373d430347957d14008adcffa65966d44ebb209a88aeecc44bfae62733684b0c",
+      "size": 15841
+    },
+    {
+      "path": "financial-core/v6/snapshot/lib/finance/financeMetrics.ts",
+      "sha256": "ea9d671f620f3af4849577b75d10b5e9636a86b5a5ada34eb4dd687eba3d94f3",
+      "size": 12812
+    },
+    {
+      "path": "financial-core/v6/snapshot/lib/import/detectReportType.ts",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0
+    },
+    {
+      "path": "financial-core/v6/snapshot/lib/import/normalizers/financeTransactionNormalizer.ts",
+      "sha256": "2d79d46fb4152ed30870f7d28bb30a11f1960ae7b7d6795549dce1230707b3ce",
+      "size": 10720
+    },
+    {
+      "path": "financial-core/v6/snapshot/lib/import/normalizers/ozonAdsNormalizer.ts",
+      "sha256": "e4ec16a9cf29f37c886d205eb898e2007716d1eb810ccb4895e34ffb54c88733",
+      "size": 2607
+    },
+    {
+      "path": "financial-core/v6/snapshot/lib/import/normalizers/ozonFinanceNormalizer.ts",
+      "sha256": "1d60270c20875273b6f32c4034c2e0b40e14c795f8302ba00c288e97917d24f4",
+      "size": 5710
+    },
+    {
+      "path": "financial-core/v6/snapshot/lib/import/normalizers/productCostNormalizer.ts",
+      "sha256": "e5b7db3ca0f2ac37ababec3ace7575b1834533dee21d4122225b77f95e76bba2",
+      "size": 3920
+    },
+    {
+      "path": "financial-core/v6/snapshot/lib/import/normalizers/wbAdsNormalizer.ts",
+      "sha256": "86f733ac864c5ceccc0a8257904e94b85ecd3183177954cd56edef9dd4fc0e66",
+      "size": 6495
+    },
+    {
+      "path": "financial-core/v6/snapshot/lib/import/normalizers/wbFinanceNormalizer.ts",
+      "sha256": "b8c8d5747bcbf33b2bdb0e8ad4eac3a53dd9c3dcf5971fd8d3df3f59390dd5c9",
+      "size": 4653
+    },
+    {
+      "path": "financial-core/v6/snapshot/lib/import/normalizers/wbSalesNormalizer.ts",
+      "sha256": "3ceccc2c93e1a6f8f2e63686638eaa4727011bcbe4e2b90e3c5051530aef486e",
+      "size": 10402
+    },
+    {
+      "path": "financial-core/v6/snapshot/lib/import/reportDetector.ts",
+      "sha256": "f32adb4dce27e7667778dd4b7cc3b4c6e75a78caaabdae231a80090f5879928d",
+      "size": 14888
+    },
+    {
+      "path": "financial-core/v6/snapshot/lib/stocks/stockAbcSnapshots.ts",
+      "sha256": "982bab4f3d0b4e790fc889e7fa3c14dfc116345c4472310e97479cf7166db191",
+      "size": 38892
+    },
+    {
+      "path": "financial-core/v6/snapshot/lib/telegram/dailyReport.ts",
+      "sha256": "4ccb261cb81a7b56b840ec2ac798a5308fd1b7e30625a8590aa8f26861a7815e",
+      "size": 120582
+    },
+    {
+      "path": "financial-core/v6/snapshot/lib/wb/sourceOwnership.ts",
+      "sha256": "f0a4467beeeeca787f6bc5114ceecb28606df442729c216143a8fe080fb751ee",
+      "size": 29506
+    },
+    {
+      "path": "find-historical-sync-files.txt",
+      "sha256": "57f8a1baa82ba58369e42e1f936f0bbcf38cf89c3c7855732aecc75dd68f0eb2",
+      "size": 13614
+    },
+    {
+      "path": "fix_wb_sale_all_missing_columns_v2.ps1",
+      "sha256": "cbdecc2e6ff8b9f5cf4314c2309d63bf00dd6c7c2dd3eec0177ad737e19f6529",
+      "size": 6380
+    },
+    {
+      "path": "fix_wb_sale_spp_columns.ps1",
+      "sha256": "14d10a2415e68a95ec1d39cb1468ed7d8d4b41d6d8e1b4a4fd24f0204ee1ce74",
+      "size": 5329
+    },
+    {
+      "path": "import-files.txt",
+      "sha256": "8f085f6590c33221d65f81d553bf1add1f0b1dce0990b1e1ebf061a129bb9ec5",
+      "size": 2678
+    },
+    {
+      "path": "lib/analytics/costCoverage.ts",
+      "sha256": "eee6563f6a92316d2734ed63a1d6d72e46c5a5d29bfcb3c275d9c361efd535bd",
+      "size": 12256
+    },
+    {
+      "path": "lib/analytics/dashboardDailyAnalytics.ts",
+      "sha256": "b6fcd5cf8eeee960c006292592796194020e62aeed8736b1741cdf68e127a234",
+      "size": 26585
+    },
+    {
+      "path": "lib/analytics/dataReadiness.ts",
+      "sha256": "96db7e1f333efa12be0c21fecc169780baec9bed1281fe4bfd79be73e5658088",
+      "size": 18331
+    },
+    {
+      "path": "lib/analytics/loadCanonicalAnalyticsForUi.ts",
+      "sha256": "bfc6cad424768719c784c50bc71e497a7da159d58f23140a1b3e80b24343844b",
+      "size": 1589
+    },
+    {
+      "path": "lib/analytics/productCostResolver.ts",
+      "sha256": "adcff625bd21616ed15bdc76d9dd35304e06430afb5c66bd42eb721d38682a89",
+      "size": 2187
+    },
+    {
+      "path": "lib/analytics/profitAnalytics.ts",
+      "sha256": "68d02185e842b0be7c30779e9398c7052d645ef49d1d324ffbd65610891dc22a",
+      "size": 89806
+    },
+    {
+      "path": "lib/analytics/profitAnalytics.ts.backup-dashboard-light-analytics",
+      "sha256": "d374aa1778de94b9887f988217d6eaa7c0e42ea1049487e680d8acfbf8d2d37a",
+      "size": 26773
+    },
+    {
+      "path": "lib/analytics/profitAnalyticsOzon.ts",
+      "sha256": "4c80c7190c34b9bf7665a0cdcd70230a037b2671cfec260e3a19a1a250bcdce3",
+      "size": 70823
+    },
+    {
+      "path": "lib/analytics/profitAnalyticsOzon.ts.backup-dashboard-light-analytics",
+      "sha256": "e12f24aab07872017c4bb4c1257b54d3282f612e7820fe92aba982ed1900e5a3",
+      "size": 23009
+    },
+    {
+      "path": "lib/analytics/profitAnalyticsOzon.ts.bak_20260702_113432",
+      "sha256": "e12f24aab07872017c4bb4c1257b54d3282f612e7820fe92aba982ed1900e5a3",
+      "size": 23009
+    },
+    {
+      "path": "lib/analytics/wbFinality.ts",
+      "sha256": "f8674a0e6888c6959cc8f58474b4fbd26f47de0f8f1d861ef97868842bee1c5b",
+      "size": 1868
+    },
+    {
+      "path": "lib/analytics/wbFinancialCoreV6.ts",
+      "sha256": "30845e28bbe196abe26a81c85e0c6f9be717f7088fa12a626356f2b3f2b67d05",
+      "size": 7966
+    },
+    {
+      "path": "lib/analytics/wbSizeAllocation.ts",
+      "sha256": "545943b008333284953a9dca091a523f40a796b152a6fd42efa5aa829cca7ef2",
+      "size": 2945
+    },
+    {
+      "path": "lib/analytics/withAnalyticsPageFailSoft.tsx",
+      "sha256": "28a233db10eb41ea3015459cb6a1c3b34d351fc50ea2bd8d2cf451e9a03fa268",
+      "size": 1512
+    },
+    {
+      "path": "lib/auth/localAuth.ts",
+      "sha256": "032c74169394f7a4e4633c4224565e56c2327dfa856743a4f05738aa88487fa7",
+      "size": 2422
+    },
+    {
+      "path": "lib/auth/localAuth.ts.backup-permanent-local-auth",
+      "sha256": "aa3f4e409abbc46f8b05931165073587ff86682289e9690bbb96918779c39dec",
+      "size": 2421
+    },
+    {
+      "path": "lib/consumers/waveDE/index.ts",
+      "sha256": "3f7496cb5abdeaae427aab09d45ef1cc17ef03a2c553ceb9be5baa2974a0f228",
+      "size": 138
+    },
+    {
+      "path": "lib/consumers/waveDE/periodFinancePack.ts",
+      "sha256": "d81b3d7150402c8c1e2dcb0ab9dddd70c08ce673ddf85a47cfc85ddb978aeb9d",
+      "size": 2502
+    },
+    {
+      "path": "lib/consumers/waveDE/profitReadModelPack.ts",
+      "sha256": "695abd843730179387e7808817f8f7abe155048893c20d6e41885dbec73115bd",
+      "size": 3116
+    },
+    {
+      "path": "lib/consumers/waveDE/stockPlanningPack.ts",
+      "sha256": "86e3f3509176eb2d1f6968d0348d25fee577ff49d9d4035be27f52e1a2ff8584",
+      "size": 1465
+    },
+    {
+      "path": "lib/consumers/waveDE/types.ts",
+      "sha256": "08912ec95bd7de694374cc66b50315783c4eabbbedbe57e1559ce09acb67a54c",
+      "size": 860
+    },
+    {
+      "path": "lib/currentPrioritySync/syncCurrentPriorityData.ts",
+      "sha256": "8fdcc87330980339e78c5c201fbfa0c6f1e597c7524ffbc33bb200a3a13edda6",
+      "size": 26854
+    },
+    {
+      "path": "lib/dashboard/incompleteWeekGuard.ts",
+      "sha256": "5fc88736569dea75078fd8d8ebd3043a083dd12d8b5d0dd8db8f1d0a8ee71091",
+      "size": 3676
+    },
+    {
+      "path": "lib/dashboard/managementRevenue.ts",
+      "sha256": "2955f05b6fe3f34ebad48b89d882624c1a31e47deb094192ed6d5b5df445b2e3",
+      "size": 4372
+    },
+    {
+      "path": "lib/dashboard/periodSnapshot.ts",
+      "sha256": "9407e0e5eecd942a381ef7b6c5589bf0a2c8a108b9314abbeef8fe938e3b27ca",
+      "size": 53947
+    },
+    {
+      "path": "lib/dashboard/selectedScopeIdentity.ts",
+      "sha256": "ff50fbf261101221c566f1a60aa38082816666dc325879b9cafcaf9b42995434",
+      "size": 1542
+    },
+    {
+      "path": "lib/dashboard/v6PeriodReadModel/consumer.ts",
+      "sha256": "2439537ef1e2fa057042fe2123599f359ac4f420a697ac7b47092df118ba0825",
+      "size": 9607
+    },
+    {
+      "path": "lib/dashboard/v6PeriodReadModel/contract.ts",
+      "sha256": "6b4392b4cf9b35a1e274f8306bf737fcbb35898054941127887516fb27f68cb6",
+      "size": 5569
+    },
+    {
+      "path": "lib/dashboard/v6PeriodReadModel/d1d5Eligibility.ts",
+      "sha256": "c56011e7022da3b36f89f1d2a048174da1a6a1ce7da8ac967fd5407adae6a450",
+      "size": 10288
+    },
+    {
+      "path": "lib/dashboard/v6PeriodReadModel/finality.ts",
+      "sha256": "31089ba2c850a76bd4134d7437d2c9649cbd142c450389fb58b7fc98f14c7169",
+      "size": 9793
+    },
+    {
+      "path": "lib/dashboard/v6PeriodReadModel/fingerprint.ts",
+      "sha256": "bdf9de8c3a918a3d00ceb50aec419ea7266f3a4da2c0d66980847a0e6a2ae50a",
+      "size": 1955
+    },
+    {
+      "path": "lib/dashboard/v6PeriodReadModel/index.ts",
+      "sha256": "bf79435aad6fcffd3b7a56bbcff028d3457c96128b5406ff2c06aa79c05eac68",
+      "size": 2078
+    },
+    {
+      "path": "lib/dashboard/v6PeriodReadModel/jobIdentity.ts",
+      "sha256": "bef0e7ed536520f4c17ec4c45969dfb2f7d9fc8637ab152585c2b2969f79f352",
+      "size": 1919
+    },
+    {
+      "path": "lib/dashboard/v6PeriodReadModel/producer.ts",
+      "sha256": "9e130cadf8abe85f6e75bd80e58930c8f1ff7abbc96d6ca42e41c8f1a01f55b6",
+      "size": 36376
+    },
+    {
+      "path": "lib/dashboard/v6PeriodReadModel/queueLifecycle.ts",
+      "sha256": "d42db67fc9cf16b16e92c06a612f1f86fed4524232da4acc7f500836fd89eb3f",
+      "size": 3359
+    },
+    {
+      "path": "lib/dashboard/v6PeriodReadModel/repository.ts",
+      "sha256": "928df512f873885f22915ca1fd80e8b5f07311b59f6a3c889e0df2bd79288a40",
+      "size": 16290
+    },
+    {
+      "path": "lib/dashboard/v6PeriodReadModel/targetClient.ts",
+      "sha256": "b28d881c21702c9de0f8d2f433fa6ff3cca975d754f9e30106dcda9e9296ad3e",
+      "size": 2533
+    },
+    {
+      "path": "lib/dashboard/v6PeriodReadModel/v2SafetyAttestation.ts",
+      "sha256": "ed561e73af282d7dc325f70547cbeeee60879b9bc47a223bf2a272dd67afed81",
+      "size": 9614
+    },
+    {
+      "path": "lib/date/defaultPeriod.ts",
+      "sha256": "694e57d52c0bf1332a4ca20410608d05727c9b7f044072568055bdf8b4dba379",
+      "size": 1933
+    },
+    {
+      "path": "lib/db/logAnalyticsDbUnavailable.ts",
+      "sha256": "6c35c06a76ccb210121bc7044447273cb5d4751e6112aac9c558063ae01e85fe",
+      "size": 2194
+    },
+    {
+      "path": "lib/db/prismaPoolConfig.ts",
+      "sha256": "1fbcb5958adc5b0bd2c5961b2814dfc92aa61cb5a4a2d2564c3e3047cdb41ffa",
+      "size": 366
+    },
+    {
+      "path": "lib/db/runReadWithTransientDbPolicy.ts",
+      "sha256": "31bdceab56825e6edf634a2d327cf805097628c9bc6b3057aab21dce4c2ad317",
+      "size": 2047
+    },
+    {
+      "path": "lib/db/sequentialAll.ts",
+      "sha256": "1bf64e08d6bf7068c284f79dd332259b5d8bb32ee34d70ee059f5f4f101a145a",
+      "size": 576
+    },
+    {
+      "path": "lib/db/transientDatabaseError.ts",
+      "sha256": "6b19a8543e69a3178dafb8bf60c7196dde49d6d1cf5a61d230fcd5cf82331941",
+      "size": 5447
+    },
+    {
+      "path": "lib/finance/canonicalPeriodFinality.ts",
+      "sha256": "7c6df7ee4df514960d54e164d44da035d9f7684e07e3aa7b4442bde4170c38b2",
+      "size": 5869
+    },
+    {
+      "path": "lib/finance/combinedMarketplaceFinality.ts",
+      "sha256": "b8a342531dd293b4183930025ee24a6349a3fb846e6dfa99cead87a52895bfe9",
+      "size": 1970
+    },
+    {
+      "path": "lib/finance/effectiveFinanceTransactions.ts",
+      "sha256": "373d430347957d14008adcffa65966d44ebb209a88aeecc44bfae62733684b0c",
+      "size": 15841
+    },
+    {
+      "path": "lib/finance/financeActuality.ts",
+      "sha256": "bcaaefa8b4228f012096a86e6b408aea1f0f34683dbd9b6198b484f429c45550",
+      "size": 1162
+    },
+    {
+      "path": "lib/finance/financeMetrics.ts",
+      "sha256": "ea9d671f620f3af4849577b75d10b5e9636a86b5a5ada34eb4dd687eba3d94f3",
+      "size": 12812
+    },
+    {
+      "path": "lib/finance/loanBusinessDate.ts",
+      "sha256": "b1c515fb35047defec1a2fdd5813f759d712f9fdc07466fa13f3a049b7918bc1",
+      "size": 1948
+    },
+    {
+      "path": "lib/finance/loanPaymentActuality.ts",
+      "sha256": "d1602094861be32892cf5f0639d4661609188bf3000cd1fdacae2fb18fef7fea",
+      "size": 6101
+    },
+    {
+      "path": "lib/finance/loanPaymentFinanceSync.ts",
+      "sha256": "567b2b567d826c3ec6ad6583b1fd49f628068a8bbe02de14e716e249ab885704",
+      "size": 3159
+    },
+    {
+      "path": "lib/finance/loanState.ts",
+      "sha256": "317107fdddbfff5c99cd3a3281facc2d9f34c83dd8e4421480183e4a0068b8da",
+      "size": 19358
+    },
+    {
+      "path": "lib/finance/marketplaceTax.ts",
+      "sha256": "78520e7bf65402ef9573eeb4f06feba57eb95579914b79d274553577c0883360",
+      "size": 4024
+    },
+    {
+      "path": "lib/finance/recalculateAccountBalances.ts",
+      "sha256": "9d25fba8318c5a607f1df8c908055206c86cf9a74167251ce6b4dcaac0407a34",
+      "size": 2822
+    },
+    {
+      "path": "lib/finance/wbAccountantTaxBase.ts",
+      "sha256": "63554fb80f93d3d3b787bcf25463831d6502a1ce007cc594571520677cba091e",
+      "size": 10829
+    },
+    {
+      "path": "lib/historicalSync/createHistoricalSyncJobs.ts",
+      "sha256": "9552ffc5eb4ecce5106445b074af2bd414507b63555cf0384d409a3fefbbabea",
+      "size": 10518
+    },
+    {
+      "path": "lib/historicalSync/createWbSalesHistoricalJobs.ts",
+      "sha256": "e454ab40e8f1fc3f972dee5137a8717ff4014bc404b1721d795ff14dae3f9db6",
+      "size": 7628
+    },
+    {
+      "path": "lib/historicalSync/runHistoricalSyncJob.ts",
+      "sha256": "b39335e5576b5fc20dd528011d24856053ddc6b404d2452a492349b0468fac61",
+      "size": 16752
+    },
+    {
+      "path": "lib/import/detectReportType.ts",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0
+    },
+    {
+      "path": "lib/import/normalizers/financeTransactionNormalizer.ts",
+      "sha256": "2d79d46fb4152ed30870f7d28bb30a11f1960ae7b7d6795549dce1230707b3ce",
+      "size": 10720
+    },
+    {
+      "path": "lib/import/normalizers/ozonAdsNormalizer.ts",
+      "sha256": "e4ec16a9cf29f37c886d205eb898e2007716d1eb810ccb4895e34ffb54c88733",
+      "size": 2607
+    },
+    {
+      "path": "lib/import/normalizers/ozonFinanceNormalizer.ts",
+      "sha256": "1d60270c20875273b6f32c4034c2e0b40e14c795f8302ba00c288e97917d24f4",
+      "size": 5710
+    },
+    {
+      "path": "lib/import/normalizers/ozonProductNormalizer.ts",
+      "sha256": "db415187835cd5ef85bb101c28e61cebc3774fa611bb37b35e09f481fae128e0",
+      "size": 1347
+    },
+    {
+      "path": "lib/import/normalizers/ozonStockNormalizer.ts",
+      "sha256": "49c39475e43fbaff0ee605a0b5b6a27cb45818028587f5a701f5f424cca8ac97",
+      "size": 2298
+    },
+    {
+      "path": "lib/import/normalizers/ozonSupplyRecommendationNormalizer.ts",
+      "sha256": "2db55d439aa9ba0667b8e98a7cea0262c60bb783c1ac2f4b6b83ab1354b9a439",
+      "size": 7754
+    },
+    {
+      "path": "lib/import/normalizers/ozonWarehouseStockNormalizer.ts",
+      "sha256": "cbb570f765b0c4da73e348d773dde20d6d6d88de22d5005fef64ccc47660e90c",
+      "size": 8858
+    },
+    {
+      "path": "lib/import/normalizers/productCostNormalizer.ts",
+      "sha256": "e5b7db3ca0f2ac37ababec3ace7575b1834533dee21d4122225b77f95e76bba2",
+      "size": 3920
+    },
+    {
+      "path": "lib/import/normalizers/wbAdsNormalizer.ts",
+      "sha256": "86f733ac864c5ceccc0a8257904e94b85ecd3183177954cd56edef9dd4fc0e66",
+      "size": 6495
+    },
+    {
+      "path": "lib/import/normalizers/wbFinanceNormalizer.ts",
+      "sha256": "b8c8d5747bcbf33b2bdb0e8ad4eac3a53dd9c3dcf5971fd8d3df3f59390dd5c9",
+      "size": 4653
+    },
+    {
+      "path": "lib/import/normalizers/wbSalesNormalizer.ts",
+      "sha256": "3ceccc2c93e1a6f8f2e63686638eaa4727011bcbe4e2b90e3c5051530aef486e",
+      "size": 10402
+    },
+    {
+      "path": "lib/import/normalizers/wbStockNormalizer.ts",
+      "sha256": "b67f03672f72318fcdae1d7c2a23b8ec7154818b791427852b533dac4b747265",
+      "size": 1943
+    },
+    {
+      "path": "lib/import/normalizers/wbSupplyRecommendationNormalizer.ts",
+      "sha256": "a25321639ab0ff45a81c0c73f4dcc5325fcab2e1d520884f34eb13cd1a724556",
+      "size": 7099
+    },
+    {
+      "path": "lib/import/reportDetector.ts",
+      "sha256": "f32adb4dce27e7667778dd4b7cc3b4c6e75a78caaabdae231a80090f5879928d",
+      "size": 14888
+    },
+    {
+      "path": "lib/marketplaceOrders/orderRecoveryPlanner.ts",
+      "sha256": "d1f46d4688499097d0c93f62ea846b5b4b205800aea0f125e7333fc748f30cf4",
+      "size": 4659
+    },
+    {
+      "path": "lib/marketplaceOrders/orderSyncLog.ts",
+      "sha256": "1a8e648a1048c858410fbc125b594daee7c6315dd08e8f2fc282f69d906160d3",
+      "size": 2470
+    },
+    {
+      "path": "lib/marketplaceOrders/runOrderRecoveryPass.ts",
+      "sha256": "6c9a0a120a3ce44e32c1e44fa6016caa5c4dc8fc9b51d4f62478d44a9060be69",
+      "size": 5980
+    },
+    {
+      "path": "lib/marketplaceOrders/syncMarketplaceDailyOrders.ts",
+      "sha256": "608fbf7528b20a9c99da82577cb8bf3520a133cc873afa24d0afe1221ef47df4",
+      "size": 26482
+    },
+    {
+      "path": "lib/ozon/accrualByDay.ts",
+      "sha256": "add71f6f347e900d1e126994b99a31d4ec279a7e01dcdb1e41ffa7a926f6c77e",
+      "size": 31177
+    },
+    {
+      "path": "lib/ozon/accrualDayStatus.ts",
+      "sha256": "2fb36ac711257c0a7a4b0161f6a7f464ec40a4948f3a91382fd9c7a60c93b018",
+      "size": 3103
+    },
+    {
+      "path": "lib/ozon/accrualDayStatusStore.ts",
+      "sha256": "cb35743d0c763b0371fd4fb7b025c4c8616fe454c3f1d1430625f5a13cfb6efa",
+      "size": 2656
+    },
+    {
+      "path": "lib/ozon/accrualIngestPolicy.ts",
+      "sha256": "5175ebc95d739abd2e41a8e7f59a6266eb294bf3425a2458438e7cb7549569fa",
+      "size": 1638
+    },
+    {
+      "path": "lib/ozon/accrualIngestValidation.ts",
+      "sha256": "d28a36113a50c6d8762adbb57150b42cc395c8b087bc37eceeb73e046a226919",
+      "size": 5688
+    },
+    {
+      "path": "lib/ozon/accrualTwoPhasePersist.ts",
+      "sha256": "ad032536200dab7c405682af14b51062bd6447c9cc07d6148cdcdf4ef4fc2509",
+      "size": 555
+    },
+    {
+      "path": "lib/ozon/expectedOzonCompanies.ts",
+      "sha256": "6b1f8ab206854da1e34918adc8eb04580f5bbec0e2ff06c34092a59d8a092c0a",
+      "size": 1538
+    },
+    {
+      "path": "lib/ozon/financialRepairProductionAdapters.ts",
+      "sha256": "3e89d43a81aaacc145021a94db8330b92463acfab3b794255a3573c6d8657fe7",
+      "size": 73195
+    },
+    {
+      "path": "lib/ozon/historicalRepairInvalidationPolicy.ts",
+      "sha256": "3cacfd8746f589d8035229a5d9fb309cddd363b4a9fa259581eea3f9085437dc",
+      "size": 744
+    },
+    {
+      "path": "lib/ozon/legacyFinanceStep.ts",
+      "sha256": "ac1602564fce2a5ecee756726638830f8ab754f683e8a8513701eff4aaa61f76",
+      "size": 2933
+    },
+    {
+      "path": "lib/ozon/ownerApprovalBinding.ts",
+      "sha256": "2a3ba735568046138324985d595295f938830e9b585cd39373122bed8ae2f8e1",
+      "size": 13962
+    },
+    {
+      "path": "lib/ozon/ozonAccrualSyncWindow.ts",
+      "sha256": "d6912899933ae6fe286592d75136219a7afcccdd636afb8be2a5c8fa3c4dece7",
+      "size": 4430
+    },
+    {
+      "path": "lib/ozon/ozonDailySourceFreshness.ts",
+      "sha256": "ea03ca6c23b91131f8c74958307ce31ea8575c30a2ef37df8e3fd3251687b108",
+      "size": 4586
+    },
+    {
+      "path": "lib/ozon/reportAdsRetry.ts",
+      "sha256": "77e72213d7bacd0fd592ae96f49f3f9ff90638dad735d5415a825db8d8e0565d",
+      "size": 10165
+    },
+    {
+      "path": "lib/ozon/syncOzon.ts",
+      "sha256": "5a3e3fe8b2dbae8e4425f3db5aba7361c15bc12fc83b3b6f2055f6e1aee89f6c",
+      "size": 64866
+    },
+    {
+      "path": "lib/ozon/syncOzonAccrualByDay.ts",
+      "sha256": "0fd096fb2b3eb2274e9bbc7ec33f5a3f304b1a9ae0deb6c2922ba50f197facae",
+      "size": 35859
+    },
+    {
+      "path": "lib/ozon/syncOzonDailyEconomicTotals.ts",
+      "sha256": "97d707af19087db36d5fe067622373788a7ebc84458ad1695e79196f11aed585",
+      "size": 13856
+    },
+    {
+      "path": "lib/platform/completeness/exactPeriodHeal.ts",
+      "sha256": "296d7c0edbabd1d834538e4d9eec6ff762094c2efb3bf8d9ca354e11a2e33af3",
+      "size": 1014
+    },
+    {
+      "path": "lib/platform/completeness/watchdog.ts",
+      "sha256": "dcf918658a6fe64411d123b901e9fc8154b058adb3e1de932074085411ef82d2",
+      "size": 5733
+    },
+    {
+      "path": "lib/platform/jobs/adapters.ts",
+      "sha256": "f32cad7f7341758f45b7a2e278d4651ffff1da1e61002a322294bfda55c44133",
+      "size": 2139
+    },
+    {
+      "path": "lib/platform/jobs/contracts.ts",
+      "sha256": "2cc6fa04fcd44431eef821509b9e67681e1846c18bde485c6140766000bbb554",
+      "size": 1718
+    },
+    {
+      "path": "lib/platform/jobs/errors.ts",
+      "sha256": "6185ef36b2a6c641f311d44efc5dd894af5819ebdd33adc6a2895f1667c275a0",
+      "size": 2809
+    },
+    {
+      "path": "lib/platform/jobs/index.ts",
+      "sha256": "417a3c481e1014e0172856b4c0f5ea0811390e36ca1fcdd0bfac54e24a2d3115",
+      "size": 273
+    },
+    {
+      "path": "lib/platform/jobs/jobs.test.ts",
+      "sha256": "b3f8552d34b5fd49bfd4dc70f9b81af6177b996e790db6d54703f2af44b4934e",
+      "size": 10436
+    },
+    {
+      "path": "lib/platform/jobs/keys.ts",
+      "sha256": "c152ac7a42545310a65b079558dbf244450c9049846ad04ae224da27104eeefa",
+      "size": 2170
+    },
+    {
+      "path": "lib/platform/jobs/mode.ts",
+      "sha256": "be99611ed07a9b5ae58f12fec548063455f67a4343f950c30b943751674a538f",
+      "size": 834
+    },
+    {
+      "path": "lib/platform/jobs/ozonPilot.ts",
+      "sha256": "e0e60b7e3f84c374a0c0c94e472c25bc81da96747b81f0e274b1ba86905a550c",
+      "size": 1519
+    },
+    {
+      "path": "lib/platform/jobs/prismaStore.ts",
+      "sha256": "8daf5263ccdd11734869139397457217346d06b2e947a8bf4006850a1acec386",
+      "size": 8763
+    },
+    {
+      "path": "lib/platform/jobs/transitions.ts",
+      "sha256": "b4cfff9e97a70bb6dbd35295b137b4d8896bdcadb2f6103c90c80d4c919a63b4",
+      "size": 3019
+    },
+    {
+      "path": "lib/platform/jobs/types.ts",
+      "sha256": "d5550b9417d8042ed70d6ff24a3df54b0a6d03f1850610433e6327968a9277c9",
+      "size": 2764
+    },
+    {
+      "path": "lib/platform/jobs/worker.ts",
+      "sha256": "b26afa70ea8e30e334c8bb2095e097f3479b09c7596b60d56fb61d1ef3c3e638",
+      "size": 8330
+    },
+    {
+      "path": "lib/prisma.ts",
+      "sha256": "c04ca1962a551cbb2a8e28b7e159f4dce396578d5a3b6acd17d786a08b60972b",
+      "size": 1499
+    },
+    {
+      "path": "lib/profitReadModel/canonicalScopes.ts",
+      "sha256": "0e3c2316cd55a0404d4acb0904ac9789e9eb20587e7247a41efa563d36c5782d",
+      "size": 642
+    },
+    {
+      "path": "lib/profitReadModel/consumer.ts",
+      "sha256": "486e0e77e90fed3906ef3bd6262422d837c8ef9b0ea081633133b6e6c10f31c2",
+      "size": 6719
+    },
+    {
+      "path": "lib/profitReadModel/contract.ts",
+      "sha256": "86d7c1cac07276947853e7de145f8e3e425501d24f021516fd7becc84ac65d2d",
+      "size": 2729
+    },
+    {
+      "path": "lib/profitReadModel/ensureClosedWeekProfitJobMatrix.ts",
+      "sha256": "90f60185dd3e01d19a007d21bf885d64417e5a11b5470dad5918cc26cfa82cf8",
+      "size": 1835
+    },
+    {
+      "path": "lib/profitReadModel/fingerprint.ts",
+      "sha256": "e9ce944e2c427a021a479a05cc15c687446ebc073b19e8ef37ca625188e90c6e",
+      "size": 1336
+    },
+    {
+      "path": "lib/profitReadModel/index.ts",
+      "sha256": "d4d04eb0b94a9006054faf3468ee4e08d1058dc9e60efbf7c2faeb114eb746a1",
+      "size": 457
+    },
+    {
+      "path": "lib/profitReadModel/invalidation.ts",
+      "sha256": "1eb4e63ba502cc196d5f1c76a45c29f163d693dee8b4042f14122c03261d15fb",
+      "size": 6476
+    },
+    {
+      "path": "lib/profitReadModel/producer.ts",
+      "sha256": "070686069b07b6818e2e08b61d5c06bac05598cca8e5f4c229c7c8fa243f003d",
+      "size": 6724
+    },
+    {
+      "path": "lib/profitReadModel/queueLifecycle.ts",
+      "sha256": "b2aa29b8bd4a26c2d54eef64b5a41a29849817d77fed1cb7fc7820796e0ea364",
+      "size": 656
+    },
+    {
+      "path": "lib/profitReadModel/repository.ts",
+      "sha256": "58ca953895cb3c361f87bbd22776cc2333499c4cad9078db9a7efb6d0e36f2f6",
+      "size": 8027
+    },
+    {
+      "path": "lib/profitReadModel/sourceVersion.ts",
+      "sha256": "b9409de65591321ee2a0611852fd1fb83eeb59f0c467c9df2947a4bf416a10a3",
+      "size": 6984
+    },
+    {
+      "path": "lib/profitReadModel/targetClient.ts",
+      "sha256": "e28f2d1d8b545db3be9c6c37da3859f397da74705a54b271474519de5c7a0385",
+      "size": 6095
+    },
+    {
+      "path": "lib/security/cronAuth.ts",
+      "sha256": "5a96498286cd91b8cfb15b98b17e270aa78309cc7bc82985aac2ad23d5757549",
+      "size": 1359
+    },
+    {
+      "path": "lib/security/telegramDailyReportAuth.ts",
+      "sha256": "c63d4f3e3a0bd73702fca7f24ff095f2bd65084746070a3969c6c27c8af0c23b",
+      "size": 1321
+    },
+    {
+      "path": "lib/sleep.ts",
+      "sha256": "e448739d5a9be080ae52bdfbb98080a9049a1f6ee6ba632beea591dab23b6bb1",
+      "size": 108
+    },
+    {
+      "path": "lib/stocks/stockAbcSnapshots.ts",
+      "sha256": "982bab4f3d0b4e790fc889e7fa3c14dfc116345c4472310e97479cf7166db191",
+      "size": 38892
+    },
+    {
+      "path": "lib/supabase/client.ts",
+      "sha256": "d7b65c4f62f61fadb8d3ae4bccbae2b4052d8c3c7f15af7937c0bdc4230cf13b",
+      "size": 351
+    },
+    {
+      "path": "lib/supabase/server.ts",
+      "sha256": "0e144809854220f4a4df5347f7d29155a4a6324d82e887d5060773d56c675bd7",
+      "size": 578
+    },
+    {
+      "path": "lib/telegram/dailyReport.ts",
+      "sha256": "4ccb261cb81a7b56b840ec2ac798a5308fd1b7e30625a8590aa8f26861a7815e",
+      "size": 120582
+    },
+    {
+      "path": "lib/telegram/dailyReport.ts.backup-daily-report-split-perf",
+      "sha256": "42a4ce1df6fa185d3d70b3da73fe06b539592c0ebbc1ef12c1f6806f70253a06",
+      "size": 53880
+    },
+    {
+      "path": "lib/telegram/dailyReport.ts.backup-parallel-company-daily-report",
+      "sha256": "9b8a62bf9d867060a677e1b4d3fc5732d92f88ee923126401ee0c2cf922daf5b",
+      "size": 53428
+    },
+    {
+      "path": "lib/telegram/dailyReportAi.ts",
+      "sha256": "de9eb60e98132b1f0f353ace802e00d58f05c893f372180dfcad8766ddefabc9",
+      "size": 13256
+    },
+    {
+      "path": "lib/telegram/financeBotParser.ts",
+      "sha256": "d81ff4569aeecb4f0bf4769192ba5639e4f089c10dea20b3f9642df942c6a775",
+      "size": 16128
+    },
+    {
+      "path": "lib/telegram/sendTelegramMessage.ts",
+      "sha256": "5fc15157185462b38af780aae80b9154ed3884bcef1831e767e0f4c424667f5e",
+      "size": 1005
+    },
+    {
+      "path": "lib/utils.ts",
+      "sha256": "7c8c3dfc0cdd370d44932828eb067ef771c8fe7996693221d5d4b90af6d54f2d",
+      "size": 166
+    },
+    {
+      "path": "lib/waveC/insightsAbcAdapter.ts",
+      "sha256": "efb1acbdaf08385798c50e4f3eb822b7a2b75b3f5639f54c335cd12b3a09dfcf",
+      "size": 18286
+    },
+    {
+      "path": "lib/wb/closedWeekFinalizer.ts",
+      "sha256": "d8eff9c464dac82afadcda5fca4b5ccf87909ee9496da062a70b863593131211",
+      "size": 3895
+    },
+    {
+      "path": "lib/wb/sourceOwnership.ts",
+      "sha256": "f0a4467beeeeca787f6bc5114ceecb28606df442729c216143a8fe080fb751ee",
+      "size": 29506
+    },
+    {
+      "path": "lib/wb/syncWb.ts",
+      "sha256": "a5a12b2314fa07abdb862be082c4f3ae7a1b3df00993bf0b2ee7124a48be4bf2",
+      "size": 33502
+    },
+    {
+      "path": "lib/wb/syncWbAds.ts",
+      "sha256": "5e6a7dc3cd7dc7f3c06ac3e313c2a5f44a04cb81bf2c17e3f4d2cd63e1d0bc07",
+      "size": 10029
+    },
+    {
+      "path": "lib/wb/syncWbDailyFinancialReports.ts",
+      "sha256": "c393816adce9957572f486bb55cf3c4491ca4a16b5211d89e37dd1cf24422472",
+      "size": 15291
+    },
+    {
+      "path": "lib/wb/syncWbDailySales.ts",
+      "sha256": "b6d464cb42eaf2be1d526d1fec07b58bdfe8b713b546e1f57627c9df30839c93",
+      "size": 10915
+    },
+    {
+      "path": "lib/wb/syncWbOperationalDetail.ts",
+      "sha256": "7764ab1b999b5c2ab3ae5daa5d5e69f335e4255a170f5df0d451f77d22850f9c",
+      "size": 11240
+    },
+    {
+      "path": "lib/wb/syncWbProductCards.ts",
+      "sha256": "5243304a80066fa72c9cb1cebea0b4408897baf63c0f05e0498f7f2be2851cb5",
+      "size": 7279
+    },
+    {
+      "path": "lib/wb/syncWbStock.ts",
+      "sha256": "11ead0aec2ca5db827468d0746437fac723f7bd3b94ba12fa735c987a852aa08",
+      "size": 10454
+    },
+    {
+      "path": "lib/wb/wbCronProtection.ts",
+      "sha256": "ebaa185ac317653512749503b7da937e6886404c0f08407d6030447cfcb848df",
+      "size": 4796
+    },
+    {
+      "path": "lib/wb/wbFinanceAccountQueue.ts",
+      "sha256": "156b3e0d8fe6c63ac0e463a7e25d07f42add746bd96c7c332584b84393d358ef",
+      "size": 1997
+    },
+    {
+      "path": "lib/wb/wbFinanceApi.ts",
+      "sha256": "5312e846a6ceb6b39ed4f092aca595db266ea0bf5a19314886dc381b911978aa",
+      "size": 7730
+    },
+    {
+      "path": "lib/wbApi/requestWithRetry.ts",
+      "sha256": "a3ee3a0ee5c64b22d308dc53a1f0707293e14d63c11f523e302dea35b59047ef",
+      "size": 864
+    },
+    {
+      "path": "mapping-search.txt",
+      "sha256": "ae8cdbb69cb481992dc2c22ad8ab1621c955c5f7fbab86675904f1250f28ed7d",
+      "size": 196107
+    },
+    {
+      "path": "marketplace-orders-sync-callers.txt",
+      "sha256": "858d5518c3b530d6ee971985ed2b76b7a520a5415b7587c66659cee11c62018b",
+      "size": 1221
+    },
+    {
+      "path": "middleware.ts.backup-before-proxy-20260630-150853",
+      "sha256": "a07ff6d0312893233e868434cb64d842cc38318c20657713017fb3c9e233639d",
+      "size": 2414
+    },
+    {
+      "path": "next-env.d.ts",
+      "sha256": "4e4da12aa061aac172fb1bcb48e9b6e4b293080d2f494327925fdba8f39632ac",
+      "size": 253
+    },
+    {
+      "path": "next.config.ts",
+      "sha256": "3b2cc4533534374ca68a43afb1d83edc1ed0f4229d91aae40e6542f3e0294341",
+      "size": 128
+    },
+    {
+      "path": "normalize-search.txt",
+      "sha256": "a1db1b708cccc2c529e8a4cfeab0d535a24be443d14c239d72516c644406084d",
+      "size": 564
+    },
+    {
+      "path": "order-stats-search.txt",
+      "sha256": "2c1d5d1bfd229108b717811666edb274680ab5c2d5004d98129361b33ec2ae1f",
+      "size": 48363
+    },
+    {
+      "path": "ozonads.txt",
+      "sha256": "a41272f0e20247636c312b2ff4baa32078b47339e995d918b0cb60f3935f3c5a",
+      "size": 9614
+    },
+    {
+      "path": "package-lock.json",
+      "sha256": "fac39818fd940daf73dea6b898aa6287252a4d6cfa8d23de5843b901286c434f",
+      "size": 509120
+    },
+    {
+      "path": "package.json",
+      "sha256": "960cbad2332bd570ff4d604679a46aa6119a6ddb88741a640cdd80085b1fce9c",
+      "size": 2363
+    },
+    {
+      "path": "postcss.config.mjs",
+      "sha256": "dfac7ac2d86d326a0e5adb024e7943c181393ed17a5fcb8f0315b24c7da6ddde",
+      "size": 94
+    },
+    {
+      "path": "prisma.config.ts",
+      "sha256": "e4000a25e8e754744fe1db7287020586c3e42ad18548251992178bc08f42c4b9",
+      "size": 195
+    },
+    {
+      "path": "prisma/migrations/20260701193000_add_wb_sales_spp_commission_fields/migration.sql",
+      "sha256": "f4baf200e4b51153d3fe1dbd8c371c5152827645aa982f13ebccc92113104ace",
+      "size": 1447
+    },
+    {
+      "path": "prisma/migrations/20260701212000_add_wb_sale_deduction_reason/migration.sql",
+      "sha256": "16d2e56d1054ebaf1bdc6588d21645debf39ed633e10405dc92808077dc96079",
+      "size": 163
+    },
+    {
+      "path": "prisma/migrations/20260824120000_add_job_run/migration.sql",
+      "sha256": "1639689543fd67301f8a973a9c0779b0bf4d08a64069e2040240cda00f623751",
+      "size": 1215
+    },
+    {
+      "path": "prisma/migrations/20260825120000_add_ozon_accrual_day_status/migration.sql",
+      "sha256": "f6f2051ae429805d0377549b02304b7600626274e17e7f200f902fad4a6b1f62",
+      "size": 1016
+    },
+    {
+      "path": "prisma/migrations/20260902180000_wave_a_v2_v6_period_readmodel/migration.sql",
+      "sha256": "71286a71c8308a75ecd6efb14d8994ef0c431988ec7913444656c655f0d2d712",
+      "size": 2675
+    },
+    {
+      "path": "prisma/migrations/20260902210000_add_marketplace_order_last_successful_sync/migration.sql",
+      "sha256": "ce19a22f955e50bb340a22358115e0763147ee090ecd9b211e8a71b28f7f376e",
+      "size": 90
+    },
+    {
+      "path": "prisma/migrations/20260903120000_wave_a_v6_rebuild_job_ensure/migration.sql",
+      "sha256": "b16c286f218979451e78b02620150d6efa5916b1907233305c941dc2be6c1519",
+      "size": 1678
+    },
+    {
+      "path": "prisma/schema.prisma",
+      "sha256": "c5c37ede7e45981e4b426854ba61a5ccd7e6cf106a15c795eb51181f6451bc87",
+      "size": 27388
+    },
+    {
+      "path": "prisma/seed.ts",
+      "sha256": "ac6bbaaa53a5c8fd2667dae957025ad19f9c570fd9ca83da362442ce824d7a7e",
+      "size": 1650
+    },
+    {
+      "path": "prisma/WAVE_B_PRODUCTION_SCHEMA_PLAN.md",
+      "sha256": "6ac3689c03f381bc871affd554124430c9aef4fbe069ed6419afa68b3b0d65e9",
+      "size": 1233
+    },
+    {
+      "path": "prisma/WAVE_B_PRODUCTION_SCHEMA.sql",
+      "sha256": "434f7e3971f5b239cdd7cb3cd6e9c0fad03e314414ad69fab3db649492e90720",
+      "size": 3929
+    },
+    {
+      "path": "project-files-clean.txt",
+      "sha256": "1c630f42cf391678eed5ad198f0f1eb4182dda2a31eeac1df28c7612d04a271d",
+      "size": 5898
+    },
+    {
+      "path": "project-files.txt",
+      "sha256": "c7174620689059eb79b537222e5f29cb4bb41bd31f51435d9b02d12145a38a81",
+      "size": 935214
+    },
+    {
+      "path": "proxy.ts",
+      "sha256": "cacc3c9369ea63d9ce89580ab7692f88275fa5927224d701ba8bdfa559ae7c39",
+      "size": 2625
+    },
+    {
+      "path": "proxy.ts.backup-before-local-auth-20260630-150853",
+      "sha256": "0a7ac993bc8f229da8321efcd0d750a1e45f975bdb91264300f905870072bad5",
+      "size": 1453
+    },
+    {
+      "path": "proxy.ts.backup-permanent-local-auth",
+      "sha256": "cacc3c9369ea63d9ce89580ab7692f88275fa5927224d701ba8bdfa559ae7c39",
+      "size": 2625
+    },
+    {
+      "path": "proxy.ts.backup-telegram-webhook-public",
+      "sha256": "577f321845907708edea3e632597da7682e99755e89ab77a0a959195cf05a8f2",
+      "size": 2409
+    },
+    {
+      "path": "public/file.svg",
+      "sha256": "2b67812c325c199a02536cdbeea0c593a72f707d323b72ee3e08dbab06753bd4",
+      "size": 391
+    },
+    {
+      "path": "public/globe.svg",
+      "sha256": "b614b9bf183925957661ac851498fe1d8029fd43a62fbfed86f9e2624a57e7cf",
+      "size": 1035
+    },
+    {
+      "path": "public/next.svg",
+      "sha256": "55995dfad6ecb4945a1e856ddca03c5e16aa5bf13fd21b4df6a74ae79357bcfc",
+      "size": 1375
+    },
+    {
+      "path": "public/vercel.svg",
+      "sha256": "f081337b2fee635b455b63275406a3e7f39d6a014e25ad90dab5a67e62a12ac4",
+      "size": 128
+    },
+    {
+      "path": "public/window.svg",
+      "sha256": "644768c4aaeb4767bce293344eeb0c125fb804a94d801440424072202d85e3a1",
+      "size": 385
+    },
+    {
+      "path": "README.md",
+      "sha256": "a08641e0186bf9aec879e119cd5005628ce2ba77e6e4beee576470831d2befd4",
+      "size": 1520
+    },
+    {
+      "path": "routes-check.txt",
+      "sha256": "e97a0771c70f295996f2125cf9aafdd2304a14a46ae73b8ba7f66f486ebcb39c",
+      "size": 4934
+    },
+    {
+      "path": "scripts_wave_de_case8.ts",
+      "sha256": "27305194af21b66f7ec7172513cc3a310e9785038147ab9c97ccc3f157e0172a",
+      "size": 1422
+    },
+    {
+      "path": "scripts_wave_de_categories_parity_v2.ts",
+      "sha256": "0c71e81ba63f61879d4f4688d2c07648a44549cd9c3fdd44a0fb0940beba82fb",
+      "size": 3175
+    },
+    {
+      "path": "scripts_wave_de_fail_closed_v2.ts",
+      "sha256": "51ea09d170d355bd5c090eb541cf5fc428b4d28992d4a4e040bbe8cbe4379d56",
+      "size": 7580
+    },
+    {
+      "path": "scripts_wave_de_mismatch_discover.ts",
+      "sha256": "0d6b8b8f9200a516397fe753399a031103c503c72ab95168136c7005f80866c0",
+      "size": 1381
+    },
+    {
+      "path": "scripts_wave_de_planfact_parity_v2.ts",
+      "sha256": "a194ca1a79459cfd7b6a3a2af26ffd0a129fc4e50c8e432ddd1b1cd29afb2493",
+      "size": 3497
+    },
+    {
+      "path": "scripts/_fc_main_cases.ts",
+      "sha256": "8e7574771c5c732481052c2eeb4521a9ec2100797a7c431a5b1b05a943d984f1",
+      "size": 4658
+    },
+    {
+      "path": "scripts/_fc_profit_cases.ts",
+      "sha256": "188c967f74f8476e193dacee394eb32c4dcced5c671949ea45be2e8adfde2357",
+      "size": 1414
+    },
+    {
+      "path": "scripts/_profit_rm_probe.ts",
+      "sha256": "4db53b6099d50c7fc7f1e5216c411628c7ffaf9311301bd623b744f14d2af786",
+      "size": 976
+    },
+    {
+      "path": "scripts/_wave_de_actual_path_parity.ts",
+      "sha256": "548ed83893e240ede83b3ee4edbcdcd9da227babc5e1b419973e529c98eaea22",
+      "size": 3480
+    },
+    {
+      "path": "scripts/_wave_de_auth_routes_v3.ts",
+      "sha256": "73eeccc1e75dd6547d8e680faedfdd6ee639675b1b0662a301b9e71cc43cfb50",
+      "size": 2835
+    },
+    {
+      "path": "scripts/_wave_de_fail_closed_v3.ts",
+      "sha256": "89956a39fa46f4332c2ab271556fefbcc2e4747f746ee20ea28bc943483e20d3",
+      "size": 5318
+    },
+    {
+      "path": "scripts/apply_ozon_profit_q2_ui_fix.js",
+      "sha256": "1f406ca5e4203d0951365a03d900ff2b3627f320b9e6847b740508620f197325",
+      "size": 5896
+    },
+    {
+      "path": "scripts/architecture/apiFirstDurableRepair.test.ts",
+      "sha256": "351cb20d59841dd217848503570ac5a77156bdcd4e7d64b720e710a4df0c487f",
+      "size": 11113
+    },
+    {
+      "path": "scripts/architecture/canonicalFinalityRuntime.test.ts",
+      "sha256": "c5ae480ca9e4dc1d2aa65f6b3f21b93365217fd35677651875c7e008827364f9",
+      "size": 12923
+    },
+    {
+      "path": "scripts/architecture/cronAuth.test.ts",
+      "sha256": "c1db0e924ce13378abc9e3dd26fb577fb658353a88a5e2905156a2422827b616",
+      "size": 3370
+    },
+    {
+      "path": "scripts/architecture/d1d5CashOnlyInvariants.test.ts",
+      "sha256": "4f22da4bfb78b2dd9e9cbfe795035ebad6aacdec976f7c15d566861445da895f",
+      "size": 7040
+    },
+    {
+      "path": "scripts/architecture/d1d5EligibilityGuard.test.ts",
+      "sha256": "0a064092d9c79fc19651c13ca4e980754005b8d3f0749510e5fd943432409f8e",
+      "size": 24928
+    },
+    {
+      "path": "scripts/architecture/d6AllFinancialConsumers.test.ts",
+      "sha256": "b3d25b6febd94b49c440ea44cde3b1ba549e8bf904cd33fb0b07933c8bac5f63",
+      "size": 8745
+    },
+    {
+      "path": "scripts/architecture/d6ProfitWbFailClosedConsumer.test.ts",
+      "sha256": "c8e7d3b911df02398a4a8bd8e6c28ce79cf7a774f7b33f28e501c6ff40b12e60",
+      "size": 4947
+    },
+    {
+      "path": "scripts/architecture/d6RoutePoolSerialization.test.ts",
+      "sha256": "d5c8611e7f22bc500b06a5c5a36ebddbfea3ec41bb8f450bc68099bd0428e982",
+      "size": 7146
+    },
+    {
+      "path": "scripts/architecture/d6WbLongRangeOwnership.test.ts",
+      "sha256": "6047fd5ca29e05d1da1daa09287a1d596febdba68c4c750738b178086cddbf8d",
+      "size": 13653
+    },
+    {
+      "path": "scripts/architecture/d6ZombiePendingQueue.test.ts",
+      "sha256": "d0ae9f6f8c41c157ac919a23e43fbdd0a220bf775a7b51db0dce7d4136677455",
+      "size": 10748
+    },
+    {
+      "path": "scripts/architecture/earlyRepaymentLoanGuard.test.ts",
+      "sha256": "903f028a0344069651ee917872b53e6705272bf32049fa57ae7b0eed0cb94e93",
+      "size": 4620
+    },
+    {
+      "path": "scripts/architecture/failureInjection.test.ts",
+      "sha256": "c048c8d21d253ee8898eb83181a3dc9f26abd87612d0a49f276b99b6bbb27017",
+      "size": 15485
+    },
+    {
+      "path": "scripts/architecture/financeActualityJobRunClosure.test.ts",
+      "sha256": "3bcdd994730e101c263ec53c815e8c431386fe8f3eabeb99873695d32f6f6787",
+      "size": 10032
+    },
+    {
+      "path": "scripts/architecture/financialClosureSafety.test.ts",
+      "sha256": "7f55110a3fa57f8538b96c2ec0e009ef65b73f52db2e55e86e9f333147db51f7",
+      "size": 3087
+    },
+    {
+      "path": "scripts/architecture/financialRepairProductionWrapper.test.ts",
+      "sha256": "5356fe0538a150151b8abee8bfd8f3723130b98820544bcd813415b2a7e28e65",
+      "size": 18795
+    },
+    {
+      "path": "scripts/architecture/formulaAwareJobId.test.ts",
+      "sha256": "0177761cff8b14011d7f92dfeaa04cb66a80c8c14fab0cce97c13698a34734f9",
+      "size": 4019
+    },
+    {
+      "path": "scripts/architecture/jobRunCompletenessLifecycle.test.ts",
+      "sha256": "bdce86a6d0273624ec9d1f151eb305f4e8b451349eee8bab4c3c700ae1639928",
+      "size": 3363
+    },
+    {
+      "path": "scripts/architecture/loansRealFixtures.generated.json",
+      "sha256": "7c738f9fff1296e8f3e25fd3400cc358ecca993326abeb8460b1269728a1a874",
+      "size": 53718
+    },
+    {
+      "path": "scripts/architecture/loanStateCanonical.test.ts",
+      "sha256": "b7617d54e8a4a50b20d5e70b898947bb75496c43ffd97a3474f6f06e198c4ac1",
+      "size": 32278
+    },
+    {
+      "path": "scripts/architecture/managementRevenue.test.ts",
+      "sha256": "605b7f4d13a11d290a23d5321f2cc550626bf53001f7cce96cc6dd1804ee86cb",
+      "size": 4180
+    },
+    {
+      "path": "scripts/architecture/marketplaceOrdersRecovery.test.ts",
+      "sha256": "f66302d5add023288ec4cb4195e59ae45a7b08babde339c986f3bdd77ab86d4b",
+      "size": 44034
+    },
+    {
+      "path": "scripts/architecture/ozon0809CorrectedIngestCanary.test.ts",
+      "sha256": "aa6d6acd53740c5929291a513ad9dc36159042ea3960416656a211d67f261deb",
+      "size": 3181
+    },
+    {
+      "path": "scripts/architecture/ozon0809OrchestrationTelegram.test.ts",
+      "sha256": "c844d4ce559f1985978784d0996caaee4a7f1ea3ad2e5b1098cba216ac364e8b",
+      "size": 5279
+    },
+    {
+      "path": "scripts/architecture/ozon0809TelegramRenderCanary.test.ts",
+      "sha256": "112a2ff2583e55de23812a18d5f8cf0a4a6d64374960c9750450e6db0e88a162",
+      "size": 4960
+    },
+    {
+      "path": "scripts/architecture/ozon7413OvermapFix.test.ts",
+      "sha256": "fdcbc34c5caf9e50dfcbfe80076566e2b60dc3d880de61ec15c623fe1bf380e0",
+      "size": 3586
+    },
+    {
+      "path": "scripts/architecture/ozonAccrualType76.test.ts",
+      "sha256": "13fd4b3271697b8031360d98e584dfcdeb57751945f02d808286f6ef2d38a41c",
+      "size": 4673
+    },
+    {
+      "path": "scripts/architecture/ozonAccrualType84.test.ts",
+      "sha256": "b58ecd208b57d3d305b8a518b8c6c01ee80cf22dd1f103176bd1d1ed70149185",
+      "size": 3496
+    },
+    {
+      "path": "scripts/architecture/ozonDailyReportIncidentPersist.test.ts",
+      "sha256": "3cf3579027e8a5e69a53a6deb6a2fbcca5ef3da82850934ed7a88983d9fb779f",
+      "size": 10591
+    },
+    {
+      "path": "scripts/architecture/ozonHistoricalRepairDeferred.test.ts",
+      "sha256": "134748ab37b52039117ae5e2c97df303a9224518ec182ec3209b5737dad059e3",
+      "size": 4777
+    },
+    {
+      "path": "scripts/architecture/ozonHistoricalRepairExecutable.test.ts",
+      "sha256": "09fef365978f2639e460b267e4217b9aef166d402313d1919191f18fa4aa2a90",
+      "size": 64775
+    },
+    {
+      "path": "scripts/architecture/ozonHistoricalRepairPostgresE2E.test.ts",
+      "sha256": "532862c2b50a9ac468aeebc382cbf8e0fbde4abb313905777911faef023e45cb",
+      "size": 63247
+    },
+    {
+      "path": "scripts/architecture/ozonType1794Mapping.test.ts",
+      "sha256": "e14be7601cf910b0d0ad90e92ea55c87d51fe63afd6ededa1dc2aba646aa63c4",
+      "size": 2195
+    },
+    {
+      "path": "scripts/architecture/p0DbFailsoftV1.test.ts",
+      "sha256": "b51fc1529f1b6617dbb244cc21dfb3d7c0f83ea83eedcb8379827af9010fee65",
+      "size": 13286
+    },
+    {
+      "path": "scripts/architecture/p0FinancialPipeline.test.ts",
+      "sha256": "01365512aea44af01c1bd9787f89a5c24c32aa19b478262bb021f962166e2e6c",
+      "size": 12370
+    },
+    {
+      "path": "scripts/architecture/p1AccountsCanonicalBalance.test.ts",
+      "sha256": "c506472d1f76b11c3c99d319ac4666aa413a35b94266172e063d91e950d3f73e",
+      "size": 8757
+    },
+    {
+      "path": "scripts/architecture/p1CogsNoFakeZero.test.ts",
+      "sha256": "ba8a0d12ae4ecceabcf3410d27436b78f16830ad75b10159fc3973044bb4b928",
+      "size": 2751
+    },
+    {
+      "path": "scripts/architecture/p1FinalSafeSourceConsumers.test.ts",
+      "sha256": "9baf6ca77a5648ab51dd7d477e1223d556cfab4dcccd992285f86acddf27e6a5",
+      "size": 5118
+    },
+    {
+      "path": "scripts/architecture/p1FinalSafeSourcePropagation.test.ts",
+      "sha256": "d8ca231097099e4d11c1526a680aaec2254baef6a18ab2388fc043a170f7dcbe",
+      "size": 3865
+    },
+    {
+      "path": "scripts/architecture/periodReadModelModulePresent.test.ts",
+      "sha256": "fa200726b17b038362ffa5b0e3b0f2b02e3245cd16e458cd46b9fae6492988aa",
+      "size": 664
+    },
+    {
+      "path": "scripts/architecture/snapshotFormulaVersionParity.test.ts",
+      "sha256": "d83c80be57de059935976ef353ce46850d60197a8c8885233d9660de514c886d",
+      "size": 865
+    },
+    {
+      "path": "scripts/architecture/snapshotWorkerEntrypointPresent.test.ts",
+      "sha256": "4604b726dcb77153edd572eca9e3412517f9f44bda175e39e3fee231f9c99ca0",
+      "size": 569
+    },
+    {
+      "path": "scripts/architecture/taxFormulaParityCompare.ts",
+      "sha256": "ea96bda13188adc651a60d73db0bda217dfcec5ae64f971d618df35214f68ba7",
+      "size": 1292
+    },
+    {
+      "path": "scripts/architecture/taxFormulaParityV1_1.test.ts",
+      "sha256": "718b25d121a8d21d0c931be14df3096b63184040f859cc74099b05af9324b902",
+      "size": 8364
+    },
+    {
+      "path": "scripts/architecture/taxFormulaParityV1_1Canary.ts",
+      "sha256": "6066a64103be84bf21992841bd4b3d374174b866fe7c308e96b8490a0c54a8b7",
+      "size": 9420
+    },
+    {
+      "path": "scripts/architecture/taxFormulaParityV1_2_1.test.ts",
+      "sha256": "fbd4336b33d7fd7800599215ad04d68162b17c2797fe8b40ad47c7f67663f152",
+      "size": 4298
+    },
+    {
+      "path": "scripts/architecture/taxFormulaParityV1_2_1UiIncident.test.ts",
+      "sha256": "dbb65774f24bb2116dc3a148d7adeb8b1b8ccb0319f38b1133164c9f2539d397",
+      "size": 3675
+    },
+    {
+      "path": "scripts/architecture/taxFormulaParityV1_2.test.ts",
+      "sha256": "dff2d0f6385f5553776044bd7212cf02fc12cb955f6b0bab90ce554f989f8bd8",
+      "size": 9896
+    },
+    {
+      "path": "scripts/architecture/taxFormulaParityV1_2Canary.ts",
+      "sha256": "593084c26437594e151dab6252969b600558e45ef7e33d5134bb8e04085da8bd",
+      "size": 9648
+    },
+    {
+      "path": "scripts/architecture/taxFormulaParityV1.test.ts",
+      "sha256": "5b28d73285f4c80b498733189003b08564273a8c33b3b80647d61fcda7478f71",
+      "size": 3858
+    },
+    {
+      "path": "scripts/architecture/verifyReleaseSurface.mjs",
+      "sha256": "a0033666b43c8c308cdc72e0889d009658c8d105446f8daa5e4ff0ec65ecb3a5",
+      "size": 4715
+    },
+    {
+      "path": "scripts/architecture/waveADashboardReadModel.test.ts",
+      "sha256": "6c69531cd67c3ff1d116a8542e654533f69f2dfd472ec76100410990b4e43e34",
+      "size": 13250
+    },
+    {
+      "path": "scripts/architecture/waveAFinalityMatrix.test.ts",
+      "sha256": "6fdfebedc09981a3f57a04978d45cbf791616b4a5c440fc51395997e955487fb",
+      "size": 12777
+    },
+    {
+      "path": "scripts/architecture/waveALocalDaemonLifecycle.test.ts",
+      "sha256": "0f9af441deb746761c315c508d62eb627ffbb653f114631e79369613d9ae5295",
+      "size": 4192
+    },
+    {
+      "path": "scripts/architecture/waveAQueueDaemon.test.ts",
+      "sha256": "d42872509b51078a871b3465c2b2fefa94b7c38fbc74a82565a05ce675862754",
+      "size": 2596
+    },
+    {
+      "path": "scripts/architecture/waveASelectedScopeIdentity.test.ts",
+      "sha256": "ebd7ded67b4ef9e99297f5dfc1f406de63757e1ab48805cf0432192c459db463",
+      "size": 8658
+    },
+    {
+      "path": "scripts/architecture/waveBHttpHeavyCallGuard.test.ts",
+      "sha256": "1f3aba5f7c3040adbca5b0e1bbebd82f9f51237b544ad447ecdbe53f54fe150e",
+      "size": 1638
+    },
+    {
+      "path": "scripts/architecture/waveBProfitReadModel.test.ts",
+      "sha256": "fa2d08bfd77c99236a6aa1a4720dd1530f5b5f09b2fc9e6c814faf2f24df8525",
+      "size": 5731
+    },
+    {
+      "path": "scripts/architecture/waveBQueueLifecycle.test.ts",
+      "sha256": "3b86a800a2e4e122229b4625c3ad2caa8ebf4d3de2db4aba7280a9126988de04",
+      "size": 2249
+    },
+    {
+      "path": "scripts/architecture/waveCHttpHeavyCallGuard.test.ts",
+      "sha256": "63e043363d73fb16976adc4cf9dfdfa974f8b789308aac2718674f2965c6f0f9",
+      "size": 2092
+    },
+    {
+      "path": "scripts/architecture/waveCInsightsAbc.test.ts",
+      "sha256": "bbd78aa3c1b88b6d736226357af3d6e4f7139dc6b3e4b0df8d72b2140e3f1f44",
+      "size": 19117
+    },
+    {
+      "path": "scripts/audit_cost_coverage.js",
+      "sha256": "ecd91951b72e598a8e406985fd64532c271810eaa0453f5bd198a5e3180fe959",
+      "size": 14204
+    },
+    {
+      "path": "scripts/audit_dashboard_profit_breakdown.js",
+      "sha256": "615b729d4de2f0740f8138ccc4642b470e98477130054c680d6da0cfe47c4f12",
+      "size": 29200
+    },
+    {
+      "path": "scripts/audit_ozon_financial_category_facts.js",
+      "sha256": "f51d8896e9d7600734beb011a51329496961e064d06ba38cbd573d6b68714bfd",
+      "size": 3999
+    },
+    {
+      "path": "scripts/audit_ozon_profit_q2.js",
+      "sha256": "cd1c4068efebbe91eae6cd272ed0e65dfa584c116ca4aaa20a62a637ea5bc677",
+      "size": 16835
+    },
+    {
+      "path": "scripts/audit_ozon_revenue_gap.js",
+      "sha256": "2f4f417249c0760d21162e9dfdb85379b8dd85925fb9b92ab51d44aae461e4fd",
+      "size": 11805
+    },
+    {
+      "path": "scripts/audit_ozon_revenue_sources.js",
+      "sha256": "87ebafe17b24dede4c08bbe252ff1bd33b678cdfef0ea4ae8836836ff93a628d",
+      "size": 10414
+    },
+    {
+      "path": "scripts/audit_sell_plus_early_repayment.js",
+      "sha256": "e78bc7646171aee529741196242e61a4e2ffe00fdbfe9c90379a3af86a5d0ad7",
+      "size": 5253
+    },
+    {
+      "path": "scripts/audit_week_financial_result_v2.js",
+      "sha256": "d8e5a5cab67ea8c5c03d3b3c0fcf09bc28ad45777fef3bfb940939e2310a6545",
+      "size": 14662
+    },
+    {
+      "path": "scripts/audit_week_financial_result.js",
+      "sha256": "3d80b3629964a203c6eeb8361856dc0f2c290725cb54e0348431a4ca05636275",
+      "size": 9460
+    },
+    {
+      "path": "scripts/audit-loan-finance-transactions.cjs",
+      "sha256": "09fcc587adde93f72f951932db83530b22dfe40c98f53f939f161041a05e8e6b",
+      "size": 13076
+    },
+    {
+      "path": "scripts/audit-wb-daily-financial-coverage.cjs",
+      "sha256": "21abd6e710cea487d80bdb020b145abd4fc2a94a0bc7c16839621517f35f4eb1",
+      "size": 4250
+    },
+    {
+      "path": "scripts/audit-wb-financial-consistency.cjs",
+      "sha256": "c9f3632c25cfd70e80568eb03252cda0e57ca318c4ca8923a46567a6ea983dc4",
+      "size": 21972
+    },
+    {
+      "path": "scripts/audit-wb-operational-costs.cjs",
+      "sha256": "9129f31bb3617855f95a8f0e74e9352e301eddbc9dd31f012329ce4fb1369ea8",
+      "size": 18115
+    },
+    {
+      "path": "scripts/audit-wb-profit-data.cjs",
+      "sha256": "dc3c3cce14e0786dcc29ab433ac312b5b425d391d2a195125bf596623bcfe422",
+      "size": 14134
+    },
+    {
+      "path": "scripts/backfill_ozon_daily_economic_totals_from_finance.js",
+      "sha256": "99ee3f91b14de3c7583e64fa87cf0a661417ef4fb88773f9a64c050871091cc5",
+      "size": 13648
+    },
+    {
+      "path": "scripts/checkDailyReportRawData.ts",
+      "sha256": "afcc319528365708cb6daa71cc81e9bf1937ab0dc67a3771bcdadc08d4fa2b9b",
+      "size": 6666
+    },
+    {
+      "path": "scripts/cleanup_sell_plus_duplicate_regular_payments.js",
+      "sha256": "a1dfd7a9591d33c52bf133cf70cfb40d6dadbf8b7c26321a241cb402c0675495",
+      "size": 4860
+    },
+    {
+      "path": "scripts/create_dashboard_performance_indexes.js",
+      "sha256": "1986d39409007db79302e3ba878b3cf7d5b27b0cd06a7ea11242b71bf9d49e98",
+      "size": 3711
+    },
+    {
+      "path": "scripts/dashboard/_waveBOpenStaleCanary.ts",
+      "sha256": "bde5cb2386aa776a40ad8add85b770e1775ee347de3ec5567d6caaa195632c64",
+      "size": 2719
+    },
+    {
+      "path": "scripts/dashboard/_waveBSixScopeWorkerCanary.ts",
+      "sha256": "af036497fa7485f9d230c396c2dddb8d7169ce0ad54a78cd20324b9a11b1fbf3",
+      "size": 5467
+    },
+    {
+      "path": "scripts/dashboard/runDashboardPeriodSnapshotWorker.ts",
+      "sha256": "5e2bfd4f9024d537fa8579de6315623fa86b15d04bc02d0ccdc14f9236937bf1",
+      "size": 16516
+    },
+    {
+      "path": "scripts/dashboard/runProfitReadModelWorker.ts",
+      "sha256": "07d2fb0abfd12018b8f61e88035bb29548dbbdb22e42427931242ed02be81c2c",
+      "size": 7264
+    },
+    {
+      "path": "scripts/dashboard/runV6PeriodReadModelWorker.ts",
+      "sha256": "499cc5a71d61864056975600ace4e1d3718c47b51e0bbb80c52d90f2c57574e0",
+      "size": 12313
+    },
+    {
+      "path": "scripts/dashboard/waveBClosedParityCanary.ts",
+      "sha256": "0e8f14fe194b91358837d1a0f62b721353671af3946691b8ab392490f9c424e9",
+      "size": 6927
+    },
+    {
+      "path": "scripts/dashboard/waveBCombinedSameDbPoolCanary.ts",
+      "sha256": "96ca5a28b91270ca1de6c879cd787186271bb039afbeba3098c2a8a53d53c0de",
+      "size": 2648
+    },
+    {
+      "path": "scripts/dashboard/waveBMissPendingCanary.ts",
+      "sha256": "d51d41a326378fd47bfd92978bb019dfe6193e82ef42b5b5702e887ff099be99",
+      "size": 7794
+    },
+    {
+      "path": "scripts/dashboard/waveBOpenPeriodCanary.ts",
+      "sha256": "2ad0d23341d1f44965cc3ec4bd32369271fe78bdbf887ba78372395967234459",
+      "size": 4279
+    },
+    {
+      "path": "scripts/dashboard/waveBRealSourceMutationCanary.ts",
+      "sha256": "b11cee580a29cbbe4374fac76c1e0803da4ea7c2c00dfa1cf6a928dce48e5ff8",
+      "size": 7011
+    },
+    {
+      "path": "scripts/dashboard/waveBSourceVersionCoverageCanary.ts",
+      "sha256": "5d56edf26f5d034b9ed240e524a7f07549badce390a1768b0774ae4b33965ca3",
+      "size": 3439
+    },
+    {
+      "path": "scripts/dashboard/waveCHttpCanary.ts",
+      "sha256": "b69e31903303547b2f96f31d4dbd14b65822280f5b0d6618b8bf70330f8316c9",
+      "size": 13700
+    },
+    {
+      "path": "scripts/diagnose_ozon_points_automation_gap.js",
+      "sha256": "8dcae2db3948b2552488fe6a7531c96ceaee39a2ea93db955f39c187143b9cec",
+      "size": 12719
+    },
+    {
+      "path": "scripts/diagnose_ozon_realization_vs_finance.js",
+      "sha256": "06ba552afb731a244deb04e9f40f0081694b12b1f9eb5ef5b2c0c2d7a692ffa0",
+      "size": 4325
+    },
+    {
+      "path": "scripts/enrich_wb_sale_spp_vat.js",
+      "sha256": "cffec5fe61bb0bec2b92779a66cda25edb6d70a0fb58cd5341ef8f110a3c2b10",
+      "size": 5690
+    },
+    {
+      "path": "scripts/export-loans-db.cjs",
+      "sha256": "f6e529d693937ad71cfd0973f9a62be245b45396358c509f0a995e7ab4b5b5d4",
+      "size": 2257
+    },
+    {
+      "path": "scripts/financial-core/create-financial-core-v6.mjs",
+      "sha256": "478d3f447a80c2237bc465efcbd6fe2ae4beb03ad05d16e9eb643d008e214386",
+      "size": 11599
+    },
+    {
+      "path": "scripts/financial-core/restore-financial-core-v6.mjs",
+      "sha256": "f5ba50dcece3416ae8f78d6a6e7cafe87eef1ea52fd335e207359f2cf39e149a",
+      "size": 1322
+    },
+    {
+      "path": "scripts/financial-core/verify-financial-core-v6.mjs",
+      "sha256": "a2a5df0f1b9b55f2ac712be0fa824e024be51572c7d5006cd3cbe3f730f097e3",
+      "size": 5148
+    },
+    {
+      "path": "scripts/financialRepair/pollRepairWorkerDrain.ts",
+      "sha256": "728002eed90c359c9bdb48210c6727aefd40b4a44ed51734de66cd54e27821fd",
+      "size": 7745
+    },
+    {
+      "path": "scripts/financialRepair/resolveProductionWrapperBinding.ts",
+      "sha256": "b08e861f87afde9c0e9184dcb5e102b7211f7a66d1217dd6bc44bf88a06f54ec",
+      "size": 16937
+    },
+    {
+      "path": "scripts/financialRepair/runApprovedFinancialRepairProduction.sh",
+      "sha256": "54817981af058cdad2626184f9c6eaf8326d4758e210fe07bd7aa42660d4e22b",
+      "size": 45113
+    },
+    {
+      "path": "scripts/financialRepair/runOzonHistoricalFinancialRepair.ts",
+      "sha256": "651d411e480a9df5085f69b114834cba7f3949a3c3cc684343810b2e87c58519",
+      "size": 52839
+    },
+    {
+      "path": "scripts/fix_ozon_june_petrov_summary.js",
+      "sha256": "947f3a276a02c0db81de341a44b5bd889a52ca10760c6eb44259f2569bc8ec17",
+      "size": 7930
+    },
+    {
+      "path": "scripts/fix-loan-schedules.ts",
+      "sha256": "f4e7cadaf6c3c293d82e01f5be5f52cec545f16f8ce9b98b27b4a498268a6c33",
+      "size": 16986
+    },
+    {
+      "path": "scripts/fix-loans-from-bank-schedules.cjs",
+      "sha256": "f497945e2b3d7e2ea48d96e693cd5dfd4be440980370e02231e0dea8f0cdc5e7",
+      "size": 28774
+    },
+    {
+      "path": "scripts/fix-ozon-loans-from-screenshots.cjs",
+      "sha256": "b8e76c17857f13a25005e3648908323c95c702bf357c10e8f23cf5b80cc57ed5",
+      "size": 19208
+    },
+    {
+      "path": "scripts/fix-wb-loans-from-wbfinance-screenshots.cjs",
+      "sha256": "13e9b02afb0207c19cd4ffa163da051f30a3f191d161015769677b87e9ee3a72",
+      "size": 18321
+    },
+    {
+      "path": "scripts/import_ozon_accruals_economics_from_xlsx.js",
+      "sha256": "a507748fc8392bc2aa81d27a2929dc9ea442eead8916b81547dcd6ffed8cac0f",
+      "size": 21831
+    },
+    {
+      "path": "scripts/import_ozon_realization_and_points.js",
+      "sha256": "bb0d4a424f7fd7571e39edbbc03875683bdd8c51f2300236caad84e7ef84ca92",
+      "size": 17010
+    },
+    {
+      "path": "scripts/import-wb-prime-costs.ts",
+      "sha256": "93ec76077124d9b319cb25c9051794ff46eb53a42a1dc161d97650795289078f",
+      "size": 3712
+    },
+    {
+      "path": "scripts/patch_income_cash_only_treatment.js",
+      "sha256": "99dee6312f96674b03aa23dc078e65601ab695c9f141d9df96d4f4232d0e414e",
+      "size": 1784
+    },
+    {
+      "path": "scripts/patch_ozon_financial_category_fact.js",
+      "sha256": "fa27db2c3dfd8b2f4614870aca0c0d5a5fe03bb2e2f6b2d59e998f2a39dd0310",
+      "size": 1847
+    },
+    {
+      "path": "scripts/patch_ozon_realization_tables.js",
+      "sha256": "719d8de7efeb44385c12a36e169f2854137360219884e6ffc83e766fb4a81619",
+      "size": 5588
+    },
+    {
+      "path": "scripts/patch_wb_sale_deduction_reason_columns.js",
+      "sha256": "9b635e43f8fe1c98678740b2ad22f5590e607aa8478304691e4322c88bcff942",
+      "size": 4264
+    },
+    {
+      "path": "scripts/probe_ozon_accruals_api_endpoints.js",
+      "sha256": "5cb220cbbc09db393e0200e4dcde20512f9c322bb970614dd110f1166931217a",
+      "size": 11867
+    },
+    {
+      "path": "scripts/probe-wb-financial-detail-sources.cjs",
+      "sha256": "7e343e6005f7f1613adf204a14ae57bb3ef85e3cde7a785b102788bc9f01e265",
+      "size": 24750
+    },
+    {
+      "path": "scripts/probe-wb-reportdetail-pagination.cjs",
+      "sha256": "26acc729a9d45425744d512bc5db3dc725885ae5365d8845eb8ed6fabd6dd61f",
+      "size": 10173
+    },
+    {
+      "path": "scripts/resync_ozon_finance_2026.ts",
+      "sha256": "dc9ef2c8c4a66ce2f4019f20244b94f9fef4093a1b484a43e70522a791100a47",
+      "size": 9841
+    },
+    {
+      "path": "scripts/run_http_auth_matrix.sh",
+      "sha256": "4a5fe8a82bab1bebd364301b5bdb24ea57e2a2735dc14da2f05324d4861009c4",
+      "size": 6410
+    },
+    {
+      "path": "scripts/runtime/canonicalAnalyticsProof.ts",
+      "sha256": "51e05f6203ca8b18daa42f002e0ccb28a2ed09b8a940d3682197809e02ef9ec2",
+      "size": 4163
+    },
+    {
+      "path": "scripts/runtime/readOnlyAnalyticsSentinel.ts",
+      "sha256": "d1ccbcec63ca75ae7de3e6d13924e93d1f4cd7ce65fc6438cf54fa71846f9591",
+      "size": 5312
+    },
+    {
+      "path": "scripts/sync_ozon_realization_from_api.js",
+      "sha256": "bffcf9a89194d5bc43fd71a85c7e8679092d4fa2245f016d8ca7dac121fef8eb",
+      "size": 14071
+    },
+    {
+      "path": "scripts/sync-loan-finance-transactions.cjs",
+      "sha256": "0bcb2aabdcf421f3ed292a6752adfabaf160a7abbe0bdd52fc5ff350c3a5c049",
+      "size": 12372
+    },
+    {
+      "path": "scripts/wb/verify-wb-financial-core-v6.ts",
+      "sha256": "3f85c4857d0f07b84e8f22400d4a8cd4b77e25e1148f9f1ae7cfcca67614994a",
+      "size": 35454
+    },
+    {
+      "path": "scripts/wb/verify-wb-official-finance-priority.mjs",
+      "sha256": "99817426a8c5863254fea7a23d778cc33b6d46b411960ddc3056a8e91bcf30d7",
+      "size": 2475
+    },
+    {
+      "path": "search-import-files.txt",
+      "sha256": "81e53eb8ee3083b2ed212a5e82e33c485e95e1daf51eb0804a8747e9fe63b4b0",
+      "size": 1788
+    },
+    {
+      "path": "src/lib/import/normalizers/productCostNormalizer.ts",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0
+    },
+    {
+      "path": "stocks-files-search.txt",
+      "sha256": "79096850d6c4dbac075cb6787b963964bc5c8d2ec4fd58138f8f35bd08fa7e40",
+      "size": 1140
+    },
+    {
+      "path": "telegram-files-search.txt",
+      "sha256": "4e237c5786ab9ba0a98916ee4c0410f705971b8729a91d71ccf0dc6f1ad37abf",
+      "size": 708
+    },
+    {
+      "path": "telegram-report-yesterday.txt",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size": 0
+    },
+    {
+      "path": "telegram-summary-search.txt",
+      "sha256": "3d865b6833ac4eedac7b3736544b9b388e86960bf241fbede7d56c6366326d1d",
+      "size": 252078
+    },
+    {
+      "path": "tsconfig.json",
+      "sha256": "c687d1de27555e1f538a1fbf8980534577fcc2599f1d09c83838b54ca14961c0",
+      "size": 1092
+    },
+    {
+      "path": "vercel.json",
+      "sha256": "c6261956395517d77975f76e1f4fd6712af6f18bfc05eb8b395d611b5e70d1a0",
+      "size": 1475
+    },
+    {
+      "path": "visual-files-check.txt",
+      "sha256": "08f421505982e3d89698f6c669a74170a9f9087bbff70f38691204326e34bc61",
+      "size": 735
+    },
+    {
+      "path": "wb-api-files-check.txt",
+      "sha256": "c1bf5d819d3dc7c5a29596d709527545c104eaff5a278b8184dffdb21c419541",
+      "size": 9854
+    }
+  ]
+}

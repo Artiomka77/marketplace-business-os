@@ -1,0 +1,12 @@
+﻿
+FullName                                                                     
+--------                                                                     
+C:\AI-PROJECTS\marketplace-business-os\telegram-files-search.txt             
+C:\AI-PROJECTS\marketplace-business-os\app\api\telegram\daily-report\route.ts
+C:\AI-PROJECTS\marketplace-business-os\app\api\telegram\webhook\route.ts     
+C:\AI-PROJECTS\marketplace-business-os\lib\telegram\dailyReport.ts           
+C:\AI-PROJECTS\marketplace-business-os\lib\telegram\dailyReportAi.ts         
+C:\AI-PROJECTS\marketplace-business-os\lib\telegram\financeBotParser.ts      
+C:\AI-PROJECTS\marketplace-business-os\lib\telegram\sendTelegramMessage.ts   
+
+
