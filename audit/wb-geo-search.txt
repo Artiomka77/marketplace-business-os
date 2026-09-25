@@ -1,0 +1,211 @@
+﻿C:\AI-PROJECTS\marketplace-business-os\app\api\cron\daily-priority-sync\route.ts:6: import { syncWbStock } from "@/lib/wb/syncWbStock";
+C:\AI-PROJECTS\marketplace-business-os\app\api\cron\daily-priority-sync\route.ts:137: async function runWbStock(
+C:\AI-PROJECTS\marketplace-business-os\app\api\cron\daily-priority-sync\route.ts:141: const result = await syncWbStock(connection.companyId);
+C:\AI-PROJECTS\marketplace-business-os\app\api\cron\historical-sync-wb-finance\route.ts:5: import { createWbSalesHistoricalJobs } from "@/lib/historicalSync/createWbSalesHistoricalJobs";
+C:\AI-PROJECTS\marketplace-business-os\app\api\cron\historical-sync-wb-finance\route.ts:115: let wbSalesJobs = null;
+C:\AI-PROJECTS\marketplace-business-os\app\api\cron\historical-sync-wb-finance\route.ts:121: wbSalesJobs = await createWbSalesHistoricalJobs({
+C:\AI-PROJECTS\marketplace-business-os\app\api\cron\historical-sync-wb-finance\route.ts:142: wbSalesJobs,
+C:\AI-PROJECTS\marketplace-business-os\app\api\cron\historical-sync-wb-sales\route.ts:40: async function getWbSalesTotals() {
+C:\AI-PROJECTS\marketplace-business-os\app\api\cron\historical-sync-wb-sales\route.ts:91: totals: await getWbSalesTotals(),
+C:\AI-PROJECTS\marketplace-business-os\app\api\cron\historical-sync-wb-sales\route.ts:116: totals: await getWbSalesTotals(),
+C:\AI-PROJECTS\marketplace-business-os\app\api\cron\sync-wb-sales\route.ts:4: import { syncWbSales } from "@/lib/wb/syncWb";
+C:\AI-PROJECTS\marketplace-business-os\app\api\cron\sync-wb-sales\route.ts:56: const result = await syncWbSales(connection.companyId);
+C:\AI-PROJECTS\marketplace-business-os\app\api\cron\sync-wb-stock\route.ts:4: import { syncWbStock } from "@/lib/wb/syncWbStock";
+C:\AI-PROJECTS\marketplace-business-os\app\api\cron\sync-wb-stock\route.ts:60: const result = await syncWbStock(connection.companyId);
+C:\AI-PROJECTS\marketplace-business-os\app\api\historical-sync\create-wb-sales-jobs\route.ts:3: import { createWbSalesHistoricalJobs } from "@/lib/historicalSync/createWbSalesHistoricalJobs";
+C:\AI-PROJECTS\marketplace-business-os\app\api\historical-sync\create-wb-sales-jobs\route.ts:16: const result = await createWbSalesHistoricalJobs({
+C:\AI-PROJECTS\marketplace-business-os\app\api\settings\api-connections\sync-ozon-stocks\route.ts:174: warehouseName: "Ozon",
+C:\AI-PROJECTS\marketplace-business-os\app\api\settings\api-connections\sync-ozon-stocks\route.ts:190: warehouseName: stock.type ? `Ozon ${stock.type}` : "Ozon",
+C:\AI-PROJECTS\marketplace-business-os\app\api\settings\api-connections\sync-wb-stock\route.ts:9: type WbStockApiItem = {
+C:\AI-PROJECTS\marketplace-business-os\app\api\settings\api-connections\sync-wb-stock\route.ts:12: warehouseName?: string;
+C:\AI-PROJECTS\marketplace-business-os\app\api\settings\api-connections\sync-wb-stock\route.ts:18: type WbStockApiResponse = {
+C:\AI-PROJECTS\marketplace-business-os\app\api\settings\api-connections\sync-wb-stock\route.ts:20: items?: WbStockApiItem[];
+C:\AI-PROJECTS\marketplace-business-os\app\api\settings\api-connections\sync-wb-stock\route.ts:49: async function fetchWbStock(token: string) {
+C:\AI-PROJECTS\marketplace-business-os\app\api\settings\api-connections\sync-wb-stock\route.ts:50: const allItems: WbStockApiItem[] = [];
+C:\AI-PROJECTS\marketplace-business-os\app\api\settings\api-connections\sync-wb-stock\route.ts:82: const json = (await response.json()) as WbStockApiResponse;
+C:\AI-PROJECTS\marketplace-business-os\app\api\settings\api-connections\sync-wb-stock\route.ts:97: function mapWbStockRows(items: WbStockApiItem[], importSessionId: string, companyName: string) {
+C:\AI-PROJECTS\marketplace-business-os\app\api\settings\api-connections\sync-wb-stock\route.ts:118: warehouseName: item.warehouseName ?? null,
+C:\AI-PROJECTS\marketplace-business-os\app\api\settings\api-connections\sync-wb-stock\route.ts:174: const items = await fetchWbStock(connection.wbToken);
+C:\AI-PROJECTS\marketplace-business-os\app\api\settings\api-connections\sync-wb-stock\route.ts:190: const rows = mapWbStockRows(items, importSession.id, company.name);
+C:\AI-PROJECTS\marketplace-business-os\app\api\settings\api-connections\sync-wb-stock\route.ts:192: await prisma.wbStock.deleteMany({
+C:\AI-PROJECTS\marketplace-business-os\app\api\settings\api-connections\sync-wb-stock\route.ts:198: await prisma.wbStock.createMany({
+C:\AI-PROJECTS\marketplace-business-os\app\api\stocks\supply-plan\export\route.ts:624: const [rawWbStocks, ozonStocks, ozonSupplyRecommendations, warehouseStocks] =
+C:\AI-PROJECTS\marketplace-business-os\app\api\stocks\supply-plan\export\route.ts:626: prisma.wbStock.findMany({
+C:\AI-PROJECTS\marketplace-business-os\app\api\stocks\supply-plan\export\route.ts:634: { warehouseName: "asc" },
+C:\AI-PROJECTS\marketplace-business-os\app\api\stocks\supply-plan\export\route.ts:643: warehouseName: true,
+C:\AI-PROJECTS\marketplace-business-os\app\api\stocks\supply-plan\export\route.ts:655: { warehouseName: "asc" },
+C:\AI-PROJECTS\marketplace-business-os\app\api\stocks\supply-plan\export\route.ts:759: for (const stock of rawWbStocks) {
+C:\AI-PROJECTS\marketplace-business-os\app\api\stocks\supply-plan\export\route.ts:1128: for (const stock of rawWbStocks) {
+C:\AI-PROJECTS\marketplace-business-os\app\api\stocks\supply-plan\export\route.ts:1129: if (!stock.warehouseName || stock.warehouseName === "__TOTAL__") continue;
+C:\AI-PROJECTS\marketplace-business-os\app\api\stocks\supply-plan\export\route.ts:1166: currentGroup.warehouses.add(stock.warehouseName);
+C:\AI-PROJECTS\marketplace-business-os\app\api\upload\route.ts:8: import { normalizeWbSales } from "@/lib/import/normalizers/wbSalesNormalizer";
+C:\AI-PROJECTS\marketplace-business-os\app\api\upload\route.ts:11: import { normalizeWbStock } from "@/lib/import/normalizers/wbStockNormalizer";
+C:\AI-PROJECTS\marketplace-business-os\app\api\upload\route.ts:194: const result = await normalizeWbSales(data, importSession.id, companyName);
+C:\AI-PROJECTS\marketplace-business-os\app\api\upload\route.ts:225: const result = await normalizeWbStock(data, importSession.id, companyName);
+C:\AI-PROJECTS\marketplace-business-os\app\finance\operations\FinanceOperationForm.tsx:255: function changeOperationType(nextType: string) {
+C:\AI-PROJECTS\marketplace-business-os\app\finance\operations\FinanceOperationForm.tsx:328: onChange={(event) => changeOperationType(event.target.value)}
+C:\AI-PROJECTS\marketplace-business-os\app\finance\plan-fact\page.tsx:366: type WbSaleRow = Awaited<ReturnType<typeof prisma.wbSale.findMany>>[number];
+C:\AI-PROJECTS\marketplace-business-os\app\finance\plan-fact\page.tsx:368: function dedupeWbSalesByLatestImport(rows: WbSaleRow[]) {
+C:\AI-PROJECTS\marketplace-business-os\app\insights\page.tsx:274: const [analyticsByCompany, productCosts, wbStocks, ozonStocks] =
+C:\AI-PROJECTS\marketplace-business-os\app\insights\page.tsx:303: prisma.wbStock.findMany({
+C:\AI-PROJECTS\marketplace-business-os\app\insights\page.tsx:378: ...wbStocks.map((stock) => {
+C:\AI-PROJECTS\marketplace-business-os\app\profit-wb\page.tsx:339: async function findWbSaleRowsForBreakdown(params: {
+C:\AI-PROJECTS\marketplace-business-os\app\profit-wb\page.tsx:391: return prisma.wbSale.findMany({
+C:\AI-PROJECTS\marketplace-business-os\app\profit-wb\page.tsx:417: return prisma.wbSale.findMany({
+C:\AI-PROJECTS\marketplace-business-os\app\profit-wb\page.tsx:487: findWbSaleRowsForBreakdown({
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:100: warehouseName: string | null;
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:612: row.warehouseName,
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:851: return row.clusterName ?? row.warehouseName ?? "—";
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:2352: rawWbStocks,
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:2359: prisma.wbStock.findMany({
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:2367: { warehouseName: "asc" },
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:2377: { warehouseName: "asc" },
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:2431: rawWbStocks
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:2432: .filter((stock) => stock.warehouseName === "__TOTAL__")
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:2437: const wbStocks =
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:2439: ? rawWbStocks.filter((stock) => {
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:2446: return stock.warehouseName === "__TOTAL__";
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:2448: : rawWbStocks;
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:2453: ...wbStocks.map((stock) => stock.vendorCode),
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:2477: wbStocks
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:2650: for (const stock of wbStocks) {
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:2776: const companyWbStocks = wbStocks.filter(
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:2786: const wbStockQty = sum(
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:2787: companyWbStocks.map((stock) => toNumber(stock.totalStock))
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:2790: companyWbStocks.map((stock) => toNumber(stock.inTransitToCustomer))
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:2793: companyWbStocks.map((stock) => toNumber(stock.inTransitReturns))
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:2796: wbStockQty + wbTransitToCustomerQty + wbTransitReturnsQty;
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:2798: companyWbStocks.map((stock) => {
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:2920: stockQty: wbStockQty,
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:2964: ...wbStocks.map((stock) => {
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:2991: warehouseName:
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:2992: stock.warehouseName && stock.warehouseName !== "__TOTAL__"
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:2993: ? stock.warehouseName
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:3039: warehouseName: stock.warehouseName,
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:3079: warehouseName: "Собственный склад",
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:3514: for (const stock of rawWbStocks) {
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:3515: if (!stock.warehouseName || stock.warehouseName === "__TOTAL__") continue;
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:3552: currentGroup.warehouses.add(stock.warehouseName);
+C:\AI-PROJECTS\marketplace-business-os\app\page.tsx:54: wbStockQty: number;
+C:\AI-PROJECTS\marketplace-business-os\app\page.tsx:81: wbStockQty: number;
+C:\AI-PROJECTS\marketplace-business-os\app\page.tsx:872: row.wbStockQty !== 0 ||
+C:\AI-PROJECTS\marketplace-business-os\app\page.tsx:2018: const stockQty = current.wbStockQty + current.ozonStockQty;
+C:\AI-PROJECTS\marketplace-business-os\app\page.tsx:2438: async function getLatestWbStockQty(companyName: string) {
+C:\AI-PROJECTS\marketplace-business-os\app\page.tsx:2451: const rows = await prisma.wbStock.findMany({
+C:\AI-PROJECTS\marketplace-business-os\app\page.tsx:2455: warehouseName: "__TOTAL__",
+C:\AI-PROJECTS\marketplace-business-os\app\page.tsx:2537: const [wbStockQty, ozonStockQty] = await Promise.all([
+C:\AI-PROJECTS\marketplace-business-os\app\page.tsx:2538: getLatestWbStockQty(company.name),
+C:\AI-PROJECTS\marketplace-business-os\app\page.tsx:2579: wbStockQty,
+C:\AI-PROJECTS\marketplace-business-os\app\page.tsx:2642: const wbStockQty = companyRows.reduce((sum, row) => sum + row.wbStockQty, 0);
+C:\AI-PROJECTS\marketplace-business-os\app\page.tsx:2680: wbStockQty,
+C:\AI-PROJECTS\marketplace-business-os\lib\analytics\dashboardDailyAnalytics.ts:170: function isWbSaleOperation(reason: string | null) {
+C:\AI-PROJECTS\marketplace-business-os\lib\analytics\dashboardDailyAnalytics.ts:483: const [wbSales, wbAdsRaw, ozonFinance, ozonAdsRaw, financeTransactions, financeCategories] =
+C:\AI-PROJECTS\marketplace-business-os\lib\analytics\dashboardDailyAnalytics.ts:485: prisma.wbSale.findMany({
+C:\AI-PROJECTS\marketplace-business-os\lib\analytics\dashboardDailyAnalytics.ts:606: for (const row of wbSales) {
+C:\AI-PROJECTS\marketplace-business-os\lib\analytics\dashboardDailyAnalytics.ts:617: const isSale = isWbSaleOperation(row.paymentReason);
+C:\AI-PROJECTS\marketplace-business-os\lib\analytics\profitAnalytics.ts:223: type WbSaleRecord = {
+C:\AI-PROJECTS\marketplace-business-os\lib\analytics\profitAnalytics.ts:410: wbRows: WbSaleRecord[];
+C:\AI-PROJECTS\marketplace-business-os\lib\analytics\profitAnalytics.ts:596: async function findWbSaleRowsByPeriod(params?: {
+C:\AI-PROJECTS\marketplace-business-os\lib\analytics\profitAnalytics.ts:651: return prisma.wbSale.findMany({
+C:\AI-PROJECTS\marketplace-business-os\lib\analytics\profitAnalytics.ts:825: const currentSalesRows = await findWbSaleRowsByPeriod({
+C:\AI-PROJECTS\marketplace-business-os\lib\analytics\profitAnalytics.ts:887: ? await findWbSaleRowsByPeriod({
+C:\AI-PROJECTS\marketplace-business-os\lib\historicalSync\createWbSalesHistoricalJobs.ts:3: type CreateWbSalesHistoricalJobsOptions = {
+C:\AI-PROJECTS\marketplace-business-os\lib\historicalSync\createWbSalesHistoricalJobs.ts:56: function getWbSalesHistoricalStartDateText(companyName: string) {
+C:\AI-PROJECTS\marketplace-business-os\lib\historicalSync\createWbSalesHistoricalJobs.ts:63: function getWbSalesHistoricalStartDate(companyName: string) {
+C:\AI-PROJECTS\marketplace-business-os\lib\historicalSync\createWbSalesHistoricalJobs.ts:65: getWbSalesHistoricalStartDateText(companyName),
+C:\AI-PROJECTS\marketplace-business-os\lib\historicalSync\createWbSalesHistoricalJobs.ts:70: function isBeforeWbSalesAvailablePeriod(companyName: string, dateTo: Date) {
+C:\AI-PROJECTS\marketplace-business-os\lib\historicalSync\createWbSalesHistoricalJobs.ts:71: return dateTo.getTime() < getWbSalesHistoricalStartDate(companyName).getTime();
+C:\AI-PROJECTS\marketplace-business-os\lib\historicalSync\createWbSalesHistoricalJobs.ts:74: async function getWbCompanies(options: CreateWbSalesHistoricalJobsOptions) {
+C:\AI-PROJECTS\marketplace-business-os\lib\historicalSync\createWbSalesHistoricalJobs.ts:164: const rows = await prisma.wbSale.findMany({
+C:\AI-PROJECTS\marketplace-business-os\lib\historicalSync\createWbSalesHistoricalJobs.ts:247: if (isBeforeWbSalesAvailablePeriod(company.name, report.dateTo)) {
+C:\AI-PROJECTS\marketplace-business-os\lib\historicalSync\createWbSalesHistoricalJobs.ts:290: wbSalesHistoricalStartDate:
+C:\AI-PROJECTS\marketplace-business-os\lib\historicalSync\createWbSalesHistoricalJobs.ts:291: getWbSalesHistoricalStartDateText(company.name),
+C:\AI-PROJECTS\marketplace-business-os\lib\historicalSync\createWbSalesHistoricalJobs.ts:295: export async function createWbSalesHistoricalJobs(
+C:\AI-PROJECTS\marketplace-business-os\lib\historicalSync\createWbSalesHistoricalJobs.ts:296: options: CreateWbSalesHistoricalJobsOptions = {}
+C:\AI-PROJECTS\marketplace-business-os\lib\historicalSync\createWbSalesHistoricalJobs.ts:324: defaultWbSalesHistoricalStartDate: DEFAULT_WB_SALES_HISTORICAL_START_DATE,
+C:\AI-PROJECTS\marketplace-business-os\lib\historicalSync\createWbSalesHistoricalJobs.ts:325: companyWbSalesHistoricalStartDates: COMPANY_WB_SALES_HISTORICAL_START_DATES,
+C:\AI-PROJECTS\marketplace-business-os\lib\historicalSync\runHistoricalSyncJob.ts:11: syncWbSalesByReportNumber,
+C:\AI-PROJECTS\marketplace-business-os\lib\historicalSync\runHistoricalSyncJob.ts:505: return syncWbSalesByReportNumber(job.companyId, job.cursorReportNumber, {
+C:\AI-PROJECTS\marketplace-business-os\lib\import\normalizers\ozonStockNormalizer.ts:58: warehouseName: getByIndex(row, 6) ? String(getByIndex(row, 6)) : null,
+C:\AI-PROJECTS\marketplace-business-os\lib\import\normalizers\wbSalesNormalizer.ts:54: export async function normalizeWbSales(
+C:\AI-PROJECTS\marketplace-business-os\lib\import\normalizers\wbSalesNormalizer.ts:130: await prisma.wbSale.deleteMany({
+C:\AI-PROJECTS\marketplace-business-os\lib\import\normalizers\wbSalesNormalizer.ts:139: await prisma.wbSale.deleteMany({
+C:\AI-PROJECTS\marketplace-business-os\lib\import\normalizers\wbSalesNormalizer.ts:147: await prisma.wbSale.createMany({
+C:\AI-PROJECTS\marketplace-business-os\lib\import\normalizers\wbStockNormalizer.ts:19: export async function normalizeWbStock(
+C:\AI-PROJECTS\marketplace-business-os\lib\import\normalizers\wbStockNormalizer.ts:51: warehouseName: "__TOTAL__",
+C:\AI-PROJECTS\marketplace-business-os\lib\import\normalizers\wbStockNormalizer.ts:60: await prisma.wbStock.deleteMany({
+C:\AI-PROJECTS\marketplace-business-os\lib\import\normalizers\wbStockNormalizer.ts:67: await prisma.wbStock.createMany({
+C:\AI-PROJECTS\marketplace-business-os\lib\marketplaceOrders\syncMarketplaceDailyOrders.ts:35: type WbSalesFunnelProduct = {
+C:\AI-PROJECTS\marketplace-business-os\lib\marketplaceOrders\syncMarketplaceDailyOrders.ts:46: type WbSalesFunnelResponse = {
+C:\AI-PROJECTS\marketplace-business-os\lib\marketplaceOrders\syncMarketplaceDailyOrders.ts:48: products?: WbSalesFunnelProduct[];
+C:\AI-PROJECTS\marketplace-business-os\lib\marketplaceOrders\syncMarketplaceDailyOrders.ts:213: async function fetchWbSalesFunnelForDate(wbToken: string, date: Date) {
+C:\AI-PROJECTS\marketplace-business-os\lib\marketplaceOrders\syncMarketplaceDailyOrders.ts:222: const samples: WbSalesFunnelProduct[] = [];
+C:\AI-PROJECTS\marketplace-business-os\lib\marketplaceOrders\syncMarketplaceDailyOrders.ts:262: const json = (await response.json()) as WbSalesFunnelResponse;
+C:\AI-PROJECTS\marketplace-business-os\lib\marketplaceOrders\syncMarketplaceDailyOrders.ts:431: | Awaited<ReturnType<typeof fetchWbSalesFunnelForDate>>
+C:\AI-PROJECTS\marketplace-business-os\lib\marketplaceOrders\syncMarketplaceDailyOrders.ts:436: funnelResult = await fetchWbSalesFunnelForDate(
+C:\AI-PROJECTS\marketplace-business-os\lib\ozon\syncOzon.ts:1078: warehouseName: "Ozon",
+C:\AI-PROJECTS\marketplace-business-os\lib\ozon\syncOzon.ts:1095: warehouseName: stock.type ? `Ozon ${stock.type}` : "Ozon",
+C:\AI-PROJECTS\marketplace-business-os\lib\telegram\dailyReport.ts:328: function isWbSaleOperation(reason: string | null | undefined) {
+C:\AI-PROJECTS\marketplace-business-os\lib\telegram\dailyReport.ts:413: type WbStockRowForReport = {
+C:\AI-PROJECTS\marketplace-business-os\lib\telegram\dailyReport.ts:414: warehouseName: string | null;
+C:\AI-PROJECTS\marketplace-business-os\lib\telegram\dailyReport.ts:426: function getWbStockProductKey(row: WbStockRowForReport) {
+C:\AI-PROJECTS\marketplace-business-os\lib\telegram\dailyReport.ts:436: function calculateWbStockQty(rows: WbStockRowForReport[]) {
+C:\AI-PROJECTS\marketplace-business-os\lib\telegram\dailyReport.ts:439: const totalRows = rows.filter((row) => row.warehouseName === "__TOTAL__");
+C:\AI-PROJECTS\marketplace-business-os\lib\telegram\dailyReport.ts:458: const latestByProduct = new Map<string, WbStockRowForReport>();
+C:\AI-PROJECTS\marketplace-business-os\lib\telegram\dailyReport.ts:461: const key = getWbStockProductKey(row);
+C:\AI-PROJECTS\marketplace-business-os\lib\telegram\dailyReport.ts:478: async function getLatestWbStockQty(companyName: string) {
+C:\AI-PROJECTS\marketplace-business-os\lib\telegram\dailyReport.ts:493: ? await prisma.wbStock.findMany({
+C:\AI-PROJECTS\marketplace-business-os\lib\telegram\dailyReport.ts:499: warehouseName: true,
+C:\AI-PROJECTS\marketplace-business-os\lib\telegram\dailyReport.ts:516: rows = await prisma.wbStock.findMany({
+C:\AI-PROJECTS\marketplace-business-os\lib\telegram\dailyReport.ts:521: warehouseName: true,
+C:\AI-PROJECTS\marketplace-business-os\lib\telegram\dailyReport.ts:535: return calculateWbStockQty(rows);
+C:\AI-PROJECTS\marketplace-business-os\lib\telegram\dailyReport.ts:777: if (isWbSaleOperation(paymentReason)) {
+C:\AI-PROJECTS\marketplace-business-os\lib\telegram\dailyReport.ts:958: function selectPreferredWbSaleRows<
+C:\AI-PROJECTS\marketplace-business-os\lib\telegram\dailyReport.ts:996: prisma.wbSale.findMany({
+C:\AI-PROJECTS\marketplace-business-os\lib\telegram\dailyReport.ts:1057: getLatestWbStockQty(companyName),
+C:\AI-PROJECTS\marketplace-business-os\lib\telegram\dailyReport.ts:1079: const effectiveSalesRows = selectPreferredWbSaleRows(salesRows);
+C:\AI-PROJECTS\marketplace-business-os\lib\telegram\dailyReport.ts:1088: if (isWbSaleOperation(row.paymentReason)) {
+C:\AI-PROJECTS\marketplace-business-os\lib\telegram\dailyReport.ts:1108: ? "WB Sales/выкупы за этот период ещё не загружены в WbSale"
+C:\AI-PROJECTS\marketplace-business-os\lib\wb\syncWb.ts:3: import { normalizeWbSales } from "@/lib/import/normalizers/wbSalesNormalizer";
+C:\AI-PROJECTS\marketplace-business-os\lib\wb\syncWb.ts:7: import { syncWbStock } from "@/lib/wb/syncWbStock";
+C:\AI-PROJECTS\marketplace-business-os\lib\wb\syncWb.ts:20: type WbSalesByReportOptions = {
+C:\AI-PROJECTS\marketplace-business-os\lib\wb\syncWb.ts:51: type WbSalesDetailedRow = {
+C:\AI-PROJECTS\marketplace-business-os\lib\wb\syncWb.ts:201: function getWbSalesRrdId(row: WbSalesDetailedRow) {
+C:\AI-PROJECTS\marketplace-business-os\lib\wb\syncWb.ts:224: function mapWbSalesApiRows(rows: WbSalesDetailedRow[]) {
+C:\AI-PROJECTS\marketplace-business-os\lib\wb\syncWb.ts:443: async function fetchWbSalesDetailedRows(token: string, reportId: string) {
+C:\AI-PROJECTS\marketplace-business-os\lib\wb\syncWb.ts:444: const allRows: WbSalesDetailedRow[] = [];
+C:\AI-PROJECTS\marketplace-business-os\lib\wb\syncWb.ts:500: const rows = json as WbSalesDetailedRow[];
+C:\AI-PROJECTS\marketplace-business-os\lib\wb\syncWb.ts:502: const nextRrdId = getWbSalesRrdId(lastRow);
+C:\AI-PROJECTS\marketplace-business-os\lib\wb\syncWb.ts:570: const existingSalesReports = await prisma.wbSale.findMany({
+C:\AI-PROJECTS\marketplace-business-os\lib\wb\syncWb.ts:693: export async function syncWbSalesByReportNumber(
+C:\AI-PROJECTS\marketplace-business-os\lib\wb\syncWb.ts:696: options: WbSalesByReportOptions = {}
+C:\AI-PROJECTS\marketplace-business-os\lib\wb\syncWb.ts:724: const salesDetailedRows = await fetchWbSalesDetailedRows(
+C:\AI-PROJECTS\marketplace-business-os\lib\wb\syncWb.ts:728: const salesRows = mapWbSalesApiRows(salesDetailedRows);
+C:\AI-PROJECTS\marketplace-business-os\lib\wb\syncWb.ts:746: const salesNormalizeResult = await normalizeWbSales(
+C:\AI-PROJECTS\marketplace-business-os\lib\wb\syncWb.ts:767: export async function syncWbSales(companyId: string) {
+C:\AI-PROJECTS\marketplace-business-os\lib\wb\syncWb.ts:798: const existingSalesRows = await prisma.wbSale.count({
+C:\AI-PROJECTS\marketplace-business-os\lib\wb\syncWb.ts:819: const salesResult = await syncWbSalesByReportNumber(companyId, reportId, {
+C:\AI-PROJECTS\marketplace-business-os\lib\wb\syncWb.ts:834: const salesResult = await syncWbSales(companyId);
+C:\AI-PROJECTS\marketplace-business-os\lib\wb\syncWb.ts:879: results.push(await runSyncStep("WB Stock", () => syncWbStock(companyId)));
+C:\AI-PROJECTS\marketplace-business-os\lib\wb\syncWb.ts:882: results.push(await runSyncStep("WB Sales", () => syncWbSales(companyId)));
+C:\AI-PROJECTS\marketplace-business-os\lib\wb\syncWbDailySales.ts:10: warehouseName?: string;
+C:\AI-PROJECTS\marketplace-business-os\lib\wb\syncWbDailySales.ts:11: countryName?: string;
+C:\AI-PROJECTS\marketplace-business-os\lib\wb\syncWbDailySales.ts:12: oblastOkrugName?: string;
+C:\AI-PROJECTS\marketplace-business-os\lib\wb\syncWbDailySales.ts:13: regionName?: string;
+C:\AI-PROJECTS\marketplace-business-os\lib\wb\syncWbDailySales.ts:241: await prisma.wbSale.deleteMany({
+C:\AI-PROJECTS\marketplace-business-os\lib\wb\syncWbDailySales.ts:322: await prisma.wbSale.createMany({
+C:\AI-PROJECTS\marketplace-business-os\lib\wb\syncWbStock.ts:8: type WbStockApiItem = {
+C:\AI-PROJECTS\marketplace-business-os\lib\wb\syncWbStock.ts:11: warehouseName?: string;
+C:\AI-PROJECTS\marketplace-business-os\lib\wb\syncWbStock.ts:17: type WbStockApiResponse = {
+C:\AI-PROJECTS\marketplace-business-os\lib\wb\syncWbStock.ts:19: items?: WbStockApiItem[];
+C:\AI-PROJECTS\marketplace-business-os\lib\wb\syncWbStock.ts:153: async function fetchWbStock(token: string) {
+C:\AI-PROJECTS\marketplace-business-os\lib\wb\syncWbStock.ts:154: const allItems: WbStockApiItem[] = [];
+C:\AI-PROJECTS\marketplace-business-os\lib\wb\syncWbStock.ts:186: const json = (await response.json()) as WbStockApiResponse;
+C:\AI-PROJECTS\marketplace-business-os\lib\wb\syncWbStock.ts:341: function mapWbStockRows(
+C:\AI-PROJECTS\marketplace-business-os\lib\wb\syncWbStock.ts:342: items: WbStockApiItem[],
+C:\AI-PROJECTS\marketplace-business-os\lib\wb\syncWbStock.ts:375: warehouseName: item.warehouseName ?? null,
+C:\AI-PROJECTS\marketplace-business-os\lib\wb\syncWbStock.ts:384: export async function syncWbStock(companyId: string) {
+C:\AI-PROJECTS\marketplace-business-os\lib\wb\syncWbStock.ts:393: const items = await fetchWbStock(wbToken);
+C:\AI-PROJECTS\marketplace-business-os\lib\wb\syncWbStock.ts:425: const rows = mapWbStockRows(items, importSession.id, company.name, cardLookup);
+C:\AI-PROJECTS\marketplace-business-os\lib\wb\syncWbStock.ts:427: await prisma.wbStock.deleteMany({
+C:\AI-PROJECTS\marketplace-business-os\lib\wb\syncWbStock.ts:434: await prisma.wbStock.createMany({

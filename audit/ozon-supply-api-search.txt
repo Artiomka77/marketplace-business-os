@@ -1,0 +1,483 @@
+﻿C:\AI-PROJECTS\marketplace-business-os\app\api\cron\daily-priority-sync\route.ts:5: import { syncOzonStocks } from "@/lib/ozon/syncOzon";
+C:\AI-PROJECTS\marketplace-business-os\app\api\cron\daily-priority-sync\route.ts:8: import { syncOzonFinance } from "@/lib/ozon/syncOzon";
+C:\AI-PROJECTS\marketplace-business-os\app\api\cron\daily-priority-sync\route.ts:117: const result = await syncOzonStocks(connection.companyId);
+C:\AI-PROJECTS\marketplace-business-os\app\api\cron\daily-priority-sync\route.ts:166: const result = await syncOzonFinance(connection.companyId, {
+C:\AI-PROJECTS\marketplace-business-os\app\api\cron\sync-ozon\route.ts:4: import { syncOzonAll } from "@/lib/ozon/syncOzon";
+C:\AI-PROJECTS\marketplace-business-os\app\api\cron\sync-ozon\route.ts:101: const result = await syncOzonAll(companyId);
+C:\AI-PROJECTS\marketplace-business-os\app\api\settings\api-connections\sync-ozon-ads\route.ts:417: lastError: "Ozon Performance Client-Id или Client Secret не сохранены",
+C:\AI-PROJECTS\marketplace-business-os\app\api\settings\api-connections\sync-ozon-all\route.ts:4: import { syncOzonAll } from "@/lib/ozon/syncOzon";
+C:\AI-PROJECTS\marketplace-business-os\app\api\settings\api-connections\sync-ozon-all\route.ts:171: await syncOzonAll(companyId);
+C:\AI-PROJECTS\marketplace-business-os\app\api\settings\api-connections\sync-ozon-finance\route.ts:101: "https://api-seller.ozon.ru/v3/finance/transaction/list",
+C:\AI-PROJECTS\marketplace-business-os\app\api\settings\api-connections\sync-ozon-finance\route.ts:105: "Client-Id": clientId,
+C:\AI-PROJECTS\marketplace-business-os\app\api\settings\api-connections\sync-ozon-finance\route.ts:106: "Api-Key": apiKey,
+C:\AI-PROJECTS\marketplace-business-os\app\api\settings\api-connections\sync-ozon-finance\route.ts:256: lastError: "Ozon Client-Id или Api-Key не сохранены",
+C:\AI-PROJECTS\marketplace-business-os\app\api\settings\api-connections\sync-ozon-finance\route.ts:260: lastError: "Ozon Client-Id или Api-Key не сохранены",
+C:\AI-PROJECTS\marketplace-business-os\app\api\settings\api-connections\sync-ozon-products\route.ts:4: import { syncOzonProducts } from "@/lib/ozon/syncOzon";
+C:\AI-PROJECTS\marketplace-business-os\app\api\settings\api-connections\sync-ozon-products\route.ts:24: await syncOzonProducts(companyId);
+C:\AI-PROJECTS\marketplace-business-os\app\api\settings\api-connections\sync-ozon-stocks\route.ts:16: warehouse_ids?: number[];
+C:\AI-PROJECTS\marketplace-business-os\app\api\settings\api-connections\sync-ozon-stocks\route.ts:71: "https://api-seller.ozon.ru/v4/product/info/stocks",
+C:\AI-PROJECTS\marketplace-business-os\app\api\settings\api-connections\sync-ozon-stocks\route.ts:75: "Client-Id": clientId,
+C:\AI-PROJECTS\marketplace-business-os\app\api\settings\api-connections\sync-ozon-stocks\route.ts:76: "Api-Key": apiKey,
+C:\AI-PROJECTS\marketplace-business-os\app\api\settings\api-connections\sync-ozon-stocks\route.ts:147: lastError: "Ozon Client-Id или Api-Key не сохранены",
+C:\AI-PROJECTS\marketplace-business-os\app\api\settings\api-connections\sync-ozon-stocks\route.ts:151: lastError: "Ozon Client-Id или Api-Key не сохранены",
+C:\AI-PROJECTS\marketplace-business-os\app\api\settings\api-connections\sync-ozon-stocks\route.ts:174: warehouseName: "Ozon",
+C:\AI-PROJECTS\marketplace-business-os\app\api\settings\api-connections\sync-ozon-stocks\route.ts:175: clusterName: null,
+C:\AI-PROJECTS\marketplace-business-os\app\api\settings\api-connections\sync-ozon-stocks\route.ts:178: supplyQty: 0,
+C:\AI-PROJECTS\marketplace-business-os\app\api\settings\api-connections\sync-ozon-stocks\route.ts:190: warehouseName: stock.type ? `Ozon ${stock.type}` : "Ozon",
+C:\AI-PROJECTS\marketplace-business-os\app\api\settings\api-connections\sync-ozon-stocks\route.ts:191: clusterName: stock.shipment_type ?? null,
+C:\AI-PROJECTS\marketplace-business-os\app\api\settings\api-connections\sync-ozon-stocks\route.ts:194: supplyQty: 0,
+C:\AI-PROJECTS\marketplace-business-os\app\api\settings\api-connections\sync-wb-stock\route.ts:12: warehouseName?: string;
+C:\AI-PROJECTS\marketplace-business-os\app\api\settings\api-connections\sync-wb-stock\route.ts:56: "https://seller-analytics-api.wildberries.ru/api/analytics/v1/stocks-report/wb-warehouses",
+C:\AI-PROJECTS\marketplace-business-os\app\api\settings\api-connections\sync-wb-stock\route.ts:101: const warehouseQty = toInt(item.quantity);
+C:\AI-PROJECTS\marketplace-business-os\app\api\settings\api-connections\sync-wb-stock\route.ts:118: warehouseName: item.warehouseName ?? null,
+C:\AI-PROJECTS\marketplace-business-os\app\api\settings\api-connections\sync-wb-stock\route.ts:119: warehouseQty,
+C:\AI-PROJECTS\marketplace-business-os\app\api\settings\api-connections\sync-wb-stock\route.ts:120: totalStock: warehouseQty,
+C:\AI-PROJECTS\marketplace-business-os\app\api\settings\api-connections\test-ozon-finance\route.ts:65: { success: false, error: "Ozon Client-Id или Api-Key не сохранены" },
+C:\AI-PROJECTS\marketplace-business-os\app\api\settings\api-connections\test-ozon-finance\route.ts:73: "https://api-seller.ozon.ru/v3/finance/transaction/list",
+C:\AI-PROJECTS\marketplace-business-os\app\api\settings\api-connections\test-ozon-finance\route.ts:77: "Client-Id": connection.ozonClientId,
+C:\AI-PROJECTS\marketplace-business-os\app\api\settings\api-connections\test-ozon-finance\route.ts:78: "Api-Key": connection.ozonApiKey,
+C:\AI-PROJECTS\marketplace-business-os\app\api\settings\api-connections\test-ozon-finance\route.ts:112: url: "https://api-seller.ozon.ru/v3/finance/transaction/list",
+C:\AI-PROJECTS\marketplace-business-os\app\api\settings\api-connections\test-ozon-performance\route.ts:136: "Ozon Performance Client-Id или Client Secret не сохранены",
+C:\AI-PROJECTS\marketplace-business-os\app\api\settings\api-connections\test-ozon-performance-stats\route.ts:365: error: "Ozon Performance Client-Id или Client Secret не сохранены",
+C:\AI-PROJECTS\marketplace-business-os\app\api\settings\api-connections\test-ozon-products\route.ts:65: { success: false, error: "Ozon Client-Id или Api-Key не сохранены" },
+C:\AI-PROJECTS\marketplace-business-os\app\api\settings\api-connections\test-ozon-products\route.ts:70: const response = await fetch("https://api-seller.ozon.ru/v3/product/list", {
+C:\AI-PROJECTS\marketplace-business-os\app\api\settings\api-connections\test-ozon-products\route.ts:73: "Client-Id": connection.ozonClientId,
+C:\AI-PROJECTS\marketplace-business-os\app\api\settings\api-connections\test-ozon-products\route.ts:74: "Api-Key": connection.ozonApiKey,
+C:\AI-PROJECTS\marketplace-business-os\app\api\settings\api-connections\test-ozon-products\route.ts:101: url: "https://api-seller.ozon.ru/v3/product/list",
+C:\AI-PROJECTS\marketplace-business-os\app\api\settings\api-connections\test-ozon-stocks\route.ts:15: warehouse_id?: number;
+C:\AI-PROJECTS\marketplace-business-os\app\api\settings\api-connections\test-ozon-stocks\route.ts:16: warehouse_name?: string;
+C:\AI-PROJECTS\marketplace-business-os\app\api\settings\api-connections\test-ozon-stocks\route.ts:67: { success: false, error: "Ozon Client-Id или Api-Key не сохранены" },
+C:\AI-PROJECTS\marketplace-business-os\app\api\settings\api-connections\test-ozon-stocks\route.ts:73: "https://api-seller.ozon.ru/v4/product/info/stocks",
+C:\AI-PROJECTS\marketplace-business-os\app\api\settings\api-connections\test-ozon-stocks\route.ts:77: "Client-Id": connection.ozonClientId,
+C:\AI-PROJECTS\marketplace-business-os\app\api\settings\api-connections\test-ozon-stocks\route.ts:78: "Api-Key": connection.ozonApiKey,
+C:\AI-PROJECTS\marketplace-business-os\app\api\settings\api-connections\test-ozon-stocks\route.ts:106: url: "https://api-seller.ozon.ru/v4/product/info/stocks",
+C:\AI-PROJECTS\marketplace-business-os\app\api\settings\api-connections\test-wb-stock\route.ts:46: "https://seller-analytics-api.wildberries.ru/api/analytics/v1/stocks-report/wb-warehouses",
+C:\AI-PROJECTS\marketplace-business-os\app\api\settings\api-connections\test-wb-stock\route.ts:77: url: "https://seller-analytics-api.wildberries.ru/api/analytics/v1/stocks-report/wb-warehouses",
+C:\AI-PROJECTS\marketplace-business-os\app\api\settings\api-connections\route.ts:38: const response = await fetch("https://api-seller.ozon.ru/v3/product/list", {
+C:\AI-PROJECTS\marketplace-business-os\app\api\settings\api-connections\route.ts:41: "Client-Id": clientId,
+C:\AI-PROJECTS\marketplace-business-os\app\api\settings\api-connections\route.ts:42: "Api-Key": apiKey,
+C:\AI-PROJECTS\marketplace-business-os\app\api\settings\api-connections\route.ts:180: throw new Error("Ozon Client-Id или Api-Key не сохранены");
+C:\AI-PROJECTS\marketplace-business-os\app\api\stocks\supply-plan\export\route.ts:20: type OwnSupplyItem = {
+C:\AI-PROJECTS\marketplace-business-os\app\api\stocks\supply-plan\export\route.ts:30: type SupplyPlanCandidate = {
+C:\AI-PROJECTS\marketplace-business-os\app\api\stocks\supply-plan\export\route.ts:51: type SupplyPlanRow = SupplyPlanCandidate & {
+C:\AI-PROJECTS\marketplace-business-os\app\api\stocks\supply-plan\export\route.ts:76: function normalizeSupplyArticle(value: unknown) {
+C:\AI-PROJECTS\marketplace-business-os\app\api\stocks\supply-plan\export\route.ts:80: function normalizeSupplySize(value: unknown) {
+C:\AI-PROJECTS\marketplace-business-os\app\api\stocks\supply-plan\export\route.ts:137: function getSupplyArticleCandidates(value: unknown) {
+C:\AI-PROJECTS\marketplace-business-os\app\api\stocks\supply-plan\export\route.ts:152: .map((candidate) => normalizeSupplyArticle(candidate))
+C:\AI-PROJECTS\marketplace-business-os\app\api\stocks\supply-plan\export\route.ts:284: function supplyPriorityWeight(priority: Priority) {
+C:\AI-PROJECTS\marketplace-business-os\app\api\stocks\supply-plan\export\route.ts:290: function getSupplyPriority(params: {
+C:\AI-PROJECTS\marketplace-business-os\app\api\stocks\supply-plan\export\route.ts:324: function supplyPlanMatchesSearch(row: SupplyPlanRow, query: string) {
+C:\AI-PROJECTS\marketplace-business-os\app\api\stocks\supply-plan\export\route.ts:421: async function buildSupplyPlanRows(url: URL) {
+C:\AI-PROJECTS\marketplace-business-os\app\api\stocks\supply-plan\export\route.ts:549: const [rawWbStocks, ozonSupplyRecommendations, warehouseStocks] =
+C:\AI-PROJECTS\marketplace-business-os\app\api\stocks\supply-plan\export\route.ts:559: { warehouseName: "asc" },
+C:\AI-PROJECTS\marketplace-business-os\app\api\stocks\supply-plan\export\route.ts:568: warehouseName: true,
+C:\AI-PROJECTS\marketplace-business-os\app\api\stocks\supply-plan\export\route.ts:569: warehouseQty: true,
+C:\AI-PROJECTS\marketplace-business-os\app\api\stocks\supply-plan\export\route.ts:573: prisma.ozonSupplyRecommendation.findMany({
+C:\AI-PROJECTS\marketplace-business-os\app\api\stocks\supply-plan\export\route.ts:579: { clusterName: "asc" },
+C:\AI-PROJECTS\marketplace-business-os\app\api\stocks\supply-plan\export\route.ts:589: recommendedSupplyQty: true,
+C:\AI-PROJECTS\marketplace-business-os\app\api\stocks\supply-plan\export\route.ts:591: clusterName: true,
+C:\AI-PROJECTS\marketplace-business-os\app\api\stocks\supply-plan\export\route.ts:599: prisma.ozonWarehouseStock.findMany({
+C:\AI-PROJECTS\marketplace-business-os\app\api\stocks\supply-plan\export\route.ts:612: availableForSupplyQty: true,
+C:\AI-PROJECTS\marketplace-business-os\app\api\stocks\supply-plan\export\route.ts:617: const ownSupplyItems: OwnSupplyItem[] = warehouseStocks
+C:\AI-PROJECTS\marketplace-business-os\app\api\stocks\supply-plan\export\route.ts:631: const normalizedArticle = normalizeSupplyArticle(article);
+C:\AI-PROJECTS\marketplace-business-os\app\api\stocks\supply-plan\export\route.ts:640: sizeKey: normalizeSupplySize(size),
+C:\AI-PROJECTS\marketplace-business-os\app\api\stocks\supply-plan\export\route.ts:641: availableQty: toNumber(stock.availableForSupplyQty),
+C:\AI-PROJECTS\marketplace-business-os\app\api\stocks\supply-plan\export\route.ts:643: } satisfies OwnSupplyItem;
+C:\AI-PROJECTS\marketplace-business-os\app\api\stocks\supply-plan\export\route.ts:647: function findOwnSupplyItem(params: {
+C:\AI-PROJECTS\marketplace-business-os\app\api\stocks\supply-plan\export\route.ts:656: for (const candidate of getSupplyArticleCandidates(article)) {
+C:\AI-PROJECTS\marketplace-business-os\app\api\stocks\supply-plan\export\route.ts:661: const sizeKey = normalizeSupplySize(params.size);
+C:\AI-PROJECTS\marketplace-business-os\app\api\stocks\supply-plan\export\route.ts:665: const sameCompanyItems = ownSupplyItems.filter(
+C:\AI-PROJECTS\marketplace-business-os\app\api\stocks\supply-plan\export\route.ts:678: const supplyPlanCandidates: SupplyPlanCandidate[] = [];
+C:\AI-PROJECTS\marketplace-business-os\app\api\stocks\supply-plan\export\route.ts:680: for (const row of ozonSupplyRecommendations) {
+C:\AI-PROJECTS\marketplace-business-os\app\api\stocks\supply-plan\export\route.ts:684: const wantedQty = Math.max(0, toNumber(row.recommendedSupplyQty));
+C:\AI-PROJECTS\marketplace-business-os\app\api\stocks\supply-plan\export\route.ts:693: const ownItem = findOwnSupplyItem({
+C:\AI-PROJECTS\marketplace-business-os\app\api\stocks\supply-plan\export\route.ts:705: const priority = getSupplyPriority({
+C:\AI-PROJECTS\marketplace-business-os\app\api\stocks\supply-plan\export\route.ts:713: supplyPlanCandidates.push({
+C:\AI-PROJECTS\marketplace-business-os\app\api\stocks\supply-plan\export\route.ts:714: key: `ozon-supply-${row.id}`,
+C:\AI-PROJECTS\marketplace-business-os\app\api\stocks\supply-plan\export\route.ts:722: targetName: row.clusterName ? `Кластер: ${row.clusterName}` : "Кластер Ozon",
+C:\AI-PROJECTS\marketplace-business-os\app\api\stocks\supply-plan\export\route.ts:754: if (!stock.warehouseName || stock.warehouseName === "__TOTAL__") continue;
+C:\AI-PROJECTS\marketplace-business-os\app\api\stocks\supply-plan\export\route.ts:762: const currentQty = toNumber(stock.warehouseQty) || toNumber(stock.totalStock);
+C:\AI-PROJECTS\marketplace-business-os\app\api\stocks\supply-plan\export\route.ts:774: const ownItem = findOwnSupplyItem({
+C:\AI-PROJECTS\marketplace-business-os\app\api\stocks\supply-plan\export\route.ts:781: const priority = getSupplyPriority({
+C:\AI-PROJECTS\marketplace-business-os\app\api\stocks\supply-plan\export\route.ts:788: supplyPlanCandidates.push({
+C:\AI-PROJECTS\marketplace-business-os\app\api\stocks\supply-plan\export\route.ts:789: key: `wb-supply-${stock.id}`,
+C:\AI-PROJECTS\marketplace-business-os\app\api\stocks\supply-plan\export\route.ts:797: targetName: stock.warehouseName,
+C:\AI-PROJECTS\marketplace-business-os\app\api\stocks\supply-plan\export\route.ts:805: reason: `На складе WB “${stock.warehouseName}” остаток ниже целевого уровня для ABC ${abcByProfit}.`,
+C:\AI-PROJECTS\marketplace-business-os\app\api\stocks\supply-plan\export\route.ts:810: const ownSupplyRemaining = new Map(
+C:\AI-PROJECTS\marketplace-business-os\app\api\stocks\supply-plan\export\route.ts:811: ownSupplyItems.map((item) => [item.key, item.availableQty])
+C:\AI-PROJECTS\marketplace-business-os\app\api\stocks\supply-plan\export\route.ts:814: const rows: SupplyPlanRow[] = supplyPlanCandidates
+C:\AI-PROJECTS\marketplace-business-os\app\api\stocks\supply-plan\export\route.ts:817: supplyPriorityWeight(b.priority) - supplyPriorityWeight(a.priority);
+C:\AI-PROJECTS\marketplace-business-os\app\api\stocks\supply-plan\export\route.ts:829: ? ownSupplyRemaining.get(candidate.ownItemKey) ?? 0
+C:\AI-PROJECTS\marketplace-business-os\app\api\stocks\supply-plan\export\route.ts:834: ownSupplyRemaining.set(
+C:\AI-PROJECTS\marketplace-business-os\app\api\stocks\supply-plan\export\route.ts:848: const marketplaceFilter = getMarketplaceFilter(getQueryValue(url, "supplyMarketplace"));
+C:\AI-PROJECTS\marketplace-business-os\app\api\stocks\supply-plan\export\route.ts:849: const priorityFilter = getPriorityFilter(getQueryValue(url, "supplyPriority"));
+C:\AI-PROJECTS\marketplace-business-os\app\api\stocks\supply-plan\export\route.ts:850: const abcFilter = getAbcFilter(getQueryValue(url, "supplyAbc"));
+C:\AI-PROJECTS\marketplace-business-os\app\api\stocks\supply-plan\export\route.ts:851: const targetFilter = getQueryValue(url, "supplyTarget");
+C:\AI-PROJECTS\marketplace-business-os\app\api\stocks\supply-plan\export\route.ts:852: const query = getQueryValue(url, "supplyQ");
+C:\AI-PROJECTS\marketplace-business-os\app\api\stocks\supply-plan\export\route.ts:871: return supplyPlanMatchesSearch(row, query);
+C:\AI-PROJECTS\marketplace-business-os\app\api\stocks\supply-plan\export\route.ts:874: const rowsLimit = getRowsLimit(getQueryValue(url, "supplyRows"), filteredRows.length);
+C:\AI-PROJECTS\marketplace-business-os\app\api\stocks\supply-plan\export\route.ts:882: const rows = await buildSupplyPlanRows(url);
+C:\AI-PROJECTS\marketplace-business-os\app\api\stocks\supply-plan\export\route.ts:976: "Content-Disposition": `attachment; filename="supply-plan-${fileStamp}.xlsx"`,
+C:\AI-PROJECTS\marketplace-business-os\app\api\stocks\supply-plan\export\route.ts:981: console.error("SUPPLY_PLAN_EXPORT_ERROR", error);
+C:\AI-PROJECTS\marketplace-business-os\app\api\templates\ozon-warehouse-stock\route.ts:120: { header: "Количество на складе, шт", key: "warehouseQty", width: 22 },
+C:\AI-PROJECTS\marketplace-business-os\app\api\templates\ozon-warehouse-stock\route.ts:122: { header: "Доступно к поставке, шт", key: "availableForSupplyQty", width: 22 },
+C:\AI-PROJECTS\marketplace-business-os\app\api\templates\ozon-warehouse-stock\route.ts:273: 'attachment; filename="own_warehouse_stock_template.xlsx"',
+C:\AI-PROJECTS\marketplace-business-os\app\api\upload\route.ts:18: import { normalizeOzonSupplyRecommendation } from "@/lib/import/normalizers/ozonSupplyRecommendationNormalizer";
+C:\AI-PROJECTS\marketplace-business-os\app\api\upload\route.ts:19: import { normalizeOzonWarehouseStock } from "@/lib/import/normalizers/ozonWarehouseStockNormalizer";
+C:\AI-PROJECTS\marketplace-business-os\app\api\upload\route.ts:147: detection.reportType === "OZON_WAREHOUSE_STOCK"
+C:\AI-PROJECTS\marketplace-business-os\app\api\upload\route.ts:273: if (detection.reportType === "OZON_SUPPLY_RECOMMENDATION") {
+C:\AI-PROJECTS\marketplace-business-os\app\api\upload\route.ts:274: const result = await normalizeOzonSupplyRecommendation(
+C:\AI-PROJECTS\marketplace-business-os\app\api\upload\route.ts:282: if (detection.reportType === "OZON_WAREHOUSE_STOCK") {
+C:\AI-PROJECTS\marketplace-business-os\app\api\upload\route.ts:283: const result = await normalizeOzonWarehouseStock(
+C:\AI-PROJECTS\marketplace-business-os\app\import\page.tsx:66: reportType: "OZON_SUPPLY_RECOMMENDATION",
+C:\AI-PROJECTS\marketplace-business-os\app\import\page.tsx:73: reportType: "OZON_WAREHOUSE_STOCK",
+C:\AI-PROJECTS\marketplace-business-os\app\import\page.tsx:74: templateHref: "/api/templates/ozon-warehouse-stock",
+C:\AI-PROJECTS\marketplace-business-os\app\import\page.tsx:88: if (reportType === "OZON_SUPPLY_RECOMMENDATION")
+C:\AI-PROJECTS\marketplace-business-os\app\import\page.tsx:90: if (reportType === "OZON_WAREHOUSE_STOCK") return "Собственный склад";
+C:\AI-PROJECTS\marketplace-business-os\app\settings\api-connections\page.tsx:1038: Ozon Client-Id
+C:\AI-PROJECTS\marketplace-business-os\app\settings\api-connections\page.tsx:1056: Ozon Api-Key
+C:\AI-PROJECTS\marketplace-business-os\app\settings\api-connections\page.tsx:1084: Ozon Performance Client-Id
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:23: supplyOpen?: string;
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:24: supplyMarketplace?: string;
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:25: supplyTarget?: string;
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:26: supplyAbc?: string;
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:27: supplyPriority?: string;
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:28: supplyRows?: string;
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:29: supplyQ?: string;
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:33: type SortKey = "product" | "vendorCode" | "qty" | "costPrice" | "totalCost" | "availableForSupplyQty";
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:81: warehouse: {
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:82: warehouseQty: number;
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:85: availableForSupplyQty: number;
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:86: availableForSupplyCost: number;
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:100: warehouseName: string | null;
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:101: clusterName: string | null;
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:104: availableForSupplyQty: number;
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:139: type SupplyPlanMarketplace = "WB" | "OZON";
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:140: type SupplyPlanPriority = "HIGH" | "MEDIUM" | "LOW";
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:142: type OwnSupplyItem = {
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:153: type SupplyPlanCandidate = {
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:155: marketplace: SupplyPlanMarketplace;
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:156: priority: SupplyPlanPriority;
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:175: type SupplyPlanRow = SupplyPlanCandidate & {
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:576: row.warehouseName,
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:577: row.clusterName,
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:592: function normalizeSupplyArticle(value: unknown) {
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:596: function normalizeSupplySize(value: unknown) {
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:600: function getSupplyArticleCandidates(value: unknown) {
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:615: .map((candidate) => normalizeSupplyArticle(candidate))
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:619: function supplyPriorityWeight(priority: SupplyPlanPriority) {
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:625: function getSupplyPriority(params: {
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:653: function priorityBadgeClass(priority: SupplyPlanPriority) {
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:660: function priorityLabel(priority: SupplyPlanPriority) {
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:667: function marketplaceSupplyClass(marketplace: SupplyPlanMarketplace) {
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:695: value === "availableForSupplyQty"
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:741: warehouseProductByVendorCode: Map<string, ProductVisual>;
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:752: params.warehouseProductByVendorCode.get(vendorCode) ?? {
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:776: return row.clusterName ?? row.warehouseName ?? "—";
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:1312: supplyOpen: params.supplyOpen,
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:1313: supplyMarketplace: params.supplyMarketplace,
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:1314: supplyTarget: params.supplyTarget,
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:1315: supplyAbc: params.supplyAbc,
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:1316: supplyPriority: params.supplyPriority,
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:1317: supplyRows: params.supplyRows,
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:1318: supplyQ: params.supplyQ,
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:1446: ownWarehouseMissingCount,
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:1450: ownWarehouseMissingCount: number;
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:1482: {ownWarehouseMissingCount > 0
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:1484: ownWarehouseMissingCount
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:1502: function getSupplyMarketplaceFilter(value?: string): "ALL" | SupplyPlanMarketplace {
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:1507: function getSupplyPriorityFilter(value?: string): "ALL" | SupplyPlanPriority {
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:1512: function getSupplyAbcFilter(value?: string): "ALL" | AbcCategory {
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:1517: function getSupplyRowsLimit(value: string | undefined, totalRows: number) {
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:1525: function supplyPlanMatchesSearch(row: SupplyPlanRow, query: string) {
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:1556: function getSupplyTargetOptions(
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:1557: rows: SupplyPlanRow[],
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:1558: marketplaceFilter: "ALL" | SupplyPlanMarketplace
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:1575: function supplySummaryQty(rows: SupplyPlanRow[]) {
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:1579: function SupplyPlanningBlock({
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:1584: rows: SupplyPlanRow[];
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:1588: const isOpen = params.supplyOpen === "1";
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:1589: const marketplaceFilter = getSupplyMarketplaceFilter(params.supplyMarketplace);
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:1590: const priorityFilter = getSupplyPriorityFilter(params.supplyPriority);
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:1591: const abcFilter = getSupplyAbcFilter(params.supplyAbc);
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:1592: const targetFilter = normalizeKey(params.supplyTarget);
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:1593: const query = normalizeKey(params.supplyQ);
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:1595: const targetOptions = getSupplyTargetOptions(rows, marketplaceFilter);
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:1622: return supplyPlanMatchesSearch(row, query);
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:1625: const rowsLimit = getSupplyRowsLimit(params.supplyRows, filteredRows.length);
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:1635: exportParams.set("supplyMarketplace", marketplaceFilter);
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:1639: exportParams.set("supplyTarget", safeTargetFilter);
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:1643: exportParams.set("supplyAbc", abcFilter);
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:1647: exportParams.set("supplyPriority", priorityFilter);
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:1650: if (params.supplyRows && params.supplyRows !== "20") {
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:1651: exportParams.set("supplyRows", params.supplyRows);
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:1655: exportParams.set("supplyQ", query);
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:1668: ? `/api/stocks/supply-plan/export?${exportQuery}`
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:1669: : "/api/stocks/supply-plan/export";
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:1682: href={makeUrl(params, { supplyOpen: isOpen ? null : "1" })}
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:1704: {formatNumber(supplySummaryQty(ozonRows))}
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:1711: {formatNumber(supplySummaryQty(wbRows))}
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:1718: {formatNumber(supplySummaryQty(rows))}
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:1740: <input type="hidden" name="supplyOpen" value="1" />
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:1771: name="supplyMarketplace"
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:1786: name="supplyTarget"
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:1804: name="supplyAbc"
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:1820: name="supplyPriority"
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:1836: name="supplyRows"
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:1837: defaultValue={params.supplyRows ?? "20"}
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:1853: name="supplyQ"
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:1854: defaultValue={params.supplyQ ?? ""}
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:1869: Найдено {formatNumber(filteredRows.length)} строк · к отгрузке {formatNumber(supplySummaryQty(filteredRows))} шт. · критичных {formatNumber(criticalRows.length)}
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:1874: supplyOpen: "1",
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:1875: supplyMarketplace: null,
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:1876: supplyTarget: null,
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:1877: supplyAbc: null,
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:1878: supplyPriority: null,
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:1879: supplyRows: null,
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:1880: supplyQ: null,
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:2016: className={`inline-flex rounded-full px-2 py-1 text-[10px] font-black ring-1 ${marketplaceSupplyClass(
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:2255: warehouseStocks,
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:2256: ozonSupplyRecommendations,
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:2268: { warehouseName: "asc" },
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:2278: { warehouseName: "asc" },
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:2281: prisma.ozonWarehouseStock.findMany({
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:2287: prisma.ozonSupplyRecommendation.findMany({
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:2293: { clusterName: "asc" },
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:2300: in: ["WB_STOCK", "OZON_STOCK", "OZON_WAREHOUSE_STOCK"],
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:2333: .filter((stock) => stock.warehouseName === "__TOTAL__")
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:2347: return stock.warehouseName === "__TOTAL__";
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:2356: ...warehouseStocks.map((stock) => stock.vendorCode),
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:2357: ...ozonSupplyRecommendations.map((row) => row.vendorCode),
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:2368: ...warehouseStocks.map((stock) => stock.sku),
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:2369: ...ozonSupplyRecommendations.map((row) => row.sku),
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:2646: const warehouseProductByVendorCode = new Map<string, ProductVisual>();
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:2648: for (const stock of warehouseStocks) {
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:2651: if (!vendorCode || warehouseProductByVendorCode.has(vendorCode)) continue;
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:2653: warehouseProductByVendorCode.set(vendorCode, {
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:2672: warehouseProductByVendorCode,
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:2683: const companyWarehouseStocks = warehouseStocks.filter(
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:2723: const ozonSupplyQty = sum(
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:2724: companyOzonStocks.map((stock) => toNumber(stock.supplyQty))
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:2735: ozonSupplyQty +
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:2743: toNumber(stock.supplyQty) +
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:2759: const warehouseQty = sum(
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:2760: companyWarehouseStocks.map((stock) => toNumber(stock.warehouseQty))
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:2763: companyWarehouseStocks.map((stock) => toNumber(stock.reservedQty))
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:2765: const availableForSupplyQty = sum(
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:2766: companyWarehouseStocks.map((stock) => toNumber(stock.availableForSupplyQty))
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:2768: const warehouseTotalCost = sum(
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:2769: companyWarehouseStocks.map((stock) => {
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:2778: return toNumber(stock.warehouseQty) * costPrice;
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:2781: const availableForSupplyCost = sum(
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:2782: companyWarehouseStocks.map((stock) => {
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:2791: return toNumber(stock.availableForSupplyQty) * costPrice;
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:2808: reportType: "OZON_WAREHOUSE_STOCK",
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:2815: totalQty: wbTotalQty + ozonTotalQty + warehouseQty,
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:2816: totalCost: wbTotalCost + ozonTotalCost + warehouseTotalCost,
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:2832: warehouse: {
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:2833: warehouseQty,
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:2834: totalCost: warehouseTotalCost,
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:2836: availableForSupplyQty,
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:2837: availableForSupplyCost,
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:2838: rowsCount: companyWarehouseStocks.length,
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:2848: const totalWarehouseQty = sum(
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:2849: summaries.map((summary) => summary.warehouse.warehouseQty)
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:2851: const totalWarehouseCost = sum(
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:2852: summaries.map((summary) => summary.warehouse.totalCost)
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:2854: const totalAvailableForSupplyQty = sum(
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:2855: summaries.map((summary) => summary.warehouse.availableForSupplyQty)
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:2857: const totalAvailableForSupplyCost = sum(
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:2858: summaries.map((summary) => summary.warehouse.availableForSupplyCost)
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:2861: summaries.map((summary) => summary.warehouse.reservedQty)
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:2892: warehouseName:
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:2893: stock.warehouseName && stock.warehouseName !== "__TOTAL__"
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:2894: ? stock.warehouseName
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:2896: clusterName: null,
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:2899: availableForSupplyQty: qty,
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:2916: toNumber(stock.supplyQty) +
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:2940: warehouseName: stock.warehouseName,
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:2941: clusterName: stock.clusterName,
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:2944: availableForSupplyQty: toNumber(stock.availableQty),
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:2956: ...warehouseStocks.map((stock) => {
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:2972: key: `warehouse-${stock.id}`,
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:2980: warehouseName: "Собственный склад",
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:2981: clusterName: null,
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:2982: qty: toNumber(stock.warehouseQty),
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:2984: availableForSupplyQty: toNumber(stock.availableForSupplyQty),
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:2986: totalCost: toNumber(stock.warehouseQty) * costPrice,
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:2996: ].filter((row) => row.qty > 0 || row.availableForSupplyQty > 0);
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:3015: const ownSupplyItems: OwnSupplyItem[] = warehouseStocks
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:3034: const normalizedArticle = normalizeSupplyArticle(article);
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:3043: sizeKey: normalizeSupplySize(size),
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:3044: availableQty: toNumber(stock.availableForSupplyQty),
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:3051: } satisfies OwnSupplyItem;
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:3055: function findOwnSupplyItem(params: {
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:3064: for (const candidate of getSupplyArticleCandidates(article)) {
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:3069: const sizeKey = normalizeSupplySize(params.size);
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:3073: const sameCompanyItems = ownSupplyItems.filter(
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:3088: const supplyPlanCandidates: SupplyPlanCandidate[] = [];
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:3090: for (const row of ozonSupplyRecommendations) {
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:3094: const wantedQty = Math.max(0, toNumber(row.recommendedSupplyQty));
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:3103: const ownItem = findOwnSupplyItem({
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:3121: const priority = getSupplyPriority({
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:3129: supplyPlanCandidates.push({
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:3130: key: `ozon-supply-${row.id}`,
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:3144: targetName: row.clusterName ? `Кластер: ${row.clusterName}` : "Кластер Ozon",
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:3176: if (!stock.warehouseName || stock.warehouseName === "__TOTAL__") continue;
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:3184: const currentQty = toNumber(stock.warehouseQty) || toNumber(stock.totalStock);
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:3196: const ownItem = findOwnSupplyItem({
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:3209: const priority = getSupplyPriority({
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:3216: supplyPlanCandidates.push({
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:3217: key: `wb-supply-${stock.id}`,
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:3230: targetName: stock.warehouseName,
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:3238: reason: `На складе WB “${stock.warehouseName}” остаток ниже целевого уровня для ABC ${abcByProfit}.`,
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:3243: const ownSupplyRemaining = new Map(
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:3244: ownSupplyItems.map((item) => [item.key, item.availableQty])
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:3247: const supplyPlanRows: SupplyPlanRow[] = supplyPlanCandidates
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:3250: supplyPriorityWeight(b.priority) - supplyPriorityWeight(a.priority);
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:3262: ? ownSupplyRemaining.get(candidate.ownItemKey) ?? 0
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:3267: ownSupplyRemaining.set(
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:3344: const ownWarehouseMissingCount = summaries.filter(
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:3345: (summary) => summary.warehouse.rowsCount === 0
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:3372: href="/api/templates/ozon-warehouse-stock"
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:3379: href="/import?reportType=OZON_WAREHOUSE_STOCK"
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:3430: value={`${formatNumber(totalWarehouseQty)} шт`}
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:3431: money={formatMoney(totalWarehouseCost)}
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:3438: value={`${formatNumber(totalAvailableForSupplyQty)} шт`}
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:3439: money={formatMoney(totalAvailableForSupplyCost)}
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:3545: {formatNumber(summary.warehouse.warehouseQty)} шт
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:3548: {formatMoney(summary.warehouse.totalCost)}
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:3565: ownWarehouseMissingCount={ownWarehouseMissingCount}
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:3628: {formatNumber(selectedCompanySummary.warehouse.warehouseQty)} шт
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:3631: {formatMoney(selectedCompanySummary.warehouse.totalCost)}
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:3637: selectedCompanySummary.warehouse.availableForSupplyQty
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:3642: Резерв: {formatNumber(selectedCompanySummary.warehouse.reservedQty)} шт
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:3647: selectedCompanySummary.warehouse.availableForSupplyCost
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:3655: <SupplyPlanningBlock rows={supplyPlanRows} params={params} companyNames={companyNames} />
+C:\AI-PROJECTS\marketplace-business-os\app\stocks\page.tsx:3983: К поставке: {formatNumber(row.availableForSupplyQty)}
+C:\AI-PROJECTS\marketplace-business-os\app\page.tsx:2455: warehouseName: "__TOTAL__",
+C:\AI-PROJECTS\marketplace-business-os\lib\historicalSync\runHistoricalSyncJob.ts:5: syncOzonAds,
+C:\AI-PROJECTS\marketplace-business-os\lib\historicalSync\runHistoricalSyncJob.ts:6: syncOzonFinance,
+C:\AI-PROJECTS\marketplace-business-os\lib\historicalSync\runHistoricalSyncJob.ts:7: syncOzonProducts,
+C:\AI-PROJECTS\marketplace-business-os\lib\historicalSync\runHistoricalSyncJob.ts:8: } from "@/lib/ozon/syncOzon";
+C:\AI-PROJECTS\marketplace-business-os\lib\historicalSync\runHistoricalSyncJob.ts:81: message.includes("api-key") ||
+C:\AI-PROJECTS\marketplace-business-os\lib\historicalSync\runHistoricalSyncJob.ts:83: message.includes("client-id") ||
+C:\AI-PROJECTS\marketplace-business-os\lib\historicalSync\runHistoricalSyncJob.ts:464: return syncOzonFinance(job.companyId, {
+C:\AI-PROJECTS\marketplace-business-os\lib\historicalSync\runHistoricalSyncJob.ts:471: return syncOzonAds(job.companyId, {
+C:\AI-PROJECTS\marketplace-business-os\lib\historicalSync\runHistoricalSyncJob.ts:478: return syncOzonProducts(job.companyId);
+C:\AI-PROJECTS\marketplace-business-os\lib\import\normalizers\ozonStockNormalizer.ts:57: clusterName: getByIndex(row, 5) ? String(getByIndex(row, 5)) : null,
+C:\AI-PROJECTS\marketplace-business-os\lib\import\normalizers\ozonStockNormalizer.ts:58: warehouseName: getByIndex(row, 6) ? String(getByIndex(row, 6)) : null,
+C:\AI-PROJECTS\marketplace-business-os\lib\import\normalizers\ozonStockNormalizer.ts:62: supplyQty: toNumber(getByIndex(row, 16)),
+C:\AI-PROJECTS\marketplace-business-os\lib\import\normalizers\ozonSupplyRecommendationNormalizer.ts:100: clusterName: string | null;
+C:\AI-PROJECTS\marketplace-business-os\lib\import\normalizers\ozonSupplyRecommendationNormalizer.ts:104: const clusterText = normalizeHeader(row.clusterName);
+C:\AI-PROJECTS\marketplace-business-os\lib\import\normalizers\ozonSupplyRecommendationNormalizer.ts:110: clusterText === "кластер"
+C:\AI-PROJECTS\marketplace-business-os\lib\import\normalizers\ozonSupplyRecommendationNormalizer.ts:114: export async function normalizeOzonSupplyRecommendation(
+C:\AI-PROJECTS\marketplace-business-os\lib\import\normalizers\ozonSupplyRecommendationNormalizer.ts:123: const clusterName = toText(getByHeader(row, ["Кластер"]));
+C:\AI-PROJECTS\marketplace-business-os\lib\import\normalizers\ozonSupplyRecommendationNormalizer.ts:125: const recommendedSupplyQty = toInt(
+C:\AI-PROJECTS\marketplace-business-os\lib\import\normalizers\ozonSupplyRecommendationNormalizer.ts:141: recommendedSupplyQty,
+C:\AI-PROJECTS\marketplace-business-os\lib\import\normalizers\ozonSupplyRecommendationNormalizer.ts:144: clusterName: clusterName ?? "",
+C:\AI-PROJECTS\marketplace-business-os\lib\import\normalizers\ozonSupplyRecommendationNormalizer.ts:176: .filter((row) => row.vendorCode && row.clusterName);
+C:\AI-PROJECTS\marketplace-business-os\lib\import\normalizers\ozonSupplyRecommendationNormalizer.ts:184: await prisma.ozonSupplyRecommendation.deleteMany({
+C:\AI-PROJECTS\marketplace-business-os\lib\import\normalizers\ozonSupplyRecommendationNormalizer.ts:194: await prisma.ozonSupplyRecommendation.createMany({
+C:\AI-PROJECTS\marketplace-business-os\lib\import\normalizers\ozonWarehouseStockNormalizer.ts:98: function getWarehouseQty(row: Record<string, unknown>) {
+C:\AI-PROJECTS\marketplace-business-os\lib\import\normalizers\ozonWarehouseStockNormalizer.ts:99: const warehouseQty = toNumber(
+C:\AI-PROJECTS\marketplace-business-os\lib\import\normalizers\ozonWarehouseStockNormalizer.ts:119: const availableForSupplyQty = toNumber(
+C:\AI-PROJECTS\marketplace-business-os\lib\import\normalizers\ozonWarehouseStockNormalizer.ts:130: if (warehouseQty !== null) {
+C:\AI-PROJECTS\marketplace-business-os\lib\import\normalizers\ozonWarehouseStockNormalizer.ts:131: const safeWarehouseQty = Math.max(0, Math.trunc(warehouseQty));
+C:\AI-PROJECTS\marketplace-business-os\lib\import\normalizers\ozonWarehouseStockNormalizer.ts:134: warehouseQty: safeWarehouseQty,
+C:\AI-PROJECTS\marketplace-business-os\lib\import\normalizers\ozonWarehouseStockNormalizer.ts:136: availableForSupplyQty: Math.max(0, safeWarehouseQty - safeReservedQty),
+C:\AI-PROJECTS\marketplace-business-os\lib\import\normalizers\ozonWarehouseStockNormalizer.ts:140: const safeAvailableForSupplyQty = Math.max(
+C:\AI-PROJECTS\marketplace-business-os\lib\import\normalizers\ozonWarehouseStockNormalizer.ts:142: Math.trunc(availableForSupplyQty ?? 0)
+C:\AI-PROJECTS\marketplace-business-os\lib\import\normalizers\ozonWarehouseStockNormalizer.ts:146: warehouseQty: safeAvailableForSupplyQty + safeReservedQty,
+C:\AI-PROJECTS\marketplace-business-os\lib\import\normalizers\ozonWarehouseStockNormalizer.ts:148: availableForSupplyQty: safeAvailableForSupplyQty,
+C:\AI-PROJECTS\marketplace-business-os\lib\import\normalizers\ozonWarehouseStockNormalizer.ts:167: type OwnWarehouseStockData = {
+C:\AI-PROJECTS\marketplace-business-os\lib\import\normalizers\ozonWarehouseStockNormalizer.ts:176: warehouseQty: number;
+C:\AI-PROJECTS\marketplace-business-os\lib\import\normalizers\ozonWarehouseStockNormalizer.ts:178: availableForSupplyQty: number;
+C:\AI-PROJECTS\marketplace-business-os\lib\import\normalizers\ozonWarehouseStockNormalizer.ts:184: function buildDedupeKey(row: OwnWarehouseStockData) {
+C:\AI-PROJECTS\marketplace-business-os\lib\import\normalizers\ozonWarehouseStockNormalizer.ts:197: export async function normalizeOzonWarehouseStock(
+C:\AI-PROJECTS\marketplace-business-os\lib\import\normalizers\ozonWarehouseStockNormalizer.ts:202: const parsedRows: OwnWarehouseStockData[] = rows
+C:\AI-PROJECTS\marketplace-business-os\lib\import\normalizers\ozonWarehouseStockNormalizer.ts:217: const { warehouseQty, reservedQty, availableForSupplyQty } =
+C:\AI-PROJECTS\marketplace-business-os\lib\import\normalizers\ozonWarehouseStockNormalizer.ts:218: getWarehouseQty(row);
+C:\AI-PROJECTS\marketplace-business-os\lib\import\normalizers\ozonWarehouseStockNormalizer.ts:233: warehouseQty,
+C:\AI-PROJECTS\marketplace-business-os\lib\import\normalizers\ozonWarehouseStockNormalizer.ts:235: availableForSupplyQty,
+C:\AI-PROJECTS\marketplace-business-os\lib\import\normalizers\ozonWarehouseStockNormalizer.ts:253: const grouped = new Map<string, OwnWarehouseStockData>();
+C:\AI-PROJECTS\marketplace-business-os\lib\import\normalizers\ozonWarehouseStockNormalizer.ts:264: existing.warehouseQty += row.warehouseQty;
+C:\AI-PROJECTS\marketplace-business-os\lib\import\normalizers\ozonWarehouseStockNormalizer.ts:266: existing.availableForSupplyQty = Math.max(
+C:\AI-PROJECTS\marketplace-business-os\lib\import\normalizers\ozonWarehouseStockNormalizer.ts:268: existing.warehouseQty - existing.reservedQty
+C:\AI-PROJECTS\marketplace-business-os\lib\import\normalizers\ozonWarehouseStockNormalizer.ts:296: await prisma.ozonWarehouseStock.deleteMany({
+C:\AI-PROJECTS\marketplace-business-os\lib\import\normalizers\ozonWarehouseStockNormalizer.ts:304: await prisma.ozonWarehouseStock.createMany({
+C:\AI-PROJECTS\marketplace-business-os\lib\import\normalizers\wbSalesNormalizer.ts:64: supplyNumber: toStringOrNull(row["Номер поставки"]),
+C:\AI-PROJECTS\marketplace-business-os\lib\import\normalizers\wbStockNormalizer.ts:51: warehouseName: "__TOTAL__",
+C:\AI-PROJECTS\marketplace-business-os\lib\import\normalizers\wbStockNormalizer.ts:52: warehouseQty: null,
+C:\AI-PROJECTS\marketplace-business-os\lib\import\reportDetector.ts:14: | "OZON_SUPPLY_RECOMMENDATION"
+C:\AI-PROJECTS\marketplace-business-os\lib\import\reportDetector.ts:15: | "OZON_WAREHOUSE_STOCK"
+C:\AI-PROJECTS\marketplace-business-os\lib\import\reportDetector.ts:59: type: "OZON_SUPPLY_RECOMMENDATION",
+C:\AI-PROJECTS\marketplace-business-os\lib\import\reportDetector.ts:75: type: "OZON_WAREHOUSE_STOCK",
+C:\AI-PROJECTS\marketplace-business-os\lib\import\reportDetector.ts:276: reportType: "OZON_SUPPLY_RECOMMENDATION",
+C:\AI-PROJECTS\marketplace-business-os\lib\import\reportDetector.ts:301: reportType: "OZON_WAREHOUSE_STOCK",
+C:\AI-PROJECTS\marketplace-business-os\lib\import\reportDetector.ts:427: bestResult.reportType === "OZON_SUPPLY_RECOMMENDATION" ||
+C:\AI-PROJECTS\marketplace-business-os\lib\import\reportDetector.ts:428: bestResult.reportType === "OZON_WAREHOUSE_STOCK"
+C:\AI-PROJECTS\marketplace-business-os\lib\marketplaceOrders\syncMarketplaceDailyOrders.ts:305: const response = await fetch("https://api-seller.ozon.ru/v1/analytics/data", {
+C:\AI-PROJECTS\marketplace-business-os\lib\marketplaceOrders\syncMarketplaceDailyOrders.ts:308: "Client-Id": clientId,
+C:\AI-PROJECTS\marketplace-business-os\lib\marketplaceOrders\syncMarketplaceDailyOrders.ts:309: "Api-Key": apiKey,
+C:\AI-PROJECTS\marketplace-business-os\lib\marketplaceOrders\syncMarketplaceDailyOrders.ts:502: export async function syncOzonDailyOrdersForCompany(params: {
+C:\AI-PROJECTS\marketplace-business-os\lib\marketplaceOrders\syncMarketplaceDailyOrders.ts:516: reason: "Ozon Client-Id or Api-Key is not configured",
+C:\AI-PROJECTS\marketplace-business-os\lib\marketplaceOrders\syncMarketplaceDailyOrders.ts:565: await syncOzonDailyOrdersForCompany({
+C:\AI-PROJECTS\marketplace-business-os\lib\ozon\syncOzon.ts:287: "https://api-seller.ozon.ru/v3/finance/transaction/list",
+C:\AI-PROJECTS\marketplace-business-os\lib\ozon\syncOzon.ts:291: "Client-Id": clientId,
+C:\AI-PROJECTS\marketplace-business-os\lib\ozon\syncOzon.ts:292: "Api-Key": apiKey,
+C:\AI-PROJECTS\marketplace-business-os\lib\ozon\syncOzon.ts:394: export async function syncOzonFinance(
+C:\AI-PROJECTS\marketplace-business-os\lib\ozon\syncOzon.ts:401: throw new Error("Ozon Client-Id или Api-Key не сохранены");
+C:\AI-PROJECTS\marketplace-business-os\lib\ozon\syncOzon.ts:533: const response = await fetch("https://api-seller.ozon.ru/v3/product/list", {
+C:\AI-PROJECTS\marketplace-business-os\lib\ozon\syncOzon.ts:536: "Client-Id": clientId,
+C:\AI-PROJECTS\marketplace-business-os\lib\ozon\syncOzon.ts:537: "Api-Key": apiKey,
+C:\AI-PROJECTS\marketplace-business-os\lib\ozon\syncOzon.ts:574: const response = await fetch("https://api-seller.ozon.ru/v3/product/info/list", {
+C:\AI-PROJECTS\marketplace-business-os\lib\ozon\syncOzon.ts:577: "Client-Id": clientId,
+C:\AI-PROJECTS\marketplace-business-os\lib\ozon\syncOzon.ts:578: "Api-Key": apiKey,
+C:\AI-PROJECTS\marketplace-business-os\lib\ozon\syncOzon.ts:602: "https://api-seller.ozon.ru/v2/product/pictures/info",
+C:\AI-PROJECTS\marketplace-business-os\lib\ozon\syncOzon.ts:606: "Client-Id": clientId,
+C:\AI-PROJECTS\marketplace-business-os\lib\ozon\syncOzon.ts:607: "Api-Key": apiKey,
+C:\AI-PROJECTS\marketplace-business-os\lib\ozon\syncOzon.ts:784: "https://api-seller.ozon.ru/v4/product/info/attributes",
+C:\AI-PROJECTS\marketplace-business-os\lib\ozon\syncOzon.ts:788: "Client-Id": clientId,
+C:\AI-PROJECTS\marketplace-business-os\lib\ozon\syncOzon.ts:789: "Api-Key": apiKey,
+C:\AI-PROJECTS\marketplace-business-os\lib\ozon\syncOzon.ts:842: export async function syncOzonProducts(companyId: string) {
+C:\AI-PROJECTS\marketplace-business-os\lib\ozon\syncOzon.ts:846: throw new Error("Ozon Client-Id или Api-Key не сохранены");
+C:\AI-PROJECTS\marketplace-business-os\lib\ozon\syncOzon.ts:993: "https://api-seller.ozon.ru/v4/product/info/stocks",
+C:\AI-PROJECTS\marketplace-business-os\lib\ozon\syncOzon.ts:997: "Client-Id": clientId,
+C:\AI-PROJECTS\marketplace-business-os\lib\ozon\syncOzon.ts:998: "Api-Key": apiKey,
+C:\AI-PROJECTS\marketplace-business-os\lib\ozon\syncOzon.ts:1029: export async function syncOzonStocks(companyId: string) {
+C:\AI-PROJECTS\marketplace-business-os\lib\ozon\syncOzon.ts:1033: throw new Error("Ozon Client-Id или Api-Key не сохранены");
+C:\AI-PROJECTS\marketplace-business-os\lib\ozon\syncOzon.ts:1078: warehouseName: "Ozon",
+C:\AI-PROJECTS\marketplace-business-os\lib\ozon\syncOzon.ts:1079: clusterName: null,
+C:\AI-PROJECTS\marketplace-business-os\lib\ozon\syncOzon.ts:1082: supplyQty: 0,
+C:\AI-PROJECTS\marketplace-business-os\lib\ozon\syncOzon.ts:1095: warehouseName: stock.type ? `Ozon ${stock.type}` : "Ozon",
+C:\AI-PROJECTS\marketplace-business-os\lib\ozon\syncOzon.ts:1096: clusterName: stock.shipment_type ?? null,
+C:\AI-PROJECTS\marketplace-business-os\lib\ozon\syncOzon.ts:1099: supplyQty: 0,
+C:\AI-PROJECTS\marketplace-business-os\lib\ozon\syncOzon.ts:1492: export async function syncOzonAds(
+C:\AI-PROJECTS\marketplace-business-os\lib\ozon\syncOzon.ts:1502: throw new Error("Ozon Performance Client-Id или Client Secret не сохранены");
+C:\AI-PROJECTS\marketplace-business-os\lib\ozon\syncOzon.ts:1636: export async function syncOzonAll(companyId: string) {
+C:\AI-PROJECTS\marketplace-business-os\lib\ozon\syncOzon.ts:1640: results.push(await syncOzonFinance(companyId));
+C:\AI-PROJECTS\marketplace-business-os\lib\ozon\syncOzon.ts:1641: results.push(await syncOzonProducts(companyId));
+C:\AI-PROJECTS\marketplace-business-os\lib\ozon\syncOzon.ts:1642: results.push(await syncOzonStocks(companyId));
+C:\AI-PROJECTS\marketplace-business-os\lib\ozon\syncOzon.ts:1643: results.push(await syncOzonAds(companyId));
+C:\AI-PROJECTS\marketplace-business-os\lib\telegram\dailyReport.ts:414: warehouseName: string | null;
+C:\AI-PROJECTS\marketplace-business-os\lib\telegram\dailyReport.ts:423: warehouseQty: number | null;
+C:\AI-PROJECTS\marketplace-business-os\lib\telegram\dailyReport.ts:439: const totalRows = rows.filter((row) => row.warehouseName === "__TOTAL__");
+C:\AI-PROJECTS\marketplace-business-os\lib\telegram\dailyReport.ts:452: const hasWarehouseQty = rows.some((row) => toNumber(row.warehouseQty) > 0);
+C:\AI-PROJECTS\marketplace-business-os\lib\telegram\dailyReport.ts:454: if (hasWarehouseQty) {
+C:\AI-PROJECTS\marketplace-business-os\lib\telegram\dailyReport.ts:455: return rows.reduce((sum, row) => sum + toNumber(row.warehouseQty), 0);
+C:\AI-PROJECTS\marketplace-business-os\lib\telegram\dailyReport.ts:499: warehouseName: true,
+C:\AI-PROJECTS\marketplace-business-os\lib\telegram\dailyReport.ts:508: warehouseQty: true,
+C:\AI-PROJECTS\marketplace-business-os\lib\telegram\dailyReport.ts:521: warehouseName: true,
+C:\AI-PROJECTS\marketplace-business-os\lib\telegram\dailyReport.ts:530: warehouseQty: true,
+C:\AI-PROJECTS\marketplace-business-os\lib\telegram\dailyReport.ts:548: supplyQty: true,
+C:\AI-PROJECTS\marketplace-business-os\lib\telegram\dailyReport.ts:559: toNumber(row.supplyQty) +
+C:\AI-PROJECTS\marketplace-business-os\lib\wb\syncWbDailySales.ts:10: warehouseName?: string;
+C:\AI-PROJECTS\marketplace-business-os\lib\wb\syncWbDailySales.ts:22: isSupply?: boolean;
+C:\AI-PROJECTS\marketplace-business-os\lib\wb\syncWbDailySales.ts:279: supplyNumber: row.incomeID ? String(row.incomeID) : null,
+C:\AI-PROJECTS\marketplace-business-os\lib\wb\syncWbStock.ts:11: warehouseName?: string;
+C:\AI-PROJECTS\marketplace-business-os\lib\wb\syncWbStock.ts:160: "https://seller-analytics-api.wildberries.ru/api/analytics/v1/stocks-report/wb-warehouses",
+C:\AI-PROJECTS\marketplace-business-os\lib\wb\syncWbStock.ts:350: const warehouseQty = toInt(item.quantity);
+C:\AI-PROJECTS\marketplace-business-os\lib\wb\syncWbStock.ts:375: warehouseName: item.warehouseName ?? null,
+C:\AI-PROJECTS\marketplace-business-os\lib\wb\syncWbStock.ts:376: warehouseQty,
+C:\AI-PROJECTS\marketplace-business-os\lib\wb\syncWbStock.ts:377: totalStock: warehouseQty,
