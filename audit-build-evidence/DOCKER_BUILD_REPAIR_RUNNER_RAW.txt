@@ -1,0 +1,66 @@
+#0 building with "default" instance using docker driver
+
+#1 [internal] load build definition from Dockerfile
+#1 transferring dockerfile: 3.51kB done
+#1 DONE 0.0s
+
+#2 resolve image config for docker-image://docker.io/docker/dockerfile:1.7
+#2 DONE 0.2s
+
+#3 docker-image://docker.io/docker/dockerfile:1.7@sha256:a57df69d0ea827fb7266491f2813635de6f17269be881f696fbfdf2d83dda33e
+#3 CACHED
+
+#4 [internal] load metadata for docker.io/library/node:24-bookworm-slim
+#4 DONE 0.2s
+
+#5 [internal] load .dockerignore
+#5 transferring context: 226B done
+#5 DONE 0.1s
+
+#6 [base 1/3] FROM docker.io/library/node:24-bookworm-slim@sha256:0e0ff40c39bc087845bfb27465a0df4ea419520094bc35842ff83dd8cbe6f9b6
+#6 DONE 0.0s
+
+#7 [internal] load build context
+#7 transferring context: 48.70kB 0.0s done
+#7 DONE 0.0s
+
+#8 [builder 4/5] RUN npx prisma generate && npm run build
+#8 CACHED
+
+#9 [base 2/3] WORKDIR /app
+#9 CACHED
+
+#10 [builder 1/5] COPY --from=deps /app/node_modules ./node_modules
+#10 CACHED
+
+#11 [builder 3/5] RUN test -f app/api/cron/sync-ozon-accruals/route.ts   && test -f lib/ozon/accrualByDay.ts   && test -f lib/ozon/syncOzonAccrualByDay.ts   && grep -q "syncOzonAccrualByDayOverlay" lib/ozon/syncOzon.ts
+#11 CACHED
+
+#12 [deps 1/2] COPY package.json package-lock.json ./
+#12 CACHED
+
+#13 [deps 2/2] RUN npm ci
+#13 CACHED
+
+#14 [base 3/3] RUN apt-get update   && apt-get install -y --no-install-recommends ca-certificates openssl   && rm -rf /var/lib/apt/lists/*
+#14 CACHED
+
+#15 [builder 2/5] COPY . .
+#15 CACHED
+
+#16 [builder 5/5] RUN test -e .next/server/app/api/cron/sync-ozon-accruals/route.js   || test -d .next/server/app/api/cron/sync-ozon-accruals
+#16 CACHED
+
+#17 [financial-repair-runner 1/2] RUN test -f scripts/financialRepair/runOzonHistoricalFinancialRepair.ts   && test -f lib/ozon/syncOzonAccrualByDay.ts   && test -f lib/ozon/historicalRepairInvalidationPolicy.ts   && test -f lib/ozon/accrualByDay.ts   && test -f lib/ozon/financialRepairProductionAdapters.ts   && grep -q "runProductionAdapterReadinessGate" scripts/financialRepair/runOzonHistoricalFinancialRepair.ts   && grep -q "createProductionMutationAdapters" scripts/financialRepair/runOzonHistoricalFinancialRepair.ts
+#17 DONE 0.1s
+
+#18 [financial-repair-runner 2/2] RUN groupadd --system --gid 1001 nodejs   && useradd --system --uid 1001 repair   && chown -R repair:nodejs /app
+#18 0.106 useradd warning: repair's uid 1001 is greater than SYS_UID_MAX 999
+#18 DONE 127.3s
+
+#19 exporting to image
+#19 exporting layers
+#19 exporting layers 9.5s done
+#19 writing image sha256:5e46929765108d7dd5cc5a922d59db50f4f88b7ebd0067a9de5c1ec21f21c9cc done
+#19 naming to docker.io/library/avorofin-financial-repair-runner:36110484896 done
+#19 DONE 9.5s

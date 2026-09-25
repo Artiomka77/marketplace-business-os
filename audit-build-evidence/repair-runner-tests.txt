@@ -1,0 +1,47 @@
+✔ NORMAL ingest still invalidates snapshots and profit (1.466223ms)
+✔ DEFERRED_OWNER_REPAIR does not per-target invalidate (0.23001ms)
+✔ 78 intrinsic statuses are not separately rewritten (0.206705ms)
+✔ only ALL V2 rows may be numerically promoted (0.391463ms)
+✔ regression: NORMAL remains default; repair-only requires deferred (0.291753ms)
+✔ EXECUTE binding fail-closed on manifest mismatch; marker required (1.294603ms)
+{
+  "mode": "EXECUTE_FROM_CACHE",
+  "ok": true,
+  "operationStartedAt": "2026-09-25T08:01:26.347Z",
+  "OZON_NETWORK_CALLS": 0,
+  "persisted": 78,
+  "noopComplete": 0,
+  "resumed": 0,
+  "intrinsicStatuses": 78,
+  "separateStatusUpserts": 0,
+  "statusResult": {
+    "written": 10,
+    "noop": 0
+  },
+  "post": {
+    "snapshotDeleted": 35,
+    "snapshotRequeued": 35,
+    "v2Rebuilt": 2
+  }
+}
+✔ EXECUTABLE: mutation helpers exist and EXECUTE rejects defaults (1.376235ms)
+✔ SOURCE_DRIFT always STOP (0.5162ms)
+✔ ephemeral E2E: PREPARE cache -> EXECUTE_FROM_CACHE idempotent resume (7.978615ms)
+✔ EXECUTE binding rejects self-accepting file defaults (1.033341ms)
+✔ ADAPTERS: certification rawResponseHash recipe is the sealed manifest recipe (0.561878ms)
+✔ ADAPTERS: inspectTargetState resolves every real Prisma state (2.896757ms)
+✔ ADAPTERS: exact-key snapshot union deletes and requeues once per unique key (1.581966ms)
+✔ ADAPTERS: V2 rebuild queues ALL scope and refuses anything else (0.876272ms)
+✔ ADAPTERS: tripwire counts Ozon requests, blocks them, and restores fetch (24.143434ms)
+✔ GATE: readiness gate refuses unbound adapters and prior Ozon traffic (1.088517ms)
+✔ PREPARE live: injected fetch seals the cache and stops on source drift (2.158776ms)
+✔ EXECUTE_FROM_CACHE: full CLI run gates, mutates, and makes zero Ozon calls (19.572369ms)
+✔ PRODUCTION: no adapter phase is a placeholder throw (0.426738ms)
+ℹ tests 19
+ℹ suites 0
+ℹ pass 19
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 598.986162
