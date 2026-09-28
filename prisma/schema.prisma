@@ -500,6 +500,30 @@ model OzonProduct {
   @@index([size])
 }
 
+/// Durable SKU→seller offer mapping for Ozon SKUs absent from normal OzonProduct sync.
+/// Do not store these only in OzonProduct: product sync deleteMany would erase them.
+model OzonSpecialSkuAlias {
+  id String @id @default(cuid())
+
+  companyName         String
+  ozonSku             String
+  canonicalVendorCode String
+  baseNmId            String?
+  offerId             String?
+  productName         String?
+  barcode             String?
+  mappingEvidence     String
+  source              String   @default("OZON_PRODUCT_INFO_API")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([companyName, ozonSku])
+  @@index([ozonSku])
+  @@index([canonicalVendorCode])
+  @@index([baseNmId])
+}
+
 model OzonRealizationSummary {
   id String @id @default(cuid())
 
