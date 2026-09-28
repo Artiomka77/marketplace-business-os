@@ -1,0 +1,12 @@
+﻿
+FullName                                                                        
+--------                                                                        
+C:\AI-PROJECTS\marketplace-business-os\app\finance\layout.tsx                   
+C:\AI-PROJECTS\marketplace-business-os\app\globals.css                          
+C:\AI-PROJECTS\marketplace-business-os\app\layout.tsx                           
+C:\AI-PROJECTS\marketplace-business-os\components\app\AppNav.tsx                
+C:\AI-PROJECTS\marketplace-business-os\components\finance\FinanceNav.tsx        
+C:\AI-PROJECTS\marketplace-business-os\components\marketplaces\MarketplaceNav...
+C:\AI-PROJECTS\marketplace-business-os\components\ui\card.tsx                   
+
+

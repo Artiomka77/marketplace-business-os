@@ -1,0 +1,463 @@
+{
+  "version": "financial-core-v6",
+  "parentVersion": "financial-core-v5",
+  "createdAt": "2026-08-20T14:10:07.982Z",
+  "tagName": "financial-core-v6-rev5-1-narrow-delta-2026-08-20",
+  "status": "LOCAL_CANDIDATE_SERVER_VERIFY_REQUIRED",
+  "sourceCommit": "1370176bf360184c126fd789fd12eb7873560716",
+  "workingTreeDirty": true,
+  "policy": {
+    "economicTurnover": "ABS_RETAIL_PRICE_WITH_DISCOUNT_NO_SPP_DOUBLE_ADD",
+    "buyerPaid": "ABS_WB_REALIZED_AMOUNT",
+    "marketplaceTaxTopUp": "MAX_ZERO_PAYOUT_MINUS_BUYER_PAID_PER_ROW",
+    "taxableRevenue": "BUYER_PAID_PLUS_MARKETPLACE_TAX_TOP_UP",
+    "taxableRevenueScope": "TAX_AND_INFORMATIONAL_USE_ONLY",
+    "returnTreatment": "REVERSE_SAME_ROW_LEVEL_AMOUNTS",
+    "managementPercentageDenominator": "ECONOMIC_TURNOVER",
+    "managementSharesAbcAndAllocation": "REVENUE_ALIAS_AND_SELLER_RETAIL_AMOUNT_EQUAL_ECONOMIC_TURNOVER",
+    "canonicalRevenueCompleteness": "MATERIAL_SALE_RETURN_REQUIRES_ALL_CANONICAL_V6_INPUTS",
+    "productCost": "FINITE_POSITIVE_DETERMINISTIC_COSTDATE_CREATEDAT_ID_RESOLVER",
+    "productCostKey": "LOWERCASE_YO_DASH_SPACING_AND_WHITESPACE_CANONICAL_NORMALIZATION",
+    "pnlExpenseReconciliation": "ECONOMIC_TURNOVER_MINUS_NET_PROFIT_AFTER_TAX",
+    "closedPeriodSourceOwnership": "EXACT_FINANCE_REPORT_SESSIONS_THEN_COMPLETE_DAILY_FINANCE_SESSIONS",
+    "ownedReportRows": "ALL_SESSION_ROWS_NO_SALE_DATE_RESLICE",
+    "productOperationClassifier": "SHARED_PAYMENT_REASON_OR_DOCUMENT_TYPE_SALE_RETURN_OTHER",
+    "closedWeekProfit": "CANONICAL_PNL_SETTLEMENT_MINUS_CANONICAL_COGS_MINUS_TAXES_MINUS_EXTERNAL_PNL_COSTS",
+    "officialCashSettlement": "WB_FINANCE_TOTAL_TO_PAY_RECONCILIATION_ONLY",
+    "deductionClassification": "ADS_AND_OPERATING_IN_PNL_CREDIT_EXCLUDED_UNKNOWN_FAILS_CLOSED",
+    "wbPromotion": "CLASSIFIED_PNL_DEDUCTION_NEVER_SUBTRACTED_TWICE",
+    "officialLogisticsPriority": "PRESERVED_FROM_FINANCIAL_CORE_V5",
+    "ozonLogic": "UNCHANGED_FROM_FINANCIAL_CORE_V5"
+  },
+  "sourceSelection": {
+    "precedence": [
+      "EXACT_FINANCE_COVER_SESSIONS_ALL_ROWS",
+      "DAILY_FINANCE_MATCHED_SESSIONS_ALL_ROWS",
+      "PRELIMINARY_SINGLE_CLASS_FALLBACK"
+    ],
+    "ownershipKey": "COMPANY_FINANCE_INTERVAL_AND_REPORT_NUMBER",
+    "allCompanies": "SUM_SEPARATELY_SELECTED_COMPANY_OWNERS",
+    "dailyCoverage": "EVERY_MOSCOW_CALENDAR_DAY_AND_REPORT_NUMBER_REQUIRED",
+    "persistedOwnerEvidence": "EVERY_SELECTED_FINAL_SESSION_REQUIRES_PERSISTED_WBSALE_ROWS",
+    "officialClosedWeekExpenses": "WB_FINANCE_MINIMAL_NON_OVERLAPPING_INTERVAL_COVER"
+  },
+  "protectedFiles": [
+    {
+      "path": "lib/analytics/profitAnalytics.ts",
+      "role": "\u041a\u0430\u043d\u043e\u043d\u0438\u0447\u0435\u0441\u043a\u0438\u0439 \u0440\u0430\u0441\u0447\u0451\u0442 \u043f\u0440\u0438\u0431\u044b\u043b\u0438 Wildberries",
+      "sha256": "68d02185e842b0be7c30779e9398c7052d645ef49d1d324ffbd65610891dc22a",
+      "snapshotSha256": "68d02185e842b0be7c30779e9398c7052d645ef49d1d324ffbd65610891dc22a",
+      "sizeBytes": 88033
+    },
+    {
+      "path": "lib/analytics/profitAnalyticsOzon.ts",
+      "role": "\u041a\u0430\u043d\u043e\u043d\u0438\u0447\u0435\u0441\u043a\u0438\u0439 \u0440\u0430\u0441\u0447\u0451\u0442 \u043f\u0440\u0438\u0431\u044b\u043b\u0438 Ozon",
+      "sha256": "4c80c7190c34b9bf7665a0cdcd70230a037b2671cfec260e3a19a1a250bcdce3",
+      "snapshotSha256": "4c80c7190c34b9bf7665a0cdcd70230a037b2671cfec260e3a19a1a250bcdce3",
+      "sizeBytes": 68894
+    },
+    {
+      "path": "lib/analytics/dataReadiness.ts",
+      "role": "\u041e\u043f\u0440\u0435\u0434\u0435\u043b\u0435\u043d\u0438\u0435 \u043f\u043e\u043b\u043d\u043e\u0442\u044b \u0438 \u0444\u0438\u043d\u0430\u043b\u044c\u043d\u043e\u0441\u0442\u0438 \u0434\u0430\u043d\u043d\u044b\u0445 \u043f\u0435\u0440\u0438\u043e\u0434\u0430",
+      "sha256": "96db7e1f333efa12be0c21fecc169780baec9bed1281fe4bfd79be73e5658088",
+      "snapshotSha256": "96db7e1f333efa12be0c21fecc169780baec9bed1281fe4bfd79be73e5658088",
+      "sizeBytes": 18137
+    },
+    {
+      "path": "lib/finance/financeMetrics.ts",
+      "role": "\u0414\u0414\u0421, \u0432\u043b\u0438\u044f\u043d\u0438\u0435 \u0444\u0438\u043d\u0430\u043d\u0441\u043e\u0432\u044b\u0445 \u043e\u043f\u0435\u0440\u0430\u0446\u0438\u0439 \u0438 \u0432\u044b\u0432\u043e\u0434\u044b \u0441\u043e\u0431\u0441\u0442\u0432\u0435\u043d\u043d\u0438\u043a\u0430",
+      "sha256": "ea9d671f620f3af4849577b75d10b5e9636a86b5a5ada34eb4dd687eba3d94f3",
+      "snapshotSha256": "ea9d671f620f3af4849577b75d10b5e9636a86b5a5ada34eb4dd687eba3d94f3",
+      "sizeBytes": 12812
+    },
+    {
+      "path": "lib/telegram/dailyReport.ts",
+      "role": "\u0415\u0434\u0438\u043d\u0430\u044f \u0444\u0438\u043d\u0430\u043d\u0441\u043e\u0432\u0430\u044f \u0441\u0432\u043e\u0434\u043a\u0430 Dashboard \u0438 Telegram",
+      "sha256": "4ccb261cb81a7b56b840ec2ac798a5308fd1b7e30625a8590aa8f26861a7815e",
+      "snapshotSha256": "4ccb261cb81a7b56b840ec2ac798a5308fd1b7e30625a8590aa8f26861a7815e",
+      "sizeBytes": 120582
+    },
+    {
+      "path": "lib/import/detectReportType.ts",
+      "role": "\u0420\u0430\u0441\u043f\u043e\u0437\u043d\u0430\u0432\u0430\u043d\u0438\u0435 \u0442\u0438\u043f\u043e\u0432 \u0438\u043c\u043f\u043e\u0440\u0442\u0438\u0440\u0443\u0435\u043c\u044b\u0445 \u043e\u0442\u0447\u0451\u0442\u043e\u0432",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "snapshotSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "sizeBytes": 0
+    },
+    {
+      "path": "lib/import/reportDetector.ts",
+      "role": "\u041a\u043e\u043d\u0442\u0440\u0430\u043a\u0442 \u043e\u043f\u0440\u0435\u0434\u0435\u043b\u0435\u043d\u0438\u044f \u0444\u0438\u043d\u0430\u043d\u0441\u043e\u0432\u044b\u0445 \u0438\u0441\u0442\u043e\u0447\u043d\u0438\u043a\u043e\u0432",
+      "sha256": "f32adb4dce27e7667778dd4b7cc3b4c6e75a78caaabdae231a80090f5879928d",
+      "snapshotSha256": "f32adb4dce27e7667778dd4b7cc3b4c6e75a78caaabdae231a80090f5879928d",
+      "sizeBytes": 14888
+    },
+    {
+      "path": "lib/import/normalizers/productCostNormalizer.ts",
+      "role": "\u041d\u043e\u0440\u043c\u0430\u043b\u0438\u0437\u0430\u0446\u0438\u044f \u0441\u0435\u0431\u0435\u0441\u0442\u043e\u0438\u043c\u043e\u0441\u0442\u0438 \u0438 Excel-\u0434\u0430\u0442",
+      "sha256": "e5b7db3ca0f2ac37ababec3ace7575b1834533dee21d4122225b77f95e76bba2",
+      "snapshotSha256": "e5b7db3ca0f2ac37ababec3ace7575b1834533dee21d4122225b77f95e76bba2",
+      "sizeBytes": 3920
+    },
+    {
+      "path": "lib/import/normalizers/wbSalesNormalizer.ts",
+      "role": "\u041d\u043e\u0440\u043c\u0430\u043b\u0438\u0437\u0430\u0446\u0438\u044f \u043f\u0440\u043e\u0434\u0430\u0436 Wildberries",
+      "sha256": "3ceccc2c93e1a6f8f2e63686638eaa4727011bcbe4e2b90e3c5051530aef486e",
+      "snapshotSha256": "3ceccc2c93e1a6f8f2e63686638eaa4727011bcbe4e2b90e3c5051530aef486e",
+      "sizeBytes": 10402
+    },
+    {
+      "path": "lib/import/normalizers/wbFinanceNormalizer.ts",
+      "role": "\u041d\u043e\u0440\u043c\u0430\u043b\u0438\u0437\u0430\u0446\u0438\u044f \u0444\u0438\u043d\u0430\u043d\u0441\u043e\u0432\u043e\u0433\u043e \u043e\u0442\u0447\u0451\u0442\u0430 Wildberries",
+      "sha256": "b8c8d5747bcbf33b2bdb0e8ad4eac3a53dd9c3dcf5971fd8d3df3f59390dd5c9",
+      "snapshotSha256": "b8c8d5747bcbf33b2bdb0e8ad4eac3a53dd9c3dcf5971fd8d3df3f59390dd5c9",
+      "sizeBytes": 4653
+    },
+    {
+      "path": "lib/import/normalizers/wbAdsNormalizer.ts",
+      "role": "\u041d\u043e\u0440\u043c\u0430\u043b\u0438\u0437\u0430\u0446\u0438\u044f \u0440\u0435\u043a\u043b\u0430\u043c\u044b Wildberries",
+      "sha256": "86f733ac864c5ceccc0a8257904e94b85ecd3183177954cd56edef9dd4fc0e66",
+      "snapshotSha256": "86f733ac864c5ceccc0a8257904e94b85ecd3183177954cd56edef9dd4fc0e66",
+      "sizeBytes": 6495
+    },
+    {
+      "path": "lib/import/normalizers/ozonFinanceNormalizer.ts",
+      "role": "\u041d\u043e\u0440\u043c\u0430\u043b\u0438\u0437\u0430\u0446\u0438\u044f \u0444\u0438\u043d\u0430\u043d\u0441\u043e\u0432\u043e\u0433\u043e \u043e\u0442\u0447\u0451\u0442\u0430 Ozon",
+      "sha256": "1d60270c20875273b6f32c4034c2e0b40e14c795f8302ba00c288e97917d24f4",
+      "snapshotSha256": "1d60270c20875273b6f32c4034c2e0b40e14c795f8302ba00c288e97917d24f4",
+      "sizeBytes": 5710
+    },
+    {
+      "path": "lib/import/normalizers/ozonAdsNormalizer.ts",
+      "role": "\u041d\u043e\u0440\u043c\u0430\u043b\u0438\u0437\u0430\u0446\u0438\u044f \u0440\u0435\u043a\u043b\u0430\u043c\u044b Ozon",
+      "sha256": "e4ec16a9cf29f37c886d205eb898e2007716d1eb810ccb4895e34ffb54c88733",
+      "snapshotSha256": "e4ec16a9cf29f37c886d205eb898e2007716d1eb810ccb4895e34ffb54c88733",
+      "sizeBytes": 2607
+    },
+    {
+      "path": "lib/import/normalizers/financeTransactionNormalizer.ts",
+      "role": "\u041d\u043e\u0440\u043c\u0430\u043b\u0438\u0437\u0430\u0446\u0438\u044f \u0432\u043d\u0443\u0442\u0440\u0435\u043d\u043d\u0438\u0445 \u0444\u0438\u043d\u0430\u043d\u0441\u043e\u0432\u044b\u0445 \u043e\u043f\u0435\u0440\u0430\u0446\u0438\u0439",
+      "sha256": "2d79d46fb4152ed30870f7d28bb30a11f1960ae7b7d6795549dce1230707b3ce",
+      "snapshotSha256": "2d79d46fb4152ed30870f7d28bb30a11f1960ae7b7d6795549dce1230707b3ce",
+      "sizeBytes": 10720
+    },
+    {
+      "path": "lib/analytics/wbFinancialCoreV6.ts",
+      "role": "\u041a\u043e\u043d\u0442\u0440\u0430\u043a\u0442\u044b \u0432\u044b\u0440\u0443\u0447\u043a\u0438, \u0441\u0432\u0435\u0440\u043a\u0438 \u0443\u0434\u0435\u0440\u0436\u0430\u043d\u0438\u0439, cash \u0438 P&L settlement WB V6",
+      "sha256": "30845e28bbe196abe26a81c85e0c6f9be717f7088fa12a626356f2b3f2b67d05",
+      "snapshotSha256": "30845e28bbe196abe26a81c85e0c6f9be717f7088fa12a626356f2b3f2b67d05",
+      "sizeBytes": 7966
+    },
+    {
+      "path": "lib/wb/sourceOwnership.ts",
+      "role": "\u041a\u0430\u043d\u043e\u043d\u0438\u0447\u0435\u0441\u043a\u0438\u0439 \u0432\u043b\u0430\u0434\u0435\u043b\u0435\u0446 WB Sales \u0438\u0441\u0442\u043e\u0447\u043d\u0438\u043a\u0430 \u043f\u043e finance reportNumber",
+      "sha256": "f0a4467beeeeca787f6bc5114ceecb28606df442729c216143a8fe080fb751ee",
+      "snapshotSha256": "f0a4467beeeeca787f6bc5114ceecb28606df442729c216143a8fe080fb751ee",
+      "sizeBytes": 29506
+    },
+    {
+      "path": "app/profit-wb/page.tsx",
+      "role": "\u041f\u043e\u043b\u044c\u0437\u043e\u0432\u0430\u0442\u0435\u043b\u044c\u0441\u043a\u0438\u0435 \u043e\u043f\u0440\u0435\u0434\u0435\u043b\u0435\u043d\u0438\u044f \u043f\u043e\u043a\u0430\u0437\u0430\u0442\u0435\u043b\u0435\u0439 WB V6",
+      "sha256": "070498ff3a0c3eecbf2beda21ecba551c74afcf55024ff2757f9e20ef97a280f",
+      "snapshotSha256": "070498ff3a0c3eecbf2beda21ecba551c74afcf55024ff2757f9e20ef97a280f",
+      "sizeBytes": 100611
+    },
+    {
+      "path": "lib/analytics/productCostResolver.ts",
+      "role": "\u0415\u0434\u0438\u043d\u044b\u0439 \u0434\u0435\u0442\u0435\u0440\u043c\u0438\u043d\u0438\u0440\u043e\u0432\u0430\u043d\u043d\u044b\u0439 resolver \u043f\u043e\u043b\u043e\u0436\u0438\u0442\u0435\u043b\u044c\u043d\u043e\u0439 \u0441\u0435\u0431\u0435\u0441\u0442\u043e\u0438\u043c\u043e\u0441\u0442\u0438",
+      "sha256": "adcff625bd21616ed15bdc76d9dd35304e06430afb5c66bd42eb721d38682a89",
+      "snapshotSha256": "adcff625bd21616ed15bdc76d9dd35304e06430afb5c66bd42eb721d38682a89",
+      "sizeBytes": 2187
+    },
+    {
+      "path": "lib/analytics/wbFinality.ts",
+      "role": "Fail-closed \u043a\u043e\u043d\u0442\u0440\u0430\u043a\u0442 FINAL \u0434\u043b\u044f stock \u0438 planning consumers",
+      "sha256": "f8674a0e6888c6959cc8f58474b4fbd26f47de0f8f1d861ef97868842bee1c5b",
+      "snapshotSha256": "f8674a0e6888c6959cc8f58474b4fbd26f47de0f8f1d861ef97868842bee1c5b",
+      "sizeBytes": 1868
+    },
+    {
+      "path": "lib/analytics/wbSizeAllocation.ts",
+      "role": "Signed SALE/RETURN \u0430\u0433\u0440\u0435\u0433\u0430\u0446\u0438\u044f \u0438 reconciliation \u0440\u0430\u0437\u043c\u0435\u0440\u043e\u0432 WB",
+      "sha256": "545943b008333284953a9dca091a523f40a796b152a6fd42efa5aa829cca7ef2",
+      "snapshotSha256": "545943b008333284953a9dca091a523f40a796b152a6fd42efa5aa829cca7ef2",
+      "sizeBytes": 2945
+    },
+    {
+      "path": "lib/analytics/costCoverage.ts",
+      "role": "Coverage \u0441\u0435\u0431\u0435\u0441\u0442\u043e\u0438\u043c\u043e\u0441\u0442\u0438 \u043d\u0430 \u043e\u0431\u0449\u0435\u043c \u043f\u043e\u043b\u043e\u0436\u0438\u0442\u0435\u043b\u044c\u043d\u043e\u043c resolver",
+      "sha256": "eee6563f6a92316d2734ed63a1d6d72e46c5a5d29bfcb3c275d9c361efd535bd",
+      "snapshotSha256": "eee6563f6a92316d2734ed63a1d6d72e46c5a5d29bfcb3c275d9c361efd535bd",
+      "sizeBytes": 12256
+    },
+    {
+      "path": "lib/stocks/stockAbcSnapshots.ts",
+      "role": "\u0417\u0430\u043f\u0440\u0435\u0442 WB ABC snapshot \u0438\u0437 PRELIMINARY \u0430\u043d\u0430\u043b\u0438\u0442\u0438\u043a\u0438",
+      "sha256": "982bab4f3d0b4e790fc889e7fa3c14dfc116345c4472310e97479cf7166db191",
+      "snapshotSha256": "982bab4f3d0b4e790fc889e7fa3c14dfc116345c4472310e97479cf7166db191",
+      "sizeBytes": 38892
+    },
+    {
+      "path": "app/api/stocks/supply-plan/export/route.ts",
+      "role": "\u0417\u0430\u043f\u0440\u0435\u0442 supply-plan export \u0438\u0437 PRELIMINARY WB \u0430\u043d\u0430\u043b\u0438\u0442\u0438\u043a\u0438",
+      "sha256": "f1cb94e3d50ab2e9f62f28377cc8bd42991ad51bba46b570149603dcc76ecafe",
+      "snapshotSha256": "f1cb94e3d50ab2e9f62f28377cc8bd42991ad51bba46b570149603dcc76ecafe",
+      "sizeBytes": 76351
+    },
+    {
+      "path": "app/api/stocks/production-plan/export/route.ts",
+      "role": "\u0417\u0430\u043f\u0440\u0435\u0442 production-plan export \u0438\u0437 PRELIMINARY WB \u0430\u043d\u0430\u043b\u0438\u0442\u0438\u043a\u0438",
+      "sha256": "f4f3bb946fc9a2697da212c513a9b37d1d9155275b996ec2a9403d6343125065",
+      "snapshotSha256": "f4f3bb946fc9a2697da212c513a9b37d1d9155275b996ec2a9403d6343125065",
+      "sizeBytes": 58359
+    }
+  ],
+  "consumerContracts": [
+    {
+      "path": "app/page.tsx",
+      "requiredPatterns": [
+        "loadDashboardV6PeriodReadModel",
+        "FINANCIAL_CORE_V6_PERIOD_READMODEL",
+        "data-dashboard-source",
+        "READ_MODEL"
+      ],
+      "forbiddenPatterns": [
+        "buildDailyReport",
+        "getDashboardDailyAnalytics",
+        "getProfitAnalytics"
+      ]
+    },
+    {
+      "path": "lib/dashboard/v6PeriodReadModel/producer.ts",
+      "requiredPatterns": [
+        "buildDailyReport",
+        "@/lib/telegram/dailyReport",
+        "marketplaceManagementRevenue",
+        "getDashboardDailyAnalytics",
+        "FINANCIAL_CORE_V6_PERIOD_READMODEL_V1"
+      ],
+      "forbiddenPatterns": []
+    },
+    {
+      "path": "app/insights/page.tsx",
+      "requiredPatterns": [
+        "getProfitAnalytics",
+        "@/lib/analytics/profitAnalytics",
+        "getProfitAnalyticsOzon",
+        "@/lib/analytics/profitAnalyticsOzon"
+      ],
+      "forbiddenPatterns": [
+        "buildDailyReport"
+      ]
+    },
+    {
+      "path": "app/profit-wb/page.tsx",
+      "requiredPatterns": [
+        "getProfitAnalytics",
+        "@/lib/analytics/profitAnalytics"
+      ],
+      "forbiddenPatterns": []
+    },
+    {
+      "path": "app/profit-ozon/page.tsx",
+      "requiredPatterns": [
+        "getProfitAnalyticsOzon",
+        "@/lib/analytics/profitAnalyticsOzon"
+      ],
+      "forbiddenPatterns": []
+    },
+    {
+      "path": "app/stocks/page.tsx",
+      "requiredPatterns": [
+        "loadStockPlanningAbcPack",
+        "@/lib/consumers/waveDE"
+      ],
+      "forbiddenPatterns": [
+        "await getProfitAnalytics",
+        "getProfitAnalyticsOzon("
+      ]
+    },
+    {
+      "path": "app/finance/categories/page.tsx",
+      "requiredPatterns": [
+        "FinanceCategory",
+        "financeMetrics",
+        "\u0421\u043f\u0440\u0430\u0432\u043e\u0447\u043d\u0438\u043a \u0441\u0442\u0430\u0442\u0435\u0439"
+      ],
+      "forbiddenPatterns": [
+        "await getProfitAnalytics",
+        "getProfitAnalyticsOzon(",
+        "wbStock"
+      ]
+    },
+    {
+      "path": "app/api/stocks/supply-plan/export/route.ts",
+      "requiredPatterns": [
+        "loadStockPlanningAbcPack",
+        "@/lib/consumers/waveDE"
+      ],
+      "forbiddenPatterns": [
+        "await getProfitAnalytics",
+        "getProfitAnalyticsOzon("
+      ]
+    },
+    {
+      "path": "app/api/stocks/production-plan/export/route.ts",
+      "requiredPatterns": [
+        "loadStockPlanningAbcPack",
+        "@/lib/consumers/waveDE"
+      ],
+      "forbiddenPatterns": [
+        "await getProfitAnalytics",
+        "getProfitAnalyticsOzon("
+      ]
+    },
+    {
+      "path": "app/api/analytics/profit/route.ts",
+      "requiredPatterns": [
+        "loadProfitReadModelPack",
+        "PROFIT_READ_MODEL"
+      ],
+      "forbiddenPatterns": [
+        "await getProfitAnalytics",
+        "loadPeriodFinancePack"
+      ]
+    },
+    {
+      "path": "app/finance/plan-fact/page.tsx",
+      "requiredPatterns": [
+        "loadPeriodFinancePack",
+        "@/lib/consumers/waveDE"
+      ],
+      "forbiddenPatterns": [
+        "await getProfitAnalytics",
+        "await getProfitAnalyticsOzon"
+      ]
+    }
+  ],
+  "packageScriptContract": {
+    "financial-core:verify": "node scripts/financial-core/verify-financial-core-v6.mjs",
+    "financial-core:regression": "bash scripts/financial-core/run-financial-core-regression-v1.sh",
+    "financial-core:restore": "node scripts/financial-core/restore-financial-core-v6.mjs",
+    "wb-finance:verify": "node scripts/wb/verify-wb-official-finance-priority.mjs",
+    "wb-financial-core-v6:verify": "tsx scripts/wb/verify-wb-financial-core-v6.ts",
+    "prebuild": "npm run financial-core:verify",
+    "predev": "npm run financial-core:verify"
+  },
+  "controlValues": {
+    "currency": "RUB",
+    "2026-08-03..2026-08-09|\u0418\u041f \u041f\u0435\u0442\u0440\u043e\u0432": {
+      "economicTurnover": 3731559.73,
+      "buyerPaid": 2125455.72,
+      "platformDiscount": 1606104.01,
+      "sellerPayout": 2024884.25,
+      "prePayoutBridge": 1706675.48,
+      "marketplaceTaxTopUp": 24665.75,
+      "taxableRevenue": 2150121.47,
+      "officialLogistics": 499259.76,
+      "officialStorage": 1503.7,
+      "officialAcceptance": 0,
+      "officialWbPromotion": 163422,
+      "officialPenalties": 30,
+      "officialCashSettlement": 1360668.79,
+      "canonicalPnlSettlement": 1360668.79,
+      "cogs": 562890,
+      "taxes": 123887.95,
+      "netProfitAfterTax": 673890.84,
+      "marginAfterTaxPercent": 18.0592,
+      "sourceOwner": "DAILY_FINANCE_MATCHED_SESSIONS_ALL_ROWS",
+      "sourceProof": "PRIOR_READ_ONLY_SERVER_DIAGNOSTIC"
+    },
+    "2026-08-10..2026-08-16|\u0418\u041f \u041f\u0435\u0442\u0440\u043e\u0432": {
+      "economicTurnover": 4423576.82,
+      "buyerPaid": 2701877.81,
+      "platformDiscount": 1721699.01,
+      "sellerPayout": 2374350.14,
+      "prePayoutBridge": 2049226.68,
+      "marketplaceTaxTopUp": 6021.42,
+      "taxableRevenue": 2707899.23,
+      "officialLogistics": 594955.92,
+      "officialStorage": 471.11,
+      "officialAcceptance": 0,
+      "officialWbPromotion": 511778,
+      "officialPenalties": 10,
+      "officialCashSettlement": 1267135.11,
+      "canonicalPnlSettlement": 1267135.11,
+      "cogs": 649425,
+      "taxes": 156026.57,
+      "netProfitAfterTax": 461683.54,
+      "marginAfterTaxPercent": 10.4369,
+      "sourceOwner": "EXACT_FINANCE_COVER_SESSIONS_ALL_ROWS",
+      "sourceProof": "PRIOR_READ_ONLY_SERVER_DIAGNOSTIC"
+    },
+    "2026-08-03..2026-08-09|\u0418\u041f \u041b\u0435\u0431\u0435\u0434\u0435\u0432\u0430": {
+      "economicTurnover": 500617.5,
+      "buyerPaid": 293400.95,
+      "sellerPayout": 277022.34,
+      "marketplaceTaxTopUp": 6338.63,
+      "taxableRevenue": 299739.58,
+      "cogs": 87195,
+      "taxes": 32257.69,
+      "officialWbPromotion": 5498,
+      "officialCashSettlement": 211108.15,
+      "canonicalPnlSettlement": 211108.15,
+      "netProfitAfterTax": 91655.46,
+      "marginAfterTaxPercent": 18.3085,
+      "sourceOwner": "DAILY_FINANCE_MATCHED_SESSIONS_ALL_ROWS",
+      "sourceProof": "PRIOR_READ_ONLY_SERVER_DIAGNOSTIC"
+    },
+    "2026-08-10..2026-08-16|\u0418\u041f \u041b\u0435\u0431\u0435\u0434\u0435\u0432\u0430": {
+      "economicTurnover": 432667.21,
+      "buyerPaid": 276309.01,
+      "sellerPayout": 237861.65,
+      "marketplaceTaxTopUp": 1895.91,
+      "taxableRevenue": 278204.92,
+      "cogs": 75810,
+      "taxes": 29940.15,
+      "officialWbPromotion": 29055,
+      "officialCashSettlement": 135120.13,
+      "canonicalPnlSettlement": 135120.13,
+      "netProfitAfterTax": 29369.98,
+      "marginAfterTaxPercent": 6.7881,
+      "sourceOwner": "EXACT_FINANCE_COVER_SESSIONS_ALL_ROWS",
+      "sourceProof": "PRIOR_READ_ONLY_SERVER_DIAGNOSTIC"
+    },
+    "2026-08-03..2026-08-09|ALL": {
+      "economicTurnover": 4232177.23,
+      "buyerPaid": 2418856.67,
+      "marketplaceTaxTopUp": 31004.38,
+      "taxableRevenue": 2449861.05,
+      "cogs": 650085,
+      "taxes": 156145.64,
+      "canonicalPnlSettlement": 1571776.94,
+      "netProfitAfterTax": 765546.3,
+      "marginAfterTaxPercent": 18.0887
+    },
+    "2026-08-10..2026-08-16|ALL": {
+      "economicTurnover": 4856244.03,
+      "buyerPaid": 2978186.82,
+      "marketplaceTaxTopUp": 7917.33,
+      "taxableRevenue": 2986104.15,
+      "cogs": 725235,
+      "taxes": 185966.72,
+      "canonicalPnlSettlement": 1402255.24,
+      "netProfitAfterTax": 491053.52,
+      "marginAfterTaxPercent": 10.1118
+    }
+  },
+  "evidence": {
+    "directory": "__v6_evidence",
+    "stateAtImplementation": "EMPTY",
+    "productionSourceSha256Available": false,
+    "officialXlsxAvailable": false,
+    "productionAccess": "NONE",
+    "waveDEFinalHardening": {
+      "at": "2026-09-21T21:08:08.376232+00:00",
+      "action": "REBIND_PROTECTED_SNAPSHOTS_FOR_WAVE_D_E_FINAL_HARDENING",
+      "paths": [
+        "lib/stocks/stockAbcSnapshots.ts",
+        "app/api/stocks/supply-plan/export/route.ts",
+        "app/api/stocks/production-plan/export/route.ts"
+      ]
+    }
+  }
+}

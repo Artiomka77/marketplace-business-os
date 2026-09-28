@@ -1,0 +1,29 @@
+﻿C:\AI-PROJECTS\marketplace-business-os\app\finance\operations\page.tsx:77: | "netProfitImpact"
+C:\AI-PROJECTS\marketplace-business-os\app\finance\operations\page.tsx:107: key: "netProfitImpact",
+C:\AI-PROJECTS\marketplace-business-os\app\finance\operations\page.tsx:415: if (metric === "netProfitImpact") {
+C:\AI-PROJECTS\marketplace-business-os\app\finance\operations\page.tsx:469: netProfitImpact: number;
+C:\AI-PROJECTS\marketplace-business-os\app\finance\operations\page.tsx:1129: href={`${buildHref(params, { metric: "netProfitImpact" })}#journal`}
+C:\AI-PROJECTS\marketplace-business-os\app\finance\operations\page.tsx:1131: selectedMetric === "netProfitImpact"
+C:\AI-PROJECTS\marketplace-business-os\app\finance\operations\page.tsx:1138: value={formatMoney(metrics.netProfitImpact)}
+C:\AI-PROJECTS\marketplace-business-os\app\finance\operations\page.tsx:1140: tone={metrics.netProfitImpact >= 0 ? "emerald" : "violet"}
+C:\AI-PROJECTS\marketplace-business-os\lib\finance\financeMetrics.ts:36: netProfitImpact: number;
+C:\AI-PROJECTS\marketplace-business-os\lib\finance\financeMetrics.ts:374: netProfitImpact: 0,
+C:\AI-PROJECTS\marketplace-business-os\lib\finance\financeMetrics.ts:456: result.netProfitImpact = result.netProfitIncome - result.netProfitExpense;
+C:\AI-PROJECTS\marketplace-business-os\lib\telegram\dailyReport.ts:56: netProfitImpact: number;
+C:\AI-PROJECTS\marketplace-business-os\lib\telegram\dailyReport.ts:77: netProfitImpact: number;
+C:\AI-PROJECTS\marketplace-business-os\lib\telegram\dailyReport.ts:899: netProfitImpact: metrics.netProfitImpact,
+C:\AI-PROJECTS\marketplace-business-os\lib\telegram\dailyReport.ts:1357: if (report.totals.netProfitImpact < 0) {
+C:\AI-PROJECTS\marketplace-business-os\lib\telegram\dailyReport.ts:1360: report.totals.netProfitImpact
+C:\AI-PROJECTS\marketplace-business-os\lib\telegram\dailyReport.ts:1438: netProfitImpact: 0,
+C:\AI-PROJECTS\marketplace-business-os\lib\telegram\dailyReport.ts:1455: wb.netProfitAfterTax + ozon.netProfitAfterTax + finance.netProfitImpact;
+C:\AI-PROJECTS\marketplace-business-os\lib\telegram\dailyReport.ts:1459: netProfitImpact: realNetProfit,
+C:\AI-PROJECTS\marketplace-business-os\lib\telegram\dailyReport.ts:1475: report.totals.netProfitImpact += realNetProfit;
+C:\AI-PROJECTS\marketplace-business-os\lib\telegram\dailyReport.ts:1631: if (report.totals.netProfitImpact < 0) {
+C:\AI-PROJECTS\marketplace-business-os\lib\telegram\dailyReport.ts:1633: report.totals.netProfitImpact
+C:\AI-PROJECTS\marketplace-business-os\lib\telegram\dailyReport.ts:1637: if (report.totals.netProfitImpact > 0) {
+C:\AI-PROJECTS\marketplace-business-os\lib\telegram\dailyReport.ts:1639: report.totals.netProfitImpact
+C:\AI-PROJECTS\marketplace-business-os\lib\telegram\dailyReport.ts:1791: `Чистая прибыль: ${formatMoney(report.totals.netProfitImpact)}`,
+C:\AI-PROJECTS\marketplace-business-os\lib\telegram\dailyReport.ts:1816: `Чистая прибыль: ${formatMoney(company.finance.netProfitImpact)}`,
+C:\AI-PROJECTS\marketplace-business-os\lib\telegram\dailyReportAi.ts:156: netProfitImpact: toSafeNumber(report?.totals?.netProfitImpact),
+C:\AI-PROJECTS\marketplace-business-os\lib\telegram\dailyReportAi.ts:169: netProfitImpact: toSafeNumber(company?.finance?.netProfitImpact),
+C:\AI-PROJECTS\marketplace-business-os\lib\telegram\dailyReportAi.ts:187: profitImpactIsNegative: totals.netProfitImpact < 0,

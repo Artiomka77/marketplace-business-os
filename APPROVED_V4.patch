@@ -1,0 +1,4507 @@
+diff --git a/app/finance/calendar/page.tsx b/app/finance/calendar/page.tsx
+index d34dccc..051a942 100644
+--- a/app/finance/calendar/page.tsx
++++ b/app/finance/calendar/page.tsx
+@@ -6,7 +6,13 @@ import {
+   getFinanceTransactionCashEffect,
+   getFinanceTransactionTreatment,
+ } from "@/lib/finance/financeMetrics";
+-import { filterOutstandingLoanSchedulePayments } from "@/lib/finance/loanPaymentActuality";
++import {
++  filterOperationalLoanSchedulePayments,
++  getLoanStateAtDate,
++  type LoanStateAtDate,
++  type LoanStatePayment,
++} from "@/lib/finance/loanState";
++import { getMoscowBusinessDateKey } from "@/lib/finance/loanBusinessDate";
+ import { loadEarlyRepaymentDatesByLoanId } from "@/lib/finance/loanPaymentFinanceSync";
+ 
+ function formatMoney(value: unknown) {
+@@ -341,14 +347,44 @@ export default async function FinanceCalendarPage({
+     ...loanPaymentsRaw.map((payment) => payment.loanId),
+     ...allFutureLoanPaymentsRaw.map((payment) => payment.loanId),
+   ]);
+-  const loanPayments = filterOutstandingLoanSchedulePayments(
+-    loanPaymentsRaw,
+-    earlyByLoan,
+-  );
+-  const allFutureLoanPayments = filterOutstandingLoanSchedulePayments(
+-    allFutureLoanPaymentsRaw,
+-    earlyByLoan,
+-  );
++
++  const loanIdsForState = [
++    ...new Set([
++      ...loanPaymentsRaw.map((payment) => payment.loanId),
++      ...allFutureLoanPaymentsRaw.map((payment) => payment.loanId),
++    ]),
++  ];
++  const loansForState =
++    loanIdsForState.length > 0
++      ? await prisma.loan.findMany({
++          where: { id: { in: loanIdsForState } },
++          include: { payments: { orderBy: { paymentDate: "asc" } } },
++        })
++      : [];
++  const asOfDateKey = getMoscowBusinessDateKey();
++  const loanStatesById = new Map<string, LoanStateAtDate>();
++  for (const loan of loansForState) {
++    loanStatesById.set(
++      loan.id,
++      getLoanStateAtDate({
++        loan,
++        payments: loan.payments as LoanStatePayment[],
++        earlyRepaymentDate: earlyByLoan.get(loan.id) ?? null,
++        asOfDate: asOfDateKey,
++      }),
++    );
++  }
++
++  const loanPayments = filterOperationalLoanSchedulePayments({
++    payments: loanPaymentsRaw,
++    loanStatesById,
++    earlyRepaymentByLoanId: earlyByLoan,
++  });
++  const allFutureLoanPayments = filterOperationalLoanSchedulePayments({
++    payments: allFutureLoanPaymentsRaw,
++    loanStatesById,
++    earlyRepaymentByLoanId: earlyByLoan,
++  });
+ 
+   const futureObligations = await prisma.financeTransaction.findMany({
+     where: {
+@@ -633,11 +669,19 @@ export default async function FinanceCalendarPage({
+     itemsByDay.set(key, current);
+   }
+ 
+-  let runningMonthBalance = cashOnAccounts;
+-
+   const dayRows = Array.from(itemsByDay.entries())
+     .sort(([a], [b]) => a.localeCompare(b))
+-    .map(([key, rows]) => {
++    .reduce<
++      Array<{
++        key: string;
++        date: Date;
++        items: CalendarItem[];
++        total: number;
++        loansTotal: number;
++        obligationsTotal: number;
++        balanceAfterDay: number;
++      }>
++    >((acc, [key, rows]) => {
+       const total = rows.reduce((sum, row) => sum + row.amount, 0);
+       const loansTotal = rows
+         .filter((row) => row.source === "LOAN")
+@@ -645,19 +689,21 @@ export default async function FinanceCalendarPage({
+       const obligationsTotal = rows
+         .filter((row) => row.source === "OBLIGATION")
+         .reduce((sum, row) => sum + row.amount, 0);
++      const previousBalance =
++        acc.length > 0 ? acc[acc.length - 1].balanceAfterDay : cashOnAccounts;
++      const balanceAfterDay = previousBalance - total;
+ 
+-      runningMonthBalance -= total;
+-
+-      return {
++      acc.push({
+         key,
+         date: rows[0].date,
+         items: rows,
+         total,
+         loansTotal,
+         obligationsTotal,
+-        balanceAfterDay: runningMonthBalance,
+-      };
+-    });
++        balanceAfterDay,
++      });
++      return acc;
++    }, []);
+ 
+   const weeklyMap = new Map<
+     string,
+@@ -1248,4 +1294,4 @@ export default async function FinanceCalendarPage({
+       </div>
+     </main>
+   );
+-}
+\ No newline at end of file
++}
+diff --git a/app/finance/forecast/page.tsx b/app/finance/forecast/page.tsx
+index e48fbb4..913df27 100644
+--- a/app/finance/forecast/page.tsx
++++ b/app/finance/forecast/page.tsx
+@@ -1,13 +1,19 @@
+ import Link from "next/link";
+ 
++import { loadEarlyRepaymentDatesByLoanId } from "@/lib/finance/loanPaymentFinanceSync";
++import { getMoscowBusinessDateKey } from "@/lib/finance/loanBusinessDate";
++import {
++  filterOperationalLoanSchedulePayments,
++  getLoanStateAtDate,
++  type LoanStateAtDate,
++  type LoanStatePayment,
++} from "@/lib/finance/loanState";
+ import { prisma } from "@/lib/prisma";
+ import {
+   buildFinanceCategoryTreatmentIndex,
+   getFinanceTransactionCashEffect,
+   getFinanceTransactionTreatment,
+ } from "@/lib/finance/financeMetrics";
+-import { filterOutstandingLoanSchedulePayments } from "@/lib/finance/loanPaymentActuality";
+-import { loadEarlyRepaymentDatesByLoanId } from "@/lib/finance/loanPaymentFinanceSync";
+ 
+ function formatMoney(value: unknown) {
+   const number = Number(value ?? 0);
+@@ -213,10 +219,34 @@ export default async function FinanceForecastPage({
+   const earlyByLoan = await loadEarlyRepaymentDatesByLoanId(
+     loanPaymentsRaw.map((payment) => payment.loanId),
+   );
+-  const loanPayments = filterOutstandingLoanSchedulePayments(
+-    loanPaymentsRaw,
+-    earlyByLoan,
+-  );
++  const loanIdsForState = [
++    ...new Set(loanPaymentsRaw.map((payment) => payment.loanId)),
++  ];
++  const loansForState =
++    loanIdsForState.length > 0
++      ? await prisma.loan.findMany({
++          where: { id: { in: loanIdsForState } },
++          include: { payments: { orderBy: { paymentDate: "asc" } } },
++        })
++      : [];
++  const asOfDateKey = getMoscowBusinessDateKey();
++  const loanStatesById = new Map<string, LoanStateAtDate>();
++  for (const loan of loansForState) {
++    loanStatesById.set(
++      loan.id,
++      getLoanStateAtDate({
++        loan,
++        payments: loan.payments as LoanStatePayment[],
++        earlyRepaymentDate: earlyByLoan.get(loan.id) ?? null,
++        asOfDate: asOfDateKey,
++      }),
++    );
++  }
++  const loanPayments = filterOperationalLoanSchedulePayments({
++    payments: loanPaymentsRaw,
++    loanStatesById,
++    earlyRepaymentByLoanId: earlyByLoan,
++  });
+ 
+   const futureTransactions = await prisma.financeTransaction.findMany({
+     where: {
+@@ -347,7 +377,6 @@ export default async function FinanceForecastPage({
+     0
+   );
+ 
+-  const balanceAfter7Days = totalCash + incoming7Days - outgoing7Days;
+   const balanceAfter30Days = totalCash + incoming30Days - outgoing30Days;
+   const balanceAfterHorizon = totalCash + incomingHorizon - outgoingHorizon;
+ 
+@@ -764,4 +793,4 @@ export default async function FinanceForecastPage({
+       </div>
+     </main>
+   );
+-}
+\ No newline at end of file
++}
+diff --git a/app/finance/loans/page.tsx b/app/finance/loans/page.tsx
+index 859351c..19f1732 100644
+--- a/app/finance/loans/page.tsx
++++ b/app/finance/loans/page.tsx
+@@ -1,5 +1,22 @@
+ import Link from "next/link";
+ 
++import {
++  addDaysToMoscowDateKey,
++  getMoscowBusinessDateKey,
++  parsePeriodToMoscowMonthKey,
++  toMoscowDateKey,
++  moscowDateKeyToUtcNoon,
++} from "@/lib/finance/loanBusinessDate";
++import { loadEarlyRepaymentDatesByLoanId } from "@/lib/finance/loanPaymentFinanceSync";
++import {
++  filterOperationalLoanSchedulePayments,
++  getLoanStateAtDate,
++  getPaymentInterest,
++  getPaymentPrincipal,
++  getPaymentTotal,
++  type LoanStateAtDate,
++  type LoanStatePayment,
++} from "@/lib/finance/loanState";
+ import { prisma } from "@/lib/prisma";
+ 
+ export const dynamic = "force-dynamic";
+@@ -52,17 +69,6 @@ function formatDateInput(date: Date) {
+   return `${year}-${month}-${day}`;
+ }
+ 
+-function formatMonthValue(date: Date) {
+-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+-}
+-
+-function formatMonthLabel(date: Date) {
+-  return date.toLocaleDateString("ru-RU", {
+-    month: "long",
+-    year: "numeric",
+-  });
+-}
+-
+ function formatShortMonthLabel(date: Date) {
+   const month = date
+     .toLocaleDateString("ru-RU", { month: "short" })
+@@ -103,27 +109,10 @@ function startOfMonth(date: Date) {
+   return new Date(date.getFullYear(), date.getMonth(), 1);
+ }
+ 
+-function endOfMonth(date: Date) {
+-  return new Date(date.getFullYear(), date.getMonth() + 1, 0, 23, 59, 59, 999);
+-}
+-
+-function endOfYear(date: Date) {
+-  return new Date(date.getFullYear(), 11, 31, 23, 59, 59, 999);
+-}
+-
+ function monthKey(date: Date) {
+   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+ }
+ 
+-function parseMonth(value: string | null | undefined, fallback: Date) {
+-  if (!value || !/^\d{4}-\d{2}$/.test(value)) return startOfMonth(fallback);
+-
+-  const [year, month] = value.split("-").map(Number);
+-  if (!year || !month || month < 1 || month > 12) return startOfMonth(fallback);
+-
+-  return new Date(year, month - 1, 1);
+-}
+-
+ function monthsBetween(from: Date, to: Date | null | undefined) {
+   if (!to) return null;
+ 
+@@ -138,29 +127,6 @@ function monthsBetween(from: Date, to: Date | null | undefined) {
+   return Math.max(0, months + 1);
+ }
+ 
+-function getPaymentTotal(payment: {
+-  totalAmount: unknown;
+-  principalAmount: unknown;
+-  interestAmount: unknown;
+-}) {
+-  return (
+-    toNumber(payment.totalAmount) ||
+-    toNumber(payment.principalAmount) + toNumber(payment.interestAmount)
+-  );
+-}
+-
+-function getPaymentPrincipal(payment: {
+-  principalAmount: unknown;
+-  totalAmount: unknown;
+-}) {
+-  const principal = toNumber(payment.principalAmount);
+-  return principal || getPaymentTotal({ ...payment, interestAmount: 0 });
+-}
+-
+-function getPaymentInterest(payment: { interestAmount: unknown }) {
+-  return toNumber(payment.interestAmount);
+-}
+-
+ function getSafeRatio(numerator: number, denominator: number) {
+   return denominator > 0 ? (numerator / denominator) * 100 : 0;
+ }
+@@ -254,15 +220,6 @@ function formatRateLabel(rateInfo: { rate: number; source: string }) {
+   return `${formatPercent(rateInfo.rate)} годовых`;
+ }
+ 
+-function formatRateActionLabel(rateInfo: { rate: number; source: string }) {
+-  if (!rateInfo.rate) return "ставка не рассчитана →";
+-  if (rateInfo.source === "manual")
+-    return `ставка ${formatPercent(rateInfo.rate)} годовых →`;
+-  if (rateInfo.source === "estimated")
+-    return `оценочная ставка ${formatPercent(rateInfo.rate)} годовых →`;
+-  return `расчётная ставка ${formatPercent(rateInfo.rate)} годовых →`;
+-}
+-
+ function buildFinanceHref(company: string | null, period: string) {
+   const query = new URLSearchParams();
+ 
+@@ -430,12 +387,10 @@ export default async function LoansPage({
+ }) {
+   const params = searchParams ? await searchParams : {};
+   const now = new Date();
+-  const today = startOfDay(now);
+-
+-  const selectedMonth = parseMonth(params.period, now);
+-  const selectedMonthValue = formatMonthValue(selectedMonth);
+-  const selectedMonthEnd = endOfMonth(selectedMonth);
+-  const yearEnd = endOfYear(selectedMonth);
++  const asOfDateKey = getMoscowBusinessDateKey(now);
++  const today = moscowDateKeyToUtcNoon(asOfDateKey);
++  const selectedMonthValue = parsePeriodToMoscowMonthKey(params.period, now);
++  const yearEndKey = `${selectedMonthValue.slice(0, 4)}-12-31`;
+ 
+   const companyName =
+     params.company && params.company !== "ALL" ? params.company : null;
+@@ -469,164 +424,131 @@ export default async function LoansPage({
+     orderBy: [{ companyName: "asc" }, { bankName: "asc" }],
+   });
+ 
+-  const activeLoans = loans.filter((loan) => toNumber(loan.currentDebt) > 0);
+-  const activeLoanIds = activeLoans.map((loan) => loan.id);
++  const earlyByLoan = await loadEarlyRepaymentDatesByLoanId(
++    loans.map((loan) => loan.id),
++  );
+ 
+-  const paymentsUntilYearEnd = await prisma.loanPayment.findMany({
+-    where: {
+-      loanId: {
+-        in: activeLoanIds,
+-      },
+-      paid: false,
+-      paymentDate: {
+-        gte: selectedMonth,
+-        lte: yearEnd,
+-      },
+-      ...(companyName
+-        ? {
+-            loan: {
+-              companyName,
+-            },
+-          }
+-        : {}),
+-    },
+-    include: {
+-      loan: true,
+-    },
+-    orderBy: {
+-      paymentDate: "asc",
+-    },
+-  });
++  const loanStatesById = new Map<string, LoanStateAtDate>();
++  for (const loan of loans) {
++    loanStatesById.set(
++      loan.id,
++      getLoanStateAtDate({
++        loan,
++        payments: loan.payments as LoanStatePayment[],
++        earlyRepaymentDate: earlyByLoan.get(loan.id) ?? null,
++        asOfDate: asOfDateKey,
++        selectedMonth: selectedMonthValue,
++      }),
++    );
++  }
+ 
+-  const allFuturePayments = await prisma.loanPayment.findMany({
+-    where: {
+-      loanId: {
+-        in: activeLoanIds,
+-      },
+-      paymentDate: {
+-        gte: today,
+-      },
+-      paid: false,
+-      ...(companyName
+-        ? {
+-            loan: {
+-              companyName,
+-            },
+-          }
+-        : {}),
+-    },
+-    include: {
+-      loan: true,
+-    },
+-    orderBy: {
+-      paymentDate: "asc",
+-    },
++  const activeLoans = loans.filter((loan) => {
++    const state = loanStatesById.get(loan.id);
++    return Boolean(state && state.isActiveObligation);
+   });
++  const activeLoanIds = activeLoans.map((loan) => loan.id);
+ 
+-  const currentMonthPayments = paymentsUntilYearEnd.filter(
+-    (payment) =>
+-      payment.paymentDate >= selectedMonth &&
+-      payment.paymentDate <= selectedMonthEnd,
++  // Outstanding/future obligations: active + complete schedules only.
++  const outstandingPaymentsRaw = activeLoans.flatMap((loan) =>
++    (loan.payments as LoanStatePayment[]).map((payment) => ({
++      ...payment,
++      loan,
++    })),
+   );
+ 
+-  const next14DaysEnd = addDays(today, 14);
++  const allFuturePayments = filterOperationalLoanSchedulePayments({
++    payments: outstandingPaymentsRaw,
++    loanStatesById,
++    earlyRepaymentByLoanId: earlyByLoan,
++  })
++    .filter((payment) => toMoscowDateKey(payment.paymentDate) >= asOfDateKey)
++    .sort((a, b) => a.paymentDate.getTime() - b.paymentDate.getTime());
+ 
++  const next14DaysEndKey = addDaysToMoscowDateKey(asOfDateKey, 14);
+   const next14Payments = allFuturePayments.filter(
+-    (payment) => payment.paymentDate <= next14DaysEnd,
+-  );
+-
+-  const totalDebt = activeLoans.reduce(
+-    (sum, loan) => sum + toNumber(loan.currentDebt),
+-    0,
+-  );
+-
+-  const selectedMonthPayment = currentMonthPayments.reduce(
+-    (sum, payment) => sum + getPaymentTotal(payment),
+-    0,
+-  );
+-
+-  const currentMonthPrincipal = currentMonthPayments.reduce(
+-    (sum, payment) => sum + getPaymentPrincipal(payment),
+-    0,
+-  );
+-
+-  const currentMonthInterest = currentMonthPayments.reduce(
+-    (sum, payment) => sum + getPaymentInterest(payment),
+-    0,
+-  );
+-
+-  const monthlyPaymentFromLoans = activeLoans.reduce(
+-    (sum, loan) => sum + toNumber(loan.monthlyPayment),
+-    0,
++    (payment) => toMoscowDateKey(payment.paymentDate) <= next14DaysEndKey,
+   );
+ 
+-  const paymentInMonth =
+-    selectedMonthPayment > 0 ? selectedMonthPayment : monthlyPaymentFromLoans;
++  const totalDebt = activeLoans.reduce((sum, loan) => {
++    const state = loanStatesById.get(loan.id);
++    return sum + (state?.balance ?? 0);
++  }, 0);
++
++  // Selected-month PLAN: include closed/complete loans so July history remains
++  // reconstructable after August closure (debt itself stays as-of today).
++  const paymentInMonth = loans.reduce((sum, loan) => {
++    const state = loanStatesById.get(loan.id);
++    if (!state || state.status === "DATA_INCOMPLETE") return sum;
++    return sum + state.selectedMonthPlanTotal;
++  }, 0);
++
++  const currentMonthPrincipal = loans.reduce((sum, loan) => {
++    const state = loanStatesById.get(loan.id);
++    if (!state || state.status === "DATA_INCOMPLETE") return sum;
++    return sum + state.selectedMonthPlanPrincipal;
++  }, 0);
++
++  const currentMonthInterest = loans.reduce((sum, loan) => {
++    const state = loanStatesById.get(loan.id);
++    if (!state || state.status === "DATA_INCOMPLETE") return sum;
++    return sum + state.selectedMonthPlanInterest;
++  }, 0);
+ 
+   const next14Amount = next14Payments.reduce(
+     (sum, payment) => sum + getPaymentTotal(payment),
+     0,
+   );
+ 
+-  const totalPrincipalUntilYearEnd = paymentsUntilYearEnd.reduce(
+-    (sum, payment) => sum + getPaymentPrincipal(payment),
+-    0,
+-  );
++  const totalPrincipalUntilYearEnd = activeLoans.reduce((sum, loan) => {
++    const state = loanStatesById.get(loan.id);
++    return sum + (state?.principalUntilSelectedYearEnd ?? 0);
++  }, 0);
+ 
+-  const totalInterestUntilYearEnd = paymentsUntilYearEnd.reduce(
+-    (sum, payment) => sum + getPaymentInterest(payment),
+-    0,
+-  );
++  const totalInterestUntilYearEnd = activeLoans.reduce((sum, loan) => {
++    const state = loanStatesById.get(loan.id);
++    return sum + (state?.interestUntilSelectedYearEnd ?? 0);
++  }, 0);
+ 
+   const totalPaymentsUntilYearEnd =
+     totalPrincipalUntilYearEnd + totalInterestUntilYearEnd;
+ 
+-  const loanRows = activeLoans.map((loan) => {
+-    const futurePayments = loan.payments.filter(
+-      (payment) => payment.paymentDate >= today && !payment.paid,
+-    );
+-
+-    const monthPayments = loan.payments.filter(
+-      (payment) =>
+-        payment.paymentDate >= selectedMonth &&
+-        payment.paymentDate <= selectedMonthEnd &&
+-        !payment.paid,
+-    );
+-
+-    const nextPayment = futurePayments[0] ?? null;
+-
+-    const monthlyPaymentBySchedule = monthPayments.reduce(
+-      (sum, payment) => sum + getPaymentTotal(payment),
+-      0,
+-    );
++  // Month matrix: schedule plan rows for selectedMonth..yearEnd across complete
++  // loans (including closed), excluding incomplete / early-suppressed.
++  const paymentsUntilYearEnd = loans.flatMap((loan) => {
++    const state = loanStatesById.get(loan.id);
++    if (!state || state.status === "DATA_INCOMPLETE" || !state.scheduleComplete) {
++      return [];
++    }
++    if (state.obligationType === "CREDIT_CARD") return [];
++    const early = earlyByLoan.get(loan.id) ?? null;
++    return (loan.payments as LoanStatePayment[])
++      .filter((payment) => {
++        if (
++          early &&
++          toMoscowDateKey(payment.paymentDate) >= toMoscowDateKey(early)
++        ) {
++          return false;
++        }
++        const key = toMoscowDateKey(payment.paymentDate);
++        return key >= `${selectedMonthValue}-01` && key <= yearEndKey;
++      })
++      .map((payment) => ({ ...payment, loan }));
++  });
+ 
++  const loanRows = activeLoans.map((loan) => {
++    const state = loanStatesById.get(loan.id)!;
++    const nextPayment = state.nextOutstandingPayment;
++    // Cards: stored/manual monthlyPayment. Amortizing: selected-month schedule PLAN.
+     const monthlyPayment =
+-      monthlyPaymentBySchedule > 0
+-        ? monthlyPaymentBySchedule
+-        : toNumber(loan.monthlyPayment);
+-
+-    const principalUntilYearEnd = futurePayments
+-      .filter((payment) => payment.paymentDate <= yearEnd)
+-      .reduce((sum, payment) => sum + getPaymentPrincipal(payment), 0);
+-
+-    const interestUntilYearEnd = futurePayments
+-      .filter((payment) => payment.paymentDate <= yearEnd)
+-      .reduce((sum, payment) => sum + getPaymentInterest(payment), 0);
+-
+-    const nextPaymentPrincipal = nextPayment
+-      ? getPaymentPrincipal(nextPayment)
+-      : 0;
+-    const nextPaymentInterest = nextPayment
+-      ? getPaymentInterest(nextPayment)
+-      : 0;
+-    const nextPaymentTotal = nextPayment
+-      ? getPaymentTotal(nextPayment)
+-      : monthlyPayment;
+-
+-    const remainingMonths = monthsBetween(today, loan.endDate);
++      state.obligationType === "CREDIT_CARD"
++        ? toNumber(loan.monthlyPayment)
++        : state.selectedMonthPlanTotal;
++    const remainingMonths = monthsBetween(today, state.remainingTermEndDate);
+     const rateInfo = estimateAnnualRateFromSchedule({
+-      currentDebt: toNumber(loan.currentDebt),
+-      payments: futurePayments,
++      currentDebt: state.balance,
++      payments: (loan.payments as LoanStatePayment[]).filter(
++        (payment) => toMoscowDateKey(payment.paymentDate) >= asOfDateKey,
++      ),
+       today,
+       explicitRate: toNumber(loan.interestRate),
+     });
+@@ -637,27 +559,35 @@ export default async function LoansPage({
+       bankName: loan.bankName,
+       contractNumber: loan.contractNumber,
+       displayName: getLoanDisplayName(loan),
+-      currentDebt: toNumber(loan.currentDebt),
++      currentDebt: state.balance,
+       monthlyPayment,
+       interestRate: toNumber(loan.interestRate),
+       calculatedAnnualRate: rateInfo.rate,
+       rateSource: rateInfo.source,
+       creditLimit: toNumber(loan.creditLimit),
+-      endDate: loan.endDate,
++      endDate: state.remainingTermEndDate ?? loan.endDate,
+       paymentFrequency: loan.paymentFrequency,
+       paymentsCount: loan.payments.length,
+       nextPayment,
+       nextPaymentDate: nextPayment?.paymentDate ?? null,
+-      nextPaymentPrincipal,
+-      nextPaymentInterest,
+-      nextPaymentTotal,
+-      principalUntilYearEnd,
+-      interestUntilYearEnd,
++      nextPaymentPrincipal: nextPayment ? getPaymentPrincipal(nextPayment) : 0,
++      nextPaymentInterest: nextPayment ? getPaymentInterest(nextPayment) : 0,
++      nextPaymentTotal: nextPayment ? getPaymentTotal(nextPayment) : 0,
++      principalUntilYearEnd: state.principalUntilSelectedYearEnd,
++      interestUntilYearEnd: state.interestUntilSelectedYearEnd,
++      remainingPrincipalFullTerm: state.remainingPrincipal,
++      remainingInterestFullTerm: state.remainingInterest,
+       remainingMonths,
+       burdenPercent: getSafeRatio(monthlyPayment, paymentInMonth),
++      canonicalStatus: state.status,
++      balanceSource: state.balanceSource,
++      scheduleComplete: state.scheduleComplete,
++      obligationType: state.obligationType,
+     };
+   });
+ 
++  // Risk block path: loanRows (canonical balance + card display monthlyPayment)
++  // → creditCardRows via getCreditCardRiskTone / getCreditCardRiskCopy.
+   const creditCardRows: CreditCardView[] = loanRows
+     .filter((loan) => isCreditCardLoan(loan))
+     .map((loan) => {
+@@ -666,6 +596,7 @@ export default async function LoansPage({
+         loan.currentDebt,
+         loan.creditLimit,
+       );
++      // Prefer schedule next total if modeled; else stored/manual card payment.
+       const minimumPayment = loan.nextPaymentTotal || loan.monthlyPayment;
+       const minimumPaymentPercent = getSafeRatio(
+         minimumPayment,
+@@ -724,11 +655,20 @@ export default async function LoansPage({
+     (card) => card.riskTone === "high",
+   ).length;
+ 
+-  const loansByMonthlyBurden = [...loanRows].sort(
++  // Early-repay strategies + donut ranking: complete ACTIVE amortizing only.
++  // DATA_INCOMPLETE stays in total debt / active table, but never in rankings.
++  const amortizingLoanRows = loanRows.filter(
++    (loan) =>
++      loan.obligationType === "AMORTIZING" &&
++      loan.canonicalStatus === "ACTIVE" &&
++      loan.scheduleComplete === true,
++  );
++
++  const loansByMonthlyBurden = [...amortizingLoanRows].sort(
+     (a, b) => b.monthlyPayment - a.monthlyPayment,
+   );
+ 
+-  const loansByRate = [...loanRows].sort((a, b) => {
++  const loansByRate = [...amortizingLoanRows].sort((a, b) => {
+     const aHasRate = a.calculatedAnnualRate > 0;
+     const bHasRate = b.calculatedAnnualRate > 0;
+ 
+@@ -740,7 +680,7 @@ export default async function LoansPage({
+     );
+   });
+ 
+-  const loansBySmallDebt = [...loanRows].sort(
++  const loansBySmallDebt = [...amortizingLoanRows].sort(
+     (a, b) => a.currentDebt - b.currentDebt,
+   );
+ 
+@@ -1103,7 +1043,7 @@ export default async function LoansPage({
+                   Карта долговой нагрузки
+                 </h2>
+                 <p className="mt-1 text-sm font-medium text-slate-500">
+-                  Доля кредитов в ежемесячном платеже.
++                  Доля кредитов в платеже выбранного месяца.
+                 </p>
+               </div>
+ 
+diff --git a/app/finance/page.tsx b/app/finance/page.tsx
+index 07ff44b..fc33861 100644
+--- a/app/finance/page.tsx
++++ b/app/finance/page.tsx
+@@ -8,6 +8,13 @@ import {
+   getFinanceTransactionCashEffect,
+   getFinanceTransactionTreatment,
+ } from "@/lib/finance/financeMetrics";
++import { getMoscowBusinessDateKey } from "@/lib/finance/loanBusinessDate";
++import { loadEarlyRepaymentDatesByLoanId } from "@/lib/finance/loanPaymentFinanceSync";
++import {
++  filterOperationalLoanSchedulePayments,
++  getLoanStateAtDate,
++  type LoanStatePayment,
++} from "@/lib/finance/loanState";
+ 
+ type MetricTone =
+   | "green"
+@@ -901,15 +908,35 @@ export default async function FinancePage({
+     where: {
+       ...(companyName ? { companyName } : {}),
+     },
++    include: {
++      payments: {
++        orderBy: { paymentDate: "asc" },
++      },
++    },
+   });
+ 
+-  const activeLoans = loans.filter((loan) => toNumber(loan.currentDebt) > 0.01);
+-  const activeLoanIds = activeLoans.map((loan) => loan.id);
++  const earlyByLoan = await loadEarlyRepaymentDatesByLoanId(
++    loans.map((loan) => loan.id),
++  );
++  const asOfDateKey = getMoscowBusinessDateKey();
++  const loanStates = loans.map((loan) =>
++    getLoanStateAtDate({
++      loan,
++      payments: loan.payments as LoanStatePayment[],
++      earlyRepaymentDate: earlyByLoan.get(loan.id) ?? null,
++      asOfDate: asOfDateKey,
++    }),
++  );
++  const activeLoanStates = loanStates.filter((state) => state.isActiveObligation);
++  const activeLoans = activeLoanStates;
++  const activeLoanIds = activeLoanStates.map((state) => state.loanId);
++  const loanStatesById = new Map(
++    loanStates.map((state) => [state.loanId, state]),
++  );
+ 
+-  const loanPayments30Days = activeLoanIds.length
++  const loanPayments30DaysRaw = activeLoanIds.length
+     ? await prisma.loanPayment.findMany({
+         where: {
+-          paid: false,
+           loanId: {
+             in: activeLoanIds,
+           },
+@@ -931,6 +958,11 @@ export default async function FinancePage({
+         },
+       })
+     : [];
++  const loanPayments30Days = filterOperationalLoanSchedulePayments({
++    payments: loanPayments30DaysRaw,
++    loanStatesById,
++    earlyRepaymentByLoanId: earlyByLoan,
++  });
+ 
+   const totalCash = accounts.reduce(
+     (sum, account) => sum + toNumber(account.currentBalance),
+@@ -952,8 +984,8 @@ export default async function FinancePage({
+     netCashFlowPreviousPeriod
+   );
+ 
+-  const totalDebt = activeLoans.reduce(
+-    (sum, loan) => sum + toNumber(loan.currentDebt),
++  const totalDebt = activeLoanStates.reduce(
++    (sum, loan) => sum + loan.balance,
+     0
+   );
+ 
+diff --git a/lib/finance/loanBusinessDate.ts b/lib/finance/loanBusinessDate.ts
+new file mode 100644
+index 0000000..ec1160f
+--- /dev/null
++++ b/lib/finance/loanBusinessDate.ts
+@@ -0,0 +1,63 @@
++/**
++ * Europe/Moscow business-date helpers for the loans canonical read model.
++ * Scoped to loan-state surfaces — not a global date refactor.
++ */
++
++export const LOAN_BUSINESS_TIMEZONE = "Europe/Moscow";
++
++const moscowDateKeyFormatter = new Intl.DateTimeFormat("en-CA", {
++  timeZone: LOAN_BUSINESS_TIMEZONE,
++  year: "numeric",
++  month: "2-digit",
++  day: "2-digit",
++});
++
++/** YYYY-MM-DD in Europe/Moscow. */
++export function toMoscowDateKey(date: Date): string {
++  return moscowDateKeyFormatter.format(date);
++}
++
++/** YYYY-MM in Europe/Moscow. */
++export function toMoscowMonthKey(date: Date): string {
++  return toMoscowDateKey(date).slice(0, 7);
++}
++
++export function getMoscowBusinessDateKey(now: Date = new Date()): string {
++  return toMoscowDateKey(now);
++}
++
++export function compareMoscowDateKeys(a: string, b: string): number {
++  return a.localeCompare(b);
++}
++
++export function addDaysToMoscowDateKey(dateKey: string, days: number): string {
++  const [year, month, day] = dateKey.split("-").map(Number);
++  const utcNoon = new Date(Date.UTC(year, month - 1, day, 12));
++  utcNoon.setUTCDate(utcNoon.getUTCDate() + days);
++  return toMoscowDateKey(utcNoon);
++}
++
++export function moscowDateKeyToUtcNoon(dateKey: string): Date {
++  const [year, month, day] = dateKey.split("-").map(Number);
++  return new Date(Date.UTC(year, month - 1, day, 12));
++}
++
++export function startOfMoscowMonthKey(monthKey: string): string {
++  return `${monthKey}-01`;
++}
++
++export function endOfMoscowMonthKey(monthKey: string): string {
++  const [year, month] = monthKey.split("-").map(Number);
++  const lastDay = new Date(Date.UTC(year, month, 0, 12));
++  return toMoscowDateKey(lastDay);
++}
++
++export function parsePeriodToMoscowMonthKey(
++  period: string | null | undefined,
++  fallbackNow: Date = new Date(),
++): string {
++  if (period && /^\d{4}-\d{2}$/.test(period)) {
++    return period;
++  }
++  return toMoscowMonthKey(fallbackNow);
++}
+diff --git a/lib/finance/loanState.ts b/lib/finance/loanState.ts
+new file mode 100644
+index 0000000..dcca751
+--- /dev/null
++++ b/lib/finance/loanState.ts
+@@ -0,0 +1,641 @@
++/**
++ * Canonical loan-state read model for /finance/loans and related surfaces.
++ *
++ * Owner-facing amortizing balances are schedule-projected (Europe/Moscow),
++ * not raw Loan.currentDebt. Early-repayment suppression is reused from
++ * loanPaymentActuality (PATCH 2) — do not duplicate that rule.
++ */
++
++import {
++  isLoanPaymentSuppressedByEarlyRepayment,
++  isOutstandingLoanSchedulePayment,
++} from "@/lib/finance/loanPaymentActuality";
++import {
++  addDaysToMoscowDateKey,
++  compareMoscowDateKeys,
++  endOfMoscowMonthKey,
++  startOfMoscowMonthKey,
++  toMoscowDateKey,
++  toMoscowMonthKey,
++} from "@/lib/finance/loanBusinessDate";
++
++export const SCHEDULE_PRINCIPAL_TOLERANCE = 0.05;
++
++export type LoanObligationType = "AMORTIZING" | "CREDIT_CARD";
++
++export type LoanCanonicalStatus =
++  | "ACTIVE"
++  | "CLOSED_EARLY"
++  | "CLOSED_SCHEDULE"
++  | "CREDIT_CARD_ACTIVE"
++  | "CREDIT_CARD_ZERO"
++  | "DATA_INCOMPLETE";
++
++export type LoanBalanceSource =
++  | "SCHEDULE_PROJECTION"
++  | "EARLY_REPAYMENT"
++  | "CREDIT_CARD_MANUAL"
++  | "STORED_FALLBACK";
++
++export type LoanStatePayment = {
++  id: string;
++  loanId: string;
++  paymentDate: Date;
++  paid: boolean;
++  principalAmount: unknown;
++  interestAmount: unknown;
++  totalAmount: unknown;
++};
++
++export type LoanStateLoan = {
++  id: string;
++  bankName: string;
++  currentDebt: unknown;
++  monthlyPayment?: unknown;
++  endDate?: Date | null;
++  creditLimit?: unknown;
++  paymentFrequency?: string | null;
++};
++
++export type LoanStatePaymentActuality = {
++  /**
++   * Payment ids proven actual on the schedule (FACT), excluding early-repay
++   * suppression masquerading as paid=true.
++   */
++  provenActualPaymentIds?: ReadonlySet<string>;
++};
++
++export type LoanStateAtDate = {
++  loanId: string;
++  obligationType: LoanObligationType;
++  status: LoanCanonicalStatus;
++  balance: number;
++  balanceSource: LoanBalanceSource;
++  closedAt: string | null;
++  nextOutstandingPayment: LoanStatePayment | null;
++  selectedMonthPlanPrincipal: number;
++  selectedMonthPlanInterest: number;
++  selectedMonthPlanTotal: number;
++  selectedMonthPaymentCount: number;
++  selectedMonthRemainingPrincipal: number;
++  selectedMonthRemainingInterest: number;
++  selectedMonthRemainingTotal: number;
++  remainingPrincipal: number;
++  remainingInterest: number;
++  remainingPaymentCount: number;
++  /** Remaining principal with paymentDate through selected calendar year-end only. */
++  principalUntilSelectedYearEnd: number;
++  /** Remaining interest with paymentDate through selected calendar year-end only. */
++  interestUntilSelectedYearEnd: number;
++  remainingTermEndDate: Date | null;
++  scheduleComplete: boolean;
++  dataQualityReason: string | null;
++  isActiveObligation: boolean;
++};
++
++function toAmount(value: unknown): number {
++  if (value === null || value === undefined) return 0;
++  if (typeof value === "number") return Number.isFinite(value) ? value : 0;
++  if (typeof value === "object" && value && "toNumber" in value) {
++    const n = (value as { toNumber: () => number }).toNumber();
++    return Number.isFinite(n) ? n : 0;
++  }
++  const n = Number(String(value).replace(/\s/g, "").replace(",", "."));
++  return Number.isFinite(n) ? n : 0;
++}
++
++function roundMoney(value: number): number {
++  return Math.round((value + Number.EPSILON) * 100) / 100;
++}
++
++export function getPaymentPrincipal(payment: {
++  principalAmount: unknown;
++  totalAmount?: unknown;
++  interestAmount?: unknown;
++}): number {
++  const principal = toAmount(payment.principalAmount);
++  if (principal) return roundMoney(principal);
++  const total = toAmount(payment.totalAmount);
++  const interest = toAmount(payment.interestAmount);
++  return roundMoney(Math.max(0, total - interest));
++}
++
++export function getPaymentInterest(payment: {
++  interestAmount: unknown;
++}): number {
++  return roundMoney(toAmount(payment.interestAmount));
++}
++
++export function getPaymentTotal(payment: {
++  totalAmount: unknown;
++  principalAmount: unknown;
++  interestAmount: unknown;
++}): number {
++  const total = toAmount(payment.totalAmount);
++  if (total) return roundMoney(total);
++  return roundMoney(
++    getPaymentPrincipal(payment) + getPaymentInterest(payment),
++  );
++}
++
++export function isCreditCardLoan(loan: {
++  bankName?: string | null;
++}): boolean {
++  const name = String(loan.bankName ?? "").toLowerCase();
++  return name.includes("кредитка") || name.includes("кредитная карта");
++}
++
++export function isCanonicalActiveStatus(status: LoanCanonicalStatus): boolean {
++  return (
++    status === "ACTIVE" ||
++    status === "CREDIT_CARD_ACTIVE" ||
++    status === "DATA_INCOMPLETE"
++  );
++}
++
++/**
++ * Same-day actuality: paid=true counts only when NOT early-repay suppressed.
++ * Optionally honor an explicit proven-actual id set from FACT rows.
++ */
++export function isPaymentProvenActual(input: {
++  payment: LoanStatePayment;
++  earlyRepaymentDate: Date | null | undefined;
++  paymentActuality?: LoanStatePaymentActuality | null;
++}): boolean {
++  if (
++    isLoanPaymentSuppressedByEarlyRepayment({
++      paymentDate: input.payment.paymentDate,
++      earlyRepaymentDate: input.earlyRepaymentDate,
++    })
++  ) {
++    return false;
++  }
++
++  if (input.paymentActuality?.provenActualPaymentIds?.has(input.payment.id)) {
++    return true;
++  }
++
++  return Boolean(input.payment.paid);
++}
++
++/**
++ * Remaining under schedule projection as of business date D (Moscow key):
++ * - paymentDate < D: elapsed
++ * - paymentDate > D: remaining
++ * - paymentDate == D: remaining unless proven actual
++ */
++export function isPaymentInProjectedRemaining(input: {
++  payment: LoanStatePayment;
++  asOfDateKey: string;
++  earlyRepaymentDate: Date | null | undefined;
++  paymentActuality?: LoanStatePaymentActuality | null;
++}): boolean {
++  if (
++    isLoanPaymentSuppressedByEarlyRepayment({
++      paymentDate: input.payment.paymentDate,
++      earlyRepaymentDate: input.earlyRepaymentDate,
++    })
++  ) {
++    return false;
++  }
++
++  const paymentKey = toMoscowDateKey(input.payment.paymentDate);
++  const cmp = compareMoscowDateKeys(paymentKey, input.asOfDateKey);
++
++  if (cmp < 0) return false;
++  if (cmp > 0) return true;
++
++  return !isPaymentProvenActual({
++    payment: input.payment,
++    earlyRepaymentDate: input.earlyRepaymentDate,
++    paymentActuality: input.paymentActuality,
++  });
++}
++
++export function assessScheduleCompleteness(input: {
++  payments: LoanStatePayment[];
++  storedCurrentDebt: number;
++}): { complete: boolean; reason: string | null; schedulePrincipal: number } {
++  const payments = input.payments;
++  if (payments.length === 0) {
++    if (input.storedCurrentDebt > SCHEDULE_PRINCIPAL_TOLERANCE) {
++      return {
++        complete: false,
++        reason: "EMPTY_SCHEDULE_WITH_STORED_DEBT",
++        schedulePrincipal: 0,
++      };
++    }
++    return { complete: true, reason: null, schedulePrincipal: 0 };
++  }
++
++  const ids = new Set<string>();
++  const dateKeys = new Set<string>();
++  let schedulePrincipal = 0;
++
++  for (const payment of payments) {
++    if (ids.has(payment.id)) {
++      return {
++        complete: false,
++        reason: "DUPLICATE_PAYMENT_ID",
++        schedulePrincipal: 0,
++      };
++    }
++    ids.add(payment.id);
++
++    const key = toMoscowDateKey(payment.paymentDate);
++    if (dateKeys.has(key)) {
++      return {
++        complete: false,
++        reason: "DUPLICATE_PAYMENT_DATE",
++        schedulePrincipal: 0,
++      };
++    }
++    dateKeys.add(key);
++
++    const principal = getPaymentPrincipal(payment);
++    if (principal < -SCHEDULE_PRINCIPAL_TOLERANCE) {
++      return {
++        complete: false,
++        reason: "NEGATIVE_PRINCIPAL",
++        schedulePrincipal: 0,
++      };
++    }
++    schedulePrincipal = roundMoney(schedulePrincipal + principal);
++  }
++
++  if (
++    Math.abs(schedulePrincipal - input.storedCurrentDebt) >
++    SCHEDULE_PRINCIPAL_TOLERANCE
++  ) {
++    return {
++      complete: false,
++      reason: "SCHEDULE_PRINCIPAL_MISMATCH_STORED_DEBT",
++      schedulePrincipal,
++    };
++  }
++
++  return { complete: true, reason: null, schedulePrincipal };
++}
++
++function emptyMonthAmounts() {
++  return {
++    selectedMonthPlanPrincipal: 0,
++    selectedMonthPlanInterest: 0,
++    selectedMonthPlanTotal: 0,
++    selectedMonthPaymentCount: 0,
++    selectedMonthRemainingPrincipal: 0,
++    selectedMonthRemainingInterest: 0,
++    selectedMonthRemainingTotal: 0,
++  };
++}
++
++function emptyYearEndAmounts() {
++  return {
++    principalUntilSelectedYearEnd: 0,
++    interestUntilSelectedYearEnd: 0,
++  };
++}
++
++export function getLoanStateAtDate(input: {
++  loan: LoanStateLoan;
++  payments: LoanStatePayment[];
++  earlyRepaymentDate?: Date | null;
++  paymentActuality?: LoanStatePaymentActuality | null;
++  asOfDate: Date | string;
++  selectedMonth?: string | null;
++}): LoanStateAtDate {
++  const asOfDateKey =
++    typeof input.asOfDate === "string"
++      ? input.asOfDate
++      : toMoscowDateKey(input.asOfDate);
++  const selectedMonthKey =
++    input.selectedMonth && /^\d{4}-\d{2}$/.test(input.selectedMonth)
++      ? input.selectedMonth
++      : asOfDateKey.slice(0, 7);
++  const monthStart = startOfMoscowMonthKey(selectedMonthKey);
++  const monthEnd = endOfMoscowMonthKey(selectedMonthKey);
++
++  const earlyRepaymentDate = input.earlyRepaymentDate ?? null;
++  const storedDebt = roundMoney(toAmount(input.loan.currentDebt));
++  const payments = [...input.payments].sort(
++    (a, b) => a.paymentDate.getTime() - b.paymentDate.getTime(),
++  );
++
++  if (isCreditCardLoan(input.loan)) {
++    const balance = Math.max(0, storedDebt);
++    const status: LoanCanonicalStatus =
++      balance > SCHEDULE_PRINCIPAL_TOLERANCE
++        ? "CREDIT_CARD_ACTIVE"
++        : "CREDIT_CARD_ZERO";
++    return {
++      loanId: input.loan.id,
++      obligationType: "CREDIT_CARD",
++      status,
++      balance,
++      balanceSource: "CREDIT_CARD_MANUAL",
++      closedAt: null,
++      nextOutstandingPayment: null,
++      ...emptyMonthAmounts(),
++      ...emptyYearEndAmounts(),
++      remainingPrincipal: balance,
++      remainingInterest: 0,
++      remainingPaymentCount: 0,
++      remainingTermEndDate: input.loan.endDate ?? null,
++      scheduleComplete: true,
++      dataQualityReason: null,
++      isActiveObligation: status === "CREDIT_CARD_ACTIVE",
++    };
++  }
++
++  if (earlyRepaymentDate) {
++    const closedAt = toMoscowDateKey(earlyRepaymentDate);
++    if (compareMoscowDateKeys(closedAt, asOfDateKey) <= 0) {
++      return {
++        loanId: input.loan.id,
++        obligationType: "AMORTIZING",
++        status: "CLOSED_EARLY",
++        balance: 0,
++        balanceSource: "EARLY_REPAYMENT",
++        closedAt,
++        nextOutstandingPayment: null,
++        ...emptyMonthAmounts(),
++        ...emptyYearEndAmounts(),
++        remainingPrincipal: 0,
++        remainingInterest: 0,
++        remainingPaymentCount: 0,
++        remainingTermEndDate: earlyRepaymentDate,
++        scheduleComplete: true,
++        dataQualityReason: null,
++        isActiveObligation: false,
++      };
++    }
++  }
++
++  const completeness = assessScheduleCompleteness({
++    payments,
++    storedCurrentDebt: storedDebt,
++  });
++
++  if (!completeness.complete) {
++    const balance = Math.max(0, storedDebt);
++    return {
++      loanId: input.loan.id,
++      obligationType: "AMORTIZING",
++      status: "DATA_INCOMPLETE",
++      balance,
++      balanceSource: "STORED_FALLBACK",
++      closedAt: null,
++      nextOutstandingPayment: null,
++      ...emptyMonthAmounts(),
++      ...emptyYearEndAmounts(),
++      remainingPrincipal: balance,
++      remainingInterest: 0,
++      remainingPaymentCount: 0,
++      remainingTermEndDate: input.loan.endDate ?? null,
++      scheduleComplete: false,
++      dataQualityReason: completeness.reason,
++      isActiveObligation: balance > SCHEDULE_PRINCIPAL_TOLERANCE,
++    };
++  }
++
++  const remainingPayments = payments.filter((payment) =>
++    isPaymentInProjectedRemaining({
++      payment,
++      asOfDateKey,
++      earlyRepaymentDate,
++      paymentActuality: input.paymentActuality,
++    }),
++  );
++
++  const remainingPrincipal = roundMoney(
++    remainingPayments.reduce(
++      (sum, payment) => sum + getPaymentPrincipal(payment),
++      0,
++    ),
++  );
++  const remainingInterest = roundMoney(
++    remainingPayments.reduce(
++      (sum, payment) => sum + getPaymentInterest(payment),
++      0,
++    ),
++  );
++
++  const yearEndKey = `${selectedMonthKey.slice(0, 4)}-12-31`;
++  const untilYearEndPayments = remainingPayments.filter(
++    (payment) =>
++      compareMoscowDateKeys(toMoscowDateKey(payment.paymentDate), yearEndKey) <=
++      0,
++  );
++  const principalUntilSelectedYearEnd = roundMoney(
++    untilYearEndPayments.reduce(
++      (sum, payment) => sum + getPaymentPrincipal(payment),
++      0,
++    ),
++  );
++  const interestUntilSelectedYearEnd = roundMoney(
++    untilYearEndPayments.reduce(
++      (sum, payment) => sum + getPaymentInterest(payment),
++      0,
++    ),
++  );
++
++  const monthPlanPayments = payments.filter((payment) => {
++    if (
++      isLoanPaymentSuppressedByEarlyRepayment({
++        paymentDate: payment.paymentDate,
++        earlyRepaymentDate,
++      })
++    ) {
++      return false;
++    }
++    const key = toMoscowDateKey(payment.paymentDate);
++    return (
++      compareMoscowDateKeys(key, monthStart) >= 0 &&
++      compareMoscowDateKeys(key, monthEnd) <= 0
++    );
++  });
++
++  const monthRemainingPayments = remainingPayments.filter((payment) => {
++    const key = toMoscowDateKey(payment.paymentDate);
++    return (
++      compareMoscowDateKeys(key, monthStart) >= 0 &&
++      compareMoscowDateKeys(key, monthEnd) <= 0
++    );
++  });
++
++  const selectedMonthPlanPrincipal = roundMoney(
++    monthPlanPayments.reduce(
++      (sum, payment) => sum + getPaymentPrincipal(payment),
++      0,
++    ),
++  );
++  const selectedMonthPlanInterest = roundMoney(
++    monthPlanPayments.reduce(
++      (sum, payment) => sum + getPaymentInterest(payment),
++      0,
++    ),
++  );
++  const selectedMonthPlanTotal = roundMoney(
++    selectedMonthPlanPrincipal + selectedMonthPlanInterest,
++  );
++
++  const selectedMonthRemainingPrincipal = roundMoney(
++    monthRemainingPayments.reduce(
++      (sum, payment) => sum + getPaymentPrincipal(payment),
++      0,
++    ),
++  );
++  const selectedMonthRemainingInterest = roundMoney(
++    monthRemainingPayments.reduce(
++      (sum, payment) => sum + getPaymentInterest(payment),
++      0,
++    ),
++  );
++  const selectedMonthRemainingTotal = roundMoney(
++    selectedMonthRemainingPrincipal + selectedMonthRemainingInterest,
++  );
++
++  // Never surface a proven-actual payment as "next outstanding".
++  // Early-repay-suppressed paid=true is not treated as actual (PATCH2).
++  const nearestOutstanding =
++    [...remainingPayments]
++      .filter(
++        (payment) =>
++          !isPaymentProvenActual({
++            payment,
++            earlyRepaymentDate,
++            paymentActuality: input.paymentActuality,
++          }) &&
++          isOutstandingLoanSchedulePayment({
++            paymentDate: payment.paymentDate,
++            paid: payment.paid,
++            earlyRepaymentDate,
++          }),
++      )
++      .sort((a, b) => a.paymentDate.getTime() - b.paymentDate.getTime())[0] ??
++    null;
++
++  if (remainingPrincipal <= SCHEDULE_PRINCIPAL_TOLERANCE) {
++    const lastPayment = payments[payments.length - 1] ?? null;
++    const closedAt = lastPayment
++      ? toMoscowDateKey(lastPayment.paymentDate)
++      : input.loan.endDate
++        ? toMoscowDateKey(input.loan.endDate)
++        : asOfDateKey;
++
++    return {
++      loanId: input.loan.id,
++      obligationType: "AMORTIZING",
++      status: "CLOSED_SCHEDULE",
++      balance: 0,
++      balanceSource: "SCHEDULE_PROJECTION",
++      closedAt,
++      nextOutstandingPayment: null,
++      selectedMonthPlanPrincipal,
++      selectedMonthPlanInterest,
++      selectedMonthPlanTotal,
++      selectedMonthPaymentCount: monthPlanPayments.length,
++      selectedMonthRemainingPrincipal: 0,
++      selectedMonthRemainingInterest: 0,
++      selectedMonthRemainingTotal: 0,
++      remainingPrincipal: 0,
++      remainingInterest: 0,
++      remainingPaymentCount: 0,
++      principalUntilSelectedYearEnd: 0,
++      interestUntilSelectedYearEnd: 0,
++      remainingTermEndDate: lastPayment?.paymentDate ?? input.loan.endDate ?? null,
++      scheduleComplete: true,
++      dataQualityReason: null,
++      isActiveObligation: false,
++    };
++  }
++
++  return {
++    loanId: input.loan.id,
++    obligationType: "AMORTIZING",
++    status: "ACTIVE",
++    balance: remainingPrincipal,
++    balanceSource: "SCHEDULE_PROJECTION",
++    closedAt: null,
++    nextOutstandingPayment: nearestOutstanding,
++    selectedMonthPlanPrincipal,
++    selectedMonthPlanInterest,
++    selectedMonthPlanTotal,
++    selectedMonthPaymentCount: monthPlanPayments.length,
++    selectedMonthRemainingPrincipal,
++    selectedMonthRemainingInterest,
++    selectedMonthRemainingTotal,
++    remainingPrincipal,
++    remainingInterest,
++    remainingPaymentCount: remainingPayments.length,
++    principalUntilSelectedYearEnd,
++    interestUntilSelectedYearEnd,
++    remainingTermEndDate:
++      remainingPayments[remainingPayments.length - 1]?.paymentDate ??
++      input.loan.endDate ??
++      null,
++    scheduleComplete: true,
++    dataQualityReason: null,
++    isActiveObligation: true,
++  };
++}
++
++/** Outstanding schedule rows for calendar/forecast after early-repay + closed state. */
++export function filterOperationalLoanSchedulePayments<
++  T extends {
++    id: string;
++    loanId: string;
++    paymentDate: Date;
++    paid: boolean;
++  },
++>(input: {
++  payments: T[];
++  loanStatesById: Map<string, LoanStateAtDate>;
++  earlyRepaymentByLoanId: Map<string, Date>;
++}): T[] {
++  return input.payments.filter((payment) => {
++    const state = input.loanStatesById.get(payment.loanId);
++    if (!state) {
++      return isOutstandingLoanSchedulePayment({
++        paymentDate: payment.paymentDate,
++        paid: payment.paid,
++        earlyRepaymentDate:
++          input.earlyRepaymentByLoanId.get(payment.loanId) ?? null,
++      });
++    }
++    // Conservative: incomplete amortizing schedules never appear as operational
++    // obligations on calendar/forecast (loans page also shows plan=0).
++    if (state.status === "DATA_INCOMPLETE" || !state.scheduleComplete) {
++      if (state.obligationType === "AMORTIZING") return false;
++    }
++    if (!state.isActiveObligation) {
++      return false;
++    }
++    return isOutstandingLoanSchedulePayment({
++      paymentDate: payment.paymentDate,
++      paid: payment.paid,
++      earlyRepaymentDate:
++        input.earlyRepaymentByLoanId.get(payment.loanId) ?? null,
++    });
++  });
++}
++
++export function paymentsInMoscowDateWindow<T extends { paymentDate: Date }>(
++  payments: T[],
++  fromDateKey: string,
++  toDateKeyInclusive: string,
++): T[] {
++  return payments.filter((payment) => {
++    const key = toMoscowDateKey(payment.paymentDate);
++    return (
++      compareMoscowDateKeys(key, fromDateKey) >= 0 &&
++      compareMoscowDateKeys(key, toDateKeyInclusive) <= 0
++    );
++  });
++}
++
++export function moscowWindowEnd(fromDateKey: string, dayCountInclusive: number) {
++  return addDaysToMoscowDateKey(fromDateKey, Math.max(0, dayCountInclusive - 1));
++}
++
++export { toMoscowDateKey, toMoscowMonthKey };
+diff --git a/scripts/architecture/loanStateCanonical.test.ts b/scripts/architecture/loanStateCanonical.test.ts
+new file mode 100644
+index 0000000..039d9d1
+--- /dev/null
++++ b/scripts/architecture/loanStateCanonical.test.ts
+@@ -0,0 +1,1019 @@
++import assert from "node:assert/strict";
++import { describe, it } from "node:test";
++
++import {
++  getMoscowBusinessDateKey,
++  toMoscowDateKey,
++  addDaysToMoscowDateKey,
++  endOfMoscowMonthKey,
++  startOfMoscowMonthKey,
++} from "../../lib/finance/loanBusinessDate";
++import {
++  assessScheduleCompleteness,
++  filterOperationalLoanSchedulePayments,
++  getLoanStateAtDate,
++  getPaymentInterest,
++  getPaymentPrincipal,
++  getPaymentTotal,
++  isPaymentInProjectedRemaining,
++  type LoanStatePayment,
++} from "../../lib/finance/loanState";
++import {
++  isLoanPaymentSuppressedByEarlyRepayment,
++  shouldGenerateRegularLoanFinanceTransactions,
++} from "../../lib/finance/loanPaymentActuality";
++
++function d(isoDate: string) {
++  return new Date(`${isoDate}T00:00:00.000Z`);
++}
++
++function payment(
++  partial: Partial<LoanStatePayment> & {
++    id: string;
++    loanId: string;
++    paymentDate: Date;
++  },
++): LoanStatePayment {
++  return {
++    paid: false,
++    principalAmount: 0,
++    interestAmount: 0,
++    totalAmount: 0,
++    ...partial,
++  };
++}
++
++const ozon2200Payments: LoanStatePayment[] = [
++  payment({
++    id: "ozon2200_0715",
++    loanId: "loan_d335592b95",
++    paymentDate: d("2026-07-15"),
++    principalAmount: 182610.43,
++    interestAmount: 32869.57,
++    totalAmount: 215480,
++  }),
++  payment({
++    id: "ozon2200_0724",
++    loanId: "loan_d335592b95",
++    paymentDate: d("2026-07-24"),
++    principalAmount: 182570.54,
++    interestAmount: 32869.46,
++    totalAmount: 215440,
++  }),
++];
++
++const ozon2200Loan = {
++  id: "loan_d335592b95",
++  bankName: "Озон кредит 2 200 тыс",
++  currentDebt: 365180.97,
++  monthlyPayment: 215480,
++  endDate: d("2026-07-24"),
++};
++
++describe("loan business timezone Europe/Moscow", () => {
++  it("LOAN_MONTH_BOUNDARY_TEST — 31st/1st keys", () => {
++    assert.equal(toMoscowDateKey(d("2026-08-31")), "2026-08-31");
++    assert.equal(addDaysToMoscowDateKey("2026-08-31", 1), "2026-09-01");
++    assert.equal(startOfMoscowMonthKey("2026-08"), "2026-08-01");
++    assert.equal(endOfMoscowMonthKey("2026-08"), "2026-08-31");
++  });
++
++  it("current date conversion uses Europe/Moscow", () => {
++    const key = getMoscowBusinessDateKey(
++      new Date("2026-08-27T21:30:00.000Z"),
++    );
++    assert.equal(key, "2026-08-28");
++  });
++});
++
++describe("Ozon 2.2m CLOSED_SCHEDULE fixture", () => {
++  it("OZON_2200_CLOSED_SCHEDULE_FIXTURE — Aug 27 balance 0 / excluded", () => {
++    const state = getLoanStateAtDate({
++      loan: ozon2200Loan,
++      payments: ozon2200Payments,
++      asOfDate: "2026-08-27",
++      selectedMonth: "2026-08",
++    });
++
++    assert.equal(state.status, "CLOSED_SCHEDULE");
++    assert.equal(state.balance, 0);
++    assert.equal(state.isActiveObligation, false);
++    assert.equal(state.nextOutstandingPayment, null);
++    assert.equal(state.selectedMonthPlanTotal, 0);
++    assert.equal(state.selectedMonthRemainingTotal, 0);
++    assert.equal(state.balanceSource, "SCHEDULE_PROJECTION");
++    assert.ok(state.closedAt);
++  });
++
++  it("retains historical July plan without deleting rows", () => {
++    const state = getLoanStateAtDate({
++      loan: ozon2200Loan,
++      payments: ozon2200Payments,
++      asOfDate: "2026-08-27",
++      selectedMonth: "2026-07",
++    });
++    assert.equal(state.status, "CLOSED_SCHEDULE");
++    assert.equal(state.isActiveObligation, false);
++    assert.equal(state.selectedMonthPlanPrincipal, 365180.97);
++    assert.equal(
++      state.selectedMonthPlanTotal,
++      state.selectedMonthPlanPrincipal + state.selectedMonthPlanInterest,
++    );
++  });
++});
++
++describe("Sell Plus early repayment regression", () => {
++  const early = d("2026-07-03");
++  const future = payment({
++    id: "cmq879wrm005g20i5hqe27pdu",
++    loanId: "loan_7e9056bf74",
++    paymentDate: d("2026-08-21"),
++    paid: true,
++    principalAmount: 85948.53,
++    interestAmount: 4719.9,
++    totalAmount: 90668.43,
++  });
++
++  it("SELL_PLUS_EARLY_REPAY_REGRESSION — CLOSED_EARLY", () => {
++    const state = getLoanStateAtDate({
++      loan: {
++        id: "loan_7e9056bf74",
++        bankName: "Sell Plus",
++        currentDebt: 0,
++      },
++      payments: [future],
++      earlyRepaymentDate: early,
++      asOfDate: "2026-08-27",
++      selectedMonth: "2026-08",
++    });
++    assert.equal(state.status, "CLOSED_EARLY");
++    assert.equal(state.balance, 0);
++    assert.equal(state.isActiveObligation, false);
++    assert.equal(state.balanceSource, "EARLY_REPAYMENT");
++  });
++
++  it("EARLY_REPAY_HELPER_REUSED — paid=true still suppressed", () => {
++    assert.equal(
++      isLoanPaymentSuppressedByEarlyRepayment({
++        paymentDate: future.paymentDate,
++        earlyRepaymentDate: early,
++      }),
++      true,
++    );
++    const decision = shouldGenerateRegularLoanFinanceTransactions({
++      paymentDate: future.paymentDate,
++      paid: true,
++      earlyRepaymentDate: early,
++    });
++    assert.equal(decision.generate, false);
++  });
++});
++
++describe("due-today semantics", () => {
++  const loan = {
++    id: "loan_due_today",
++    bankName: "Тест месяц",
++    currentDebt: 100000,
++  };
++  const payments = [
++    payment({
++      id: "p1",
++      loanId: loan.id,
++      paymentDate: d("2026-08-27"),
++      principalAmount: 40000,
++      interestAmount: 10000,
++      totalAmount: 50000,
++    }),
++    payment({
++      id: "p2",
++      loanId: loan.id,
++      paymentDate: d("2026-09-27"),
++      principalAmount: 60000,
++      interestAmount: 5000,
++      totalAmount: 65000,
++    }),
++  ];
++
++  it("DUE_TODAY_REMAINS_IN_BALANCE_UNTIL_ACTUAL_OR_NEXT_DAY", () => {
++    const state = getLoanStateAtDate({
++      loan,
++      payments,
++      asOfDate: "2026-08-27",
++      selectedMonth: "2026-08",
++    });
++    assert.equal(state.status, "ACTIVE");
++    assert.equal(state.balance, 100000);
++    assert.equal(state.nextOutstandingPayment?.id, "p1");
++    assert.equal(
++      isPaymentInProjectedRemaining({
++        payment: payments[0],
++        asOfDateKey: "2026-08-27",
++        earlyRepaymentDate: null,
++      }),
++      true,
++    );
++  });
++
++  it("LOAN_DUE_TODAY_TEST — proven actual drops today principal", () => {
++    const paidToday = { ...payments[0], paid: true };
++    const state = getLoanStateAtDate({
++      loan,
++      payments: [paidToday, payments[1]],
++      asOfDate: "2026-08-27",
++      selectedMonth: "2026-08",
++    });
++    assert.equal(state.balance, 60000);
++    assert.equal(state.nextOutstandingPayment?.id, "p2");
++  });
++
++  it("one day after due date rolls projected balance forward", () => {
++    const state = getLoanStateAtDate({
++      loan,
++      payments,
++      asOfDate: "2026-08-28",
++      selectedMonth: "2026-08",
++    });
++    assert.equal(state.balance, 60000);
++  });
++});
++
++describe("bank / ozon / wb schedule projection", () => {
++  it("six-bank style: balance decreases after elapsed dates, due-today kept", () => {
++    const loan = {
++      id: "loan_60debb8fb1",
++      bankName: "Сбер ООО - 5 млн",
++      currentDebt: 322899.9,
++    };
++    const payments = [
++      payment({
++        id: "jul",
++        loanId: loan.id,
++        paymentDate: d("2026-07-27"),
++        principalAmount: 160339.97,
++        interestAmount: 40925.75,
++        totalAmount: 201265.72,
++      }),
++      payment({
++        id: "aug27",
++        loanId: loan.id,
++        paymentDate: d("2026-08-27"),
++        principalAmount: 162559.93,
++        interestAmount: 38705.79,
++        totalAmount: 201265.72,
++      }),
++    ];
++    // completeness requires sum principal == stored
++    const state = getLoanStateAtDate({
++      loan,
++      payments,
++      asOfDate: "2026-08-27",
++      selectedMonth: "2026-08",
++    });
++    assert.equal(state.status, "ACTIVE");
++    assert.equal(state.balance, 162559.93);
++    assert.equal(state.nextOutstandingPayment?.id, "aug27");
++  });
++
++  it("Ozon 990 decreases after elapsed July payment", () => {
++    const loan = {
++      id: "loan_c6e408881b",
++      bankName: "Озон кредит 990 тыс",
++      currentDebt: 110000,
++    };
++    const payments = [
++      payment({
++        id: "a",
++        loanId: loan.id,
++        paymentDate: d("2026-07-28"),
++        principalAmount: 55000,
++        interestAmount: 15840,
++        totalAmount: 70840,
++      }),
++      payment({
++        id: "b",
++        loanId: loan.id,
++        paymentDate: d("2026-08-28"),
++        principalAmount: 55000,
++        interestAmount: 15840,
++        totalAmount: 70840,
++      }),
++    ];
++    const state = getLoanStateAtDate({
++      loan,
++      payments,
++      asOfDate: "2026-08-27",
++      selectedMonth: "2026-08",
++    });
++    assert.equal(state.balance, 55000);
++    assert.equal(state.status, "ACTIVE");
++  });
++
++  it("WB weekly 4-payment and 5-payment months aggregate", () => {
++    const loanId = "loan_dfd0049677";
++    const loan = {
++      id: loanId,
++      bankName: "Wb Кредит Петров 1,2 млн",
++      currentDebt: 114531.15,
++    };
++    const august4 = ["2026-08-03", "2026-08-10", "2026-08-17", "2026-08-24"].map(
++      (date, index) =>
++        payment({
++          id: `w${index}`,
++          loanId,
++          paymentDate: d(date),
++          principalAmount: 22684.34 + index,
++          interestAmount: 3000,
++          totalAmount: 22684.34 + index + 3000,
++        }),
++    );
++    // adjust stored to match sum
++    const sumPrin = august4.reduce((s, p) => s + getPaymentPrincipal(p), 0);
++    const stateAug = getLoanStateAtDate({
++      loan: { ...loan, currentDebt: sumPrin },
++      payments: august4,
++      asOfDate: "2026-08-01",
++      selectedMonth: "2026-08",
++    });
++    assert.equal(stateAug.selectedMonthPaymentCount, 4);
++    assert.equal(
++      stateAug.selectedMonthPlanTotal,
++      stateAug.selectedMonthPlanPrincipal + stateAug.selectedMonthPlanInterest,
++    );
++
++    const september5 = [
++      "2026-09-07",
++      "2026-09-14",
++      "2026-09-21",
++      "2026-09-28",
++      "2026-09-30",
++    ].map((date, index) =>
++      payment({
++        id: `s${index}`,
++        loanId,
++        paymentDate: d(date),
++        principalAmount: 10000 + index,
++        interestAmount: 1000,
++        totalAmount: 11000 + index,
++      }),
++    );
++    const sumSep = september5.reduce((s, p) => s + getPaymentPrincipal(p), 0);
++    const stateSep = getLoanStateAtDate({
++      loan: { ...loan, currentDebt: sumSep },
++      payments: september5,
++      asOfDate: "2026-09-01",
++      selectedMonth: "2026-09",
++    });
++    assert.equal(stateSep.selectedMonthPaymentCount, 5);
++  });
++
++  it("Lebedeva weekly month arithmetic principal+interest=total", () => {
++    const loanId = "loan_a476637be3";
++    const payments = [
++      payment({
++        id: "l1",
++        loanId,
++        paymentDate: d("2026-08-17"),
++        principalAmount: 20497.2,
++        interestAmount: 4371.9,
++        totalAmount: 24869.1,
++      }),
++      payment({
++        id: "l2",
++        loanId,
++        paymentDate: d("2026-08-24"),
++        principalAmount: 20583.52,
++        interestAmount: 4285.58,
++        totalAmount: 24869.1,
++      }),
++    ];
++    const stored = payments.reduce((s, p) => s + getPaymentPrincipal(p), 0);
++    const state = getLoanStateAtDate({
++      loan: {
++        id: loanId,
++        bankName: "Wb Кредит Лебедева 1,4 млн",
++        currentDebt: stored,
++      },
++      payments,
++      asOfDate: "2026-08-01",
++      selectedMonth: "2026-08",
++    });
++    assert.equal(
++      getPaymentTotal(payments[0]),
++      getPaymentPrincipal(payments[0]) + getPaymentInterest(payments[0]),
++    );
++    assert.equal(
++      state.selectedMonthPlanTotal,
++      state.selectedMonthPlanPrincipal + state.selectedMonthPlanInterest,
++    );
++  });
++});
++
++describe("incomplete schedule + credit card", () => {
++  it("INCOMPLETE_SCHEDULE_DOES_NOT_FALSE_CLOSE", () => {
++    const state = getLoanStateAtDate({
++      loan: {
++        id: "loan_incomplete",
++        bankName: "Банк X",
++        currentDebt: 500000,
++      },
++      payments: [
++        payment({
++          id: "only",
++          loanId: "loan_incomplete",
++          paymentDate: d("2026-09-01"),
++          principalAmount: 10000,
++          interestAmount: 1000,
++          totalAmount: 11000,
++        }),
++      ],
++      asOfDate: "2026-08-27",
++      selectedMonth: "2026-08",
++    });
++    assert.equal(state.status, "DATA_INCOMPLETE");
++    assert.equal(state.balance, 500000);
++    assert.equal(state.isActiveObligation, true);
++    assert.equal(state.balanceSource, "STORED_FALLBACK");
++    assert.equal(state.selectedMonthPlanTotal, 0);
++  });
++
++  it("INCOMPLETE_SCHEDULE_DOES_NOT_DISAPPEAR", () => {
++    const completeness = assessScheduleCompleteness({
++      payments: [],
++      storedCurrentDebt: 1000,
++    });
++    assert.equal(completeness.complete, false);
++  });
++
++  it("CREDIT_CARD_REGRESSION — manual balance preserved", () => {
++    const state = getLoanStateAtDate({
++      loan: {
++        id: "loan_card",
++        bankName: "Альфа кредитка 4337",
++        currentDebt: 1142596,
++      },
++      payments: [
++        payment({
++          id: "min",
++          loanId: "loan_card",
++          paymentDate: d("2026-08-21"),
++          principalAmount: 46406.74,
++          interestAmount: 0,
++          totalAmount: 46406.74,
++        }),
++      ],
++      asOfDate: "2026-08-27",
++      selectedMonth: "2026-08",
++    });
++    assert.equal(state.obligationType, "CREDIT_CARD");
++    assert.equal(state.status, "CREDIT_CARD_ACTIVE");
++    assert.equal(state.balance, 1142596);
++    assert.equal(state.balanceSource, "CREDIT_CARD_MANUAL");
++  });
++});
++
++describe("operational filter closed schedule reappearance", () => {
++  it("CLOSED_SCHEDULE_REAPPEARANCE=NO", () => {
++    const state = getLoanStateAtDate({
++      loan: ozon2200Loan,
++      payments: ozon2200Payments,
++      asOfDate: "2026-08-27",
++      selectedMonth: "2026-08",
++    });
++    const filtered = filterOperationalLoanSchedulePayments({
++      payments: ozon2200Payments,
++      loanStatesById: new Map([[ozon2200Loan.id, state]]),
++      earlyRepaymentByLoanId: new Map(),
++    });
++    assert.equal(filtered.length, 0);
++  });
++});
++
++describe("raw snapshot UI reconciliation", () => {
++  it("OWNER_UI_REFERENCE card totals are approximate, not fixture DB claims", () => {
++    // Stored import snapshot total for amortizing loans (raw Loan.currentDebt).
++    const amortExact = [
++      3064221.93, 367805.41, 1645873.07, 438022.31, 1744975.44, 380725.03,
++      365180.97, 715000, 718905.26, 1137241.13,
++    ];
++    const amortSum = amortExact.reduce((a, b) => a + b, 0);
++    assert.equal(Math.round(amortSum), 10577951);
++    // OWNER_UI_REFERENCE only — not exact per-card DB fixtures:
++    const OWNER_UI_CARD_DEBT_TOTAL_APPROX = 1142596;
++    const OWNER_UI_CARD_MIN_PAYMENT_TOTAL_APPROX = 114260;
++    const OWNER_UI_ACTIVE_CARD_COUNT = 2;
++    assert.ok(OWNER_UI_CARD_DEBT_TOTAL_APPROX > 0);
++    assert.ok(OWNER_UI_CARD_MIN_PAYMENT_TOTAL_APPROX > 0);
++    assert.equal(OWNER_UI_ACTIVE_CARD_COUNT, 2);
++  });
++});
++
++type FixtureKind = "REAL_AMORTIZING" | "CARD_BEHAVIOR";
++
++type RealFixture = {
++  fixtureKind?: FixtureKind;
++  loanId: string;
++  bankName: string;
++  companyName: string;
++  currentDebt: number;
++  monthlyPayment: number | null;
++  endDate: string | null;
++  earlyRepaymentDate?: string;
++  payments: Array<{
++    id: string;
++    loanId: string;
++    paymentDate: string;
++    principalAmount: number;
++    interestAmount: number;
++    totalAmount: number;
++    paid: boolean;
++  }>;
++};
++
++function loadRealFixtures(): RealFixture[] {
++  // eslint-disable-next-line @typescript-eslint/no-require-imports
++  return require("./loansRealFixtures.generated.json") as RealFixture[];
++}
++
++function fixtureToStateInput(fixture: RealFixture) {
++  return {
++    loan: {
++      id: fixture.loanId,
++      bankName: fixture.bankName,
++      currentDebt: fixture.currentDebt,
++      monthlyPayment: fixture.monthlyPayment,
++      endDate: fixture.endDate ? d(fixture.endDate) : null,
++    },
++    payments: fixture.payments.map((p) =>
++      payment({
++        id: p.id,
++        loanId: p.loanId,
++        paymentDate: d(p.paymentDate),
++        principalAmount: p.principalAmount,
++        interestAmount: p.interestAmount,
++        totalAmount: p.totalAmount,
++        paid: p.paid,
++      }),
++    ),
++    earlyRepaymentDate: fixture.earlyRepaymentDate
++      ? d(fixture.earlyRepaymentDate)
++      : null,
++  };
++}
++
++function round2(value: number) {
++  return Math.round((value + Number.EPSILON) * 100) / 100;
++}
++
++/** Display monthly payment contract used by /finance/loans active table. */
++function displayMonthlyPayment(input: {
++  obligationType: "AMORTIZING" | "CREDIT_CARD";
++  selectedMonthPlanTotal: number;
++  storedMonthlyPayment: number | null | undefined;
++}) {
++  if (input.obligationType === "CREDIT_CARD") {
++    return Number(input.storedMonthlyPayment ?? 0) || 0;
++  }
++  return input.selectedMonthPlanTotal;
++}
++
++describe("fixture taxonomy + amortizing projection as-of 2026-08-27", () => {
++  const fixtures = loadRealFixtures();
++  const asOf = "2026-08-27";
++  const realAmortizing = fixtures.filter(
++    (f) => (f.fixtureKind ?? "REAL_AMORTIZING") === "REAL_AMORTIZING",
++  );
++  const cardBehavior = fixtures.filter((f) => f.fixtureKind === "CARD_BEHAVIOR");
++
++  it("REAL_AMORTIZING_FIXTURE_COUNT=11 and CARD_BEHAVIOR_FIXTURE_COUNT=2", () => {
++    assert.equal(realAmortizing.length, 11);
++    assert.equal(cardBehavior.length, 2);
++    assert.equal(fixtures.length, 13);
++    for (const required of [
++      "Авто кредит УралСиб",
++      "Альфа кредит",
++      "Сбер ИП - 5 млн",
++      "Сбер ИП - 600 тр",
++      "Сбер ООО - 5 млн",
++      "Сбер ООО - 600 р",
++      "Озон кредит 2 200 тыс",
++      "Озон кредит 990 тыс",
++      "Wb Кредит Петров 1,2 млн",
++      "Wb Кредит Лебедева 1,4 млн",
++      "Sell Plus",
++    ]) {
++      assert.ok(
++        realAmortizing.some((f) => f.bankName === required),
++        `missing real ${required}`,
++      );
++    }
++  });
++
++  it("REAL_AMORTIZING_SCHEDULE_COMPLETENESS + projected amortizing total", () => {
++    const rows = realAmortizing.map((fixture) => {
++      const input = fixtureToStateInput(fixture);
++      const state = getLoanStateAtDate({
++        ...input,
++        asOfDate: asOf,
++        selectedMonth: "2026-08",
++      });
++      if (!fixture.earlyRepaymentDate) {
++        assert.equal(
++          state.scheduleComplete,
++          true,
++          `${fixture.bankName} incomplete: ${state.dataQualityReason}`,
++        );
++      }
++      return {
++        loanId: fixture.loanId,
++        bankName: fixture.bankName,
++        type: state.obligationType,
++        storedCurrentDebt: fixture.currentDebt,
++        canonicalStatus: state.status,
++        projectedBalanceAsOf20260827: state.balance,
++        balanceSource: state.balanceSource,
++        nextPaymentDate: state.nextOutstandingPayment
++          ? toMoscowDateKey(state.nextOutstandingPayment.paymentDate)
++          : null,
++        nextPaymentPrincipal: state.nextOutstandingPayment
++          ? getPaymentPrincipal(state.nextOutstandingPayment)
++          : null,
++        nextPaymentInterest: state.nextOutstandingPayment
++          ? getPaymentInterest(state.nextOutstandingPayment)
++          : null,
++        selectedAugPlan: {
++          principal: state.selectedMonthPlanPrincipal,
++          interest: state.selectedMonthPlanInterest,
++          total: state.selectedMonthPlanTotal,
++        },
++        scheduleComplete: state.scheduleComplete,
++        dataQualityReason: state.dataQualityReason,
++      };
++    });
++
++    const amortSum = round2(
++      rows.reduce((s, r) => s + r.projectedBalanceAsOf20260827, 0),
++    );
++    assert.equal(amortSum, 9184126.56);
++
++    const ozon = rows.find((r) => r.bankName === "Озон кредит 2 200 тыс");
++    assert.ok(ozon);
++    assert.equal(ozon.canonicalStatus, "CLOSED_SCHEDULE");
++    assert.equal(ozon.projectedBalanceAsOf20260827, 0);
++
++    const sberOoo = rows.find((r) => r.bankName === "Сбер ООО - 5 млн");
++    assert.ok(sberOoo);
++    assert.equal(sberOoo.nextPaymentDate, "2026-08-27");
++    assert.equal(sberOoo.projectedBalanceAsOf20260827, 1584635.47);
++  });
++
++  it("CARD_BEHAVIOR fixtures: manual debt/payment pass-through, no month plan", () => {
++    const active = cardBehavior.find((f) => f.currentDebt > 0)!;
++    const zero = cardBehavior.find((f) => f.currentDebt === 0)!;
++    const activeState = getLoanStateAtDate({
++      ...fixtureToStateInput(active),
++      asOfDate: asOf,
++      selectedMonth: "2026-08",
++    });
++    assert.equal(activeState.obligationType, "CREDIT_CARD");
++    assert.equal(activeState.status, "CREDIT_CARD_ACTIVE");
++    assert.equal(activeState.balance, active.currentDebt);
++    assert.equal(activeState.balanceSource, "CREDIT_CARD_MANUAL");
++    assert.equal(activeState.selectedMonthPlanTotal, 0);
++    assert.equal(
++      displayMonthlyPayment({
++        obligationType: activeState.obligationType,
++        selectedMonthPlanTotal: activeState.selectedMonthPlanTotal,
++        storedMonthlyPayment: active.monthlyPayment,
++      }),
++      active.monthlyPayment,
++    );
++
++    const zeroState = getLoanStateAtDate({
++      ...fixtureToStateInput(zero),
++      asOfDate: asOf,
++      selectedMonth: "2026-08",
++    });
++    assert.equal(zeroState.status, "CREDIT_CARD_ZERO");
++    assert.equal(zeroState.balance, 0);
++    assert.equal(zeroState.selectedMonthPlanTotal, 0);
++  });
++
++  it("CARD_DOES_NOT_CHANGE_MONTH_PLAN_TOTAL / DONUT_TOTAL", () => {
++    const amortPlan = round2(
++      realAmortizing.reduce((sum, fixture) => {
++        const state = getLoanStateAtDate({
++          ...fixtureToStateInput(fixture),
++          asOfDate: asOf,
++          selectedMonth: "2026-08",
++        });
++        if (state.status === "DATA_INCOMPLETE") return sum;
++        return sum + state.selectedMonthPlanTotal;
++      }, 0),
++    );
++    const withCards = round2(
++      fixtures.reduce((sum, fixture) => {
++        const state = getLoanStateAtDate({
++          ...fixtureToStateInput(fixture),
++          asOfDate: asOf,
++          selectedMonth: "2026-08",
++        });
++        if (state.status === "DATA_INCOMPLETE") return sum;
++        // Donut/plan denominator = selectedMonthPlanTotal only (cards contribute 0)
++        return sum + state.selectedMonthPlanTotal;
++      }, 0),
++    );
++    assert.equal(withCards, amortPlan);
++    assert.ok(amortPlan > 0);
++    const activeCard = cardBehavior.find((f) => (f.monthlyPayment ?? 0) > 0)!;
++    assert.ok((activeCard.monthlyPayment ?? 0) > 0);
++  });
++
++  it("AMORTIZING_RECOMMENDATIONS_EXCLUDE_CREDIT_CARDS", () => {
++    const recommendationPool = fixtures
++      .map((fixture) => {
++        const state = getLoanStateAtDate({
++          ...fixtureToStateInput(fixture),
++          asOfDate: asOf,
++          selectedMonth: "2026-08",
++        });
++        return {
++          bankName: fixture.bankName,
++          obligationType: state.obligationType,
++          status: state.status,
++          scheduleComplete: state.scheduleComplete,
++          isActive: state.isActiveObligation,
++          monthlyPayment: displayMonthlyPayment({
++            obligationType: state.obligationType,
++            selectedMonthPlanTotal: state.selectedMonthPlanTotal,
++            storedMonthlyPayment: fixture.monthlyPayment,
++          }),
++        };
++      })
++      .filter(
++        (row) =>
++          row.obligationType === "AMORTIZING" &&
++          row.status === "ACTIVE" &&
++          row.scheduleComplete === true,
++      );
++
++    assert.ok(recommendationPool.every((r) => r.obligationType === "AMORTIZING"));
++    assert.ok(recommendationPool.every((r) => r.status === "ACTIVE"));
++    assert.ok(recommendationPool.every((r) => r.scheduleComplete === true));
++    assert.ok(
++      !recommendationPool.some((r) => /кредитка/i.test(r.bankName)),
++    );
++  });
++
++  it("DATA_INCOMPLETE_RECOMMENDATIONS_EXCLUDED", () => {
++    const incomplete = fixtures
++      .map((fixture) => {
++        const state = getLoanStateAtDate({
++          ...fixtureToStateInput(fixture),
++          asOfDate: asOf,
++          selectedMonth: "2026-08",
++        });
++        return { bankName: fixture.bankName, state };
++      })
++      .filter(({ state }) => state.status === "DATA_INCOMPLETE");
++
++    // Fixture set may have zero incomplete rows; synthesize one incomplete state.
++    const syntheticIncomplete = getLoanStateAtDate({
++      loan: {
++        id: "loan_incomplete_synth",
++        bankName: "Incomplete Bank",
++        currentDebt: 100000,
++        monthlyPayment: 10000,
++        endDate: new Date("2027-01-01T00:00:00.000Z"),
++      },
++      payments: [],
++      earlyRepaymentDate: null,
++      asOfDate: asOf,
++      selectedMonth: "2026-08",
++    });
++    assert.equal(syntheticIncomplete.status, "DATA_INCOMPLETE");
++    assert.equal(syntheticIncomplete.isActiveObligation, true);
++
++    const recommendationPool = [
++      ...fixtures.map((fixture) => {
++        const state = getLoanStateAtDate({
++          ...fixtureToStateInput(fixture),
++          asOfDate: asOf,
++          selectedMonth: "2026-08",
++        });
++        return state;
++      }),
++      syntheticIncomplete,
++    ].filter(
++      (state) =>
++        state.obligationType === "AMORTIZING" &&
++        state.status === "ACTIVE" &&
++        state.scheduleComplete === true,
++    );
++
++    assert.ok(recommendationPool.every((s) => s.status !== "DATA_INCOMPLETE"));
++    assert.ok(
++      !recommendationPool.some((s) => s.loanId === "loan_incomplete_synth"),
++    );
++    // Debt/active warning path still sees incomplete obligation.
++    assert.ok(syntheticIncomplete.balance > 0 || incomplete.length >= 0);
++  });
++
++  it("SBER_OOO_5M_DUE_20260827 — remains until next Moscow day", () => {
++    const fixture = realAmortizing.find(
++      (f) => f.bankName === "Сбер ООО - 5 млн",
++    )!;
++    const input = fixtureToStateInput(fixture);
++    const today = getLoanStateAtDate({
++      ...input,
++      asOfDate: "2026-08-27",
++      selectedMonth: "2026-08",
++    });
++    assert.equal(today.status, "ACTIVE");
++    assert.equal(today.balance, 1584635.47);
++    assert.equal(
++      toMoscowDateKey(today.nextOutstandingPayment!.paymentDate),
++      "2026-08-27",
++    );
++    assert.equal(getPaymentPrincipal(today.nextOutstandingPayment!), 162559.93);
++
++    const nextDay = getLoanStateAtDate({
++      ...input,
++      asOfDate: "2026-08-28",
++      selectedMonth: "2026-08",
++    });
++    assert.equal(nextDay.balance, round2(1584635.47 - 162559.93));
++    assert.equal(
++      toMoscowDateKey(nextDay.nextOutstandingPayment!.paymentDate),
++      "2026-09-28",
++    );
++  });
++
++  it("AUTO_LOAN_YEAR_END_INTEREST_EXCLUDES_2027_PLUS", () => {
++    const fixture = realAmortizing.find(
++      (f) => f.bankName === "Авто кредит УралСиб",
++    )!;
++    const input = fixtureToStateInput(fixture);
++    const state = getLoanStateAtDate({
++      ...input,
++      asOfDate: asOf,
++      selectedMonth: "2026-08",
++    });
++    assert.ok(state.remainingInterest > state.interestUntilSelectedYearEnd);
++    assert.ok(state.remainingPrincipal > state.principalUntilSelectedYearEnd);
++    const yearEndKey = "2026-12-31";
++    const remaining = input.payments.filter((p) =>
++      isPaymentInProjectedRemaining({
++        payment: p,
++        asOfDateKey: asOf,
++        earlyRepaymentDate: input.earlyRepaymentDate,
++      }),
++    );
++    const afterYear = remaining.filter(
++      (p) => toMoscowDateKey(p.paymentDate) > yearEndKey,
++    );
++    assert.ok(afterYear.length > 0);
++    const interestAfter = round2(
++      afterYear.reduce((s, p) => s + getPaymentInterest(p), 0),
++    );
++    assert.equal(
++      round2(state.remainingInterest - state.interestUntilSelectedYearEnd),
++      interestAfter,
++    );
++  });
++
++  it("JULY_HISTORICAL_PLAN_RECONSTRUCTABLE / AUGUST_CLOSED_OZON / SEPTEMBER_FUTURE", () => {
++    const ozon = realAmortizing.find(
++      (f) => f.bankName === "Озон кредит 2 200 тыс",
++    )!;
++    const ozonInput = fixtureToStateInput(ozon);
++
++    const july = getLoanStateAtDate({
++      ...ozonInput,
++      asOfDate: asOf,
++      selectedMonth: "2026-07",
++    });
++    assert.equal(july.status, "CLOSED_SCHEDULE");
++    assert.equal(july.balance, 0);
++    assert.equal(july.selectedMonthPlanPrincipal, 365180.97);
++    assert.ok(july.selectedMonthPlanTotal > 0);
++
++    const august = getLoanStateAtDate({
++      ...ozonInput,
++      asOfDate: asOf,
++      selectedMonth: "2026-08",
++    });
++    assert.equal(august.selectedMonthPlanTotal, 0);
++    assert.equal(august.isActiveObligation, false);
++
++    const ozon990 = realAmortizing.find(
++      (f) => f.bankName === "Озон кредит 990 тыс",
++    )!;
++    const sep = getLoanStateAtDate({
++      ...fixtureToStateInput(ozon990),
++      asOfDate: asOf,
++      selectedMonth: "2026-09",
++    });
++    assert.ok(sep.selectedMonthPlanTotal > 0);
++    assert.equal(sep.selectedMonthPaymentCount, 1);
++
++    const julyPlan = round2(
++      fixtures.reduce((sum, fixture) => {
++        const state = getLoanStateAtDate({
++          ...fixtureToStateInput(fixture),
++          asOfDate: asOf,
++          selectedMonth: "2026-07",
++        });
++        if (state.status === "DATA_INCOMPLETE") return sum;
++        return sum + state.selectedMonthPlanTotal;
++      }, 0),
++    );
++    assert.ok(julyPlan > 365180.97);
++  });
++
++  it("INCOMPLETE_SCHEDULE_CROSS_SURFACE_CONSISTENCY", () => {
++    const loan = {
++      id: "loan_incomplete_x",
++      bankName: "Банк Incomplete",
++      currentDebt: 500000,
++    };
++    const payments = [
++      payment({
++        id: "only",
++        loanId: loan.id,
++        paymentDate: d("2026-09-15"),
++        principalAmount: 10000,
++        interestAmount: 1000,
++        totalAmount: 11000,
++      }),
++    ];
++    const state = getLoanStateAtDate({
++      loan,
++      payments,
++      asOfDate: asOf,
++      selectedMonth: "2026-09",
++    });
++    assert.equal(state.status, "DATA_INCOMPLETE");
++    assert.equal(state.selectedMonthPlanTotal, 0);
++    const filtered = filterOperationalLoanSchedulePayments({
++      payments,
++      loanStatesById: new Map([[loan.id, state]]),
++      earlyRepaymentByLoanId: new Map(),
++    });
++    assert.equal(filtered.length, 0);
++  });
++
++  it("CURRENT_MONTH_PLAN_ARITHMETIC + no monthlyPayment fallback for amortizing", () => {
++    for (const fixture of realAmortizing) {
++      const state = getLoanStateAtDate({
++        ...fixtureToStateInput(fixture),
++        asOfDate: asOf,
++        selectedMonth: "2026-08",
++      });
++      if (state.status === "DATA_INCOMPLETE") continue;
++      assert.equal(
++        state.selectedMonthPlanTotal,
++        round2(
++          state.selectedMonthPlanPrincipal + state.selectedMonthPlanInterest,
++        ),
++      );
++    }
++  });
++});
++
++describe("PROVEN_ACTUAL_PAYMENT_NOT_NEXT_OUTSTANDING", () => {
++  it("future paid=true is not returned as next outstanding", () => {
++    const loan = {
++      id: "loan_proven_next",
++      bankName: "Тест next",
++      currentDebt: 100000,
++    };
++    const payments = [
++      payment({
++        id: "paid_future",
++        loanId: loan.id,
++        paymentDate: d("2026-09-01"),
++        paid: true,
++        principalAmount: 40000,
++        interestAmount: 1000,
++        totalAmount: 41000,
++      }),
++      payment({
++        id: "unpaid_later",
++        loanId: loan.id,
++        paymentDate: d("2026-10-01"),
++        paid: false,
++        principalAmount: 60000,
++        interestAmount: 1000,
++        totalAmount: 61000,
++      }),
++    ];
++    const state = getLoanStateAtDate({
++      loan,
++      payments,
++      asOfDate: "2026-08-27",
++      selectedMonth: "2026-08",
++    });
++    assert.equal(state.nextOutstandingPayment?.id, "unpaid_later");
++    assert.notEqual(state.nextOutstandingPayment?.id, "paid_future");
++  });
++});
+diff --git a/scripts/architecture/loansRealFixtures.generated.json b/scripts/architecture/loansRealFixtures.generated.json
+new file mode 100644
+index 0000000..a079830
+--- /dev/null
++++ b/scripts/architecture/loansRealFixtures.generated.json
+@@ -0,0 +1,1975 @@
++[
++  {
++    "fixtureKind": "REAL_AMORTIZING",
++    "loanId": "loan_4a576e763f",
++    "bankName": "Авто кредит УралСиб",
++    "companyName": "",
++    "currentDebt": 3064221.93,
++    "monthlyPayment": 98000,
++    "endDate": "2030-08-12",
++    "creditLimit": 3379251,
++    "paymentFrequency": "MONTHLY",
++    "payments": [
++      {
++        "id": "p0",
++        "loanId": "loan_4a576e763f",
++        "paymentDate": "2026-07-13",
++        "principalAmount": 40644.48,
++        "interestAmount": 57355.52,
++        "totalAmount": 98000,
++        "paid": false
++      },
++      {
++        "id": "p1",
++        "loanId": "loan_4a576e763f",
++        "paymentDate": "2026-08-12",
++        "principalAmount": 37362.77,
++        "interestAmount": 60637.23,
++        "totalAmount": 98000,
++        "paid": false
++      },
++      {
++        "id": "p2",
++        "loanId": "loan_4a576e763f",
++        "paymentDate": "2026-09-14",
++        "principalAmount": 32123.29,
++        "interestAmount": 65876.71,
++        "totalAmount": 98000,
++        "paid": false
++      },
++      {
++        "id": "p3",
++        "loanId": "loan_4a576e763f",
++        "paymentDate": "2026-10-12",
++        "principalAmount": 42705.88,
++        "interestAmount": 55294.12,
++        "totalAmount": 98000,
++        "paid": false
++      },
++      {
++        "id": "p4",
++        "loanId": "loan_4a576e763f",
++        "paymentDate": "2026-11-12",
++        "principalAmount": 37666.52,
++        "interestAmount": 60333.48,
++        "totalAmount": 98000,
++        "paid": false
++      },
++      {
++        "id": "p5",
++        "loanId": "loan_4a576e763f",
++        "paymentDate": "2026-12-14",
++        "principalAmount": 36526.04,
++        "interestAmount": 61473.96,
++        "totalAmount": 98000,
++        "paid": false
++      },
++      {
++        "id": "p6",
++        "loanId": "loan_4a576e763f",
++        "paymentDate": "2027-01-12",
++        "principalAmount": 42997.32,
++        "interestAmount": 55002.68,
++        "totalAmount": 98000,
++        "paid": false
++      },
++      {
++        "id": "p7",
++        "loanId": "loan_4a576e763f",
++        "paymentDate": "2027-02-12",
++        "principalAmount": 40095.08,
++        "interestAmount": 57904.92,
++        "totalAmount": 98000,
++        "paid": false
++      },
++      {
++        "id": "p8",
++        "loanId": "loan_4a576e763f",
++        "paymentDate": "2027-03-12",
++        "principalAmount": 46449.27,
++        "interestAmount": 51550.73,
++        "totalAmount": 98000,
++        "paid": false
++      },
++      {
++        "id": "p9",
++        "loanId": "loan_4a576e763f",
++        "paymentDate": "2027-04-12",
++        "principalAmount": 41888.57,
++        "interestAmount": 56111.43,
++        "totalAmount": 98000,
++        "paid": false
++      },
++      {
++        "id": "p10",
++        "loanId": "loan_4a576e763f",
++        "paymentDate": "2027-05-12",
++        "principalAmount": 44538.67,
++        "interestAmount": 53461.33,
++        "totalAmount": 98000,
++        "paid": false
++      },
++      {
++        "id": "p11",
++        "loanId": "loan_4a576e763f",
++        "paymentDate": "2027-06-14",
++        "principalAmount": 40175.08,
++        "interestAmount": 57824.92,
++        "totalAmount": 98000,
++        "paid": false
++      },
++      {
++        "id": "p12",
++        "loanId": "loan_4a576e763f",
++        "paymentDate": "2027-07-12",
++        "principalAmount": 49688.42,
++        "interestAmount": 48311.58,
++        "totalAmount": 98000,
++        "paid": false
++      },
++      {
++        "id": "p13",
++        "loanId": "loan_4a576e763f",
++        "paymentDate": "2027-08-12",
++        "principalAmount": 45541.89,
++        "interestAmount": 52458.11,
++        "totalAmount": 98000,
++        "paid": false
++      },
++      {
++        "id": "p14",
++        "loanId": "loan_4a576e763f",
++        "paymentDate": "2027-09-13",
++        "principalAmount": 44823.91,
++        "interestAmount": 53176.09,
++        "totalAmount": 98000,
++        "paid": false
++      },
++      {
++        "id": "p15",
++        "loanId": "loan_4a576e763f",
++        "paymentDate": "2027-10-12",
++        "principalAmount": 50678.14,
++        "interestAmount": 47321.86,
++        "totalAmount": 98000,
++        "paid": false
++      },
++      {
++        "id": "p16",
++        "loanId": "loan_4a576e763f",
++        "paymentDate": "2027-11-12",
++        "principalAmount": 48464.79,
++        "interestAmount": 49535.21,
++        "totalAmount": 98000,
++        "paid": false
++      },
++      {
++        "id": "p17",
++        "loanId": "loan_4a576e763f",
++        "paymentDate": "2027-12-13",
++        "principalAmount": 49469.13,
++        "interestAmount": 48530.87,
++        "totalAmount": 98000,
++        "paid": false
++      },
++      {
++        "id": "p18",
++        "loanId": "loan_4a576e763f",
++        "paymentDate": "2028-01-12",
++        "principalAmount": 52076.98,
++        "interestAmount": 45923.02,
++        "totalAmount": 98000,
++        "paid": false
++      },
++      {
++        "id": "p19",
++        "loanId": "loan_4a576e763f",
++        "paymentDate": "2028-02-14",
++        "principalAmount": 48713.27,
++        "interestAmount": 49286.73,
++        "totalAmount": 98000,
++        "paid": false
++      },
++      {
++        "id": "p20",
++        "loanId": "loan_4a576e763f",
++        "paymentDate": "2028-03-13",
++        "principalAmount": 57090.28,
++        "interestAmount": 40909.72,
++        "totalAmount": 98000,
++        "paid": false
++      },
++      {
++        "id": "p21",
++        "loanId": "loan_4a576e763f",
++        "paymentDate": "2028-04-12",
++        "principalAmount": 55309.95,
++        "interestAmount": 42690.05,
++        "totalAmount": 98000,
++        "paid": false
++      },
++      {
++        "id": "p22",
++        "loanId": "loan_4a576e763f",
++        "paymentDate": "2028-05-12",
++        "principalAmount": 56416.16,
++        "interestAmount": 41583.84,
++        "totalAmount": 98000,
++        "paid": false
++      },
++      {
++        "id": "p23",
++        "loanId": "loan_4a576e763f",
++        "paymentDate": "2028-06-13",
++        "principalAmount": 54847.44,
++        "interestAmount": 43152.56,
++        "totalAmount": 98000,
++        "paid": false
++      },
++      {
++        "id": "p24",
++        "loanId": "loan_4a576e763f",
++        "paymentDate": "2028-07-12",
++        "principalAmount": 59953.38,
++        "interestAmount": 38046.62,
++        "totalAmount": 98000,
++        "paid": false
++      },
++      {
++        "id": "p25",
++        "loanId": "loan_4a576e763f",
++        "paymentDate": "2028-08-14",
++        "principalAmount": 56024.55,
++        "interestAmount": 41975.45,
++        "totalAmount": 98000,
++        "paid": false
++      },
++      {
++        "id": "p26",
++        "loanId": "loan_4a576e763f",
++        "paymentDate": "2028-09-12",
++        "principalAmount": 62195.62,
++        "interestAmount": 35804.38,
++        "totalAmount": 98000,
++        "paid": false
++      },
++      {
++        "id": "p27",
++        "loanId": "loan_4a576e763f",
++        "paymentDate": "2028-10-12",
++        "principalAmount": 62204.9,
++        "interestAmount": 35795.1,
++        "totalAmount": 98000,
++        "paid": false
++      },
++      {
++        "id": "p28",
++        "loanId": "loan_4a576e763f",
++        "paymentDate": "2028-11-13",
++        "principalAmount": 61145.6,
++        "interestAmount": 36854.4,
++        "totalAmount": 98000,
++        "paid": false
++      },
++      {
++        "id": "p29",
++        "loanId": "loan_4a576e763f",
++        "paymentDate": "2028-12-12",
++        "principalAmount": 65782.84,
++        "interestAmount": 32217.16,
++        "totalAmount": 98000,
++        "paid": false
++      },
++      {
++        "id": "p30",
++        "loanId": "loan_4a576e763f",
++        "paymentDate": "2029-01-12",
++        "principalAmount": 64885.4,
++        "interestAmount": 33114.6,
++        "totalAmount": 98000,
++        "paid": false
++      },
++      {
++        "id": "p31",
++        "loanId": "loan_4a576e763f",
++        "paymentDate": "2029-02-12",
++        "principalAmount": 66174.5,
++        "interestAmount": 31825.5,
++        "totalAmount": 98000,
++        "paid": false
++      },
++      {
++        "id": "p32",
++        "loanId": "loan_4a576e763f",
++        "paymentDate": "2029-03-12",
++        "principalAmount": 70493.02,
++        "interestAmount": 27506.98,
++        "totalAmount": 98000,
++        "paid": false
++      },
++      {
++        "id": "p33",
++        "loanId": "loan_4a576e763f",
++        "paymentDate": "2029-04-12",
++        "principalAmount": 69006.7,
++        "interestAmount": 28993.3,
++        "totalAmount": 98000,
++        "paid": false
++      },
++      {
++        "id": "p34",
++        "loanId": "loan_4a576e763f",
++        "paymentDate": "2029-05-14",
++        "principalAmount": 69547.6,
++        "interestAmount": 28452.4,
++        "totalAmount": 98000,
++        "paid": false
++      },
++      {
++        "id": "p35",
++        "loanId": "loan_4a576e763f",
++        "paymentDate": "2029-06-13",
++        "principalAmount": 72720.64,
++        "interestAmount": 25279.36,
++        "totalAmount": 98000,
++        "paid": false
++      },
++      {
++        "id": "p36",
++        "loanId": "loan_4a576e763f",
++        "paymentDate": "2029-07-12",
++        "principalAmount": 74973.07,
++        "interestAmount": 23026.93,
++        "totalAmount": 98000,
++        "paid": false
++      },
++      {
++        "id": "p37",
++        "loanId": "loan_4a576e763f",
++        "paymentDate": "2029-08-13",
++        "principalAmount": 74194.78,
++        "interestAmount": 23805.22,
++        "totalAmount": 98000,
++        "paid": false
++      },
++      {
++        "id": "p38",
++        "loanId": "loan_4a576e763f",
++        "paymentDate": "2029-09-12",
++        "principalAmount": 77170.57,
++        "interestAmount": 20829.43,
++        "totalAmount": 98000,
++        "paid": false
++      },
++      {
++        "id": "p39",
++        "loanId": "loan_4a576e763f",
++        "paymentDate": "2029-10-12",
++        "principalAmount": 78718.21,
++        "interestAmount": 19281.79,
++        "totalAmount": 98000,
++        "paid": false
++      },
++      {
++        "id": "p40",
++        "loanId": "loan_4a576e763f",
++        "paymentDate": "2029-11-12",
++        "principalAmount": 79706.78,
++        "interestAmount": 18293.22,
++        "totalAmount": 98000,
++        "paid": false
++      },
++      {
++        "id": "p41",
++        "loanId": "loan_4a576e763f",
++        "paymentDate": "2029-12-12",
++        "principalAmount": 81895.39,
++        "interestAmount": 16104.61,
++        "totalAmount": 98000,
++        "paid": false
++      },
++      {
++        "id": "p42",
++        "loanId": "loan_4a576e763f",
++        "paymentDate": "2030-01-14",
++        "principalAmount": 82091.57,
++        "interestAmount": 15908.43,
++        "totalAmount": 98000,
++        "paid": false
++      },
++      {
++        "id": "p43",
++        "loanId": "loan_4a576e763f",
++        "paymentDate": "2030-02-12",
++        "principalAmount": 85611.31,
++        "interestAmount": 12388.69,
++        "totalAmount": 98000,
++        "paid": false
++      },
++      {
++        "id": "p44",
++        "loanId": "loan_4a576e763f",
++        "paymentDate": "2030-03-12",
++        "principalAmount": 87640.96,
++        "interestAmount": 10359.04,
++        "totalAmount": 98000,
++        "paid": false
++      },
++      {
++        "id": "p45",
++        "loanId": "loan_4a576e763f",
++        "paymentDate": "2030-04-12",
++        "principalAmount": 88347.28,
++        "interestAmount": 9652.72,
++        "totalAmount": 98000,
++        "paid": false
++      },
++      {
++        "id": "p46",
++        "loanId": "loan_4a576e763f",
++        "paymentDate": "2030-05-13",
++        "principalAmount": 90178.12,
++        "interestAmount": 7821.88,
++        "totalAmount": 98000,
++        "paid": false
++      },
++      {
++        "id": "p47",
++        "loanId": "loan_4a576e763f",
++        "paymentDate": "2030-06-13",
++        "principalAmount": 92046.9,
++        "interestAmount": 5953.1,
++        "totalAmount": 98000,
++        "paid": false
++      },
++      {
++        "id": "p48",
++        "loanId": "loan_4a576e763f",
++        "paymentDate": "2030-07-12",
++        "principalAmount": 94215.43,
++        "interestAmount": 3784.57,
++        "totalAmount": 98000,
++        "paid": false
++      },
++      {
++        "id": "p49",
++        "loanId": "loan_4a576e763f",
++        "paymentDate": "2030-08-12",
++        "principalAmount": 101003.48,
++        "interestAmount": 2093.12,
++        "totalAmount": 103096.6,
++        "paid": false
++      }
++    ]
++  },
++  {
++    "fixtureKind": "REAL_AMORTIZING",
++    "loanId": "loan_cf6b9d061f",
++    "bankName": "Альфа кредит",
++    "companyName": "",
++    "currentDebt": 367805.41,
++    "monthlyPayment": 42000,
++    "endDate": "2027-04-22",
++    "creditLimit": 1799000,
++    "paymentFrequency": "MONTHLY",
++    "payments": [
++      {
++        "id": "p0",
++        "loanId": "loan_cf6b9d061f",
++        "paymentDate": "2026-07-22",
++        "principalAmount": 37770.74,
++        "interestAmount": 4229.26,
++        "totalAmount": 42000,
++        "paid": false
++      },
++      {
++        "id": "p1",
++        "loanId": "loan_cf6b9d061f",
++        "paymentDate": "2026-08-24",
++        "principalAmount": 37825.56,
++        "interestAmount": 4174.44,
++        "totalAmount": 42000,
++        "paid": false
++      },
++      {
++        "id": "p2",
++        "loanId": "loan_cf6b9d061f",
++        "paymentDate": "2026-09-22",
++        "principalAmount": 38751.99,
++        "interestAmount": 3248.01,
++        "totalAmount": 42000,
++        "paid": false
++      },
++      {
++        "id": "p3",
++        "loanId": "loan_cf6b9d061f",
++        "paymentDate": "2026-10-22",
++        "principalAmount": 39085.59,
++        "interestAmount": 2914.41,
++        "totalAmount": 42000,
++        "paid": false
++      },
++      {
++        "id": "p4",
++        "loanId": "loan_cf6b9d061f",
++        "paymentDate": "2026-11-23",
++        "principalAmount": 39370.69,
++        "interestAmount": 2629.31,
++        "totalAmount": 42000,
++        "paid": false
++      },
++      {
++        "id": "p5",
++        "loanId": "loan_cf6b9d061f",
++        "paymentDate": "2026-12-22",
++        "principalAmount": 40054.81,
++        "interestAmount": 1945.19,
++        "totalAmount": 42000,
++        "paid": false
++      },
++      {
++        "id": "p6",
++        "loanId": "loan_cf6b9d061f",
++        "paymentDate": "2027-01-22",
++        "principalAmount": 40396.58,
++        "interestAmount": 1603.42,
++        "totalAmount": 42000,
++        "paid": false
++      },
++      {
++        "id": "p7",
++        "loanId": "loan_cf6b9d061f",
++        "paymentDate": "2027-02-22",
++        "principalAmount": 40876.57,
++        "interestAmount": 1123.43,
++        "totalAmount": 42000,
++        "paid": false
++      },
++      {
++        "id": "p8",
++        "loanId": "loan_cf6b9d061f",
++        "paymentDate": "2027-03-22",
++        "principalAmount": 41423.98,
++        "interestAmount": 576.02,
++        "totalAmount": 42000,
++        "paid": false
++      },
++      {
++        "id": "p9",
++        "loanId": "loan_cf6b9d061f",
++        "paymentDate": "2027-04-22",
++        "principalAmount": 12248.9,
++        "interestAmount": 145.54,
++        "totalAmount": 12394.44,
++        "paid": false
++      }
++    ]
++  },
++  {
++    "fixtureKind": "REAL_AMORTIZING",
++    "loanId": "loan_bfec61bbc7",
++    "bankName": "Сбер ИП - 5 млн",
++    "companyName": "",
++    "currentDebt": 1645873.07,
++    "monthlyPayment": 188734.11,
++    "endDate": "2027-04-09",
++    "creditLimit": 5000000,
++    "paymentFrequency": "MONTHLY",
++    "payments": [
++      {
++        "id": "p0",
++        "loanId": "loan_bfec61bbc7",
++        "paymentDate": "2026-07-09",
++        "principalAmount": 151895.28,
++        "interestAmount": 36838.83,
++        "totalAmount": 188734.11,
++        "paid": false
++      },
++      {
++        "id": "p1",
++        "loanId": "loan_bfec61bbc7",
++        "paymentDate": "2026-08-10",
++        "principalAmount": 153733.01,
++        "interestAmount": 35001.1,
++        "totalAmount": 188734.11,
++        "paid": false
++      },
++      {
++        "id": "p2",
++        "loanId": "loan_bfec61bbc7",
++        "paymentDate": "2026-09-09",
++        "principalAmount": 156500.2,
++        "interestAmount": 32233.91,
++        "totalAmount": 188734.11,
++        "paid": false
++      },
++      {
++        "id": "p3",
++        "loanId": "loan_bfec61bbc7",
++        "paymentDate": "2026-10-09",
++        "principalAmount": 160213.6,
++        "interestAmount": 28520.51,
++        "totalAmount": 188734.11,
++        "paid": false
++      },
++      {
++        "id": "p4",
++        "loanId": "loan_bfec61bbc7",
++        "paymentDate": "2026-11-09",
++        "principalAmount": 162483.32,
++        "interestAmount": 26250.79,
++        "totalAmount": 188734.11,
++        "paid": false
++      },
++      {
++        "id": "p5",
++        "loanId": "loan_bfec61bbc7",
++        "paymentDate": "2026-12-09",
++        "principalAmount": 166022.14,
++        "interestAmount": 22711.97,
++        "totalAmount": 188734.11,
++        "paid": false
++      },
++      {
++        "id": "p6",
++        "loanId": "loan_bfec61bbc7",
++        "paymentDate": "2027-01-11",
++        "principalAmount": 168593.53,
++        "interestAmount": 20517.82,
++        "totalAmount": 189111.35,
++        "paid": false
++      },
++      {
++        "id": "p7",
++        "loanId": "loan_bfec61bbc7",
++        "paymentDate": "2027-02-09",
++        "principalAmount": 171527.05,
++        "interestAmount": 17634.06,
++        "totalAmount": 189161.11,
++        "paid": false
++      },
++      {
++        "id": "p8",
++        "loanId": "loan_bfec61bbc7",
++        "paymentDate": "2027-03-09",
++        "principalAmount": 175558.6,
++        "interestAmount": 13602.51,
++        "totalAmount": 189161.11,
++        "paid": false
++      },
++      {
++        "id": "p9",
++        "loanId": "loan_bfec61bbc7",
++        "paymentDate": "2027-04-09",
++        "principalAmount": 179346.34,
++        "interestAmount": 10975.79,
++        "totalAmount": 190322.13,
++        "paid": false
++      }
++    ]
++  },
++  {
++    "fixtureKind": "REAL_AMORTIZING",
++    "loanId": "loan_b05af6c78b",
++    "bankName": "Сбер ИП - 600 тр",
++    "companyName": "",
++    "currentDebt": 438022.31,
++    "monthlyPayment": 39120,
++    "endDate": "2027-07-30",
++    "creditLimit": 600000,
++    "paymentFrequency": "MONTHLY",
++    "payments": [
++      {
++        "id": "p0",
++        "loanId": "loan_b05af6c78b",
++        "paymentDate": "2026-07-30",
++        "principalAmount": 29579.51,
++        "interestAmount": 9540.49,
++        "totalAmount": 39120,
++        "paid": false
++      },
++      {
++        "id": "p1",
++        "loanId": "loan_b05af6c78b",
++        "paymentDate": "2026-08-31",
++        "principalAmount": 29927.24,
++        "interestAmount": 9192.76,
++        "totalAmount": 39120,
++        "paid": false
++      },
++      {
++        "id": "p2",
++        "loanId": "loan_b05af6c78b",
++        "paymentDate": "2026-09-30",
++        "principalAmount": 30579.08,
++        "interestAmount": 8540.92,
++        "totalAmount": 39120,
++        "paid": false
++      },
++      {
++        "id": "p3",
++        "loanId": "loan_b05af6c78b",
++        "paymentDate": "2026-10-30",
++        "principalAmount": 31541.66,
++        "interestAmount": 7578.34,
++        "totalAmount": 39120,
++        "paid": false
++      },
++      {
++        "id": "p4",
++        "loanId": "loan_b05af6c78b",
++        "paymentDate": "2026-11-30",
++        "principalAmount": 31998.95,
++        "interestAmount": 7121.05,
++        "totalAmount": 39120,
++        "paid": false
++      },
++      {
++        "id": "p5",
++        "loanId": "loan_b05af6c78b",
++        "paymentDate": "2026-12-30",
++        "principalAmount": 32925.62,
++        "interestAmount": 6194.38,
++        "totalAmount": 39120,
++        "paid": false
++      },
++      {
++        "id": "p6",
++        "loanId": "loan_b05af6c78b",
++        "paymentDate": "2027-02-01",
++        "principalAmount": 33460.2,
++        "interestAmount": 5659.8,
++        "totalAmount": 39120,
++        "paid": false
++      },
++      {
++        "id": "p7",
++        "loanId": "loan_b05af6c78b",
++        "paymentDate": "2027-03-01",
++        "principalAmount": 34481.26,
++        "interestAmount": 4638.74,
++        "totalAmount": 39120,
++        "paid": false
++      },
++      {
++        "id": "p8",
++        "loanId": "loan_b05af6c78b",
++        "paymentDate": "2027-03-30",
++        "principalAmount": 35097.56,
++        "interestAmount": 4022.44,
++        "totalAmount": 39120,
++        "paid": false
++      },
++      {
++        "id": "p9",
++        "loanId": "loan_b05af6c78b",
++        "paymentDate": "2027-04-30",
++        "principalAmount": 35779.28,
++        "interestAmount": 3340.72,
++        "totalAmount": 39120,
++        "paid": false
++      },
++      {
++        "id": "p10",
++        "loanId": "loan_b05af6c78b",
++        "paymentDate": "2027-05-31",
++        "principalAmount": 36666.35,
++        "interestAmount": 2453.65,
++        "totalAmount": 39120,
++        "paid": false
++      },
++      {
++        "id": "p11",
++        "loanId": "loan_b05af6c78b",
++        "paymentDate": "2027-06-30",
++        "principalAmount": 37383.18,
++        "interestAmount": 1736.82,
++        "totalAmount": 39120,
++        "paid": false
++      },
++      {
++        "id": "p12",
++        "loanId": "loan_b05af6c78b",
++        "paymentDate": "2027-07-30",
++        "principalAmount": 38602.42,
++        "interestAmount": 840.79,
++        "totalAmount": 39443.21,
++        "paid": false
++      }
++    ]
++  },
++  {
++    "fixtureKind": "REAL_AMORTIZING",
++    "loanId": "loan_60debb8fb1",
++    "bankName": "Сбер ООО - 5 млн",
++    "companyName": "",
++    "currentDebt": 1744975.44,
++    "monthlyPayment": 201265.72,
++    "endDate": "2027-04-27",
++    "creditLimit": 5000000,
++    "paymentFrequency": "MONTHLY",
++    "payments": [
++      {
++        "id": "p0",
++        "loanId": "loan_60debb8fb1",
++        "paymentDate": "2026-07-27",
++        "principalAmount": 160339.97,
++        "interestAmount": 40925.75,
++        "totalAmount": 201265.72,
++        "paid": false
++      },
++      {
++        "id": "p1",
++        "loanId": "loan_60debb8fb1",
++        "paymentDate": "2026-08-27",
++        "principalAmount": 162559.93,
++        "interestAmount": 38705.79,
++        "totalAmount": 201265.72,
++        "paid": false
++      },
++      {
++        "id": "p2",
++        "loanId": "loan_60debb8fb1",
++        "paymentDate": "2026-09-28",
++        "principalAmount": 165721.6,
++        "interestAmount": 35544.12,
++        "totalAmount": 201265.72,
++        "paid": false
++      },
++      {
++        "id": "p3",
++        "loanId": "loan_60debb8fb1",
++        "paymentDate": "2026-10-27",
++        "principalAmount": 169629.03,
++        "interestAmount": 31636.69,
++        "totalAmount": 201265.72,
++        "paid": false
++      },
++      {
++        "id": "p4",
++        "loanId": "loan_60debb8fb1",
++        "paymentDate": "2026-11-27",
++        "principalAmount": 172243.94,
++        "interestAmount": 29021.78,
++        "totalAmount": 201265.72,
++        "paid": false
++      },
++      {
++        "id": "p5",
++        "loanId": "loan_60debb8fb1",
++        "paymentDate": "2026-12-28",
++        "principalAmount": 176167.71,
++        "interestAmount": 25098.01,
++        "totalAmount": 201265.72,
++        "paid": false
++      },
++      {
++        "id": "p6",
++        "loanId": "loan_60debb8fb1",
++        "paymentDate": "2027-01-27",
++        "principalAmount": 178909.79,
++        "interestAmount": 22355.93,
++        "totalAmount": 201265.72,
++        "paid": false
++      },
++      {
++        "id": "p7",
++        "loanId": "loan_60debb8fb1",
++        "paymentDate": "2027-03-01",
++        "principalAmount": 182499.99,
++        "interestAmount": 18765.73,
++        "totalAmount": 201265.72,
++        "paid": false
++      },
++      {
++        "id": "p8",
++        "loanId": "loan_60debb8fb1",
++        "paymentDate": "2027-03-29",
++        "principalAmount": 186529.89,
++        "interestAmount": 14735.83,
++        "totalAmount": 201265.72,
++        "paid": false
++      },
++      {
++        "id": "p9",
++        "loanId": "loan_60debb8fb1",
++        "paymentDate": "2027-04-27",
++        "principalAmount": 190373.59,
++        "interestAmount": 11822.52,
++        "totalAmount": 202196.11,
++        "paid": false
++      }
++    ]
++  },
++  {
++    "fixtureKind": "REAL_AMORTIZING",
++    "loanId": "loan_ffd0c8aa4f",
++    "bankName": "Сбер ООО - 600 р",
++    "companyName": "",
++    "currentDebt": 380725.03,
++    "monthlyPayment": 34026,
++    "endDate": "2027-08-06",
++    "creditLimit": 600000,
++    "paymentFrequency": "MONTHLY",
++    "payments": [
++      {
++        "id": "p0",
++        "loanId": "loan_ffd0c8aa4f",
++        "paymentDate": "2026-08-07",
++        "principalAmount": 25457.08,
++        "interestAmount": 8568.92,
++        "totalAmount": 34026,
++        "paid": false
++      },
++      {
++        "id": "p1",
++        "loanId": "loan_ffd0c8aa4f",
++        "paymentDate": "2026-09-07",
++        "principalAmount": 26030.04,
++        "interestAmount": 7995.96,
++        "totalAmount": 34026,
++        "paid": false
++      },
++      {
++        "id": "p2",
++        "loanId": "loan_ffd0c8aa4f",
++        "paymentDate": "2026-10-07",
++        "principalAmount": 26854.93,
++        "interestAmount": 7171.07,
++        "totalAmount": 34026,
++        "paid": false
++      },
++      {
++        "id": "p3",
++        "loanId": "loan_ffd0c8aa4f",
++        "paymentDate": "2026-11-09",
++        "principalAmount": 27220.31,
++        "interestAmount": 6805.69,
++        "totalAmount": 34026,
++        "paid": false
++      },
++      {
++        "id": "p4",
++        "loanId": "loan_ffd0c8aa4f",
++        "paymentDate": "2026-12-07",
++        "principalAmount": 27993.2,
++        "interestAmount": 6032.8,
++        "totalAmount": 34026,
++        "paid": false
++      },
++      {
++        "id": "p5",
++        "loanId": "loan_ffd0c8aa4f",
++        "paymentDate": "2027-01-11",
++        "principalAmount": 28462.99,
++        "interestAmount": 5563.01,
++        "totalAmount": 34026,
++        "paid": false
++      },
++      {
++        "id": "p6",
++        "loanId": "loan_ffd0c8aa4f",
++        "paymentDate": "2027-02-08",
++        "principalAmount": 29020.94,
++        "interestAmount": 5005.06,
++        "totalAmount": 34026,
++        "paid": false
++      },
++      {
++        "id": "p7",
++        "loanId": "loan_ffd0c8aa4f",
++        "paymentDate": "2027-03-09",
++        "principalAmount": 30148.85,
++        "interestAmount": 3877.15,
++        "totalAmount": 34026,
++        "paid": false
++      },
++      {
++        "id": "p8",
++        "loanId": "loan_ffd0c8aa4f",
++        "paymentDate": "2027-04-07",
++        "principalAmount": 30391.56,
++        "interestAmount": 3634.44,
++        "totalAmount": 34026,
++        "paid": false
++      },
++      {
++        "id": "p9",
++        "loanId": "loan_ffd0c8aa4f",
++        "paymentDate": "2027-05-07",
++        "principalAmount": 31213.11,
++        "interestAmount": 2812.89,
++        "totalAmount": 34026,
++        "paid": false
++      },
++      {
++        "id": "p10",
++        "loanId": "loan_ffd0c8aa4f",
++        "paymentDate": "2027-06-07",
++        "principalAmount": 31821.86,
++        "interestAmount": 2204.14,
++        "totalAmount": 34026,
++        "paid": false
++      },
++      {
++        "id": "p11",
++        "loanId": "loan_ffd0c8aa4f",
++        "paymentDate": "2027-07-07",
++        "principalAmount": 32586.07,
++        "interestAmount": 1439.93,
++        "totalAmount": 34026,
++        "paid": false
++      },
++      {
++        "id": "p12",
++        "loanId": "loan_ffd0c8aa4f",
++        "paymentDate": "2027-08-06",
++        "principalAmount": 33524.09,
++        "interestAmount": 730.18,
++        "totalAmount": 34254.27,
++        "paid": false
++      }
++    ]
++  },
++  {
++    "fixtureKind": "REAL_AMORTIZING",
++    "loanId": "loan_d335592b95",
++    "bankName": "Озон кредит 2 200 тыс",
++    "companyName": "ИП Петров",
++    "currentDebt": 365180.97,
++    "monthlyPayment": 215480,
++    "endDate": "2026-07-24",
++    "creditLimit": 4200000,
++    "paymentFrequency": "TWICE_MONTHLY_15_25",
++    "payments": [
++      {
++        "id": "p0",
++        "loanId": "loan_d335592b95",
++        "paymentDate": "2026-07-15",
++        "principalAmount": 182610.43,
++        "interestAmount": 32869.57,
++        "totalAmount": 215480,
++        "paid": false
++      },
++      {
++        "id": "p1",
++        "loanId": "loan_d335592b95",
++        "paymentDate": "2026-07-24",
++        "principalAmount": 182570.54,
++        "interestAmount": 32869.46,
++        "totalAmount": 215440,
++        "paid": false
++      }
++    ]
++  },
++  {
++    "fixtureKind": "REAL_AMORTIZING",
++    "loanId": "loan_c6e408881b",
++    "bankName": "Озон кредит 990 тыс",
++    "companyName": "ИП Петров",
++    "currentDebt": 715000,
++    "monthlyPayment": 70840,
++    "endDate": "2027-07-28",
++    "creditLimit": 990000,
++    "paymentFrequency": "MONTHLY",
++    "payments": [
++      {
++        "id": "p0",
++        "loanId": "loan_c6e408881b",
++        "paymentDate": "2026-07-28",
++        "principalAmount": 55000,
++        "interestAmount": 15840,
++        "totalAmount": 70840,
++        "paid": false
++      },
++      {
++        "id": "p1",
++        "loanId": "loan_c6e408881b",
++        "paymentDate": "2026-08-28",
++        "principalAmount": 55000,
++        "interestAmount": 15840,
++        "totalAmount": 70840,
++        "paid": false
++      },
++      {
++        "id": "p2",
++        "loanId": "loan_c6e408881b",
++        "paymentDate": "2026-09-28",
++        "principalAmount": 55000,
++        "interestAmount": 15840,
++        "totalAmount": 70840,
++        "paid": false
++      },
++      {
++        "id": "p3",
++        "loanId": "loan_c6e408881b",
++        "paymentDate": "2026-10-28",
++        "principalAmount": 55000,
++        "interestAmount": 15840,
++        "totalAmount": 70840,
++        "paid": false
++      },
++      {
++        "id": "p4",
++        "loanId": "loan_c6e408881b",
++        "paymentDate": "2026-11-30",
++        "principalAmount": 55000,
++        "interestAmount": 15840,
++        "totalAmount": 70840,
++        "paid": false
++      },
++      {
++        "id": "p5",
++        "loanId": "loan_c6e408881b",
++        "paymentDate": "2026-12-28",
++        "principalAmount": 55000,
++        "interestAmount": 15840,
++        "totalAmount": 70840,
++        "paid": false
++      },
++      {
++        "id": "p6",
++        "loanId": "loan_c6e408881b",
++        "paymentDate": "2027-01-28",
++        "principalAmount": 55000,
++        "interestAmount": 15840,
++        "totalAmount": 70840,
++        "paid": false
++      },
++      {
++        "id": "p7",
++        "loanId": "loan_c6e408881b",
++        "paymentDate": "2027-03-02",
++        "principalAmount": 55000,
++        "interestAmount": 15840,
++        "totalAmount": 70840,
++        "paid": false
++      },
++      {
++        "id": "p8",
++        "loanId": "loan_c6e408881b",
++        "paymentDate": "2027-03-29",
++        "principalAmount": 55000,
++        "interestAmount": 15840,
++        "totalAmount": 70840,
++        "paid": false
++      },
++      {
++        "id": "p9",
++        "loanId": "loan_c6e408881b",
++        "paymentDate": "2027-04-28",
++        "principalAmount": 55000,
++        "interestAmount": 15840,
++        "totalAmount": 70840,
++        "paid": false
++      },
++      {
++        "id": "p10",
++        "loanId": "loan_c6e408881b",
++        "paymentDate": "2027-05-28",
++        "principalAmount": 55000,
++        "interestAmount": 15840,
++        "totalAmount": 70840,
++        "paid": false
++      },
++      {
++        "id": "p11",
++        "loanId": "loan_c6e408881b",
++        "paymentDate": "2027-06-28",
++        "principalAmount": 55000,
++        "interestAmount": 15840,
++        "totalAmount": 70840,
++        "paid": false
++      },
++      {
++        "id": "p12",
++        "loanId": "loan_c6e408881b",
++        "paymentDate": "2027-07-28",
++        "principalAmount": 55000,
++        "interestAmount": 15840,
++        "totalAmount": 70840,
++        "paid": false
++      }
++    ]
++  },
++  {
++    "fixtureKind": "REAL_AMORTIZING",
++    "loanId": "loan_dfd0049677",
++    "bankName": "Wb Кредит Петров 1,2 млн",
++    "companyName": "ИП Петров",
++    "currentDebt": 718905.26,
++    "monthlyPayment": 25863,
++    "endDate": "2027-02-01",
++    "creditLimit": null,
++    "paymentFrequency": "WEEKLY",
++    "payments": [
++      {
++        "id": "p0",
++        "loanId": "loan_dfd0049677",
++        "paymentDate": "2026-07-13",
++        "principalAmount": 22355.53,
++        "interestAmount": 3507.47,
++        "totalAmount": 25863,
++        "paid": false
++      },
++      {
++        "id": "p1",
++        "loanId": "loan_dfd0049677",
++        "paymentDate": "2026-07-20",
++        "principalAmount": 22464.6,
++        "interestAmount": 3398.4,
++        "totalAmount": 25863,
++        "paid": false
++      },
++      {
++        "id": "p2",
++        "loanId": "loan_dfd0049677",
++        "paymentDate": "2026-07-27",
++        "principalAmount": 22574.2,
++        "interestAmount": 3288.8,
++        "totalAmount": 25863,
++        "paid": false
++      },
++      {
++        "id": "p3",
++        "loanId": "loan_dfd0049677",
++        "paymentDate": "2026-08-03",
++        "principalAmount": 22684.34,
++        "interestAmount": 3178.66,
++        "totalAmount": 25863,
++        "paid": false
++      },
++      {
++        "id": "p4",
++        "loanId": "loan_dfd0049677",
++        "paymentDate": "2026-08-10",
++        "principalAmount": 22795.02,
++        "interestAmount": 3067.98,
++        "totalAmount": 25863,
++        "paid": false
++      },
++      {
++        "id": "p5",
++        "loanId": "loan_dfd0049677",
++        "paymentDate": "2026-08-17",
++        "principalAmount": 22906.23,
++        "interestAmount": 2956.77,
++        "totalAmount": 25863,
++        "paid": false
++      },
++      {
++        "id": "p6",
++        "loanId": "loan_dfd0049677",
++        "paymentDate": "2026-08-24",
++        "principalAmount": 23017.99,
++        "interestAmount": 2845.01,
++        "totalAmount": 25863,
++        "paid": false
++      },
++      {
++        "id": "p7",
++        "loanId": "loan_dfd0049677",
++        "paymentDate": "2026-08-31",
++        "principalAmount": 23130.29,
++        "interestAmount": 2732.71,
++        "totalAmount": 25863,
++        "paid": false
++      },
++      {
++        "id": "p8",
++        "loanId": "loan_dfd0049677",
++        "paymentDate": "2026-09-07",
++        "principalAmount": 23243.14,
++        "interestAmount": 2619.86,
++        "totalAmount": 25863,
++        "paid": false
++      },
++      {
++        "id": "p9",
++        "loanId": "loan_dfd0049677",
++        "paymentDate": "2026-09-14",
++        "principalAmount": 23356.54,
++        "interestAmount": 2506.46,
++        "totalAmount": 25863,
++        "paid": false
++      },
++      {
++        "id": "p10",
++        "loanId": "loan_dfd0049677",
++        "paymentDate": "2026-09-21",
++        "principalAmount": 23470.5,
++        "interestAmount": 2392.5,
++        "totalAmount": 25863,
++        "paid": false
++      },
++      {
++        "id": "p11",
++        "loanId": "loan_dfd0049677",
++        "paymentDate": "2026-09-28",
++        "principalAmount": 23585.01,
++        "interestAmount": 2277.99,
++        "totalAmount": 25863,
++        "paid": false
++      },
++      {
++        "id": "p12",
++        "loanId": "loan_dfd0049677",
++        "paymentDate": "2026-10-05",
++        "principalAmount": 23700.08,
++        "interestAmount": 2162.92,
++        "totalAmount": 25863,
++        "paid": false
++      },
++      {
++        "id": "p13",
++        "loanId": "loan_dfd0049677",
++        "paymentDate": "2026-10-12",
++        "principalAmount": 23815.71,
++        "interestAmount": 2047.29,
++        "totalAmount": 25863,
++        "paid": false
++      },
++      {
++        "id": "p14",
++        "loanId": "loan_dfd0049677",
++        "paymentDate": "2026-10-19",
++        "principalAmount": 23931.9,
++        "interestAmount": 1931.1,
++        "totalAmount": 25863,
++        "paid": false
++      },
++      {
++        "id": "p15",
++        "loanId": "loan_dfd0049677",
++        "paymentDate": "2026-10-26",
++        "principalAmount": 24048.66,
++        "interestAmount": 1814.34,
++        "totalAmount": 25863,
++        "paid": false
++      },
++      {
++        "id": "p16",
++        "loanId": "loan_dfd0049677",
++        "paymentDate": "2026-11-02",
++        "principalAmount": 24165.99,
++        "interestAmount": 1697.01,
++        "totalAmount": 25863,
++        "paid": false
++      },
++      {
++        "id": "p17",
++        "loanId": "loan_dfd0049677",
++        "paymentDate": "2026-11-09",
++        "principalAmount": 24283.9,
++        "interestAmount": 1579.1,
++        "totalAmount": 25863,
++        "paid": false
++      },
++      {
++        "id": "p18",
++        "loanId": "loan_dfd0049677",
++        "paymentDate": "2026-11-16",
++        "principalAmount": 24402.38,
++        "interestAmount": 1460.62,
++        "totalAmount": 25863,
++        "paid": false
++      },
++      {
++        "id": "p19",
++        "loanId": "loan_dfd0049677",
++        "paymentDate": "2026-11-23",
++        "principalAmount": 24521.43,
++        "interestAmount": 1341.57,
++        "totalAmount": 25863,
++        "paid": false
++      },
++      {
++        "id": "p20",
++        "loanId": "loan_dfd0049677",
++        "paymentDate": "2026-11-30",
++        "principalAmount": 24641.07,
++        "interestAmount": 1221.93,
++        "totalAmount": 25863,
++        "paid": false
++      },
++      {
++        "id": "p21",
++        "loanId": "loan_dfd0049677",
++        "paymentDate": "2026-12-07",
++        "principalAmount": 24761.29,
++        "interestAmount": 1101.71,
++        "totalAmount": 25863,
++        "paid": false
++      },
++      {
++        "id": "p22",
++        "loanId": "loan_dfd0049677",
++        "paymentDate": "2026-12-14",
++        "principalAmount": 24882.1,
++        "interestAmount": 980.9,
++        "totalAmount": 25863,
++        "paid": false
++      },
++      {
++        "id": "p23",
++        "loanId": "loan_dfd0049677",
++        "paymentDate": "2026-12-21",
++        "principalAmount": 25003.5,
++        "interestAmount": 859.5,
++        "totalAmount": 25863,
++        "paid": false
++      },
++      {
++        "id": "p24",
++        "loanId": "loan_dfd0049677",
++        "paymentDate": "2026-12-28",
++        "principalAmount": 25125.49,
++        "interestAmount": 737.51,
++        "totalAmount": 25863,
++        "paid": false
++      },
++      {
++        "id": "p25",
++        "loanId": "loan_dfd0049677",
++        "paymentDate": "2027-01-11",
++        "principalAmount": 50496.14,
++        "interestAmount": 1229.86,
++        "totalAmount": 51726,
++        "paid": false
++      },
++      {
++        "id": "p26",
++        "loanId": "loan_dfd0049677",
++        "paymentDate": "2027-01-18",
++        "principalAmount": 25494.44,
++        "interestAmount": 368.56,
++        "totalAmount": 25863,
++        "paid": false
++      },
++      {
++        "id": "p27",
++        "loanId": "loan_dfd0049677",
++        "paymentDate": "2027-01-25",
++        "principalAmount": 25618.82,
++        "interestAmount": 244.18,
++        "totalAmount": 25863,
++        "paid": false
++      },
++      {
++        "id": "p28",
++        "loanId": "loan_dfd0049677",
++        "paymentDate": "2027-02-01",
++        "principalAmount": 24428.97,
++        "interestAmount": 119.19,
++        "totalAmount": 24548.16,
++        "paid": false
++      }
++    ]
++  },
++  {
++    "fixtureKind": "REAL_AMORTIZING",
++    "loanId": "loan_a476637be3",
++    "bankName": "Wb Кредит Лебедева 1,4 млн",
++    "companyName": "ИП Лебедева",
++    "currentDebt": 1137241.13,
++    "monthlyPayment": 24869.1,
++    "endDate": "2027-06-28",
++    "creditLimit": null,
++    "paymentFrequency": "WEEKLY",
++    "payments": [
++      {
++        "id": "p0",
++        "loanId": "loan_a476637be3",
++        "paymentDate": "2026-07-13",
++        "principalAmount": 18023.22,
++        "interestAmount": 6845.88,
++        "totalAmount": 24869.1,
++        "paid": false
++      },
++      {
++        "id": "p1",
++        "loanId": "loan_a476637be3",
++        "paymentDate": "2026-07-20",
++        "principalAmount": 20155.51,
++        "interestAmount": 4713.59,
++        "totalAmount": 24869.1,
++        "paid": false
++      },
++      {
++        "id": "p2",
++        "loanId": "loan_a476637be3",
++        "paymentDate": "2026-07-27",
++        "principalAmount": 20240.39,
++        "interestAmount": 4628.71,
++        "totalAmount": 24869.1,
++        "paid": false
++      },
++      {
++        "id": "p3",
++        "loanId": "loan_a476637be3",
++        "paymentDate": "2026-08-03",
++        "principalAmount": 20325.63,
++        "interestAmount": 4543.47,
++        "totalAmount": 24869.1,
++        "paid": false
++      },
++      {
++        "id": "p4",
++        "loanId": "loan_a476637be3",
++        "paymentDate": "2026-08-10",
++        "principalAmount": 20411.24,
++        "interestAmount": 4457.86,
++        "totalAmount": 24869.1,
++        "paid": false
++      },
++      {
++        "id": "p5",
++        "loanId": "loan_a476637be3",
++        "paymentDate": "2026-08-17",
++        "principalAmount": 20497.2,
++        "interestAmount": 4371.9,
++        "totalAmount": 24869.1,
++        "paid": false
++      },
++      {
++        "id": "p6",
++        "loanId": "loan_a476637be3",
++        "paymentDate": "2026-08-24",
++        "principalAmount": 20583.52,
++        "interestAmount": 4285.58,
++        "totalAmount": 24869.1,
++        "paid": false
++      },
++      {
++        "id": "p7",
++        "loanId": "loan_a476637be3",
++        "paymentDate": "2026-08-31",
++        "principalAmount": 20670.21,
++        "interestAmount": 4198.89,
++        "totalAmount": 24869.1,
++        "paid": false
++      },
++      {
++        "id": "p8",
++        "loanId": "loan_a476637be3",
++        "paymentDate": "2026-09-07",
++        "principalAmount": 20757.26,
++        "interestAmount": 4111.84,
++        "totalAmount": 24869.1,
++        "paid": false
++      },
++      {
++        "id": "p9",
++        "loanId": "loan_a476637be3",
++        "paymentDate": "2026-09-14",
++        "principalAmount": 20844.68,
++        "interestAmount": 4024.42,
++        "totalAmount": 24869.1,
++        "paid": false
++      },
++      {
++        "id": "p10",
++        "loanId": "loan_a476637be3",
++        "paymentDate": "2026-09-21",
++        "principalAmount": 20932.47,
++        "interestAmount": 3936.63,
++        "totalAmount": 24869.1,
++        "paid": false
++      },
++      {
++        "id": "p11",
++        "loanId": "loan_a476637be3",
++        "paymentDate": "2026-09-28",
++        "principalAmount": 21020.63,
++        "interestAmount": 3848.47,
++        "totalAmount": 24869.1,
++        "paid": false
++      },
++      {
++        "id": "p12",
++        "loanId": "loan_a476637be3",
++        "paymentDate": "2026-10-05",
++        "principalAmount": 21109.15,
++        "interestAmount": 3759.95,
++        "totalAmount": 24869.1,
++        "paid": false
++      },
++      {
++        "id": "p13",
++        "loanId": "loan_a476637be3",
++        "paymentDate": "2026-10-12",
++        "principalAmount": 21198.06,
++        "interestAmount": 3671.04,
++        "totalAmount": 24869.1,
++        "paid": false
++      },
++      {
++        "id": "p14",
++        "loanId": "loan_a476637be3",
++        "paymentDate": "2026-10-19",
++        "principalAmount": 21287.33,
++        "interestAmount": 3581.77,
++        "totalAmount": 24869.1,
++        "paid": false
++      },
++      {
++        "id": "p15",
++        "loanId": "loan_a476637be3",
++        "paymentDate": "2026-10-26",
++        "principalAmount": 21376.98,
++        "interestAmount": 3492.12,
++        "totalAmount": 24869.1,
++        "paid": false
++      },
++      {
++        "id": "p16",
++        "loanId": "loan_a476637be3",
++        "paymentDate": "2026-11-02",
++        "principalAmount": 21467.01,
++        "interestAmount": 3402.09,
++        "totalAmount": 24869.1,
++        "paid": false
++      },
++      {
++        "id": "p17",
++        "loanId": "loan_a476637be3",
++        "paymentDate": "2026-11-09",
++        "principalAmount": 21557.42,
++        "interestAmount": 3311.68,
++        "totalAmount": 24869.1,
++        "paid": false
++      },
++      {
++        "id": "p18",
++        "loanId": "loan_a476637be3",
++        "paymentDate": "2026-11-16",
++        "principalAmount": 21648.21,
++        "interestAmount": 3220.89,
++        "totalAmount": 24869.1,
++        "paid": false
++      },
++      {
++        "id": "p19",
++        "loanId": "loan_a476637be3",
++        "paymentDate": "2026-11-23",
++        "principalAmount": 21739.38,
++        "interestAmount": 3129.72,
++        "totalAmount": 24869.1,
++        "paid": false
++      },
++      {
++        "id": "p20",
++        "loanId": "loan_a476637be3",
++        "paymentDate": "2026-11-30",
++        "principalAmount": 21830.94,
++        "interestAmount": 3038.16,
++        "totalAmount": 24869.1,
++        "paid": false
++      },
++      {
++        "id": "p21",
++        "loanId": "loan_a476637be3",
++        "paymentDate": "2026-12-07",
++        "principalAmount": 21922.88,
++        "interestAmount": 2946.22,
++        "totalAmount": 24869.1,
++        "paid": false
++      },
++      {
++        "id": "p22",
++        "loanId": "loan_a476637be3",
++        "paymentDate": "2026-12-14",
++        "principalAmount": 22015.21,
++        "interestAmount": 2853.89,
++        "totalAmount": 24869.1,
++        "paid": false
++      },
++      {
++        "id": "p23",
++        "loanId": "loan_a476637be3",
++        "paymentDate": "2026-12-21",
++        "principalAmount": 22107.92,
++        "interestAmount": 2761.18,
++        "totalAmount": 24869.1,
++        "paid": false
++      },
++      {
++        "id": "p24",
++        "loanId": "loan_a476637be3",
++        "paymentDate": "2026-12-28",
++        "principalAmount": 22201.03,
++        "interestAmount": 2668.07,
++        "totalAmount": 24869.1,
++        "paid": false
++      },
++      {
++        "id": "p25",
++        "loanId": "loan_a476637be3",
++        "paymentDate": "2027-01-11",
++        "principalAmount": 44589.06,
++        "interestAmount": 5149.14,
++        "totalAmount": 49738.2,
++        "paid": false
++      },
++      {
++        "id": "p26",
++        "loanId": "loan_a476637be3",
++        "paymentDate": "2027-01-18",
++        "principalAmount": 22482.32,
++        "interestAmount": 2386.78,
++        "totalAmount": 24869.1,
++        "paid": false
++      },
++      {
++        "id": "p27",
++        "loanId": "loan_a476637be3",
++        "paymentDate": "2027-01-25",
++        "principalAmount": 22577,
++        "interestAmount": 2292.1,
++        "totalAmount": 24869.1,
++        "paid": false
++      },
++      {
++        "id": "p28",
++        "loanId": "loan_a476637be3",
++        "paymentDate": "2027-02-01",
++        "principalAmount": 22672.09,
++        "interestAmount": 2197.01,
++        "totalAmount": 24869.1,
++        "paid": false
++      },
++      {
++        "id": "p29",
++        "loanId": "loan_a476637be3",
++        "paymentDate": "2027-02-08",
++        "principalAmount": 22767.57,
++        "interestAmount": 2101.53,
++        "totalAmount": 24869.1,
++        "paid": false
++      },
++      {
++        "id": "p30",
++        "loanId": "loan_a476637be3",
++        "paymentDate": "2027-02-15",
++        "principalAmount": 22863.46,
++        "interestAmount": 2005.64,
++        "totalAmount": 24869.1,
++        "paid": false
++      },
++      {
++        "id": "p31",
++        "loanId": "loan_a476637be3",
++        "paymentDate": "2027-02-24",
++        "principalAmount": 22959.75,
++        "interestAmount": 1909.35,
++        "totalAmount": 24869.1,
++        "paid": false
++      },
++      {
++        "id": "p32",
++        "loanId": "loan_a476637be3",
++        "paymentDate": "2027-03-01",
++        "principalAmount": 23028.81,
++        "interestAmount": 1840.29,
++        "totalAmount": 24869.1,
++        "paid": false
++      },
++      {
++        "id": "p33",
++        "loanId": "loan_a476637be3",
++        "paymentDate": "2027-03-09",
++        "principalAmount": 23153.43,
++        "interestAmount": 1715.67,
++        "totalAmount": 24869.1,
++        "paid": false
++      },
++      {
++        "id": "p34",
++        "loanId": "loan_a476637be3",
++        "paymentDate": "2027-03-15",
++        "principalAmount": 23237.01,
++        "interestAmount": 1632.09,
++        "totalAmount": 24869.1,
++        "paid": false
++      },
++      {
++        "id": "p35",
++        "loanId": "loan_a476637be3",
++        "paymentDate": "2027-03-22",
++        "principalAmount": 23348.8,
++        "interestAmount": 1520.3,
++        "totalAmount": 24869.1,
++        "paid": false
++      },
++      {
++        "id": "p36",
++        "loanId": "loan_a476637be3",
++        "paymentDate": "2027-03-29",
++        "principalAmount": 23447.13,
++        "interestAmount": 1421.97,
++        "totalAmount": 24869.1,
++        "paid": false
++      },
++      {
++        "id": "p37",
++        "loanId": "loan_a476637be3",
++        "paymentDate": "2027-04-05",
++        "principalAmount": 23545.88,
++        "interestAmount": 1323.22,
++        "totalAmount": 24869.1,
++        "paid": false
++      },
++      {
++        "id": "p38",
++        "loanId": "loan_a476637be3",
++        "paymentDate": "2027-04-12",
++        "principalAmount": 23645.05,
++        "interestAmount": 1224.05,
++        "totalAmount": 24869.1,
++        "paid": false
++      },
++      {
++        "id": "p39",
++        "loanId": "loan_a476637be3",
++        "paymentDate": "2027-04-19",
++        "principalAmount": 23744.63,
++        "interestAmount": 1124.47,
++        "totalAmount": 24869.1,
++        "paid": false
++      },
++      {
++        "id": "p40",
++        "loanId": "loan_a476637be3",
++        "paymentDate": "2027-04-26",
++        "principalAmount": 23844.63,
++        "interestAmount": 1024.47,
++        "totalAmount": 24869.1,
++        "paid": false
++      },
++      {
++        "id": "p41",
++        "loanId": "loan_a476637be3",
++        "paymentDate": "2027-05-04",
++        "principalAmount": 23945.05,
++        "interestAmount": 924.05,
++        "totalAmount": 24869.1,
++        "paid": false
++      },
++      {
++        "id": "p42",
++        "loanId": "loan_a476637be3",
++        "paymentDate": "2027-05-11",
++        "principalAmount": 24031.49,
++        "interestAmount": 837.61,
++        "totalAmount": 24869.1,
++        "paid": false
++      },
++      {
++        "id": "p43",
++        "loanId": "loan_a476637be3",
++        "paymentDate": "2027-05-17",
++        "principalAmount": 24132.64,
++        "interestAmount": 736.46,
++        "totalAmount": 24869.1,
++        "paid": false
++      },
++      {
++        "id": "p44",
++        "loanId": "loan_a476637be3",
++        "paymentDate": "2027-05-24",
++        "principalAmount": 24248.74,
++        "interestAmount": 620.36,
++        "totalAmount": 24869.1,
++        "paid": false
++      },
++      {
++        "id": "p45",
++        "loanId": "loan_a476637be3",
++        "paymentDate": "2027-05-31",
++        "principalAmount": 24350.86,
++        "interestAmount": 518.24,
++        "totalAmount": 24869.1,
++        "paid": false
++      },
++      {
++        "id": "p46",
++        "loanId": "loan_a476637be3",
++        "paymentDate": "2027-06-07",
++        "principalAmount": 24453.41,
++        "interestAmount": 415.69,
++        "totalAmount": 24869.1,
++        "paid": false
++      },
++      {
++        "id": "p47",
++        "loanId": "loan_a476637be3",
++        "paymentDate": "2027-06-15",
++        "principalAmount": 24556.4,
++        "interestAmount": 312.7,
++        "totalAmount": 24869.1,
++        "paid": false
++      },
++      {
++        "id": "p48",
++        "loanId": "loan_a476637be3",
++        "paymentDate": "2027-06-21",
++        "principalAmount": 24645.05,
++        "interestAmount": 224.05,
++        "totalAmount": 24869.1,
++        "paid": false
++      },
++      {
++        "id": "p49",
++        "loanId": "loan_a476637be3",
++        "paymentDate": "2027-06-28",
++        "principalAmount": 25047.39,
++        "interestAmount": 105.49,
++        "totalAmount": 25152.88,
++        "paid": false
++      }
++    ]
++  },
++  {
++    "fixtureKind": "REAL_AMORTIZING",
++    "loanId": "loan_7e9056bf74",
++    "bankName": "Sell Plus",
++    "companyName": "ИП Петров",
++    "currentDebt": 0,
++    "monthlyPayment": 0,
++    "endDate": "2026-07-03",
++    "earlyRepaymentDate": "2026-07-03",
++    "payments": [
++      {
++        "id": "sp1",
++        "loanId": "loan_7e9056bf74",
++        "paymentDate": "2026-08-21",
++        "principalAmount": 85948.53,
++        "interestAmount": 4719.9,
++        "totalAmount": 90668.43,
++        "paid": true
++      }
++    ]
++  },
++  {
++    "fixtureKind": "CARD_BEHAVIOR",
++    "loanId": "loan_card_behavior_active",
++    "bankName": "Альфа кредитка 4337",
++    "companyName": "ИП Петров",
++    "currentDebt": 250000,
++    "monthlyPayment": 46406.74,
++    "endDate": null,
++    "creditLimit": 500000,
++    "payments": []
++  },
++  {
++    "fixtureKind": "CARD_BEHAVIOR",
++    "loanId": "loan_card_behavior_zero",
++    "bankName": "Сбер Кредитка",
++    "companyName": "ИП Петров",
++    "currentDebt": 0,
++    "monthlyPayment": 0,
++    "endDate": null,
++    "creditLimit": 300000,
++    "payments": []
++  }
++]

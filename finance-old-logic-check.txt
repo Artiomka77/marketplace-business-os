@@ -1,0 +1,46 @@
+﻿C:\AI-PROJECTS\marketplace-business-os\app\finance\accounts\page.tsx:6: getFinanceTransactionCashEffect,
+C:\AI-PROJECTS\marketplace-business-os\app\finance\accounts\page.tsx:117: const effect = getFinanceTransactionCashEffect(
+C:\AI-PROJECTS\marketplace-business-os\app\finance\calendar\page.tsx:6: getFinanceTransactionCashEffect,
+C:\AI-PROJECTS\marketplace-business-os\app\finance\calendar\page.tsx:385: const cashEffect = getFinanceTransactionCashEffect(
+C:\AI-PROJECTS\marketplace-business-os\app\finance\calendar\page.tsx:390: if (cashEffect >= 0) return false;
+C:\AI-PROJECTS\marketplace-business-os\app\finance\calendar\page.tsx:462: getFinanceTransactionCashEffect(operation, categoryTreatmentIndex)
+C:\AI-PROJECTS\marketplace-business-os\app\finance\calendar\page.tsx:498: getFinanceTransactionCashEffect(item, categoryTreatmentIndex)
+C:\AI-PROJECTS\marketplace-business-os\app\finance\calendar\page.tsx:519: getFinanceTransactionCashEffect(item, categoryTreatmentIndex)
+C:\AI-PROJECTS\marketplace-business-os\app\finance\calendar\page.tsx:535: getFinanceTransactionCashEffect(item, categoryTreatmentIndex)
+C:\AI-PROJECTS\marketplace-business-os\app\finance\calendar\page.tsx:583: getFinanceTransactionCashEffect(operation, categoryTreatmentIndex)
+C:\AI-PROJECTS\marketplace-business-os\app\finance\cashflow\page.tsx:8: getFinanceTransactionCashEffect,
+C:\AI-PROJECTS\marketplace-business-os\app\finance\cashflow\page.tsx:279: ? getFinanceTransactionCashEffect(row, categoryTreatmentIndex)
+C:\AI-PROJECTS\marketplace-business-os\app\finance\cashflow\page.tsx:330: if (row.isInternalTransfer || row.operationType === "TRANSFER") {
+C:\AI-PROJECTS\marketplace-business-os\app\finance\cashflow\page.tsx:334: const effect = getFinanceTransactionCashEffect(row, categoryTreatmentIndex);
+C:\AI-PROJECTS\marketplace-business-os\app\finance\cashflow\page.tsx:420: const effect = getFinanceTransactionCashEffect(row, categoryTreatmentIndex);
+C:\AI-PROJECTS\marketplace-business-os\app\finance\cashflow\page.tsx:1208: const cashflowEffect = getFinanceTransactionCashEffect(
+C:\AI-PROJECTS\marketplace-business-os\app\finance\forecast\page.tsx:6: getFinanceTransactionCashEffect,
+C:\AI-PROJECTS\marketplace-business-os\app\finance\forecast\page.tsx:98: if (params.operationType === "INCOME") return "Поступления";
+C:\AI-PROJECTS\marketplace-business-os\app\finance\forecast\page.tsx:102: if (params.operationType === "INCOME") return "Поступления";
+C:\AI-PROJECTS\marketplace-business-os\app\finance\forecast\page.tsx:244: const cashEffect = getFinanceTransactionCashEffect(
+C:\AI-PROJECTS\marketplace-business-os\app\finance\forecast\page.tsx:249: if (cashEffect === 0) return false;
+C:\AI-PROJECTS\marketplace-business-os\app\finance\forecast\page.tsx:284: const cashEffect = getFinanceTransactionCashEffect(
+C:\AI-PROJECTS\marketplace-business-os\app\finance\forecast\page.tsx:305: inflow: cashEffect > 0 ? cashEffect : 0,
+C:\AI-PROJECTS\marketplace-business-os\app\finance\forecast\page.tsx:306: outflow: cashEffect < 0 ? Math.abs(cashEffect) : 0,
+C:\AI-PROJECTS\marketplace-business-os\app\finance\operations\edit\[id]\page.tsx:153: operationType === "TRANSFER" || formData.get("isInternalTransfer") === "on",
+C:\AI-PROJECTS\marketplace-business-os\app\finance\operations\page.tsx:103: operationType === "TRANSFER" ||
+C:\AI-PROJECTS\marketplace-business-os\app\finance\page.tsx:7: getFinanceTransactionCashEffect,
+C:\AI-PROJECTS\marketplace-business-os\app\finance\page.tsx:172: const effect = getFinanceTransactionCashEffect(
+C:\AI-PROJECTS\marketplace-business-os\app\api\finance\operations\route.ts:72: operationType === "TRANSFER" ||
+C:\AI-PROJECTS\marketplace-business-os\lib\finance\financeMetrics.ts:147: operationType === "income" &&
+C:\AI-PROJECTS\marketplace-business-os\lib\finance\financeMetrics.ts:167: if (operationType === "transfer") return "IGNORE";
+C:\AI-PROJECTS\marketplace-business-os\lib\finance\financeMetrics.ts:174: operationType === "personal" ||
+C:\AI-PROJECTS\marketplace-business-os\lib\finance\financeMetrics.ts:200: if (operationType === "financing") return "CREDIT_PRINCIPAL";
+C:\AI-PROJECTS\marketplace-business-os\lib\finance\financeMetrics.ts:222: operationType === "income" &&
+C:\AI-PROJECTS\marketplace-business-os\lib\finance\financeMetrics.ts:243: if (operationType === "expense") return "INCLUDE_IN_NET_PROFIT";
+C:\AI-PROJECTS\marketplace-business-os\lib\finance\financeMetrics.ts:244: if (operationType === "income") return "INCLUDE_IN_NET_PROFIT";
+C:\AI-PROJECTS\marketplace-business-os\lib\finance\financeMetrics.ts:287: if (transaction.isInternalTransfer || transaction.operationType === "TRANSFER") {
+C:\AI-PROJECTS\marketplace-business-os\lib\finance\financeMetrics.ts:317: export function getFinanceTransactionCashEffect(
+C:\AI-PROJECTS\marketplace-business-os\lib\finance\financeMetrics.ts:321: if (transaction.isInternalTransfer || transaction.operationType === "TRANSFER") {
+C:\AI-PROJECTS\marketplace-business-os\lib\finance\financeMetrics.ts:335: transaction.operationType === "INCOME" ||
+C:\AI-PROJECTS\marketplace-business-os\lib\finance\financeMetrics.ts:350: if (transaction.isInternalTransfer || transaction.operationType === "TRANSFER") {
+C:\AI-PROJECTS\marketplace-business-os\lib\finance\financeMetrics.ts:356: return getFinanceTransactionCashEffect(transaction, categoryIndex);
+C:\AI-PROJECTS\marketplace-business-os\lib\finance\financeMetrics.ts:390: if (transaction.isInternalTransfer || transaction.operationType === "TRANSFER") {
+C:\AI-PROJECTS\marketplace-business-os\lib\finance\financeMetrics.ts:406: transaction.operationType === "INCOME" || treatment === "CREDIT_RECEIVED";
+C:\AI-PROJECTS\marketplace-business-os\lib\finance\recalculateAccountBalances.ts:4: getFinanceTransactionCashEffect,
+C:\AI-PROJECTS\marketplace-business-os\lib\finance\recalculateAccountBalances.ts:61: const effect = getFinanceTransactionCashEffect(

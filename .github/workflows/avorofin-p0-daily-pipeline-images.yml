@@ -1,0 +1,193 @@
+name: avorofin-p0-daily-pipeline-images
+
+on:
+  push:
+    branches:
+      - 'audit/avorofin-p0-daily-pipeline-20260928_1417'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: avorofin-p0-daily-pipeline-images-20260928_1417
+  cancel-in-progress: true
+
+jobs:
+  build-images:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - name: Checkout temp branch
+        uses: actions/checkout@v4
+
+      - name: Prove GitHub-hosted runner
+        run: |
+          set -euo pipefail
+          {
+            echo "RUNNER_GITHUB_HOSTED=YES"
+            echo "RUNNER_SELF_HOSTED=NO"
+            echo "ImageOS=${ImageOS:-}"
+            echo "RUNNER_NAME=${RUNNER_NAME:-}"
+            echo "RUNNER_OS=${RUNNER_OS:-}"
+            hostname
+            uname -a
+          } | tee github-runner-proof.txt
+          case "${RUNNER_NAME:-}" in
+            *github-hosted*|*Github Actions*|*fv-az*|*GithubActions*) ;;
+          esac
+          if [ "${RUNNER_ENVIRONMENT:-}" = "self-hosted" ]; then
+            echo "REFUSING_SELF_HOSTED_RUNNER"
+            exit 1
+          fi
+
+      - name: Fail-closed source patch presence
+        run: |
+          set -euo pipefail
+          test -f Dockerfile
+          test -f package.json
+          test -f package-lock.json
+          test -f next.config.ts
+          grep -q 'output: "standalone"' next.config.ts
+          test -f lib/ozon/legacyFinanceStep.ts
+          grep -q 'OBSOLETE_METHOD' lib/ozon/legacyFinanceStep.ts
+          grep -q 'shouldSkipLegacyFinanceForByDay' lib/ozon/legacyFinanceStep.ts
+          test -f lib/ozon/syncOzon.ts
+          grep -q 'shouldSkipLegacyFinanceForByDay' lib/ozon/syncOzon.ts
+          grep -q 'syncOzonAccrualByDayOverlay' lib/ozon/syncOzon.ts
+          test -f lib/consumers/waveDE/profitReadModelPack.ts
+          grep -q 'CASE 2 contract' lib/consumers/waveDE/profitReadModelPack.ts
+          grep -q 'dataMode !== "PRELIMINARY"' lib/consumers/waveDE/profitReadModelPack.ts
+          test -f app/api/cron/sync-ozon-accruals/route.ts
+          test -f lib/ozon/syncOzonAccrualByDay.ts
+          test -f .gitattributes
+          grep -q '^\* -text$' .gitattributes
+
+      - name: Set image tags
+        id: tags
+        run: |
+          set -euo pipefail
+          STAMP=20260928_1417
+          APP_TAG="avorofin-p0-daily-pipeline-app:${STAMP}"
+          TG_TAG="avorofin-p0-daily-pipeline-telegram:${STAMP}"
+          echo "stamp=${STAMP}" >> "$GITHUB_OUTPUT"
+          echo "app_tag=${APP_TAG}" >> "$GITHUB_OUTPUT"
+          echo "tg_tag=${TG_TAG}" >> "$GITHUB_OUTPUT"
+          echo "APP_TAG=${APP_TAG}"
+          echo "TG_TAG=${TG_TAG}"
+
+      - name: Docker build NEXT standalone images
+        env:
+          NEXT_PUBLIC_SITE_URL: http://127.0.0.1:3000
+          NEXT_PUBLIC_SUPABASE_URL: http://127.0.0.1:54321
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: canary-anon
+          NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: canary-publishable
+        run: |
+          set -euo pipefail
+          APP_TAG="${{ steps.tags.outputs.app_tag }}"
+          TG_TAG="${{ steps.tags.outputs.tg_tag }}"
+          docker build \
+            --target runner \
+            --build-arg NEXT_PUBLIC_SITE_URL="$NEXT_PUBLIC_SITE_URL" \
+            --build-arg NEXT_PUBLIC_SUPABASE_URL="$NEXT_PUBLIC_SUPABASE_URL" \
+            --build-arg NEXT_PUBLIC_SUPABASE_ANON_KEY="$NEXT_PUBLIC_SUPABASE_ANON_KEY" \
+            --build-arg NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY="$NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY" \
+            --label "avorofin.p0.pipeline=daily" \
+            --label "avorofin.p0.stamp=${{ steps.tags.outputs.stamp }}" \
+            --label "avorofin.p0.sha=${GITHUB_SHA}" \
+            --label "avorofin.p0.role=app" \
+            -t "$APP_TAG" \
+            . | tee DOCKER_BUILD_APP.txt
+          # Same reproducible standalone image for Telegram host (distinct RepoTag; no docker commit).
+          docker build \
+            --target runner \
+            --build-arg NEXT_PUBLIC_SITE_URL="$NEXT_PUBLIC_SITE_URL" \
+            --build-arg NEXT_PUBLIC_SUPABASE_URL="$NEXT_PUBLIC_SUPABASE_URL" \
+            --build-arg NEXT_PUBLIC_SUPABASE_ANON_KEY="$NEXT_PUBLIC_SUPABASE_ANON_KEY" \
+            --build-arg NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY="$NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY" \
+            --label "avorofin.p0.pipeline=daily" \
+            --label "avorofin.p0.stamp=${{ steps.tags.outputs.stamp }}" \
+            --label "avorofin.p0.sha=${GITHUB_SHA}" \
+            --label "avorofin.p0.role=telegram" \
+            -t "$TG_TAG" \
+            . | tee DOCKER_BUILD_TELEGRAM.txt
+          docker image inspect "$APP_TAG" > DOCKER_IMAGE_INSPECT_APP.txt
+          docker image inspect "$TG_TAG" > DOCKER_IMAGE_INSPECT_TELEGRAM.txt
+          docker image inspect -f '{{.Id}}' "$APP_TAG" | tee APP_IMAGE_ID.txt
+          docker image inspect -f '{{.Id}}' "$TG_TAG" | tee TG_IMAGE_ID.txt
+          echo "$APP_TAG" > APP_TAG.txt
+          echo "$TG_TAG" > TG_TAG.txt
+
+      - name: Save TAR + sha256 artifacts
+        run: |
+          set -euo pipefail
+          APP_TAG="${{ steps.tags.outputs.app_tag }}"
+          TG_TAG="${{ steps.tags.outputs.tg_tag }}"
+          STAMP="${{ steps.tags.outputs.stamp }}"
+          mkdir -p artifacts
+          docker save "$APP_TAG" -o "artifacts/avorofin-p0-daily-pipeline-app-${STAMP}.tar"
+          docker save "$TG_TAG" -o "artifacts/avorofin-p0-daily-pipeline-telegram-${STAMP}.tar"
+          sha256sum "artifacts/avorofin-p0-daily-pipeline-app-${STAMP}.tar" | tee "artifacts/avorofin-p0-daily-pipeline-app-${STAMP}.tar.sha256"
+          sha256sum "artifacts/avorofin-p0-daily-pipeline-telegram-${STAMP}.tar" | tee "artifacts/avorofin-p0-daily-pipeline-telegram-${STAMP}.tar.sha256"
+          cp APP_IMAGE_ID.txt TG_IMAGE_ID.txt APP_TAG.txt TG_TAG.txt github-runner-proof.txt artifacts/
+          cp DOCKER_IMAGE_INSPECT_APP.txt DOCKER_IMAGE_INSPECT_TELEGRAM.txt artifacts/
+          ls -lah artifacts
+
+      - name: Write binding evidence
+        run: |
+          set -euo pipefail
+          STAMP="${{ steps.tags.outputs.stamp }}"
+          APP_ID=$(cat APP_IMAGE_ID.txt)
+          TG_ID=$(cat TG_IMAGE_ID.txt)
+          APP_TAR_SHA=$(awk '{print $1}' "artifacts/avorofin-p0-daily-pipeline-app-${STAMP}.tar.sha256")
+          TG_TAR_SHA=$(awk '{print $1}' "artifacts/avorofin-p0-daily-pipeline-telegram-${STAMP}.tar.sha256")
+          cat > artifacts/P0_DAILY_PIPELINE_IMAGE_BINDING.json <<EOF
+          {
+            "TEMP_BRANCH": "audit/avorofin-p0-daily-pipeline-20260928_1417",
+            "GITHUB_SHA": "${GITHUB_SHA}",
+            "GITHUB_RUN_ID": "${GITHUB_RUN_ID}",
+            "GITHUB_RUN_ATTEMPT": "${GITHUB_RUN_ATTEMPT}",
+            "RUNNER_GITHUB_HOSTED": "YES",
+            "RUNNER_SELF_HOSTED": "NO",
+            "APP_TAG": "${{ steps.tags.outputs.app_tag }}",
+            "TG_TAG": "${{ steps.tags.outputs.tg_tag }}",
+            "APP_IMAGE_ID": "$APP_ID",
+            "TG_IMAGE_ID": "$TG_ID",
+            "APP_TAR_SHA256": "$APP_TAR_SHA",
+            "TG_TAR_SHA256": "$TG_TAR_SHA",
+            "DOCKER_COMMIT_USED": "NO",
+            "REGISTRY_PUSH": "NO",
+            "PRODUCTION_DEPLOY": "NO",
+            "DEFAULT_BRANCH_CHANGED": "NO"
+          }
+          EOF
+
+      - name: Upload APP image artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: avorofin-p0-daily-pipeline-app-20260928_1417
+          path: |
+            artifacts/avorofin-p0-daily-pipeline-app-20260928_1417.tar
+            artifacts/avorofin-p0-daily-pipeline-app-20260928_1417.tar.sha256
+            artifacts/APP_IMAGE_ID.txt
+            artifacts/APP_TAG.txt
+            artifacts/DOCKER_IMAGE_INSPECT_APP.txt
+            artifacts/P0_DAILY_PIPELINE_IMAGE_BINDING.json
+            artifacts/github-runner-proof.txt
+          retention-days: 14
+
+      - name: Upload TELEGRAM image artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: avorofin-p0-daily-pipeline-telegram-20260928_1417
+          path: |
+            artifacts/avorofin-p0-daily-pipeline-telegram-20260928_1417.tar
+            artifacts/avorofin-p0-daily-pipeline-telegram-20260928_1417.tar.sha256
+            artifacts/TG_IMAGE_ID.txt
+            artifacts/TG_TAG.txt
+            artifacts/DOCKER_IMAGE_INSPECT_TELEGRAM.txt
+            artifacts/P0_DAILY_PIPELINE_IMAGE_BINDING.json
+            artifacts/github-runner-proof.txt
+          retention-days: 14

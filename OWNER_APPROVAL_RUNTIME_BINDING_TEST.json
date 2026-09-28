@@ -1,0 +1,49 @@
+{
+  "OWNER_APPROVAL_RUNTIME_BINDING": "PASS",
+  "CURRENT_TASK_DATABASE_WRITE": "NO",
+  "parser": "lib/ozon/ownerApprovalBinding.ts",
+  "parserStrategy": "STRICT_KEY_VALUE_WHITELIST_NO_EVAL_NO_SOURCE",
+  "approvalSha256": "746cd751d030a9422c58c93f1e80a2b27c774085e9341366cfa7fe2a54824512",
+  "whitelistedKeyCount": 88,
+  "parsedKeyCount": 22,
+  "ignoredNonCriticalKeys": [],
+  "immutableFieldsBoundFromApproval": [
+    "approvalBindingSha256",
+    "executeMarker",
+    "expectedCandidateAppImageSha256",
+    "expectedPreDeployAppImageSha256",
+    "expectedRepairRunnerImageSha256",
+    "operationId",
+    "profitExplicitTargetCount",
+    "snapshotPostBatchDeleteCount",
+    "snapshotPostBatchRequeueCount",
+    "snapshotTargetManifestSha256",
+    "sourceBackfillManifestSha256",
+    "sourceBackfillTargetCount",
+    "statusOnlyManifestSha256",
+    "statusStandaloneTargetCount",
+    "v2MatrixRowCount",
+    "v2NonNullFingerprintCount",
+    "v2NumericMutationTargetCount",
+    "v2TargetManifestSha256"
+  ],
+  "boundValues": {
+    "sourceBackfillTargetCount": 78,
+    "statusStandaloneTargetCount": 10,
+    "snapshotPostBatchDeleteCount": 35,
+    "snapshotPostBatchRequeueCount": 35,
+    "v2NumericMutationTargetCount": 2,
+    "v2MatrixRowCount": 6,
+    "v2NonNullFingerprintCount": 6,
+    "profitExplicitTargetCount": 0,
+    "executeMarker": "OWNER_EXECUTE_OZON_HISTORICAL_FINANCIAL_REPAIR_V1"
+  },
+  "rejections": [
+    "OWNER_APPROVAL_SHA_MISMATCH",
+    "duplicate key",
+    "unknown critical key",
+    "line is neither KEY=VALUE nor a banner",
+    "OWNER_APPROVAL_BINDING_MISMATCH"
+  ],
+  "generatedAt": "2026-09-25T10:11:41.980Z"
+}

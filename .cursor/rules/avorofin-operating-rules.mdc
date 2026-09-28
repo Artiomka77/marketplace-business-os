@@ -1,0 +1,17 @@
+﻿---
+description: AvoroFin financial display + recovery operating rules (always apply)
+alwaysApply: true
+---
+
+# AvoroFin Operating Rules
+
+1. Availability first — site and Telegram must stay usable for owner decisions.
+2. Known numeric financial data must remain visible.
+3. Unknown ≠ zero — never render missing/incomplete data as a trusted numeric 0.
+4. PRELIMINARY is metadata, not permission to discard known numbers.
+5. Historical repair must not hold site availability hostage.
+6. Failed deploy/repair → restore runtime first, investigate second.
+7. One task = diagnose → fix → test → deploy → verify; Site+Telegram finances in the same block.
+8. No micro-version proliferation without a real hard boundary.
+9. Production is never the first place a known legacy state is tested.
+10. Site and Telegram use one financial semantic contract.
