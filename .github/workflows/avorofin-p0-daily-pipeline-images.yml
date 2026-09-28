@@ -32,14 +32,16 @@ jobs:
             echo "ImageOS=${ImageOS:-}"
             echo "RUNNER_NAME=${RUNNER_NAME:-}"
             echo "RUNNER_OS=${RUNNER_OS:-}"
+            echo "RUNNER_ENVIRONMENT=${RUNNER_ENVIRONMENT:-}"
             hostname
             uname -a
           } | tee github-runner-proof.txt
-          case "${RUNNER_NAME:-}" in
-            *github-hosted*|*Github Actions*|*fv-az*|*GithubActions*) ;;
-          esac
           if [ "${RUNNER_ENVIRONMENT:-}" = "self-hosted" ]; then
             echo "REFUSING_SELF_HOSTED_RUNNER"
+            exit 1
+          fi
+          if [ -z "${ImageOS:-}" ]; then
+            echo "REFUSING_MISSING_ImageOS"
             exit 1
           fi
 
