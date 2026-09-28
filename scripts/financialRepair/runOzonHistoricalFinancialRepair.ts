@@ -43,6 +43,7 @@ import {
   type OzonRepairFetchRange,
   type PrepareDbPreflight,
   type ProductionMutationAdapters,
+  type RepairTargetState,
   type V2RowFingerprintObservation,
   type VerifyPhase,
 } from "@/lib/ozon/financialRepairProductionAdapters";
@@ -401,7 +402,7 @@ export type MutationAdapters = {
   rebuildV2Targets?: (targets: V2Target[]) => Promise<{ rebuilt: number }>;
   /** Inspect existing source state for idempotency */
   inspectTargetState?: (t: SourceTarget) => Promise<{
-    state: "MISSING" | "NOOP_COMPLETE" | "RAW_PERSISTED_RESUME" | "CONFLICT";
+    state: RepairTargetState;
     rawId?: string;
   }>;
   loadCachedFetch?: (t: SourceTarget, cache: PrepareCache) => PrepareCacheTarget;
@@ -411,10 +412,7 @@ export type FullRepairPreMutationGateReport = {
   ok: boolean;
   WRITES_PERFORMED: 0;
   inspectedSourceTargets: number;
-  sourceStates: Record<
-    "MISSING" | "NOOP_COMPLETE" | "RAW_PERSISTED_RESUME" | "LEGACY_RECONCILE" | "CONFLICT",
-    number
-  >;
+  sourceStates: Record<RepairTargetState, number>;
   conflicts: Array<{ company: string; date: string; reason: string }>;
   statusStandaloneTargets: number;
   snapshotUniqueKeys: number;
