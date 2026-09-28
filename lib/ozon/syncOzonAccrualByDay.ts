@@ -948,8 +948,8 @@ export function createPrismaOzonAccrualStore(): OzonAccrualRuntimeStore {
       });
       const splitByDay = buildEconomicDaySplits(params.raw.rawAccruals);
 
+      // OzonProduct.sku is non-null String in schema — no { not: null } filter.
       const ozonProductMaps = await prisma.ozonProduct.findMany({
-        where: { sku: { not: null } },
         select: { sku: true, vendorCode: true },
       });
       const ozonStockMaps = await prisma.ozonStock
