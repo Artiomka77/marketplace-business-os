@@ -411,7 +411,10 @@ export type FullRepairPreMutationGateReport = {
   ok: boolean;
   WRITES_PERFORMED: 0;
   inspectedSourceTargets: number;
-  sourceStates: Record<"MISSING" | "NOOP_COMPLETE" | "RAW_PERSISTED_RESUME" | "CONFLICT", number>;
+  sourceStates: Record<
+    "MISSING" | "NOOP_COMPLETE" | "RAW_PERSISTED_RESUME" | "LEGACY_RECONCILE" | "CONFLICT",
+    number
+  >;
   conflicts: Array<{ company: string; date: string; reason: string }>;
   statusStandaloneTargets: number;
   snapshotUniqueKeys: number;
@@ -473,6 +476,7 @@ export async function runFullRepairPreMutationGate(
     MISSING: 0,
     NOOP_COMPLETE: 0,
     RAW_PERSISTED_RESUME: 0,
+    LEGACY_RECONCILE: 0,
     CONFLICT: 0,
   };
   const conflicts: FullRepairPreMutationGateReport["conflicts"] = [];
