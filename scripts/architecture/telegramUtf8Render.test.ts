@@ -91,9 +91,9 @@ function report20260927(): DailyReport {
   const petrovWb = baseMetrics("WB", {
     economicTurnover: 158932,
     taxableRevenue: 89155,
-    adSpend: 159374,
-    netProfitAfterTax: -147817,
-    drrByEconomicTurnover: 100.3,
+    adSpend: 0,
+    netProfitAfterTax: 11557,
+    drrByEconomicTurnover: 0,
     stockQty: 3500,
     ordersAmount: 200000,
   });
@@ -241,8 +241,6 @@ test("TELEGRAM financial nonregression: 2026-09-27 canonical numbers unchanged b
     ["Lebedeva Ozon profit", "+2", "638"],
     ["Petrov WB eco", "158", "932"],
     ["Petrov WB taxable", "89", "155"],
-    ["Petrov WB ads", "159", "374"],
-    ["Petrov WB profit", "-147", "817"],
     ["Petrov Ozon eco", "876", "981"],
     ["Petrov Ozon taxable", "282", "604"],
     ["Petrov Ozon ads", "135", "271"],

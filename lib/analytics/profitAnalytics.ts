@@ -2161,12 +2161,22 @@ async function findWbFinanceExpenseTotalsByPeriod(params?: {
   return totals;
 }
 
+function isExactSingleDayPeriod(params?: {
+  dateFrom?: string | null;
+  dateTo?: string | null;
+}) {
+  const from = params?.dateFrom ? String(params.dateFrom).slice(0, 10) : "";
+  const to = params?.dateTo ? String(params.dateTo).slice(0, 10) : "";
+  return Boolean(from && to && from === to);
+}
+
 function applyWbFinanceExpenseTotals(
   result: {
     rows: ProfitAnalyticsRow[];
     totals: ProfitTotals;
   },
-  financeExpenses: WbFinanceExpenseTotals
+  financeExpenses: WbFinanceExpenseTotals,
+  period?: { dateFrom?: string | null; dateTo?: string | null }
 ) {
   // V6: продажи задают три разные суммы: экономический оборот, оплату
   // покупателями и налоговую выручку. WbFinance не заменяет ни одну из них.
@@ -2180,10 +2190,15 @@ function applyWbFinanceExpenseTotals(
     classifiedOperatingDeduction: result.totals.deductions,
     classifiedUnknownDeduction: result.totals.wbUnknownDeduction,
   });
+  // Exact-day grain: never substitute weekly «WB Продвижение» settlement
+  // (posting-dated sale rows / otherDeductions) for missing same-day campaign ads.
+  // Weekly/month periods keep classified promotion settlement as P&L ads.
+  const exactDay = isExactSingleDayPeriod(period);
+  const pnlAdsDeduction = exactDay
+    ? 0
+    : deductionReconciliation.classifiedAdsDeduction;
   const externalAdsCost =
-    deductionReconciliation.classifiedAdsDeduction > 0
-      ? 0
-      : campaignAdsCost;
+    pnlAdsDeduction > 0 ? 0 : campaignAdsCost;
 
   result.totals.sellerPayout = financeExpenses.sellerPayout;
   result.totals.logisticsCost = financeExpenses.logisticsCost;
@@ -2193,9 +2208,7 @@ function applyWbFinanceExpenseTotals(
   result.totals.deductions =
     deductionReconciliation.classifiedOperatingDeduction;
   result.totals.adsCost =
-    deductionReconciliation.classifiedAdsDeduction > 0
-      ? deductionReconciliation.classifiedAdsDeduction
-      : campaignAdsCost;
+    pnlAdsDeduction > 0 ? pnlAdsDeduction : campaignAdsCost;
   result.totals.adsReconciliationAmount =
     deductionReconciliation.classifiedAdsDeduction - campaignAdsCost;
   result.totals.officialOtherDeductionsTotal =
@@ -2233,7 +2246,7 @@ function applyWbFinanceExpenseTotals(
       officialStorage: result.totals.storageCost,
       officialAcceptance: result.totals.acceptanceCost,
       officialPenalties: result.totals.penaltiesAmount,
-      classifiedPnlAds: deductionReconciliation.classifiedAdsDeduction,
+      classifiedPnlAds: pnlAdsDeduction,
       classifiedPnlOperating:
         deductionReconciliation.classifiedOperatingDeduction,
     },
@@ -2723,7 +2736,10 @@ export async function getProfitAnalytics(params?: {
       });
 
   const current = currentFinanceExpenses.hasRows
-    ? applyWbFinanceExpenseTotals(currentBase, currentFinanceExpenses)
+    ? applyWbFinanceExpenseTotals(currentBase, currentFinanceExpenses, {
+        dateFrom: params?.dateFrom,
+        dateTo: params?.dateTo,
+      })
     : currentOperationalRates
       ? applyEstimatedOperationalExpenses(
           currentBase,
@@ -2813,7 +2829,10 @@ export async function getProfitAnalytics(params?: {
       : null;
 
   const previous = previousFinanceExpenses.hasRows
-    ? applyWbFinanceExpenseTotals(previousBase, previousFinanceExpenses)
+    ? applyWbFinanceExpenseTotals(previousBase, previousFinanceExpenses, {
+        dateFrom: previousPeriod?.dateFrom.toISOString().slice(0, 10),
+        dateTo: previousPeriod?.dateTo.toISOString().slice(0, 10),
+      })
     : previousOperationalRates
       ? applyEstimatedOperationalExpenses(
           previousBase,
