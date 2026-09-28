@@ -1,0 +1,173 @@
+name: avorofin-telegram-owner-report-v3-images
+
+on:
+  push:
+    branches:
+      - 'audit/avorofin-telegram-owner-report-v3-20260929_0018'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: avorofin-telegram-owner-report-v3-20260929_0018
+  cancel-in-progress: true
+
+jobs:
+  build-images:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Prove GitHub-hosted runner
+        run: |
+          set -euo pipefail
+          {
+            echo "RUNNER_GITHUB_HOSTED=YES"
+            echo "ImageOS=${ImageOS:-}"
+            hostname
+          } | tee github-runner-proof.txt
+          test -n "${ImageOS:-}"
+
+      - name: Fail-closed V3 contracts
+        run: |
+          set -euo pipefail
+          test -f lib/telegram/ownerReportV3.ts
+          test -f lib/telegram/ownerReportV3Loaders.ts
+          test -f scripts/architecture/telegramOwnerReportV3.test.ts
+          grep -q 'formatOwnerReportV3' app/api/telegram/daily-report/route.ts
+          grep -q 'messageCount: 2' app/api/telegram/daily-report/route.ts
+          grep -q 'PETROV\|петров\|sortCompaniesOwnerOrder' lib/telegram/ownerReportV3.ts
+          grep -q 'totalCost' lib/telegram/dailyReport.ts
+          grep -q 'topByOrderAmount' lib/marketplaceOrders/syncMarketplaceDailyOrders.ts
+          ! grep -F 'рџ“Љ' lib/telegram/ownerReportV3.ts
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Focused tests
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/avorofin
+        run: |
+          set -euo pipefail
+          npm ci --ignore-scripts
+          npx prisma generate
+          npx tsx --test \
+            scripts/architecture/telegramOwnerReportV3.test.ts \
+            scripts/architecture/telegramUtf8Render.test.ts \
+            scripts/architecture/dailyAdsPeriodIsolation.test.ts
+
+      - name: Set tags
+        id: tags
+        run: |
+          STAMP=20260929_0018
+          echo "stamp=${STAMP}" >> "$GITHUB_OUTPUT"
+          echo "app_tag=avorofin-p0-cogs-app:${STAMP}" >> "$GITHUB_OUTPUT"
+          echo "tg_tag=avorofin-p0-cogs-telegram:${STAMP}" >> "$GITHUB_OUTPUT"
+          echo "profit_tag=avorofin-p0-cogs-profit:${STAMP}" >> "$GITHUB_OUTPUT"
+
+      - name: Docker build APP TG PROFIT
+        env:
+          NEXT_PUBLIC_SITE_URL: http://127.0.0.1:3000
+          NEXT_PUBLIC_SUPABASE_URL: http://127.0.0.1:54321
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: canary-anon
+          NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: canary-publishable
+        run: |
+          set -euo pipefail
+          build_one() {
+            local target="$1" tag="$2" role="$3"
+            docker build --target "$target" \
+              --build-arg NEXT_PUBLIC_SITE_URL="$NEXT_PUBLIC_SITE_URL" \
+              --build-arg NEXT_PUBLIC_SUPABASE_URL="$NEXT_PUBLIC_SUPABASE_URL" \
+              --build-arg NEXT_PUBLIC_SUPABASE_ANON_KEY="$NEXT_PUBLIC_SUPABASE_ANON_KEY" \
+              --build-arg NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY="$NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY" \
+              --label "avorofin.telegram.owner_report=v3" \
+              --label "avorofin.p0.stamp=${{ steps.tags.outputs.stamp }}" \
+              --label "avorofin.p0.sha=${GITHUB_SHA}" \
+              --label "avorofin.p0.role=${role}" \
+              -t "$tag" .
+            docker image inspect -f '{{.Id}}' "$tag" | tee "${role}_IMAGE_ID.txt"
+            echo "$tag" > "${role}_TAG.txt"
+          }
+          build_one runner "${{ steps.tags.outputs.app_tag }}" app
+          build_one runner "${{ steps.tags.outputs.tg_tag }}" telegram
+          build_one profit-readmodel-worker "${{ steps.tags.outputs.profit_tag }}" profit
+
+      - name: Save artifacts
+        run: |
+          set -euo pipefail
+          STAMP="${{ steps.tags.outputs.stamp }}"
+          mkdir -p artifacts
+          for role in app telegram profit; do
+            case $role in
+              app) tag="${{ steps.tags.outputs.app_tag }}" ;;
+              telegram) tag="${{ steps.tags.outputs.tg_tag }}" ;;
+              profit) tag="${{ steps.tags.outputs.profit_tag }}" ;;
+            esac
+            docker save "$tag" -o "artifacts/avorofin-p0-cogs-${role}-${STAMP}.tar"
+            sha256sum "artifacts/avorofin-p0-cogs-${role}-${STAMP}.tar" | tee "artifacts/avorofin-p0-cogs-${role}-${STAMP}.tar.sha256"
+            cp "${role}_IMAGE_ID.txt" "${role}_TAG.txt" artifacts/
+          done
+          cp github-runner-proof.txt artifacts/
+          python3 - <<'PY'
+          import json, pathlib, os
+          stamp=os.environ["STAMP"]
+          out={
+            "GATE":"AVOROFIN_TELEGRAM_OWNER_REPORT_V3_FINAL",
+            "GITHUB_SHA":os.environ["GITHUB_SHA"],
+            "GITHUB_RUN_ID":os.environ["GITHUB_RUN_ID"],
+            "STAMP":stamp,
+            "MAIN_TOUCHED":"NO_TG_PRIMARY_SYNC_PERSIST_OPTIONAL",
+            "images":{}
+          }
+          for role in ["app","telegram","profit"]:
+            out["images"][role]={
+              "tag":pathlib.Path(f"{role}_TAG.txt").read_text().strip(),
+              "imageId":pathlib.Path(f"{role}_IMAGE_ID.txt").read_text().strip(),
+              "tarSha256":pathlib.Path(f"artifacts/avorofin-p0-cogs-{role}-{stamp}.tar.sha256").read_text().split()[0],
+            }
+          pathlib.Path("artifacts/IMAGE_BINDING.json").write_text(json.dumps(out,indent=2)+"\n")
+          PY
+        env:
+          STAMP: ${{ steps.tags.outputs.stamp }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: avorofin-p0-cogs-app-20260929_0018
+          path: |
+            artifacts/avorofin-p0-cogs-app-20260929_0018.tar
+            artifacts/avorofin-p0-cogs-app-20260929_0018.tar.sha256
+            artifacts/app_IMAGE_ID.txt
+            artifacts/app_TAG.txt
+            artifacts/IMAGE_BINDING.json
+            artifacts/github-runner-proof.txt
+          retention-days: 14
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: avorofin-p0-cogs-telegram-20260929_0018
+          path: |
+            artifacts/avorofin-p0-cogs-telegram-20260929_0018.tar
+            artifacts/avorofin-p0-cogs-telegram-20260929_0018.tar.sha256
+            artifacts/telegram_IMAGE_ID.txt
+            artifacts/telegram_TAG.txt
+            artifacts/IMAGE_BINDING.json
+            artifacts/github-runner-proof.txt
+          retention-days: 14
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: avorofin-p0-cogs-profit-20260929_0018
+          path: |
+            artifacts/avorofin-p0-cogs-profit-20260929_0018.tar
+            artifacts/avorofin-p0-cogs-profit-20260929_0018.tar.sha256
+            artifacts/profit_IMAGE_ID.txt
+            artifacts/profit_TAG.txt
+            artifacts/IMAGE_BINDING.json
+            artifacts/github-runner-proof.txt
+          retention-days: 14

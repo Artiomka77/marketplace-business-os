@@ -90,6 +90,13 @@ type WbOrderRow = {
 };
 
 type WbSalesFunnelProduct = {
+  product?: {
+    nmId?: number | string;
+    vendorCode?: string;
+    title?: string;
+  };
+  nmId?: number | string;
+  vendorCode?: string;
   statistic?: {
     selected?: {
       orderCount?: number;
@@ -98,6 +105,13 @@ type WbSalesFunnelProduct = {
       ordersSumRub?: number;
     };
   };
+};
+
+type TopOrderPersistRow = {
+  article: string;
+  nmId: string | null;
+  qty: number;
+  amount: number;
 };
 
 type WbSalesFunnelResponse = {
@@ -465,6 +479,7 @@ async function fetchWbSalesFunnelForDate(wbToken: string, date: Date) {
   let ordersAmount = 0;
   let productsCount = 0;
   const samples: WbSalesFunnelProduct[] = [];
+  const ranked: TopOrderPersistRow[] = [];
 
   while (true) {
     const response = await fetch(
@@ -511,10 +526,27 @@ async function fetchWbSalesFunnelForDate(wbToken: string, date: Date) {
 
     for (const product of products) {
       const selected = product.statistic?.selected;
-      ordersQty += Math.trunc(
+      const qty = Math.trunc(
         toNumber(selected?.orderCount ?? selected?.ordersCount)
       );
-      ordersAmount += toNumber(selected?.orderSum ?? selected?.ordersSumRub);
+      const amount = toNumber(selected?.orderSum ?? selected?.ordersSumRub);
+      ordersQty += qty;
+      ordersAmount += amount;
+
+      const nmId = String(
+        product.product?.nmId ?? product.nmId ?? ""
+      ).trim() || null;
+      const article = String(
+        product.product?.vendorCode ?? product.vendorCode ?? nmId ?? ""
+      ).trim();
+      if (article || qty > 0 || amount > 0) {
+        ranked.push({
+          article: article || "UNKNOWN",
+          nmId,
+          qty,
+          amount,
+        });
+      }
 
       if (samples.length < 5) {
         samples.push(product);
@@ -526,11 +558,14 @@ async function fetchWbSalesFunnelForDate(wbToken: string, date: Date) {
     offset += limit;
   }
 
+  ranked.sort((a, b) => b.amount - a.amount || b.qty - a.qty);
+
   return {
     ordersQty,
     ordersAmount,
     productsCount,
     sample: samples,
+    topByOrderAmount: ranked.slice(0, 50),
   };
 }
 
@@ -587,10 +622,64 @@ async function fetchOzonOrdersForDate(
     offset += limit;
   }
 
+  // SKU-level true orders for Telegram TOP-3 (best-effort; day totals stay primary).
+  let topByOrderAmount: TopOrderPersistRow[] = [];
+  try {
+    const skuResponse = await fetch(
+      "https://api-seller.ozon.ru/v1/analytics/data",
+      {
+        method: "POST",
+        headers: {
+          "Client-Id": clientId,
+          "Api-Key": apiKey,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          date_from: dateText,
+          date_to: dateText,
+          metrics: ["ordered_units", "revenue"],
+          dimension: ["sku"],
+          filters: [],
+          sort: [{ key: "revenue", order: "DESC" }],
+          limit: 1000,
+          offset: 0,
+        }),
+        cache: "no-store",
+      }
+    );
+    if (skuResponse.ok) {
+      const skuJson = (await skuResponse.json()) as OzonAnalyticsResponse;
+      const ranked: TopOrderPersistRow[] = [];
+      for (const row of skuJson.result?.data ?? []) {
+        const dims = row.dimensions ?? [];
+        const article = String(
+          dims.find((d) => d.id === "sku")?.name ??
+            dims[0]?.name ??
+            dims[0]?.id ??
+            ""
+        ).trim();
+        const qty = Math.trunc(toNumber(row.metrics?.[0]));
+        const amount = toNumber(row.metrics?.[1]);
+        if (!article && qty === 0 && amount === 0) continue;
+        ranked.push({
+          article: article || "UNKNOWN",
+          nmId: null,
+          qty,
+          amount,
+        });
+      }
+      ranked.sort((a, b) => b.amount - a.amount || b.qty - a.qty);
+      topByOrderAmount = ranked.slice(0, 50);
+    }
+  } catch {
+    topByOrderAmount = [];
+  }
+
   return {
     ordersQty,
     ordersAmount,
     rawData,
+    topByOrderAmount,
   };
 }
 
@@ -705,6 +794,7 @@ export async function syncWbDailyOrdersForCompany(params: {
     rawJson: {
       source,
       funnelError,
+      topByOrderAmount: funnelResult?.topByOrderAmount ?? [],
       funnelResult: funnelResult
         ? {
             selectedDate: formatDateOnly(params.date),
@@ -713,6 +803,7 @@ export async function syncWbDailyOrdersForCompany(params: {
             ordersAmount: funnelResult.ordersAmount,
             productsCount: funnelResult.productsCount,
             sample: funnelResult.sample,
+            topByOrderAmount: funnelResult.topByOrderAmount,
           }
         : null,
       supplierOrders: {
@@ -783,6 +874,10 @@ export async function syncOzonDailyOrdersForCompany(params: {
     rawJson: {
       sample: result.rawData.slice(0, 10),
       rows: result.rawData.length,
+      topByOrderAmount: result.topByOrderAmount ?? [],
+      ozonSkuOrders: {
+        topByOrderAmount: result.topByOrderAmount ?? [],
+      },
     },
   });
 

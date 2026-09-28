@@ -8,9 +8,10 @@ import {
 } from "@/lib/telegram/financeBotParser";
 import {
   buildDailyReport,
-  formatDailyReportForTelegram,
   type DailyReportPeriodPreset,
 } from "@/lib/telegram/dailyReport";
+import { formatOwnerReportV3 } from "@/lib/telegram/ownerReportV3";
+import { loadOwnerReportV3Extras } from "@/lib/telegram/ownerReportV3Loaders";
 import {
   classifyOzonDailySourceFreshness,
   formatOzonSourceFreshnessBlock,
@@ -1057,11 +1058,22 @@ function isoDateFromDailyReport(report: { dateLabel?: string }) {
   return match?.[0] ?? null;
 }
 
-async function formatOwnerReportWithOzonFreshness(report: { dateLabel?: string; [key: string]: unknown }) {
-  const formatted = formatDailyReportForTelegram(report as any);
-  const freshness = await loadOzonDailySourceFreshness(isoDateFromDailyReport(report));
+async function formatOwnerReportV3Messages(report: {
+  dateLabel?: string;
+  [key: string]: unknown;
+}) {
+  const extras = await loadOwnerReportV3Extras(report as any);
+  const v3 = formatOwnerReportV3(report as any, extras);
+  // Compact owner warning only — no technical READY/session lines when healthy.
+  const freshness = await loadOzonDailySourceFreshness(
+    isoDateFromDailyReport(report)
+  );
   const block = formatOzonSourceFreshnessBlock(freshness);
-  return block ? `${block}\n\n${formatted}` : formatted;
+  const message1 =
+    block && /неполн|отсутств|просроч|ошибк/i.test(block)
+      ? `${block}\n\n${v3.message1}`
+      : v3.message1;
+  return { message1, message2: v3.message2, messageCount: 2 as const };
 }
 
 async function sendDailyOwnerReport(
@@ -1070,24 +1082,26 @@ async function sendDailyOwnerReport(
   useAi = false
 ) {
   const report = await buildDailyReport({ preset });
-  const baseMessage = await formatOwnerReportWithOzonFreshness(report);
+  const { message1, message2 } = await formatOwnerReportV3Messages(report);
 
   if (!useAi) {
-    await sendMessage(chatId, baseMessage);
+    await sendMessage(chatId, message1);
+    await sendMessage(chatId, message2);
     return;
   }
 
   const aiResult = await generateDailyReportAiAnalysis(report);
 
   if (aiResult.text) {
-    await sendMessage(chatId, `${baseMessage}\n\n${aiResult.text}`);
+    await sendMessage(chatId, `${message1}\n\n${aiResult.text}`);
+    await sendMessage(chatId, message2);
     return;
   }
 
   await sendMessage(
     chatId,
     [
-      baseMessage,
+      message1,
       "",
       "🤖 AI-анализ временно недоступен.",
       aiResult.error ? `Причина: ${aiResult.error}` : null,
@@ -1095,6 +1109,7 @@ async function sendDailyOwnerReport(
       .filter((line) => line !== null)
       .join("\n")
   );
+  await sendMessage(chatId, message2);
 }
 
 
@@ -1105,24 +1120,26 @@ async function sendDailyOwnerReportForRange(
   useAi = false
 ) {
   const report = await buildDailyReport({ from, to });
-  const baseMessage = await formatOwnerReportWithOzonFreshness(report);
+  const { message1, message2 } = await formatOwnerReportV3Messages(report);
 
   if (!useAi) {
-    await sendMessage(chatId, baseMessage);
+    await sendMessage(chatId, message1);
+    await sendMessage(chatId, message2);
     return;
   }
 
   const aiResult = await generateDailyReportAiAnalysis(report);
 
   if (aiResult.text) {
-    await sendMessage(chatId, `${baseMessage}\n\n${aiResult.text}`);
+    await sendMessage(chatId, `${message1}\n\n${aiResult.text}`);
+    await sendMessage(chatId, message2);
     return;
   }
 
   await sendMessage(
     chatId,
     [
-      baseMessage,
+      message1,
       "",
       "🤖 AI-анализ временно недоступен.",
       aiResult.error ? `Причина: ${aiResult.error}` : null,
@@ -1130,6 +1147,7 @@ async function sendDailyOwnerReportForRange(
       .filter((line) => line !== null)
       .join("\n")
   );
+  await sendMessage(chatId, message2);
 }
 
 async function sendReportMenu(chatId: string) {

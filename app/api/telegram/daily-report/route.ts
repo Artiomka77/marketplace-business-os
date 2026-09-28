@@ -4,6 +4,8 @@ import {
   buildDailyReport,
   formatDailyReportForTelegram,
 } from "@/lib/telegram/dailyReport";
+import { formatOwnerReportV3 } from "@/lib/telegram/ownerReportV3";
+import { loadOwnerReportV3Extras } from "@/lib/telegram/ownerReportV3Loaders";
 import { generateDailyReportAiAnalysis } from "@/lib/telegram/dailyReportAi";
 import {
   getTelegramAllowedChatIds,
@@ -74,6 +76,9 @@ export async function GET(req: Request) {
       : undefined,
   });
 
+  const extras = await loadOwnerReportV3Extras(report);
+  const v3 = formatOwnerReportV3(report, extras);
+  // Legacy single-string field kept for older callers; V3 = two messages.
   const baseMessage = formatDailyReportForTelegram(report);
 
   let aiAnalysis: string | null = null;
@@ -85,10 +90,13 @@ export async function GET(req: Request) {
     aiError = aiResult.error;
   }
 
-  const message =
+  const message1 =
     shouldUseAi && aiAnalysis
-      ? `${baseMessage}\n\n${aiAnalysis}`
-      : baseMessage;
+      ? `${v3.message1}\n\n${aiAnalysis}`
+      : v3.message1;
+  const message2 = v3.message2;
+  const messages = [message1, message2];
+  const message = messages.join("\n\n———\n\n");
 
   if (!shouldSend) {
     return NextResponse.json({
@@ -100,8 +108,26 @@ export async function GET(req: Request) {
         analysis: aiAnalysis,
       },
       date: report.dateLabel,
+      messageCount: 2,
+      messages,
+      message1,
+      message2,
+      // backward-compat concatenated preview
       message,
+      legacyMessage: baseMessage,
       report,
+      v3Extras: {
+        businessTop3Source: extras.businessTop3Source,
+        cabinets: extras.cabinets.map((c) => ({
+          companyName: c.companyName,
+          marketplace: c.marketplace,
+          top3Source: c.top3Source,
+          spend: c.spend,
+          impressions: c.impressions,
+          clicks: c.clicks,
+          adOrders: c.adOrders,
+        })),
+      },
     });
   }
 
@@ -118,6 +144,8 @@ export async function GET(req: Request) {
           analysis: aiAnalysis,
         },
         date: report.dateLabel,
+        messageCount: 2,
+        messages,
         message,
       },
       { status: 400 }
@@ -125,10 +153,8 @@ export async function GET(req: Request) {
   }
 
   for (const chatId of chatIds) {
-    await sendTelegramMessage({
-      chatId,
-      text: message,
-    });
+    await sendTelegramMessage({ chatId, text: message1 });
+    await sendTelegramMessage({ chatId, text: message2 });
   }
 
   return NextResponse.json({
@@ -141,5 +167,6 @@ export async function GET(req: Request) {
     },
     recipients: chatIds.length,
     date: report.dateLabel,
+    messageCount: 2,
   });
 }

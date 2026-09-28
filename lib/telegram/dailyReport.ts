@@ -79,6 +79,8 @@ type MarketplaceDailyMetrics = {
   netProfitAfterTax: number;
   netProfitUnavailable?: boolean;
   netProfitUnavailableReason?: string | null;
+  /** COGS from canonical profit analytics (profitTotals.totalCost). */
+  totalCost?: number;
   taxableRevenue?: number;
   economicTurnover?: number;
   discountPointsAmount?: number;
@@ -153,6 +155,8 @@ export type DailyReport = {
     salesAmount: number;
     economicTurnover: number;
     taxableRevenue: number;
+    /** Aggregated COGS across available cabinets. */
+    totalCost?: number;
     adSpend: number;
     drrByOrders: number;
     drrBySales: number;
@@ -1546,12 +1550,13 @@ async function getWbMetrics(companyName: string, range: DateRange) {
       drrBySales: 0,
       drrByEconomicTurnover: 0,
       drrByTaxableRevenue: 0,
-      stockQty,
+    stockQty,
       netProfitAfterTax: 0,
       netProfitUnavailable: true,
       netProfitUnavailableReason: "D6_UNSAFE_WB_OWNERSHIP_MODE",
       financialUnavailable: true,
       financialUnavailableReason: "D6_UNSAFE_WB_OWNERSHIP_MODE",
+      totalCost: undefined,
       taxableRevenue: 0,
       economicTurnover: 0,
       netProfitStatus: "PRELIMINARY" as const,
@@ -1696,6 +1701,9 @@ async function getWbMetrics(companyName: string, range: DateRange) {
     netProfitUnavailableReason: wbFallbackNetProfitUnavailable
       ? wbFallbackTaxBlockedReason
       : null,
+    totalCost: profitAnalyticsHasWbData
+      ? profitTotals.totalCost
+      : canonicalCostOfGoods,
     taxableRevenue: finalTaxableRevenue,
     economicTurnover: finalEconomicTurnover,
     netProfitStatus: profitAnalyticsHasWbData
@@ -1979,14 +1987,15 @@ async function getOzonMetrics(companyName: string, range: DateRange) {
       drrBySales: 0,
       drrByEconomicTurnover: 0,
       drrByTaxableRevenue: 0,
-      stockQty,
-      netProfitAfterTax: 0,
-      netProfitUnavailable: true,
-      netProfitUnavailableReason: ozonFinancialUnavailableReason,
-      financialUnavailable: true,
-      financialUnavailableReason: ozonFinancialUnavailableReason,
-      taxableRevenue: undefined,
-      economicTurnover: undefined,
+    stockQty,
+    netProfitAfterTax: 0,
+    netProfitUnavailable: true,
+    netProfitUnavailableReason: ozonFinancialUnavailableReason,
+    financialUnavailable: true,
+    financialUnavailableReason: ozonFinancialUnavailableReason,
+    totalCost: undefined,
+    taxableRevenue: undefined,
+    economicTurnover: undefined,
       discountPointsAmount: undefined,
       partnerProgramsAmount: undefined,
       grossOzonExpenses: undefined,
@@ -2045,6 +2054,7 @@ async function getOzonMetrics(companyName: string, range: DateRange) {
     ),
     stockQty,
     netProfitAfterTax: finalNetProfitAfterTax,
+    totalCost: profitAnalyticsHasOzonData ? profitTotals.totalCost : undefined,
     taxableRevenue: profitAnalyticsHasOzonData && taxRevenueCoverageComplete
       ? profitTotals.taxableRevenue
       : undefined,
@@ -2112,6 +2122,9 @@ function addMarketplaceTotals(
   target.economicTurnover += source.economicTurnover ?? source.salesAmount;
   target.taxableRevenue += source.taxableRevenue ?? 0;
   target.adSpend += source.adSpend;
+  if (source.totalCost !== undefined && source.totalCost !== null) {
+    target.totalCost = (target.totalCost ?? 0) + source.totalCost;
+  }
 }
 
 
@@ -2329,7 +2342,7 @@ export async function buildDailyReport(params?: {
 }): Promise<DailyReport> {
   const range = getDailyReportRange(params);
 
-  const companies = await prisma.company.findMany({
+  const companiesRaw = await prisma.company.findMany({
     where: {
       isActive: true,
     },
@@ -2339,6 +2352,19 @@ export async function buildDailyReport(params?: {
     select: {
       name: true,
     },
+  });
+  // Owner report order: ИП Петров then ИП Лебедева (stable beyond name asc).
+  const companies = [...companiesRaw].sort((a, b) => {
+    const rank = (name: string) => {
+      const n = name.toLowerCase();
+      if (n.includes("петров")) return 0;
+      if (n.includes("лебед")) return 1;
+      return 10;
+    };
+    const ra = rank(a.name);
+    const rb = rank(b.name);
+    if (ra !== rb) return ra - rb;
+    return a.name.localeCompare(b.name, "ru");
   });
 
   const report: DailyReport = {
@@ -2354,6 +2380,7 @@ export async function buildDailyReport(params?: {
       salesAmount: 0,
       economicTurnover: 0,
       taxableRevenue: 0,
+      totalCost: undefined,
       adSpend: 0,
       drrByOrders: 0,
       drrBySales: 0,
