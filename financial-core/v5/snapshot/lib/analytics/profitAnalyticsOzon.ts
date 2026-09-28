@@ -1,7 +1,10 @@
 import { prisma } from "@/lib/prisma";
 import { sequentialAll } from "@/lib/db/sequentialAll";
 import { calculateMarketplaceTotalTax } from "@/lib/finance/marketplaceTax";
-import { buildCanonicalPositiveCostLookups } from "@/lib/analytics/productCostResolver";
+import {
+  buildCanonicalPositiveCostLookups,
+  resolveCanonicalUnitCost,
+} from "@/lib/analytics/productCostResolver";
 
 function toNumber(value: unknown): number {
   if (value === null || value === undefined) return 0;
@@ -516,17 +519,35 @@ type OzonProductRecord = {
   sku: string | null;
 };
 
-function buildCostByVendorCode(costs: CostRecord[]) {
-  return buildCanonicalPositiveCostLookups(costs).costByVendorCode;
+function buildCostLookups(costs: CostRecord[]) {
+  return buildCanonicalPositiveCostLookups(costs);
+}
+
+function buildWbSupplierArticleByNmId(
+  cards: Array<{ nmId: string | null; vendorCode: string | null }>,
+) {
+  const supplierArticleByNmId = new Map<string, string>();
+  for (const card of cards) {
+    const nmId = normalizeText(card.nmId);
+    const vendorCode = normalizeText(card.vendorCode);
+    if (!nmId || !vendorCode || supplierArticleByNmId.has(nmId)) continue;
+    supplierArticleByNmId.set(nmId, vendorCode);
+  }
+  return supplierArticleByNmId;
 }
 
 function resolveUnitCost(
   costByVendorCode: Map<string, number>,
+  costByNmId: Map<string, number>,
   vendorCodeKey: string,
+  wbSupplierArticleByNmId?: Map<string, string>,
 ): number | null {
-  if (!vendorCodeKey) return null;
-  if (!costByVendorCode.has(vendorCodeKey)) return null;
-  return costByVendorCode.get(vendorCodeKey)!;
+  return resolveCanonicalUnitCost({
+    costByVendorCode,
+    costByNmId,
+    vendorCodeKey,
+    wbSupplierArticleByNmId,
+  });
 }
 
 function buildOzonProductLookup(ozonProducts: OzonProductRecord[]) {
@@ -1451,6 +1472,7 @@ function calculateRowsAndTotals({
   adsRows,
   costs,
   ozonProducts,
+  wbProductCards = [],
   usnRate,
   vatRate,
 }: {
@@ -1458,10 +1480,12 @@ function calculateRowsAndTotals({
   adsRows: OzonAdsRecord[];
   costs: CostRecord[];
   ozonProducts: OzonProductRecord[];
+  wbProductCards?: Array<{ nmId: string | null; vendorCode: string | null }>;
   usnRate: number;
   vatRate: number;
 }) {
-  const costByVendorCode = buildCostByVendorCode(costs);
+  const { costByVendorCode, costByNmId } = buildCostLookups(costs);
+  const wbSupplierArticleByNmId = buildWbSupplierArticleByNmId(wbProductCards);
   const productLookup = buildOzonProductLookup(ozonProducts);
 
   const { adsCostByVendorCode, undistributedAdsCost } =
@@ -1521,7 +1545,12 @@ function calculateRowsAndTotals({
       cleanText(financeRow.sku) ||
       vendorCodeKey;
 
-    const unitCost = resolveUnitCost(costByVendorCode, vendorCodeKey);
+    const unitCost = resolveUnitCost(
+      costByVendorCode,
+      costByNmId,
+      vendorCodeKey,
+      wbSupplierArticleByNmId,
+    );
     const current = grouped.get(vendorCodeKey) ?? {
       nmId: financeRow.sku ?? "",
       vendorCode: displayVendorCode,
@@ -1581,7 +1610,9 @@ function calculateRowsAndTotals({
     if (!current.costResolved) {
       const upgradedUnitCost = resolveUnitCost(
         costByVendorCode,
+        costByNmId,
         vendorCodeKey,
+        wbSupplierArticleByNmId,
       );
       if (upgradedUnitCost != null) {
         current.costPrice = upgradedUnitCost;
@@ -1666,7 +1697,12 @@ function calculateRowsAndTotals({
     if (grouped.has(vendorCodeKey)) continue;
     if (adsCost === 0) continue;
 
-    const unitCost = resolveUnitCost(costByVendorCode, vendorCodeKey);
+    const unitCost = resolveUnitCost(
+      costByVendorCode,
+      costByNmId,
+      vendorCodeKey,
+      wbSupplierArticleByNmId,
+    );
     grouped.set(vendorCodeKey, {
       nmId: "",
       vendorCode: vendorCodeKey,
@@ -2457,31 +2493,68 @@ export async function getProfitAnalyticsOzon(params?: {
     },
   });
 
-  const [ozonProducts, ozonStockMappings] = await sequentialAll([
-    async () => (prisma.ozonProduct.findMany({
-      where: {
-        ...(companyName ? { companyName } : {}),
+  const [ozonProducts, ozonStockMappings, ozonSpecialAliases, wbProductCards] =
+    await sequentialAll([
+      async () =>
+        prisma.ozonProduct.findMany({
+          where: {
+            ...(companyName ? { companyName } : {}),
+          },
+          select: {
+            vendorCode: true,
+            sku: true,
+          },
+        }),
+      async () =>
+        // Fallback-маппинг: иногда Ozon Finance отдаёт SKU, которого нет в OzonProduct,
+        // но он есть в остатках Ozon вместе с vendorCode. Используем это только как
+        // справочник соответствия SKU -> артикул, не меняя сами финансовые формулы.
+        prisma.ozonStock.findMany({
+          where: {
+            ...(companyName ? { companyName } : {}),
+          },
+          select: {
+            vendorCode: true,
+            sku: true,
+          },
+        }),
+      async () => {
+        try {
+          return await prisma.ozonSpecialSkuAlias.findMany({
+            where: {
+              ...(companyName ? { companyName } : {}),
+            },
+            select: {
+              ozonSku: true,
+              canonicalVendorCode: true,
+            },
+          });
+        } catch {
+          // Table may not exist until migration is applied.
+          return [] as Array<{ ozonSku: string; canonicalVendorCode: string }>;
+        }
       },
-      select: {
-        vendorCode: true,
-        sku: true,
-      },
-    })),
-    async () => (// Fallback-маппинг: иногда Ozon Finance отдаёт SKU, которого нет в OzonProduct,
-    // но он есть в остатках Ozon вместе с vendorCode. Используем это только как
-    // справочник соответствия SKU -> артикул, не меняя сами финансовые формулы.
-    prisma.ozonStock.findMany({
-      where: {
-        ...(companyName ? { companyName } : {}),
-      },
-      select: {
-        vendorCode: true,
-        sku: true,
-      },
-    })),
-  ]);
+      async () =>
+        prisma.wbProductCard.findMany({
+          where: {
+            ...(companyName ? { companyName } : {}),
+          },
+          select: {
+            nmId: true,
+            vendorCode: true,
+          },
+        }),
+    ]);
 
-  const ozonProductMappings = [...ozonProducts, ...ozonStockMappings];
+  const ozonProductMappings = [
+    // Special aliases first so they override junk/incomplete OzonProduct rows.
+    ...ozonSpecialAliases.map((alias) => ({
+      sku: alias.ozonSku,
+      vendorCode: alias.canonicalVendorCode,
+    })),
+    ...ozonProducts,
+    ...ozonStockMappings,
+  ];
 
   const currentFinanceRows = await findLatestOzonFinanceRowsByPeriod({
     dateFrom: params?.dateFrom,
@@ -2600,6 +2673,7 @@ export async function getProfitAnalyticsOzon(params?: {
       adsRows: currentAdsRows,
       costs,
       ozonProducts: ozonProductMappings,
+      wbProductCards,
       usnRate,
       vatRate,
     }),
@@ -2616,6 +2690,7 @@ export async function getProfitAnalyticsOzon(params?: {
       adsRows: previousAdsRows,
       costs,
       ozonProducts: ozonProductMappings,
+      wbProductCards,
       usnRate,
       vatRate,
     }),

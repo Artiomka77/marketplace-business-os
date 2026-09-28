@@ -52,8 +52,8 @@
     {
       "path": "lib/analytics/profitAnalyticsOzon.ts",
       "role": "Канонический расчёт прибыли Ozon",
-      "sha256": "2ed1cab392da580e3837d467b95dc6da26935f799faab558a195c8e7bba6b5fa",
-      "snapshotSha256": "2ed1cab392da580e3837d467b95dc6da26935f799faab558a195c8e7bba6b5fa",
+      "sha256": "cef1bd74dbe3c73d52133ca2e34a72b1de802968203716406d41923feb0d4b5d",
+      "snapshotSha256": "cef1bd74dbe3c73d52133ca2e34a72b1de802968203716406d41923feb0d4b5d",
       "sizeBytes": 77182
     },
     {
@@ -164,8 +164,8 @@
     {
       "path": "lib/analytics/productCostResolver.ts",
       "role": "Единый детерминированный resolver положительной себестоимости",
-      "sha256": "adcff625bd21616ed15bdc76d9dd35304e06430afb5c66bd42eb721d38682a89",
-      "snapshotSha256": "adcff625bd21616ed15bdc76d9dd35304e06430afb5c66bd42eb721d38682a89",
+      "sha256": "0f8611dd3f4cf54511c6d601914dd9b68efb590027f9da9d6677eb58a35cf7cf",
+      "snapshotSha256": "0f8611dd3f4cf54511c6d601914dd9b68efb590027f9da9d6677eb58a35cf7cf",
       "sizeBytes": 2187
     },
     {
