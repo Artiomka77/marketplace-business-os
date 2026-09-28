@@ -1,0 +1,183 @@
+name: avorofin-p0-cogs-integrity-images
+
+on:
+  push:
+    branches:
+      - 'audit/avorofin-p0-cogs-integrity-20260928_1632'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: avorofin-p0-cogs-integrity-images-20260928_1632
+  cancel-in-progress: true
+
+jobs:
+  build-images:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - name: Checkout temp branch
+        uses: actions/checkout@v4
+
+      - name: Prove GitHub-hosted runner
+        run: |
+          set -euo pipefail
+          {
+            echo "RUNNER_GITHUB_HOSTED=YES"
+            echo "RUNNER_SELF_HOSTED=NO"
+            echo "ImageOS=${ImageOS:-}"
+            echo "RUNNER_NAME=${RUNNER_NAME:-}"
+            echo "RUNNER_OS=${RUNNER_OS:-}"
+            echo "RUNNER_ENVIRONMENT=${RUNNER_ENVIRONMENT:-}"
+            hostname
+            uname -a
+          } | tee github-runner-proof.txt
+          if [ "${RUNNER_ENVIRONMENT:-}" = "self-hosted" ]; then
+            echo "REFUSING_SELF_HOSTED_RUNNER"
+            exit 1
+          fi
+          if [ -z "${ImageOS:-}" ]; then
+            echo "REFUSING_MISSING_ImageOS"
+            exit 1
+          fi
+
+      - name: Fail-closed source patch presence
+        run: |
+          set -euo pipefail
+          test -f Dockerfile
+          test -f package.json
+          test -f next.config.ts
+          grep -q 'output: "standalone"' next.config.ts
+          test -f lib/ozon/syncOzonAccrualByDay.ts
+          grep -q 'buildProductRealizationRows' lib/ozon/syncOzonAccrualByDay.ts
+          test -f lib/analytics/profitAnalyticsOzon.ts
+          grep -q 'ozonRealizationProductRowsToFinanceLike' lib/analytics/profitAnalyticsOzon.ts
+          grep -q 'quantityCoverageComplete' lib/analytics/profitAnalyticsOzon.ts
+          test -f lib/analytics/costCoverage.ts
+          grep -q 'ozonRealizationProductRows' lib/analytics/costCoverage.ts
+          test -f app/profit-ozon/page.tsx
+          grep -q 'Prefer by-day product-grain' app/profit-ozon/page.tsx
+          test -f scripts/architecture/p0OzonCogsByDayQuantity.test.ts
+
+      - name: Set image tags
+        id: tags
+        run: |
+          set -euo pipefail
+          STAMP=20260928_1632
+          APP_TAG="avorofin-p0-cogs-app:${STAMP}"
+          TG_TAG="avorofin-p0-cogs-telegram:${STAMP}"
+          echo "stamp=${STAMP}" >> "$GITHUB_OUTPUT"
+          echo "app_tag=${APP_TAG}" >> "$GITHUB_OUTPUT"
+          echo "tg_tag=${TG_TAG}" >> "$GITHUB_OUTPUT"
+
+      - name: Docker build NEXT standalone images
+        env:
+          NEXT_PUBLIC_SITE_URL: http://127.0.0.1:3000
+          NEXT_PUBLIC_SUPABASE_URL: http://127.0.0.1:54321
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: canary-anon
+          NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: canary-publishable
+        run: |
+          set -euo pipefail
+          APP_TAG="${{ steps.tags.outputs.app_tag }}"
+          TG_TAG="${{ steps.tags.outputs.tg_tag }}"
+          docker build \
+            --target runner \
+            --build-arg NEXT_PUBLIC_SITE_URL="$NEXT_PUBLIC_SITE_URL" \
+            --build-arg NEXT_PUBLIC_SUPABASE_URL="$NEXT_PUBLIC_SUPABASE_URL" \
+            --build-arg NEXT_PUBLIC_SUPABASE_ANON_KEY="$NEXT_PUBLIC_SUPABASE_ANON_KEY" \
+            --build-arg NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY="$NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY" \
+            --label "avorofin.p0.cogs=integrity" \
+            --label "avorofin.p0.stamp=${{ steps.tags.outputs.stamp }}" \
+            --label "avorofin.p0.sha=${GITHUB_SHA}" \
+            --label "avorofin.p0.role=app" \
+            -t "$APP_TAG" \
+            . | tee DOCKER_BUILD_APP.txt
+          docker build \
+            --target runner \
+            --build-arg NEXT_PUBLIC_SITE_URL="$NEXT_PUBLIC_SITE_URL" \
+            --build-arg NEXT_PUBLIC_SUPABASE_URL="$NEXT_PUBLIC_SUPABASE_URL" \
+            --build-arg NEXT_PUBLIC_SUPABASE_ANON_KEY="$NEXT_PUBLIC_SUPABASE_ANON_KEY" \
+            --build-arg NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY="$NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY" \
+            --label "avorofin.p0.cogs=integrity" \
+            --label "avorofin.p0.stamp=${{ steps.tags.outputs.stamp }}" \
+            --label "avorofin.p0.sha=${GITHUB_SHA}" \
+            --label "avorofin.p0.role=telegram" \
+            -t "$TG_TAG" \
+            . | tee DOCKER_BUILD_TELEGRAM.txt
+          docker image inspect "$APP_TAG" > DOCKER_IMAGE_INSPECT_APP.txt
+          docker image inspect "$TG_TAG" > DOCKER_IMAGE_INSPECT_TELEGRAM.txt
+          docker image inspect -f '{{.Id}}' "$APP_TAG" | tee APP_IMAGE_ID.txt
+          docker image inspect -f '{{.Id}}' "$TG_TAG" | tee TG_IMAGE_ID.txt
+          echo "$APP_TAG" > APP_TAG.txt
+          echo "$TG_TAG" > TG_TAG.txt
+
+      - name: Save TAR + sha256 artifacts
+        run: |
+          set -euo pipefail
+          APP_TAG="${{ steps.tags.outputs.app_tag }}"
+          TG_TAG="${{ steps.tags.outputs.tg_tag }}"
+          STAMP="${{ steps.tags.outputs.stamp }}"
+          mkdir -p artifacts
+          docker save "$APP_TAG" -o "artifacts/avorofin-p0-cogs-app-${STAMP}.tar"
+          docker save "$TG_TAG" -o "artifacts/avorofin-p0-cogs-telegram-${STAMP}.tar"
+          sha256sum "artifacts/avorofin-p0-cogs-app-${STAMP}.tar" | tee "artifacts/avorofin-p0-cogs-app-${STAMP}.tar.sha256"
+          sha256sum "artifacts/avorofin-p0-cogs-telegram-${STAMP}.tar" | tee "artifacts/avorofin-p0-cogs-telegram-${STAMP}.tar.sha256"
+          cp APP_IMAGE_ID.txt TG_IMAGE_ID.txt APP_TAG.txt TG_TAG.txt github-runner-proof.txt artifacts/
+          cp DOCKER_IMAGE_INSPECT_APP.txt DOCKER_IMAGE_INSPECT_TELEGRAM.txt artifacts/
+          ls -lah artifacts
+
+      - name: Write binding evidence
+        run: |
+          set -euo pipefail
+          STAMP="${{ steps.tags.outputs.stamp }}"
+          APP_ID=$(cat APP_IMAGE_ID.txt)
+          TG_ID=$(cat TG_IMAGE_ID.txt)
+          APP_TAR_SHA=$(awk '{print $1}' "artifacts/avorofin-p0-cogs-app-${STAMP}.tar.sha256")
+          TG_TAR_SHA=$(awk '{print $1}' "artifacts/avorofin-p0-cogs-telegram-${STAMP}.tar.sha256")
+          cat > artifacts/P0_COGS_IMAGE_BINDING.json <<EOF
+          {
+            "TEMP_BRANCH": "audit/avorofin-p0-cogs-integrity-20260928_1632",
+            "GITHUB_SHA": "${GITHUB_SHA}",
+            "GITHUB_RUN_ID": "${GITHUB_RUN_ID}",
+            "RUNNER_GITHUB_HOSTED": "YES",
+            "APP_TAG": "${{ steps.tags.outputs.app_tag }}",
+            "TG_TAG": "${{ steps.tags.outputs.tg_tag }}",
+            "APP_IMAGE_ID": "$APP_ID",
+            "TG_IMAGE_ID": "$TG_ID",
+            "APP_TAR_SHA256": "$APP_TAR_SHA",
+            "TG_TAR_SHA256": "$TG_TAR_SHA",
+            "DOCKER_COMMIT_USED": "NO"
+          }
+          EOF
+
+      - name: Upload APP image artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: avorofin-p0-cogs-app-20260928_1632
+          path: |
+            artifacts/avorofin-p0-cogs-app-20260928_1632.tar
+            artifacts/avorofin-p0-cogs-app-20260928_1632.tar.sha256
+            artifacts/APP_IMAGE_ID.txt
+            artifacts/APP_TAG.txt
+            artifacts/DOCKER_IMAGE_INSPECT_APP.txt
+            artifacts/P0_COGS_IMAGE_BINDING.json
+            artifacts/github-runner-proof.txt
+          retention-days: 14
+
+      - name: Upload TELEGRAM image artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: avorofin-p0-cogs-telegram-20260928_1632
+          path: |
+            artifacts/avorofin-p0-cogs-telegram-20260928_1632.tar
+            artifacts/avorofin-p0-cogs-telegram-20260928_1632.tar.sha256
+            artifacts/TG_IMAGE_ID.txt
+            artifacts/TG_TAG.txt
+            artifacts/DOCKER_IMAGE_INSPECT_TELEGRAM.txt
+            artifacts/P0_COGS_IMAGE_BINDING.json
+            artifacts/github-runner-proof.txt
+          retention-days: 14
