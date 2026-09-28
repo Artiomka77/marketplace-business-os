@@ -406,6 +406,9 @@ export type OzonProfitTotals = {
   costCoverageIncomplete?: boolean;
   missingCostQty?: number;
   missingCostItemsCount?: number;
+  quantityCoverageComplete?: boolean;
+  productCostCoverageComplete?: boolean;
+  cogsCoverageComplete?: boolean;
 
   grossOzonExpenses: number;
   discountPointsCompensation: number;
@@ -1106,6 +1109,9 @@ function createEmptyTotals(
     costCoverageIncomplete: false,
     missingCostQty: 0,
     missingCostItemsCount: 0,
+    quantityCoverageComplete: true,
+    productCostCoverageComplete: true,
+    cogsCoverageComplete: true,
 
     grossOzonExpenses: 0,
     discountPointsCompensation: 0,
@@ -2134,6 +2140,147 @@ async function findLatestOzonFinanceRowsByDatePeriod(params?: {
   });
 }
 
+type OzonRealizationProductRow = {
+  companyName: string | null;
+  sku: string | null;
+  vendorCode: string | null;
+  productName: string | null;
+  realizedQty: number | null;
+  returnedQty: number | null;
+  netQty: number | null;
+  realizedAmount: unknown;
+  returnedAmount: unknown;
+  taxableRevenue: unknown;
+  dateFrom: Date;
+  dateTo: Date;
+};
+
+async function findOzonRealizationProductRowsByPeriod(params?: {
+  dateFrom?: string | null;
+  dateTo?: string | null;
+  companyName?: string | null;
+}): Promise<OzonRealizationProductRow[]> {
+  if (!params?.dateFrom || !params?.dateTo) return [];
+  const dateFrom = new Date(`${params.dateFrom}T00:00:00.000Z`);
+  const dateTo = new Date(`${params.dateTo}T00:00:00.000Z`);
+  return prisma.ozonRealizationRow.findMany({
+    where: {
+      sku: { not: null },
+      dateFrom: { gte: dateFrom },
+      dateTo: { lte: dateTo },
+      ...(params.companyName ? { companyName: params.companyName } : {}),
+    },
+    select: {
+      companyName: true,
+      sku: true,
+      vendorCode: true,
+      productName: true,
+      realizedQty: true,
+      returnedQty: true,
+      netQty: true,
+      realizedAmount: true,
+      returnedAmount: true,
+      taxableRevenue: true,
+      dateFrom: true,
+      dateTo: true,
+    },
+  });
+}
+
+async function findOzonRealizationProductRowsByDatePeriod(params?: {
+  dateFrom?: Date | null;
+  dateTo?: Date | null;
+  companyName?: string | null;
+}): Promise<OzonRealizationProductRow[]> {
+  if (!params?.dateFrom || !params?.dateTo) return [];
+  return findOzonRealizationProductRowsByPeriod({
+    dateFrom: params.dateFrom.toISOString().slice(0, 10),
+    dateTo: params.dateTo.toISOString().slice(0, 10),
+    companyName: params.companyName,
+  });
+}
+
+/**
+ * Map product-grain OzonRealizationRow into finance-like rows consumed by
+ * calculateRowsAndTotals (salesAmount sign drives sale vs return).
+ */
+export function ozonRealizationProductRowsToFinanceLike(
+  rows: OzonRealizationProductRow[],
+) {
+  const out: Array<{
+    companyName: string | null;
+    sku: string | null;
+    vendorCode: string | null;
+    quantity: number;
+    salesAmount: number;
+    totalAmount: number;
+    ozonCommission: number;
+    logisticsCost: number;
+    reverseLogisticsCost: number;
+    accrualDate: Date | null;
+    operationType: string | null;
+  }> = [];
+
+  for (const row of rows) {
+    const realizedQty = Math.abs(toNumber(row.realizedQty));
+    const returnedQty = Math.abs(toNumber(row.returnedQty));
+    const realizedAmount = Math.abs(toNumber(row.realizedAmount));
+    const returnedAmount = Math.abs(toNumber(row.returnedAmount));
+    const base = {
+      companyName: row.companyName,
+      sku: row.sku,
+      vendorCode: row.vendorCode,
+      ozonCommission: 0,
+      logisticsCost: 0,
+      reverseLogisticsCost: 0,
+      accrualDate: row.dateFrom ?? null,
+      operationType: "OZON_ACCRUAL_BY_DAY_PRODUCT",
+    };
+    if (realizedQty > 0 || realizedAmount > 0) {
+      out.push({
+        ...base,
+        quantity: realizedQty > 0 ? realizedQty : 1,
+        salesAmount: realizedAmount,
+        totalAmount: realizedAmount,
+      });
+    }
+    if (returnedQty > 0 || returnedAmount > 0) {
+      out.push({
+        ...base,
+        quantity: returnedQty > 0 ? returnedQty : 1,
+        salesAmount: -returnedAmount,
+        totalAmount: -returnedAmount,
+      });
+    }
+  }
+  return out;
+}
+
+function applyOzonCogsCoverageFlags(params: {
+  totals: OzonProfitTotals;
+  hasAccrualMoney: boolean;
+  hasProductQtyBasis: boolean;
+}) {
+  const quantityCoverageComplete =
+    !params.hasAccrualMoney || params.hasProductQtyBasis;
+  const productCostCoverageComplete = params.totals.costCoverageIncomplete !== true;
+  const cogsCoverageComplete =
+    quantityCoverageComplete && productCostCoverageComplete;
+
+  params.totals.quantityCoverageComplete = quantityCoverageComplete;
+  params.totals.productCostCoverageComplete = productCostCoverageComplete;
+  params.totals.cogsCoverageComplete = cogsCoverageComplete;
+
+  if (!quantityCoverageComplete) {
+    // Accrual money present but no SKU qty basis: never trust COGS=0 as FINAL.
+    params.totals.costCoverageIncomplete = true;
+    params.totals.netProfitStatus = "PRELIMINARY";
+  } else if (!cogsCoverageComplete) {
+    params.totals.netProfitStatus = "PRELIMINARY";
+  }
+  return params.totals;
+}
+
 async function findLatestOzonAdsRowsByPeriod(params?: {
   dateFrom?: string | null;
   dateTo?: string | null;
@@ -2342,6 +2489,18 @@ export async function getProfitAnalyticsOzon(params?: {
     companyName,
   });
 
+  const currentRealizationProductRows =
+    await findOzonRealizationProductRowsByPeriod({
+      dateFrom: params?.dateFrom,
+      dateTo: params?.dateTo,
+      companyName,
+    });
+
+  const currentCogsSourceRows =
+    currentRealizationProductRows.length > 0
+      ? ozonRealizationProductRowsToFinanceLike(currentRealizationProductRows)
+      : currentFinanceRows;
+
   const currentRealizationSummary = await findOzonRealizationSummaryByPeriod({
     dateFrom: params?.dateFrom,
     dateTo: params?.dateTo,
@@ -2386,6 +2545,19 @@ export async function getProfitAnalyticsOzon(params?: {
       })
     : [];
 
+  const previousRealizationProductRows = previousPeriod
+    ? await findOzonRealizationProductRowsByDatePeriod({
+        dateFrom: previousPeriod.dateFrom,
+        dateTo: previousPeriod.dateTo,
+        companyName,
+      })
+    : [];
+
+  const previousCogsSourceRows =
+    previousRealizationProductRows.length > 0
+      ? ozonRealizationProductRowsToFinanceLike(previousRealizationProductRows)
+      : previousFinanceRows;
+
   const previousRealizationSummary = previousPeriod
     ? await findOzonRealizationSummaryByDatePeriod({
         dateFrom: previousPeriod.dateFrom,
@@ -2424,7 +2596,7 @@ export async function getProfitAnalyticsOzon(params?: {
 
   const current = applyOzonEconomicModel(
     calculateRowsAndTotals({
-      financeRows: currentFinanceRows,
+      financeRows: currentCogsSourceRows,
       adsRows: currentAdsRows,
       costs,
       ozonProducts: ozonProductMappings,
@@ -2440,7 +2612,7 @@ export async function getProfitAnalyticsOzon(params?: {
 
   const previous = applyOzonEconomicModel(
     calculateRowsAndTotals({
-      financeRows: previousFinanceRows,
+      financeRows: previousCogsSourceRows,
       adsRows: previousAdsRows,
       costs,
       ozonProducts: ozonProductMappings,
@@ -2453,6 +2625,36 @@ export async function getProfitAnalyticsOzon(params?: {
     usnRate,
     vatRate,
   );
+
+  const currentAccrualMoney =
+    toNumber(
+      (currentRealizationSummary as { taxableRevenue?: unknown } | null)
+        ?.taxableRevenue,
+    ) > 0.5 ||
+    toNumber(current.totals.economicTurnover) > 0.5;
+  const currentQtyBasis =
+    currentCogsSourceRows.length > 0 &&
+    currentCogsSourceRows.some((row) => Math.abs(toNumber(row.quantity)) > 0);
+  applyOzonCogsCoverageFlags({
+    totals: current.totals,
+    hasAccrualMoney: currentAccrualMoney,
+    hasProductQtyBasis: currentQtyBasis,
+  });
+
+  const previousAccrualMoney =
+    toNumber(
+      (previousRealizationSummary as { taxableRevenue?: unknown } | null)
+        ?.taxableRevenue,
+    ) > 0.5 ||
+    toNumber(previous.totals.economicTurnover) > 0.5;
+  const previousQtyBasis =
+    previousCogsSourceRows.length > 0 &&
+    previousCogsSourceRows.some((row) => Math.abs(toNumber(row.quantity)) > 0);
+  applyOzonCogsCoverageFlags({
+    totals: previous.totals,
+    hasAccrualMoney: previousAccrualMoney,
+    hasProductQtyBasis: previousQtyBasis,
+  });
 
   const comparison = createOzonComparison(current.totals, previous.totals);
 

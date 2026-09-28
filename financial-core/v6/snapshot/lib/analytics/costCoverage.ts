@@ -43,6 +43,9 @@ export type CostCoverageSummary = {
   missingAmount: number;
   examples: MissingCostItem[];
   hasMissingCosts: boolean;
+  quantityCoverageComplete?: boolean;
+  productCostCoverageComplete?: boolean;
+  cogsCoverageComplete?: boolean;
   technicalWbItemsCount: number;
   technicalWbQuantity: number;
   technicalWbAmount: number;
@@ -241,7 +244,16 @@ export async function getCostCoverageSummary(params: {
       }
     : {};
 
-  const [costs, wbProductCards, ozonProducts, ozonStockMappings, wbRows, ozonRows] = await Promise.all([
+  const [
+    costs,
+    wbProductCards,
+    ozonProducts,
+    ozonStockMappings,
+    wbRows,
+    ozonFinanceRows,
+    ozonRealizationProductRows,
+    ozonRealizationSummaryAgg,
+  ] = await Promise.all([
     prisma.productCost.findMany({
       select: {
         id: true,
@@ -314,7 +326,66 @@ export async function getCostCoverageSummary(params: {
         totalAmount: true,
       },
     }),
+    prisma.ozonRealizationRow.groupBy({
+      by: ["companyName", "vendorCode", "sku"],
+      where: {
+        ...companyFilter,
+        sku: { not: null },
+        dateFrom: { gte: dateFrom },
+        dateTo: { lte: dateTo },
+      },
+      _sum: {
+        realizedQty: true,
+        returnedQty: true,
+        realizedAmount: true,
+        returnedAmount: true,
+        taxableRevenue: true,
+      },
+    }),
+    prisma.ozonRealizationSummary.aggregate({
+      where: {
+        ...companyFilter,
+        dateFrom: { gte: dateFrom },
+        dateTo: { lte: dateTo },
+      },
+      _sum: {
+        taxableRevenue: true,
+        realizedAmount: true,
+      },
+    }),
   ]);
+
+  const ozonRows =
+    ozonRealizationProductRows.length > 0
+      ? ozonRealizationProductRows.map((row) => ({
+          companyName: row.companyName,
+          vendorCode: row.vendorCode,
+          sku: row.sku,
+          _sum: {
+            quantity:
+              Math.abs(toNumber(row._sum.realizedQty)) +
+              Math.abs(toNumber(row._sum.returnedQty)),
+            salesAmount:
+              Math.abs(toNumber(row._sum.realizedAmount)) +
+              Math.abs(toNumber(row._sum.returnedAmount)) ||
+              Math.abs(toNumber(row._sum.taxableRevenue)),
+            totalAmount:
+              Math.abs(toNumber(row._sum.realizedAmount)) +
+              Math.abs(toNumber(row._sum.returnedAmount)),
+          },
+        }))
+      : ozonFinanceRows;
+
+  const ozonAccrualMoney =
+    Math.abs(toNumber(ozonRealizationSummaryAgg._sum.taxableRevenue)) > 0.5 ||
+    Math.abs(toNumber(ozonRealizationSummaryAgg._sum.realizedAmount)) > 0.5;
+  const ozonQuantityCoverageComplete =
+    !ozonAccrualMoney ||
+    ozonRows.some(
+      (row) =>
+        Math.abs(toNumber(row._sum.quantity)) > 0 ||
+        Math.abs(toNumber(row._sum.salesAmount)) > 0,
+    );
 
   const { hasWbCost, resolveOzonCost } = createCostResolvers({
     costs,
@@ -431,7 +502,12 @@ export async function getCostCoverageSummary(params: {
     missingQuantity,
     missingAmount,
     examples: missingItems.slice(0, params.examplesLimit ?? 8),
-    hasMissingCosts: missingItems.length > 0,
+    hasMissingCosts:
+      missingItems.length > 0 || ozonQuantityCoverageComplete === false,
+    quantityCoverageComplete: ozonQuantityCoverageComplete,
+    productCostCoverageComplete: missingItems.length === 0,
+    cogsCoverageComplete:
+      ozonQuantityCoverageComplete && missingItems.length === 0,
     technicalWbItemsCount,
     technicalWbQuantity,
     technicalWbAmount,
