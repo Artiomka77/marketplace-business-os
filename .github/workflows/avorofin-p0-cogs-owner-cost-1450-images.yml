@@ -1,0 +1,243 @@
+name: avorofin-p0-cogs-owner-cost-1450-images
+
+on:
+  push:
+    branches:
+      - 'audit/avorofin-p0-cogs-owner-cost-1450-20260928_1950'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: avorofin-p0-cogs-owner-cost-1450-images-20260928_1950
+  cancel-in-progress: true
+
+jobs:
+  build-images:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    steps:
+      - name: Checkout temp branch
+        uses: actions/checkout@v4
+
+      - name: Prove GitHub-hosted runner
+        run: |
+          set -euo pipefail
+          {
+            echo "RUNNER_GITHUB_HOSTED=YES"
+            echo "RUNNER_SELF_HOSTED=NO"
+            echo "ImageOS=${ImageOS:-}"
+            echo "RUNNER_NAME=${RUNNER_NAME:-}"
+            echo "RUNNER_OS=${RUNNER_OS:-}"
+            echo "RUNNER_ENVIRONMENT=${RUNNER_ENVIRONMENT:-}"
+            hostname
+            uname -a
+          } | tee github-runner-proof.txt
+          if [ "${RUNNER_ENVIRONMENT:-}" = "self-hosted" ]; then
+            echo "REFUSING_SELF_HOSTED_RUNNER"
+            exit 1
+          fi
+          if [ -z "${ImageOS:-}" ]; then
+            echo "REFUSING_MISSING_ImageOS"
+            exit 1
+          fi
+
+      - name: Fail-closed source patch presence
+        run: |
+          set -euo pipefail
+          test -f Dockerfile
+          test -f package.json
+          test -f next.config.ts
+          grep -q 'output: "standalone"' next.config.ts
+          test -f lib/analytics/profitAnalyticsOzon.ts
+          grep -q 'resolveCanonicalUnitCost' lib/analytics/profitAnalyticsOzon.ts
+          test -f lib/analytics/productCostResolver.ts
+          grep -q 'extractSizedOfferBaseNmId' lib/analytics/productCostResolver.ts
+          grep -q 'resolveCanonicalUnitCost' lib/analytics/productCostResolver.ts
+          test -f lib/analytics/costCoverage.ts
+          test -f prisma/schema.prisma
+          grep -q 'model OzonSpecialSkuAlias' prisma/schema.prisma
+          test -f scripts/architecture/p0OzonSizedOfferCostFallback.test.ts
+
+      - name: Set image tags
+        id: tags
+        run: |
+          set -euo pipefail
+          STAMP=20260928_1950
+          echo "stamp=${STAMP}" >> "$GITHUB_OUTPUT"
+          echo "app_tag=avorofin-p0-cogs-app:${STAMP}" >> "$GITHUB_OUTPUT"
+          echo "tg_tag=avorofin-p0-cogs-telegram:${STAMP}" >> "$GITHUB_OUTPUT"
+          echo "profit_tag=avorofin-p0-cogs-profit:${STAMP}" >> "$GITHUB_OUTPUT"
+          echo "v6_tag=avorofin-p0-cogs-v6:${STAMP}" >> "$GITHUB_OUTPUT"
+          echo "dash_tag=avorofin-p0-cogs-dashboard:${STAMP}" >> "$GITHUB_OUTPUT"
+
+      - name: Docker build APP TG profit V6 dashboard
+        env:
+          NEXT_PUBLIC_SITE_URL: http://127.0.0.1:3000
+          NEXT_PUBLIC_SUPABASE_URL: http://127.0.0.1:54321
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: canary-anon
+          NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: canary-publishable
+        run: |
+          set -euo pipefail
+          STAMP="${{ steps.tags.outputs.stamp }}"
+          build_one() {
+            local target="$1" tag="$2" role="$3" log="$4"
+            docker build \
+              --target "$target" \
+              --build-arg NEXT_PUBLIC_SITE_URL="$NEXT_PUBLIC_SITE_URL" \
+              --build-arg NEXT_PUBLIC_SUPABASE_URL="$NEXT_PUBLIC_SUPABASE_URL" \
+              --build-arg NEXT_PUBLIC_SUPABASE_ANON_KEY="$NEXT_PUBLIC_SUPABASE_ANON_KEY" \
+              --build-arg NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY="$NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY" \
+              --label "avorofin.p0.cogs=owner-cost-1450" \
+              --label "avorofin.p0.stamp=${STAMP}" \
+              --label "avorofin.p0.sha=${GITHUB_SHA}" \
+              --label "avorofin.p0.role=${role}" \
+              -t "$tag" \
+              . | tee "$log"
+            docker image inspect -f '{{.Id}}' "$tag" | tee "${role}_IMAGE_ID.txt"
+            docker image inspect "$tag" > "DOCKER_IMAGE_INSPECT_${role}.txt"
+            echo "$tag" > "${role}_TAG.txt"
+          }
+          build_one runner "${{ steps.tags.outputs.app_tag }}" app DOCKER_BUILD_APP.txt
+          build_one runner "${{ steps.tags.outputs.tg_tag }}" telegram DOCKER_BUILD_TELEGRAM.txt
+          build_one profit-readmodel-worker "${{ steps.tags.outputs.profit_tag }}" profit DOCKER_BUILD_PROFIT.txt
+          build_one v6-period-readmodel-worker "${{ steps.tags.outputs.v6_tag }}" v6 DOCKER_BUILD_V6.txt
+          build_one dashboard-period-snapshot-worker "${{ steps.tags.outputs.dash_tag }}" dashboard DOCKER_BUILD_DASHBOARD.txt
+
+      - name: Save TAR + sha256 artifacts
+        run: |
+          set -euo pipefail
+          STAMP="${{ steps.tags.outputs.stamp }}"
+          mkdir -p artifacts
+          for role in app telegram profit v6 dashboard; do
+            case "$role" in
+              app) tag="${{ steps.tags.outputs.app_tag }}" ;;
+              telegram) tag="${{ steps.tags.outputs.tg_tag }}" ;;
+              profit) tag="${{ steps.tags.outputs.profit_tag }}" ;;
+              v6) tag="${{ steps.tags.outputs.v6_tag }}" ;;
+              dashboard) tag="${{ steps.tags.outputs.dash_tag }}" ;;
+            esac
+            docker save "$tag" -o "artifacts/avorofin-p0-cogs-${role}-${STAMP}.tar"
+            sha256sum "artifacts/avorofin-p0-cogs-${role}-${STAMP}.tar" | tee "artifacts/avorofin-p0-cogs-${role}-${STAMP}.tar.sha256"
+            cp "${role}_IMAGE_ID.txt" "${role}_TAG.txt" "DOCKER_IMAGE_INSPECT_${role}.txt" artifacts/ || true
+          done
+          cp github-runner-proof.txt artifacts/
+          ls -lah artifacts
+
+      - name: Write binding evidence
+        run: |
+          set -euo pipefail
+          STAMP="${{ steps.tags.outputs.stamp }}"
+          python3 - <<'PY'
+          import json, pathlib, os
+          stamp = os.environ["STAMP"]
+          sha = os.environ["GITHUB_SHA"]
+          run_id = os.environ["GITHUB_RUN_ID"]
+          roles = ["app", "telegram", "profit", "v6", "dashboard"]
+          tags = {
+            "app": os.environ["APP_TAG"],
+            "telegram": os.environ["TG_TAG"],
+            "profit": os.environ["PROFIT_TAG"],
+            "v6": os.environ["V6_TAG"],
+            "dashboard": os.environ["DASH_TAG"],
+          }
+          out = {
+            "TEMP_BRANCH": "audit/avorofin-p0-cogs-owner-cost-1450-20260928_1950",
+            "GITHUB_SHA": sha,
+            "GITHUB_RUN_ID": run_id,
+            "RUNNER_GITHUB_HOSTED": "YES",
+            "STAMP": stamp,
+            "DOCKER_COMMIT_USED": "NO",
+            "IN_CONTAINER_SOURCE_COPY": "NO",
+            "images": {},
+          }
+          for role in roles:
+            img_id = pathlib.Path(f"{role}_IMAGE_ID.txt").read_text().strip()
+            tar_sha = pathlib.Path(f"artifacts/avorofin-p0-cogs-{role}-{stamp}.tar.sha256").read_text().split()[0]
+            out["images"][role] = {
+              "tag": tags[role],
+              "imageId": img_id,
+              "tarSha256": tar_sha,
+            }
+          pathlib.Path("artifacts/P0_COGS_IMAGE_BINDING.json").write_text(json.dumps(out, indent=2) + "\n")
+          PY
+        env:
+          STAMP: ${{ steps.tags.outputs.stamp }}
+          APP_TAG: ${{ steps.tags.outputs.app_tag }}
+          TG_TAG: ${{ steps.tags.outputs.tg_tag }}
+          PROFIT_TAG: ${{ steps.tags.outputs.profit_tag }}
+          V6_TAG: ${{ steps.tags.outputs.v6_tag }}
+          DASH_TAG: ${{ steps.tags.outputs.dash_tag }}
+
+      - name: Upload APP image artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: avorofin-p0-cogs-app-20260928_1950
+          path: |
+            artifacts/avorofin-p0-cogs-app-20260928_1950.tar
+            artifacts/avorofin-p0-cogs-app-20260928_1950.tar.sha256
+            artifacts/app_IMAGE_ID.txt
+            artifacts/app_TAG.txt
+            artifacts/DOCKER_IMAGE_INSPECT_app.txt
+            artifacts/P0_COGS_IMAGE_BINDING.json
+            artifacts/github-runner-proof.txt
+          retention-days: 14
+
+      - name: Upload TELEGRAM image artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: avorofin-p0-cogs-telegram-20260928_1950
+          path: |
+            artifacts/avorofin-p0-cogs-telegram-20260928_1950.tar
+            artifacts/avorofin-p0-cogs-telegram-20260928_1950.tar.sha256
+            artifacts/telegram_IMAGE_ID.txt
+            artifacts/telegram_TAG.txt
+            artifacts/DOCKER_IMAGE_INSPECT_telegram.txt
+            artifacts/P0_COGS_IMAGE_BINDING.json
+            artifacts/github-runner-proof.txt
+          retention-days: 14
+
+      - name: Upload PROFIT image artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: avorofin-p0-cogs-profit-20260928_1950
+          path: |
+            artifacts/avorofin-p0-cogs-profit-20260928_1950.tar
+            artifacts/avorofin-p0-cogs-profit-20260928_1950.tar.sha256
+            artifacts/profit_IMAGE_ID.txt
+            artifacts/profit_TAG.txt
+            artifacts/DOCKER_IMAGE_INSPECT_profit.txt
+            artifacts/P0_COGS_IMAGE_BINDING.json
+            artifacts/github-runner-proof.txt
+          retention-days: 14
+
+      - name: Upload V6 image artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: avorofin-p0-cogs-v6-20260928_1950
+          path: |
+            artifacts/avorofin-p0-cogs-v6-20260928_1950.tar
+            artifacts/avorofin-p0-cogs-v6-20260928_1950.tar.sha256
+            artifacts/v6_IMAGE_ID.txt
+            artifacts/v6_TAG.txt
+            artifacts/DOCKER_IMAGE_INSPECT_v6.txt
+            artifacts/P0_COGS_IMAGE_BINDING.json
+            artifacts/github-runner-proof.txt
+          retention-days: 14
+
+      - name: Upload DASHBOARD image artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: avorofin-p0-cogs-dashboard-20260928_1950
+          path: |
+            artifacts/avorofin-p0-cogs-dashboard-20260928_1950.tar
+            artifacts/avorofin-p0-cogs-dashboard-20260928_1950.tar.sha256
+            artifacts/dashboard_IMAGE_ID.txt
+            artifacts/dashboard_TAG.txt
+            artifacts/DOCKER_IMAGE_INSPECT_dashboard.txt
+            artifacts/P0_COGS_IMAGE_BINDING.json
+            artifacts/github-runner-proof.txt
+          retention-days: 14
