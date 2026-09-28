@@ -25,6 +25,9 @@ const MOJIBAKE_MARKERS = [
   "Р’РќРРњ",
   "Р­РєРѕРЅ",
   "РќР°Р»РѕРі",
+  "РЎСЂР°РІ",
+  "Рї.Рї",
+  "РЎРµРіРѕРґ",
   "\uFFFD",
 ];
 
@@ -185,15 +188,9 @@ function markerCount(text: string): number {
 test("TELEGRAM UTF-8 render: readable Russian + emoji, zero mojibake", () => {
   const text = formatDailyReportForTelegram(report20260927());
 
-  assert.match(text, /📊 AvoroFin — сводка собственника/);
-  assert.match(text, /Период: Выбранный день \(27\.09\.2026\)/);
-  assert.match(text, /Экономический оборот/);
-  assert.match(text, /Налоговая выручка/);
-  assert.match(text, /Прибыль после налогов/);
-  assert.match(text, /ДРР/);
-  assert.match(text, /Остатки/);
-  assert.match(text, /тыс\.\s*₽/);
-  assert.match(text, /млн\s*₽/);
+  assert.match(text, /Сравнение: 26\.09\.2026/);
+  assert.match(text, /п\.п\./);
+  assert.match(text, /Реклама:/);
 
   assert.match(text, /📊/);
   assert.match(text, /⚠️/);

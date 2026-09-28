@@ -315,7 +315,7 @@ function makeTodayMoscowRange(now?: Date): DateRange {
 
   return {
     dateLabel,
-    periodLabel: "РЎРµРіРѕРґРЅСЏ",
+    periodLabel: "Сегодня",
     dateFrom,
     dateToExclusive,
   };
@@ -2826,7 +2826,7 @@ function marketplaceAdLine(metrics: MarketplaceDailyMetrics) {
     return "Реклама: данные ещё не загружены";
   }
 
-  return `Р РµРєР»Р°РјР°: ${formatMoney(metrics.adSpend)}`;
+  return `Реклама: ${formatMoney(metrics.adSpend)}`;
 }
 
 type MarketplaceConclusionItem = {
@@ -3140,7 +3140,7 @@ function formatPercentChange(value: number | null, inverse = false) {
 
 function formatPointDiff(value: number | null, inverse = true) {
   if (value === null || !Number.isFinite(value)) return "нет базы";
-  if (value === 0) return "0.0 Рї.Рї.";
+  if (value === 0) return "0.0 п.п.";
 
   const sign = value > 0 ? "+" : "";
   const marker = inverse
@@ -3153,7 +3153,7 @@ function formatPointDiff(value: number | null, inverse = true) {
 
   return `${marker} ${sign}${new Intl.NumberFormat("ru-RU", {
     maximumFractionDigits: 1,
-  }).format(value)} Рї.Рї.`;
+  }).format(value)} п.п.`;
 }
 
 function buildComparisonLines(report: DailyReport) {
@@ -3362,7 +3362,7 @@ export function formatDailyReportForTelegram(report: DailyReport) {
   const header = [
     `📊 AvoroFin — сводка собственника`,
     `Период: ${report.periodLabel}${periodDate ? ` (${periodDate})` : ""}`,
-    comparisonDate ? `РЎСЂР°РІРЅРµРЅРёРµ: ${comparisonDate}` : "",
+    comparisonDate ? `Сравнение: ${comparisonDate}` : "",
     ...formatTelegramReadinessBlock(readinessIssues),
   ].filter(Boolean);
 
