@@ -460,6 +460,66 @@ async function findLatestOzonFinanceRowsForBreakdown(params: {
   dateTo?: string | null;
   companyName?: string | null;
 }) {
+  // Prefer by-day product-grain realization rows when present (COGS qty authority).
+  if (params.dateFrom && params.dateTo) {
+    const dateFrom = new Date(`${params.dateFrom}T00:00:00.000Z`);
+    const dateTo = new Date(`${params.dateTo}T00:00:00.000Z`);
+    const productRows = await prisma.ozonRealizationRow.findMany({
+      where: {
+        sku: { not: null },
+        dateFrom: { gte: dateFrom },
+        dateTo: { lte: dateTo },
+        ...(params.companyName ? { companyName: params.companyName } : {}),
+      },
+      select: {
+        dateFrom: true,
+        sku: true,
+        vendorCode: true,
+        realizedQty: true,
+        returnedQty: true,
+        realizedAmount: true,
+        returnedAmount: true,
+        importSessionId: true,
+        createdAt: true,
+      },
+      orderBy: { dateFrom: "desc" },
+    });
+    if (productRows.length > 0) {
+      const mapped: OzonFinanceBreakdownRecord[] = [];
+      for (const row of productRows) {
+        const realizedQty = Math.abs(Number(row.realizedQty) || 0);
+        const returnedQty = Math.abs(Number(row.returnedQty) || 0);
+        const realizedAmount = Math.abs(Number(row.realizedAmount) || 0);
+        const returnedAmount = Math.abs(Number(row.returnedAmount) || 0);
+        if (realizedQty > 0 || realizedAmount > 0) {
+          mapped.push({
+            accrualDate: row.dateFrom,
+            sku: row.sku,
+            vendorCode: row.vendorCode,
+            quantity: realizedQty > 0 ? realizedQty : 1,
+            salesAmount: realizedAmount,
+            totalAmount: realizedAmount,
+            importSessionId: row.importSessionId,
+            createdAt: row.createdAt,
+          });
+        }
+        if (returnedQty > 0 || returnedAmount > 0) {
+          mapped.push({
+            accrualDate: row.dateFrom,
+            sku: row.sku,
+            vendorCode: row.vendorCode,
+            quantity: returnedQty > 0 ? returnedQty : 1,
+            salesAmount: -returnedAmount,
+            totalAmount: -returnedAmount,
+            importSessionId: row.importSessionId,
+            createdAt: row.createdAt,
+          });
+        }
+      }
+      return mapped;
+    }
+  }
+
   const accrualDateWhere = createDateWhere(params.dateFrom, params.dateTo);
 
   const latestRow = await prisma.ozonFinance.findFirst({

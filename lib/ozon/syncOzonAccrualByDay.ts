@@ -189,6 +189,96 @@ function buildEconomicDaySplits(accruals: unknown[]) {
   );
 }
 
+export type OzonProductRealizationRowDraft = {
+  sku: string;
+  vendorCode: string | null;
+  productName: string | null;
+  realizedQty: number;
+  returnedQty: number;
+  netQty: number;
+  realizedAmount: number;
+  returnedAmount: number;
+  taxableRevenue: number;
+  partnerProgramsAmount: number;
+};
+
+/**
+ * Product-grain qty/money for COGS from by-day raw.
+ * Only products WITH commission contribute (fee-only SKU appearances skipped).
+ * sale_price >= 0 => sale; sale_price < 0 => return.
+ */
+export function buildProductRealizationRows(params: {
+  accruals: unknown[];
+  date: string;
+  skuToVendorCode?: Map<string, string>;
+}): OzonProductRealizationRowDraft[] {
+  const bySku = new Map<string, OzonProductRealizationRowDraft>();
+
+  for (const value of params.accruals) {
+    if (!isRecord(value)) continue;
+    if (String(value.date ?? "").trim() !== params.date) continue;
+
+    const posting = isRecord(value.posting) ? value.posting : null;
+    const products = Array.isArray(posting?.products) ? posting.products : [];
+
+    for (const productValue of products) {
+      if (!isRecord(productValue)) continue;
+      const commission = isRecord(productValue.commission)
+        ? productValue.commission
+        : null;
+      if (!commission) continue;
+
+      const skuRaw = productValue.sku;
+      if (skuRaw == null || String(skuRaw).trim() === "") continue;
+      const sku = String(skuRaw).trim();
+
+      const qtyRaw = Number(productValue.quantity);
+      const qty =
+        Number.isFinite(qtyRaw) && qtyRaw !== 0 ? Math.abs(qtyRaw) : 1;
+
+      const saleCents = getMoneyCents(commission, "sale_price");
+      const saleAmount = centsToMoney(saleCents);
+      const partnerCents = getMoneyCents(commission, "coinvestment");
+      const vendorCode = params.skuToVendorCode?.get(sku) ?? null;
+      const productName =
+        typeof productValue.name === "string" && productValue.name.trim()
+          ? productValue.name.trim()
+          : null;
+
+      const current = bySku.get(sku) ?? {
+        sku,
+        vendorCode,
+        productName,
+        realizedQty: 0,
+        returnedQty: 0,
+        netQty: 0,
+        realizedAmount: 0,
+        returnedAmount: 0,
+        taxableRevenue: 0,
+        partnerProgramsAmount: 0,
+      };
+
+      if (!current.vendorCode && vendorCode) current.vendorCode = vendorCode;
+      if (!current.productName && productName) current.productName = productName;
+
+      if (saleCents >= 0) {
+        current.realizedQty += qty;
+        current.realizedAmount += saleAmount;
+        current.netQty += qty;
+      } else {
+        current.returnedQty += qty;
+        current.returnedAmount += Math.abs(saleAmount);
+        current.netQty -= qty;
+      }
+      current.taxableRevenue += saleAmount;
+      current.partnerProgramsAmount += centsToMoney(partnerCents);
+      bySku.set(sku, current);
+    }
+  }
+
+  return [...bySku.values()];
+}
+
 function createId(prefix: string) {
   return `${prefix}_${randomUUID()}`;
 }
@@ -355,11 +445,13 @@ async function insertEconomicDay(
     taxableRevenue: number;
     discountPointsAmount: number;
     split: EconomicDaySplit;
+    productRows?: OzonProductRealizationRowDraft[];
   },
 ) {
   const realizationSummaryId = createId("ozrapi");
   const pointsSummaryId = createId("ozpapi");
   const sourceName = `Ozon Accrual /by-day API ${params.companyName} ${params.date}`;
+  const productRows = params.productRows ?? [];
 
   await tx.$executeRawUnsafe(
     `
@@ -383,36 +475,75 @@ async function insertEconomicDay(
     params.split.returnedAmount,
     params.taxableRevenue,
     params.split.partnerProgramsAmount,
-    params.accrualRows,
+    productRows.length > 0 ? productRows.length : params.accrualRows,
   );
 
-  await tx.$executeRawUnsafe(
-    `
-      INSERT INTO "OzonRealizationRow" (
-        "id", "summaryId", "importSessionId", "companyName",
-        "dateFrom", "dateTo", "operationDate",
-        "sku", "vendorCode", "productName",
-        "realizedQty", "returnedQty", "netQty",
-        "realizedAmount", "returnedAmount", "taxableRevenue",
-        "partnerProgramsAmount", "createdAt"
-      ) VALUES (
-        $1, $2, $3, $4,
-        $5::date, $5::date, $5::date,
-        NULL, NULL, 'Итого по дню из Ozon Accrual /by-day API',
-        0, 0, 0,
-        $6, $7, $8, $9, NOW()
-      )
-    `,
-    createId("ozrrapi"),
-    realizationSummaryId,
-    params.importSessionId,
-    params.companyName,
-    params.date,
-    params.split.realizedAmount,
-    params.split.returnedAmount,
-    params.taxableRevenue,
-    params.split.partnerProgramsAmount,
-  );
+  if (productRows.length > 0) {
+    for (const row of productRows) {
+      await tx.$executeRawUnsafe(
+        `
+          INSERT INTO "OzonRealizationRow" (
+            "id", "summaryId", "importSessionId", "companyName",
+            "dateFrom", "dateTo", "operationDate",
+            "sku", "vendorCode", "productName",
+            "realizedQty", "returnedQty", "netQty",
+            "realizedAmount", "returnedAmount", "taxableRevenue",
+            "partnerProgramsAmount", "createdAt"
+          ) VALUES (
+            $1, $2, $3, $4,
+            $5::date, $5::date, $5::date,
+            $6, $7, $8,
+            $9, $10, $11,
+            $12, $13, $14, $15, NOW()
+          )
+        `,
+        createId("ozrrapi"),
+        realizationSummaryId,
+        params.importSessionId,
+        params.companyName,
+        params.date,
+        row.sku,
+        row.vendorCode,
+        row.productName,
+        row.realizedQty,
+        row.returnedQty,
+        row.netQty,
+        row.realizedAmount,
+        row.returnedAmount,
+        row.taxableRevenue,
+        row.partnerProgramsAmount,
+      );
+    }
+  } else {
+    // Fallback day-total only when product grain is absent (quantityCoverage incomplete).
+    await tx.$executeRawUnsafe(
+      `
+        INSERT INTO "OzonRealizationRow" (
+          "id", "summaryId", "importSessionId", "companyName",
+          "dateFrom", "dateTo", "operationDate",
+          "sku", "vendorCode", "productName",
+          "realizedQty", "returnedQty", "netQty",
+          "realizedAmount", "returnedAmount", "taxableRevenue",
+          "partnerProgramsAmount", "createdAt"
+        ) VALUES (
+          $1, $2, $3, $4,
+          $5::date, $5::date, $5::date,
+          NULL, NULL, 'Итого по дню из Ozon Accrual /by-day API',
+          0, 0, 0,
+          $6, $7, $8, $9, NOW()
+        )
+      `,
+      createId("ozrrapi"),
+      realizationSummaryId,
+      params.importSessionId,
+      params.companyName,
+      params.date,
+      params.split.realizedAmount,
+      params.split.returnedAmount,
+      params.taxableRevenue,
+      params.split.partnerProgramsAmount,
+    );
+  }
 
   await tx.$executeRawUnsafe(
     `
@@ -817,6 +948,28 @@ export function createPrismaOzonAccrualStore(): OzonAccrualRuntimeStore {
       });
       const splitByDay = buildEconomicDaySplits(params.raw.rawAccruals);
 
+      const ozonProductMaps = await prisma.ozonProduct.findMany({
+        where: { sku: { not: null } },
+        select: { sku: true, vendorCode: true },
+      });
+      const ozonStockMaps = await prisma.ozonStock
+        .findMany({
+          where: { sku: { not: null }, vendorCode: { not: null } },
+          select: { sku: true, vendorCode: true },
+        })
+        .catch(() => [] as Array<{ sku: string | null; vendorCode: string | null }>);
+      const skuToVendorCode = new Map<string, string>();
+      for (const row of ozonStockMaps) {
+        if (row.sku && row.vendorCode) {
+          skuToVendorCode.set(String(row.sku), String(row.vendorCode));
+        }
+      }
+      for (const row of ozonProductMaps) {
+        if (row.sku && row.vendorCode) {
+          skuToVendorCode.set(String(row.sku), String(row.vendorCode));
+        }
+      }
+
       const snapshotInvalidation = await prisma.$transaction(
         async (tx) => {
           for (const table of TARGET_TABLES) {
@@ -836,6 +989,11 @@ export function createPrismaOzonAccrualStore(): OzonAccrualRuntimeStore {
             if (!split) {
               throw new Error(`Ozon /by-day economic split missing for ${day.date}`);
             }
+            const productRows = buildProductRealizationRows({
+              accruals: params.raw.rawAccruals,
+              date: day.date,
+              skuToVendorCode,
+            });
             await insertEconomicDay(tx, {
               companyName: params.companyName,
               importSessionId: params.raw.id,
@@ -846,6 +1004,7 @@ export function createPrismaOzonAccrualStore(): OzonAccrualRuntimeStore {
               taxableRevenue: day.taxableRevenue,
               discountPointsAmount: day.discountPointsAmount,
               split,
+              productRows,
             });
           }
 
