@@ -1955,10 +1955,7 @@ async function getOzonMetrics(companyName: string, range: DateRange) {
     ? "Ozon СЂРµРєР»Р°РјРЅС‹Рµ СЂР°СЃС…РѕРґС‹ Р·Р° СЌС‚РѕС‚ РїРµСЂРёРѕРґ РµС‰С‘ РЅРµ Р·Р°РіСЂСѓР¶РµРЅС‹ РёР· Ozon Finance/Performance"
     : null;
 
-  // CASE 2 (known numeric + PRELIMINARY): never wipe eco/revenue to 0.
-  // Only take the unavailable wipe when canonical finality is incomplete AND
-  // profit analytics has no known Ozon numeric amounts.
-  if (ozonFinancialUnavailable && !profitAnalyticsHasOzonData) {
+  if (ozonFinancialUnavailable) {
     return {
       marketplace: "OZON" as const,
       ordersQty: orderStats.ordersQty,
