@@ -1,0 +1,157 @@
+name: avorofin-telegram-utf8-fix-images
+
+on:
+  push:
+    branches:
+      - 'audit/avorofin-telegram-utf8-fix-20260928_2142'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: avorofin-telegram-utf8-fix-images-20260928_2142
+  cancel-in-progress: true
+
+jobs:
+  build-telegram-image:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Prove GitHub-hosted runner
+        run: |
+          set -euo pipefail
+          {
+            echo "RUNNER_GITHUB_HOSTED=YES"
+            echo "RUNNER_SELF_HOSTED=NO"
+            echo "ImageOS=${ImageOS:-}"
+            echo "RUNNER_NAME=${RUNNER_NAME:-}"
+            echo "RUNNER_OS=${RUNNER_OS:-}"
+            echo "RUNNER_ENVIRONMENT=${RUNNER_ENVIRONMENT:-}"
+            hostname
+            uname -a
+          } | tee github-runner-proof.txt
+          if [ "${RUNNER_ENVIRONMENT:-}" = "self-hosted" ]; then
+            echo "REFUSING_SELF_HOSTED_RUNNER"
+            exit 1
+          fi
+          if [ -z "${ImageOS:-}" ]; then
+            echo "REFUSING_MISSING_ImageOS"
+            exit 1
+          fi
+
+      - name: Fail-closed UTF-8 source contract
+        run: |
+          set -euo pipefail
+          test -f lib/telegram/dailyReport.ts
+          grep -F '📊 AvoroFin — сводка собственника' lib/telegram/dailyReport.ts
+          grep -F 'млн ₽' lib/telegram/dailyReport.ts
+          grep -F 'тыс. ₽' lib/telegram/dailyReport.ts
+          ! grep -F 'рџ“Љ' lib/telegram/dailyReport.ts
+          ! grep -F 'в‚Ѕ' lib/telegram/dailyReport.ts
+          ! grep -F 'С‚С‹СЃ' lib/telegram/dailyReport.ts
+          grep -F 'compactMarketplaceBlock("🟣", "WB"' lib/telegram/dailyReport.ts
+          grep -F 'compactMarketplaceBlock("🔵", "Ozon"' lib/telegram/dailyReport.ts
+          test -f scripts/architecture/telegramUtf8Render.test.ts
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install + focused UTF-8 tests
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/avorofin
+        run: |
+          set -euo pipefail
+          npm ci --ignore-scripts
+          npx prisma generate
+          npx tsx --test scripts/architecture/telegramUtf8Render.test.ts
+
+      - name: Set image tags
+        id: tags
+        run: |
+          set -euo pipefail
+          STAMP=20260928_2142
+          echo "stamp=${STAMP}" >> "$GITHUB_OUTPUT"
+          echo "tg_tag=avorofin-p0-cogs-telegram:${STAMP}" >> "$GITHUB_OUTPUT"
+
+      - name: Docker build TELEGRAM only
+        env:
+          NEXT_PUBLIC_SITE_URL: http://127.0.0.1:3000
+          NEXT_PUBLIC_SUPABASE_URL: http://127.0.0.1:54321
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: canary-anon
+          NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: canary-publishable
+        run: |
+          set -euo pipefail
+          TG_TAG="${{ steps.tags.outputs.tg_tag }}"
+          docker build \
+            --target runner \
+            --build-arg NEXT_PUBLIC_SITE_URL="$NEXT_PUBLIC_SITE_URL" \
+            --build-arg NEXT_PUBLIC_SUPABASE_URL="$NEXT_PUBLIC_SUPABASE_URL" \
+            --build-arg NEXT_PUBLIC_SUPABASE_ANON_KEY="$NEXT_PUBLIC_SUPABASE_ANON_KEY" \
+            --build-arg NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY="$NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY" \
+            --label "avorofin.p0.telegram=utf8-fix" \
+            --label "avorofin.p0.stamp=${{ steps.tags.outputs.stamp }}" \
+            --label "avorofin.p0.sha=${GITHUB_SHA}" \
+            --label "avorofin.p0.role=telegram" \
+            -t "$TG_TAG" \
+            . | tee DOCKER_BUILD_TELEGRAM.txt
+          docker image inspect -f '{{.Id}}' "$TG_TAG" | tee telegram_IMAGE_ID.txt
+          docker image inspect "$TG_TAG" > DOCKER_IMAGE_INSPECT_telegram.txt
+          echo "$TG_TAG" > telegram_TAG.txt
+
+      - name: Save TAR + binding
+        run: |
+          set -euo pipefail
+          STAMP="${{ steps.tags.outputs.stamp }}"
+          TG_TAG="${{ steps.tags.outputs.tg_tag }}"
+          mkdir -p artifacts
+          docker save "$TG_TAG" -o "artifacts/avorofin-p0-cogs-telegram-${STAMP}.tar"
+          sha256sum "artifacts/avorofin-p0-cogs-telegram-${STAMP}.tar" | tee "artifacts/avorofin-p0-cogs-telegram-${STAMP}.tar.sha256"
+          cp telegram_IMAGE_ID.txt telegram_TAG.txt DOCKER_IMAGE_INSPECT_telegram.txt github-runner-proof.txt artifacts/
+          python3 - <<'PY'
+          import json, pathlib, os
+          stamp = os.environ["STAMP"]
+          out = {
+            "GATE": "AVOROFIN_TELEGRAM_UTF8_FIX",
+            "TEMP_BRANCH": "audit/avorofin-telegram-utf8-fix-20260928_2142",
+            "GITHUB_SHA": os.environ["GITHUB_SHA"],
+            "GITHUB_RUN_ID": os.environ["GITHUB_RUN_ID"],
+            "RUNNER_GITHUB_HOSTED": "YES",
+            "STAMP": stamp,
+            "DOCKER_COMMIT_USED": "NO",
+            "MAIN_TOUCHED": "NO",
+            "images": {
+              "telegram": {
+                "tag": os.environ["TG_TAG"],
+                "imageId": pathlib.Path("telegram_IMAGE_ID.txt").read_text().strip(),
+                "tarSha256": pathlib.Path(f"artifacts/avorofin-p0-cogs-telegram-{stamp}.tar.sha256").read_text().split()[0],
+              }
+            },
+          }
+          pathlib.Path("artifacts/TELEGRAM_IMAGE_BINDING.json").write_text(json.dumps(out, indent=2) + "\n")
+          PY
+        env:
+          STAMP: ${{ steps.tags.outputs.stamp }}
+          TG_TAG: ${{ steps.tags.outputs.tg_tag }}
+
+      - name: Upload TELEGRAM image artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: avorofin-p0-cogs-telegram-20260928_2142
+          path: |
+            artifacts/avorofin-p0-cogs-telegram-20260928_2142.tar
+            artifacts/avorofin-p0-cogs-telegram-20260928_2142.tar.sha256
+            artifacts/telegram_IMAGE_ID.txt
+            artifacts/telegram_TAG.txt
+            artifacts/DOCKER_IMAGE_INSPECT_telegram.txt
+            artifacts/TELEGRAM_IMAGE_BINDING.json
+            artifacts/github-runner-proof.txt
+          retention-days: 14
