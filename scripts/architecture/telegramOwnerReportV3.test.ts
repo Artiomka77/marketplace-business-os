@@ -164,6 +164,98 @@ function fixtureReport(): DailyReport {
         drrByEconomicTurnoverPointDiff: -0.4,
       },
     },
+    previousReport: {
+      dateLabel: "2026-09-27",
+      periodLabel: "Аналогичный предыдущий период",
+      companies: [
+        {
+          companyName: "ИП Лебедева",
+          wb: baseMetrics("WB", {
+            economicTurnover: 4500,
+            taxableRevenue: 2000,
+            adSpend: 0,
+            totalCost: 1200,
+            netProfitAfterTax: -3000,
+            drrByEconomicTurnover: 0,
+            ordersAmount: 40000,
+            stockQty: 280,
+          }),
+          ozon: baseMetrics("OZON", {
+            economicTurnover: 18000,
+            taxableRevenue: 7000,
+            adSpend: 3000,
+            totalCost: 2800,
+            netProfitAfterTax: 2000,
+            drrByEconomicTurnover: 16.7,
+            ordersAmount: 60000,
+            stockQty: 430,
+          }),
+          combinedDataMode: "FINAL",
+          finance: {
+            cashIncome: 0,
+            cashOutflow: 0,
+            netCashFlow: -900,
+            netProfitImpact: 0,
+            ownerWithdrawals: 500,
+          },
+        },
+        {
+          companyName: "ИП Петров",
+          wb: baseMetrics("WB", {
+            economicTurnover: 150000,
+            taxableRevenue: 85000,
+            adSpend: 24000,
+            totalCost: 42000,
+            netProfitAfterTax: 10000,
+            drrByEconomicTurnover: 16,
+            ordersAmount: 220000,
+            stockQty: 3400,
+          }),
+          ozon: baseMetrics("OZON", {
+            economicTurnover: 75000,
+            taxableRevenue: 38000,
+            adSpend: 130000,
+            totalCost: 14000,
+            netProfitAfterTax: 7000,
+            drrByEconomicTurnover: 17,
+            ordersAmount: 95000,
+            stockQty: 790,
+          }),
+          combinedDataMode: "FINAL",
+          finance: {
+            cashIncome: 48000,
+            cashOutflow: 19000,
+            netCashFlow: 29000,
+            netProfitImpact: 0,
+            ownerWithdrawals: 10000,
+          },
+        },
+      ],
+      totals: {
+        ordersQty: 450,
+        ordersAmount: 3125000,
+        orderDataLoadedDays: 4,
+        orderDataExpectedDays: 4,
+        salesQty: 0,
+        salesAmount: 1060000,
+        economicTurnover: 1060000,
+        taxableRevenue: 381400,
+        totalCost: 144600,
+        adSpend: 161000,
+        drrByOrders: 5.2,
+        drrBySales: 15.2,
+        drrByEconomicTurnover: 15.2,
+        drrByTaxableRevenue: 42,
+        stockQty: 4900,
+        cashIncome: 48000,
+        cashOutflow: 19000,
+        netCashFlow: 26363,
+        netProfitImpact: 68500,
+        ownerWithdrawals: 10500,
+      },
+      warnings: [],
+      dataReadiness: null,
+    },
   };
 }
 
@@ -223,9 +315,36 @@ function extrasFixture(): OwnerReportV3Extras {
         financialDrr: 15,
         spendSemantics: "PERFORMANCE_PARTIAL",
         top3: [
-          { article: "Ади-Флис-всерый", qty: 11, amount: 78472 },
-          { article: "1492430240-158", qty: 8, amount: 50000 },
-          { article: "ART-OZ-3", qty: 5, amount: 30000 },
+          {
+            article: "1217252162-158",
+            ozonOffer: "1217252162-158",
+            humanArticle: "Ади-Флис-всерый",
+            size: "158",
+            imageUrl: "https://cdn.example/ozon-a.jpg",
+            marketplace: "OZON",
+            qty: 11,
+            amount: 78472,
+            mappingConfidence: "EXACT",
+            mappingPath: "ProductCost.vendorCode@nmId",
+          },
+          {
+            article: "1492430240-158",
+            ozonOffer: "1492430240-158",
+            humanArticle: "Ади-Флис-вчерный",
+            size: "158",
+            imageUrl: "https://cdn.example/ozon-b.jpg",
+            marketplace: "OZON",
+            qty: 8,
+            amount: 50000,
+            mappingConfidence: "EXACT",
+          },
+          {
+            article: "ART-OZ-3",
+            ozonOffer: "ART-OZ-3",
+            marketplace: "OZON",
+            qty: 5,
+            amount: 30000,
+          },
         ],
       }),
       cabinet("ИП Лебедева", "WB", {
@@ -292,7 +411,8 @@ test("V3.1 Ozon vendorCode primary + Performance vs P&L label", () => {
   assert.match(v3.message2, /Ади-Флис-всерый/);
   assert.doesNotMatch(v3.message2, /Костюм спортивный MODNYVIKI/);
   assert.match(v3.message2, /Performance:/);
-  assert.match(v3.message2, /Реклама P&L:/);
+  // HTML Message2 escapes & → &amp; so Telegram renders "P&L"
+  assert.match(v3.message2, /Реклама P&amp;L:/);
 });
 
 test("V3.1 business TOP-3 complete requires 4 cabinets; incomplete labeled", () => {
@@ -333,5 +453,32 @@ test("V3.1 company sort helper", () => {
   assert.deepEqual(
     sorted.map((c) => c.companyName),
     ["ИП Петров", "ИП Лебедева"]
+  );
+});
+
+test("V3.2 company + cabinet dynamics from previousReport", () => {
+  const m1 = formatOwnerReportV3Message1(fixtureReport());
+  assert.match(m1, /👤 ИП Петров[\s\S]*Заказы:.*[🔴🟢]/);
+  assert.match(m1, /👤 ИП Петров[\s\S]*🟣 WB[\s\S]*шт ·.*[🔴🟢]/);
+  assert.match(m1, /👤 ИП Петров[\s\S]*🔵 Ozon[\s\S]*шт ·.*[🔴🟢]/);
+  assert.match(m1, /👤 ИП Лебедева[\s\S]*Заказы:.*[🔴🟢]/);
+  assert.match(m1, /👤 ИП Лебедева[\s\S]*🟣 WB[\s\S]*шт ·.*[🔴🟢]/);
+  assert.match(m1, /👤 ИП Лебедева[\s\S]*🔵 Ozon[\s\S]*шт ·.*[🔴🟢]/);
+});
+
+test("V3.2 Ozon TOP-3 human identity + HTML photo + no generic title", () => {
+  const v3 = formatOwnerReportV3(fixtureReport(), extrasFixture());
+  assert.match(v3.message2, /1217252162-158/);
+  assert.match(v3.message2, /Ади-Флис-всерый/);
+  assert.match(v3.message2, /р\.158/);
+  assert.match(
+    v3.message2,
+    /<a href="https:\/\/cdn\.example\/ozon-a\.jpg">📷<\/a>/
+  );
+  assert.doesNotMatch(v3.message2, /Костюм спортивный/);
+  assert.doesNotMatch(v3.message2, /MODNYVIKI/);
+  assert.equal(
+    ownerReportV3Math.escapeTelegramHtml('a<b>&"'),
+    "a&lt;b&gt;&amp;&quot;"
   );
 });

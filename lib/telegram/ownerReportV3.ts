@@ -13,6 +13,14 @@ import {
   formatSignedMoney,
   shouldShowCashFlowPercent,
 } from "@/lib/telegram/dailyReport";
+import {
+  buildLevelComparisonMaps,
+  dynPct,
+  dynPp,
+  joinDyn,
+  type LevelComparisonMaps,
+  type LevelDynamics,
+} from "@/lib/telegram/ownerReportV3Dynamics";
 
 export type OwnerReportV3Messages = {
   message1: string;
@@ -27,7 +35,14 @@ export type TopOrderItem = {
   companyName?: string;
   marketplace?: "WB" | "OZON";
   sku?: string | null;
+  /** @deprecated generic titles must not be shown */
   secondaryTitle?: string | null;
+  ozonOffer?: string | null;
+  humanArticle?: string | null;
+  size?: string | null;
+  imageUrl?: string | null;
+  mappingPath?: string | null;
+  mappingConfidence?: "EXACT" | null;
 };
 
 export type CounterStatus =
@@ -144,13 +159,14 @@ function ecoOf(m: {
 function formatMarketplaceCabinet(
   emoji: string,
   label: string,
-  m: DailyReport["companies"][0]["wb"]
+  m: DailyReport["companies"][0]["wb"],
+  dyn: LevelDynamics | null
 ) {
   if (m.financialUnavailable) {
     return [
       `${emoji} ${label}`,
       `⚠️ Финансовые данные неполны — не равны 0 ₽.`,
-      `📦 Заказы         ${formatNumber(m.ordersQty)} шт · ${money(m.ordersAmount)}`,
+      `🛒 Заказы         ${formatNumber(m.ordersQty)} шт · ${money(m.ordersAmount)}${dynPct(dyn?.ordersAmountPercent ?? null)}`,
       `📦 Остатки        ${formatNumber(m.stockQty)} шт`,
     ].join("\n");
   }
@@ -164,30 +180,40 @@ function formatMarketplaceCabinet(
 
   const lines = [
     `${emoji} ${label}`,
-    `🛒 Заказы         ${formatNumber(m.ordersQty)} шт · ${money(m.ordersAmount)}`,
-    `📈 Экон. оборот   ${money(eco)}`,
+    `🛒 ${formatNumber(m.ordersQty)} шт · ${money(m.ordersAmount)}${dynPct(dyn?.ordersAmountPercent ?? null)}`,
+    `📈 Оборот ${money(eco)}${dynPct(dyn?.economicTurnoverPercent ?? null)}`,
     taxable === undefined
-      ? `🧾 Налог. выручка н/д`
-      : `🧾 Налог. выручка ${money(taxable)}`,
-    "",
+      ? `🧾 Налог. н/д`
+      : `🧾 Налог. ${money(taxable)}${dynPct(dyn?.taxableRevenuePercent ?? null)}`,
     cogs === null
-      ? `📦 Себестоимость  н/д`
-      : `📦 Себестоимость  ${money(cogs)}${
+      ? `📦 COGS н/д`
+      : `📦 COGS ${money(cogs)}${
           cogsShare === null ? "" : ` · ${pct(cogsShare)}`
-        }`,
-    `📣 Реклама        ${money(m.adSpend)} · ДРР ${pct(m.drrByEconomicTurnover)}`,
+        }${joinDyn(
+          dynPct(dyn?.totalCostPercent ?? null, true),
+          dynPp(dyn?.cogsSharePointDiff ?? null)
+        )}`,
+    `📣 Реклама ${money(m.adSpend)} · ДРР ${pct(m.drrByEconomicTurnover)}${joinDyn(
+      dynPct(dyn?.adSpendPercent ?? null, true),
+      dynPp(dyn?.drrPointDiff ?? null)
+    )}`,
     profit === null
-      ? `💰 Прибыль        недоступна`
-      : `💰 Прибыль        ${formatSignedMoney(profit)}${
-          marg === null ? "" : ` · маржа ${pct(marg)}`
-        }`,
-    "",
-    `📦 Остатки        ${formatNumber(m.stockQty)} шт`,
+      ? `💰 Прибыль недоступна`
+      : `💰 Прибыль ${formatSignedMoney(profit)}${
+          marg === null ? "" : ` · ${pct(marg)}`
+        }${joinDyn(
+          dynPct(dyn?.netProfitPercent ?? null),
+          dynPp(dyn?.marginPointDiff ?? null)
+        )}`,
+    `📦 Остатки ${formatNumber(m.stockQty)} шт`,
   ];
   return lines.join("\n");
 }
 
-function formatCompanyBlock(company: DailyReport["companies"][0]) {
+function formatCompanyBlock(
+  company: DailyReport["companies"][0],
+  maps: LevelComparisonMaps
+) {
   const unavailable = Boolean(
     company.wb.financialUnavailable || company.ozon.financialUnavailable
   );
@@ -209,29 +235,65 @@ function formatCompanyBlock(company: DailyReport["companies"][0]) {
     companyNet === null
       ? null
       : companyNet - company.finance.ownerWithdrawals;
+  const ordersQty = company.wb.ordersQty + company.ozon.ordersQty;
+  const ordersAmount = company.wb.ordersAmount + company.ozon.ordersAmount;
+  const ads = company.wb.adSpend + company.ozon.adSpend;
+  const drr = eco > 0.0001 ? (ads / eco) * 100 : 0;
+  const dyn = maps.company.get(company.companyName) ?? null;
 
   const lines = [
     `👤 ${company.companyName}`,
+    `🛒 Заказы: ${formatNumber(ordersQty)} · ${money(ordersAmount)}${dynPct(dyn?.ordersAmountPercent ?? null)}`,
+    `📈 Оборот: ${money(eco)}${dynPct(dyn?.economicTurnoverPercent ?? null)}`,
+    `📣 Реклама: ${money(ads)} · ДРР ${pct(drr)}${joinDyn(
+      dynPct(dyn?.adSpendPercent ?? null, true),
+      dynPp(dyn?.drrPointDiff ?? null)
+    )}`,
     companyNet === null
       ? `💰 Прибыль: недоступно`
       : `💰 Прибыль: ${formatSignedMoney(companyNet)}${
           companyMargin === null ? "" : ` · маржа ${pct(companyMargin)}`
-        }`,
+        }${joinDyn(
+          dynPct(dyn?.netProfitPercent ?? null),
+          dynPp(dyn?.marginPointDiff ?? null)
+        )}`,
     `💸 ДДС: ${money(company.finance.netCashFlow)}`,
   ];
   if (Math.abs(company.finance.ownerWithdrawals) > 0.5) {
     lines.push(`💳 Вывод: ${money(company.finance.ownerWithdrawals)}`);
     if (afterOwner !== null) {
-      lines.push(`💵 После вывода: ${formatSignedMoney(afterOwner)}`);
+      lines.push(
+        `💵 После вывода: ${formatSignedMoney(afterOwner)}${dynPct(
+          dyn?.afterOwnerPercent ?? null
+        )}`
+      );
     }
   }
   lines.push(`📦 Остатки: ${formatNumber(stock)} шт`, "");
-  lines.push(formatMarketplaceCabinet("🟣", "WB", company.wb), "");
-  lines.push(formatMarketplaceCabinet("🔵", "Ozon", company.ozon));
+  lines.push(
+    formatMarketplaceCabinet(
+      "🟣",
+      "WB",
+      company.wb,
+      maps.cabinet.get(`${company.companyName}::WB`) ?? null
+    ),
+    ""
+  );
+  lines.push(
+    formatMarketplaceCabinet(
+      "🔵",
+      "Ozon",
+      company.ozon,
+      maps.cabinet.get(`${company.companyName}::OZON`) ?? null
+    )
+  );
   return lines.join("\n");
 }
 
-export function formatOwnerReportV3Message1(report: DailyReport): string {
+export function formatOwnerReportV3Message1(
+  report: DailyReport,
+  previousReport: DailyReport | null = null
+): string {
   const dateIso = primaryDateIso(report);
   const dateRu = formatRuDateIso(dateIso);
   const comparisonDate = report.comparison
@@ -240,6 +302,11 @@ export function formatOwnerReportV3Message1(report: DailyReport): string {
           report.comparison.dateLabel
       )
     : "";
+
+  const maps = buildLevelComparisonMaps(
+    report,
+    previousReport ?? report.previousReport ?? null
+  );
 
   const combinedUnavailable = Boolean(report.combinedFinancialUnavailable);
   const eco = report.totals.economicTurnover;
@@ -401,7 +468,7 @@ export function formatOwnerReportV3Message1(report: DailyReport): string {
   }
 
   const companies = sortCompaniesOwnerOrder(report.companies).map((c) =>
-    formatCompanyBlock(c)
+    formatCompanyBlock(c, maps)
   );
 
   const parts = [
@@ -418,18 +485,48 @@ export function formatOwnerReportV3Message1(report: DailyReport): string {
   return parts.join("\n");
 }
 
-function formatTop3List(items: TopOrderItem[]) {
-  if (items.length === 0) return "н/д — точный SKU-источник заказов недоступен";
+export function escapeTelegramHtml(text: string) {
+  return String(text)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function photoIconHtml(url: string | null | undefined) {
+  if (!url) return "";
+  const safe = escapeTelegramHtml(url);
+  return ` <a href="${safe}">📷</a>`;
+}
+
+function formatTop3List(items: TopOrderItem[], asHtml: boolean) {
+  if (items.length === 0) {
+    return asHtml
+      ? escapeTelegramHtml("н/д — точный SKU-источник заказов недоступен")
+      : "н/д — точный SKU-источник заказов недоступен";
+  }
   return items
     .slice(0, 3)
     .map((it, i) => {
-      const primary = `${i + 1}. ${it.article} · ${formatNumber(it.qty)} шт · ${money(
-        it.amount
-      )}`;
-      if (it.secondaryTitle) {
-        return `${primary}\n   ${it.secondaryTitle}`;
+      const esc = asHtml ? escapeTelegramHtml : (s: string) => s;
+      const qtyAmt = `${formatNumber(it.qty)} шт · ${money(it.amount)}`;
+      if (it.marketplace === "OZON" || it.ozonOffer || it.humanArticle) {
+        const offer = it.ozonOffer || it.article;
+        const parts = [offer];
+        if (it.humanArticle && it.humanArticle !== offer) {
+          parts.push(it.humanArticle);
+        }
+        if (it.size) parts.push(`р.${it.size}`);
+        const head = `${i + 1}. ${parts.map(esc).join(" · ")}${
+          asHtml ? photoIconHtml(it.imageUrl) : it.imageUrl ? " 📷" : ""
+        }`;
+        return `${head}\n   ${esc(qtyAmt)}`;
       }
-      return primary;
+      // WB / business: single line, no generic title
+      const head = `${i + 1}. ${esc(it.article)} · ${esc(qtyAmt)}${
+        asHtml ? photoIconHtml(it.imageUrl) : it.imageUrl ? " 📷" : ""
+      }`;
+      return head;
     })
     .join("\n");
 }
@@ -540,27 +637,28 @@ export function formatOwnerReportV3Message2(
   const top = extras.businessTop3.slice(0, 3);
   const topQty = top.reduce((s, x) => s + x.qty, 0);
   const topAmt = top.reduce((s, x) => s + x.amount, 0);
+  const esc = escapeTelegramHtml;
 
   const parts = [
-    `📦 AvoroFin — товары и реклама`,
-    dateRu,
+    esc(`📦 AvoroFin — товары и реклама`),
+    esc(dateRu),
     "",
   ];
 
   if (!extras.businessTop3Complete) {
     parts.push(
-      `🏆 ТОП-3 по доступным данным — неполно`,
-      `(источники: ${extras.businessTop3CabinetCount}/4 кабинетов)`,
+      esc(`🏆 ТОП-3 по доступным данным — неполно`),
+      esc(`(источники: ${extras.businessTop3CabinetCount}/4 кабинетов)`),
       "",
-      formatTop3List(top)
+      formatTop3List(top, true)
     );
   } else {
-    parts.push(`🏆 ТОП-3 ПО ВСЕМУ БИЗНЕСУ`, "", formatTop3List(top));
+    parts.push(esc(`🏆 ТОП-3 ПО ВСЕМУ БИЗНЕСУ`), "", formatTop3List(top, true));
     if (top.length > 0) {
       parts.push(
         "",
-        `Всего TOP-3:`,
-        `${formatNumber(topQty)} шт · ${money(topAmt)}`
+        esc(`Всего TOP-3:`),
+        esc(`${formatNumber(topQty)} шт · ${money(topAmt)}`)
       );
     }
   }
@@ -596,14 +694,14 @@ export function formatOwnerReportV3Message2(
       };
       parts.push(
         "",
-        "──────────────",
+        esc("──────────────"),
         "",
-        `👤 ${company.companyName} · ${emoji} ${label}`,
+        esc(`👤 ${company.companyName} · ${emoji} ${label}`),
         "",
-        `🏆 ТОП-3 заказов`,
-        formatTop3List(funnel?.top3 ?? []),
+        esc(`🏆 ТОП-3 заказов`),
+        formatTop3List(funnel?.top3 ?? [], true),
         "",
-        formatAdFunnelBlock(funnel ?? fallback)
+        esc(formatAdFunnelBlock(funnel ?? fallback))
       );
     }
   }
@@ -613,10 +711,11 @@ export function formatOwnerReportV3Message2(
 
 export function formatOwnerReportV3(
   report: DailyReport,
-  extras: OwnerReportV3Extras
+  extras: OwnerReportV3Extras,
+  previousReport: DailyReport | null = null
 ): OwnerReportV3Messages {
   return {
-    message1: formatOwnerReportV3Message1(report),
+    message1: formatOwnerReportV3Message1(report, previousReport),
     message2: formatOwnerReportV3Message2(report, extras),
     messageCount: 2,
   };
@@ -628,4 +727,5 @@ export const ownerReportV3Math = {
   margin,
   safeDiv,
   sortCompaniesOwnerOrder,
+  escapeTelegramHtml,
 };

@@ -77,7 +77,11 @@ export async function GET(req: Request) {
   });
 
   const extras = await loadOwnerReportV3Extras(report);
-  const v3 = formatOwnerReportV3(report, extras);
+  const v3 = formatOwnerReportV3(
+    report,
+    extras,
+    report.previousReport ?? null
+  );
   // Legacy single-string field kept for older callers; V3 = two messages.
   const baseMessage = formatDailyReportForTelegram(report);
 
@@ -154,7 +158,11 @@ export async function GET(req: Request) {
 
   for (const chatId of chatIds) {
     await sendTelegramMessage({ chatId, text: message1 });
-    await sendTelegramMessage({ chatId, text: message2 });
+    await sendTelegramMessage({
+      chatId,
+      text: message2,
+      parseMode: "HTML",
+    });
   }
 
   return NextResponse.json({

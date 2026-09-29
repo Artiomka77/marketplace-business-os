@@ -2,6 +2,8 @@ export async function sendTelegramMessage(params: {
   chatId: string;
   text: string;
   replyMarkup?: Record<string, unknown>;
+  /** Optional; omit for plain text (default). Use HTML only for Message2 photo links. */
+  parseMode?: "HTML";
 }) {
   const token = process.env.TELEGRAM_BOT_TOKEN ?? "";
 
@@ -18,6 +20,7 @@ export async function sendTelegramMessage(params: {
       chat_id: params.chatId,
       text: params.text,
       disable_web_page_preview: true,
+      ...(params.parseMode ? { parse_mode: params.parseMode } : {}),
       ...(params.replyMarkup ? { reply_markup: params.replyMarkup } : {}),
     }),
   });

@@ -1,6 +1,7 @@
 /**
- * Loaders for Owner Report V3.1 — TOP-3 (all 4 cabinets) + ad funnel with counter semantics.
+ * Loaders for Owner Report V3.2 — TOP-3 (human Ozon id + photo) + ad funnel.
  */
+import { extractSizedOfferBaseNmId } from "@/lib/analytics/productCostResolver";
 import { prisma } from "@/lib/prisma";
 import type { DailyReport } from "@/lib/telegram/dailyReport";
 import type {
@@ -63,13 +64,31 @@ function primaryDateIso(report: DailyReport): string {
 export function aggregateTop3(items: TopOrderItem[]): TopOrderItem[] {
   const map = new Map<string, TopOrderItem>();
   for (const it of items) {
-    const key = it.article.trim().toUpperCase() || "UNKNOWN";
+    const identity =
+      (it.humanArticle && it.mappingConfidence === "EXACT"
+        ? it.humanArticle
+        : null) ||
+      it.ozonOffer ||
+      it.article;
+    const key = identity.trim().toUpperCase() || "UNKNOWN";
     const prev = map.get(key);
     if (prev) {
       prev.qty += it.qty;
       prev.amount += it.amount;
+      if (!prev.imageUrl && it.imageUrl) prev.imageUrl = it.imageUrl;
+      if (!prev.humanArticle && it.humanArticle) {
+        prev.humanArticle = it.humanArticle;
+        prev.mappingPath = it.mappingPath;
+        prev.mappingConfidence = it.mappingConfidence;
+      }
+      if (!prev.size && it.size) prev.size = it.size;
+      if (!prev.ozonOffer && it.ozonOffer) prev.ozonOffer = it.ozonOffer;
     } else {
-      map.set(key, { ...it, article: it.article || key });
+      map.set(key, {
+        ...it,
+        article: it.article || key,
+        secondaryTitle: null,
+      });
     }
   }
   return [...map.values()]
@@ -110,7 +129,8 @@ function extractTopFromRawJson(raw: unknown): TopOrderItem[] {
         qty: Number.isFinite(qty) ? qty : 0,
         amount: Number.isFinite(amount) ? amount : 0,
         sku: sku || null,
-        secondaryTitle: r.title ? String(r.title).slice(0, 80) : null,
+        secondaryTitle: null,
+        ozonOffer: vendorCode || null,
       });
     }
     if (items.length > 0) return aggregateTop3(items);
@@ -191,15 +211,210 @@ async function fetchWbFunnelTop3(
         article: article || "UNKNOWN",
         qty,
         amount,
-        secondaryTitle: product.product?.title
-          ? String(product.product.title).slice(0, 80)
-          : null,
+        secondaryTitle: null,
       });
     }
     if (products.length < limit) break;
     offset += limit;
   }
   return aggregateTop3(items);
+}
+
+function extractSizeFromOffer(offer: string): string | null {
+  const m = String(offer).trim().match(/^(\d{6,})-(\d{2,4})$/);
+  return m ? m[2] : null;
+}
+
+export type OzonHumanIdentityEvidence = {
+  company: string;
+  ozonSku: string | null;
+  ozonOffer: string;
+  size: string | null;
+  canonicalBaseNmId: string | null;
+  humanArticle: string | null;
+  mappingPath: string | null;
+  imageUrl: string | null;
+  mappingConfidence: "EXACT" | null;
+};
+
+async function resolveOzonHumanIdentity(
+  companyName: string,
+  sku: string | null | undefined,
+  offerHint: string
+): Promise<OzonHumanIdentityEvidence> {
+  const skuKey = String(sku ?? "").trim();
+  let ozonOffer = String(offerHint ?? "").trim();
+  let size: string | null = extractSizeFromOffer(ozonOffer);
+  let humanArticle: string | null = null;
+  let mappingPath: string | null = null;
+  let imageUrl: string | null = null;
+  let canonicalBaseNmId: string | null =
+    extractSizedOfferBaseNmId(ozonOffer) ||
+    (skuKey && /^\d{6,}$/.test(skuKey) ? null : extractSizedOfferBaseNmId(skuKey));
+
+  // 1) Exact special SKU alias
+  if (skuKey) {
+    try {
+      const alias = await prisma.ozonSpecialSkuAlias.findUnique({
+        where: {
+          companyName_ozonSku: { companyName, ozonSku: skuKey },
+        },
+        select: {
+          canonicalVendorCode: true,
+          baseNmId: true,
+          offerId: true,
+        },
+      });
+      if (alias?.canonicalVendorCode?.trim()) {
+        humanArticle = alias.canonicalVendorCode.trim();
+        mappingPath = "OzonSpecialSkuAlias.canonicalVendorCode";
+        if (alias.baseNmId?.trim()) canonicalBaseNmId = alias.baseNmId.trim();
+        if (alias.offerId?.trim()) ozonOffer = alias.offerId.trim();
+      }
+    } catch {
+      /* table may be absent in older DBs */
+    }
+  }
+
+  // 2) Exact OzonProduct by SKU
+  if (skuKey) {
+    const product = await prisma.ozonProduct.findFirst({
+      where: { companyName, sku: skuKey },
+      select: {
+        vendorCode: true,
+        size: true,
+        imageSmallUrl: true,
+        imageUrl: true,
+      },
+      orderBy: { createdAt: "desc" },
+    });
+    if (product) {
+      const vc = product.vendorCode?.trim() || "";
+      if (vc) {
+        ozonOffer = ozonOffer || vc;
+        if (!size) size = product.size?.trim() || extractSizeFromOffer(vc);
+        const baseFromOffer = extractSizedOfferBaseNmId(vc);
+        if (baseFromOffer) canonicalBaseNmId = canonicalBaseNmId || baseFromOffer;
+        // If vendorCode itself is already human (non-sized-numeric), use it.
+        if (!humanArticle && !extractSizedOfferBaseNmId(vc) && !/^\d{6,}$/.test(vc)) {
+          humanArticle = vc;
+          mappingPath = "OzonProduct.vendorCode";
+        }
+      }
+      if (!size && product.size?.trim()) size = product.size.trim();
+      imageUrl =
+        product.imageSmallUrl?.trim() ||
+        product.imageUrl?.trim() ||
+        null;
+    }
+  }
+
+  // Also try OzonProduct by vendorCode/offer when SKU missing
+  if (!imageUrl && ozonOffer) {
+    const byOffer = await prisma.ozonProduct.findFirst({
+      where: { companyName, vendorCode: ozonOffer },
+      select: {
+        vendorCode: true,
+        size: true,
+        imageSmallUrl: true,
+        imageUrl: true,
+        sku: true,
+      },
+      orderBy: { createdAt: "desc" },
+    });
+    if (byOffer) {
+      if (!size) size = byOffer.size?.trim() || extractSizeFromOffer(ozonOffer);
+      imageUrl =
+        byOffer.imageSmallUrl?.trim() || byOffer.imageUrl?.trim() || null;
+    }
+  }
+
+  if (!canonicalBaseNmId) {
+    canonicalBaseNmId = extractSizedOfferBaseNmId(ozonOffer);
+  }
+  if (!size) size = extractSizeFromOffer(ozonOffer);
+
+  // 3–5) base nmId → ProductCost.vendorCode → WbProductCard.vendorCode
+  if (!humanArticle && canonicalBaseNmId) {
+    const cost = await prisma.productCost.findFirst({
+      where: { nmId: canonicalBaseNmId },
+      select: { vendorCode: true },
+      orderBy: { createdAt: "desc" },
+    });
+    const costVc = cost?.vendorCode?.trim() || "";
+    if (costVc && costVc !== ozonOffer && costVc !== canonicalBaseNmId) {
+      humanArticle = costVc;
+      mappingPath = "ProductCost.vendorCode@nmId";
+    } else {
+      const card = await prisma.wbProductCard.findFirst({
+        where: {
+          companyName,
+          nmId: canonicalBaseNmId,
+        },
+        select: { vendorCode: true, photoSmallUrl: true, photoBigUrl: true },
+      });
+      const cardVc = card?.vendorCode?.trim() || "";
+      if (cardVc && cardVc !== ozonOffer && cardVc !== canonicalBaseNmId) {
+        humanArticle = cardVc;
+        mappingPath = "WbProductCard.vendorCode@nmId";
+      }
+      if (!imageUrl) {
+        imageUrl =
+          card?.photoSmallUrl?.trim() || card?.photoBigUrl?.trim() || null;
+      }
+    }
+  }
+
+  // If humanArticle equals offer, drop as non-informative
+  if (
+    humanArticle &&
+    humanArticle.trim().toUpperCase() === ozonOffer.trim().toUpperCase()
+  ) {
+    humanArticle = null;
+    mappingPath = null;
+  }
+
+  return {
+    company: companyName,
+    ozonSku: skuKey || null,
+    ozonOffer: ozonOffer || offerHint || skuKey || "UNKNOWN",
+    size,
+    canonicalBaseNmId,
+    humanArticle,
+    mappingPath: humanArticle ? mappingPath : null,
+    imageUrl,
+    mappingConfidence: humanArticle ? "EXACT" : null,
+  };
+}
+
+export async function enrichOzonTopItems(
+  companyName: string,
+  items: TopOrderItem[]
+): Promise<{ items: TopOrderItem[]; evidence: OzonHumanIdentityEvidence[] }> {
+  const evidence: OzonHumanIdentityEvidence[] = [];
+  const out: TopOrderItem[] = [];
+  for (const it of items) {
+    const mapped = await resolveOzonHumanIdentity(
+      companyName,
+      it.sku,
+      it.ozonOffer || it.article
+    );
+    evidence.push(mapped);
+    out.push({
+      ...it,
+      article: mapped.ozonOffer || it.article,
+      ozonOffer: mapped.ozonOffer,
+      humanArticle: mapped.humanArticle,
+      size: mapped.size,
+      imageUrl: mapped.imageUrl,
+      mappingPath: mapped.mappingPath,
+      mappingConfidence: mapped.mappingConfidence,
+      secondaryTitle: null,
+      marketplace: "OZON",
+      companyName,
+    });
+  }
+  return { items: out, evidence };
 }
 
 async function resolveOzonVendorCodes(
@@ -213,12 +428,12 @@ async function resolveOzonVendorCodes(
   if (skus.length === 0) return map;
   const rows = await prisma.ozonProduct.findMany({
     where: { companyName, sku: { in: skus } },
-    select: { sku: true, vendorCode: true, productName: true },
+    select: { sku: true, vendorCode: true },
   });
   for (const r of rows) {
     map.set(String(r.sku), {
       vendorCode: r.vendorCode?.trim() || null,
-      title: r.productName ? String(r.productName).slice(0, 80) : null,
+      title: null,
     });
   }
   return map;
@@ -309,7 +524,8 @@ async function fetchOzonSkuTop3(
         qty: row.qty,
         amount: row.amount,
         sku: row.sku,
-        secondaryTitle: mapped?.title || row.title || null,
+        secondaryTitle: null,
+        ozonOffer: vendorCode || null,
       });
     }
   }
@@ -433,6 +649,88 @@ function classifySpendSemantics(
   return "SAME_AS_PNL";
 }
 
+async function liveFetchWbFullStatsCounters(
+  companyName: string,
+  dateIso: string
+): Promise<{ spend: number; impressions: number; clicks: number } | null> {
+  const company = await prisma.company.findFirst({
+    where: { name: companyName },
+    include: {
+      apiConnections: { where: { marketplace: "WB", isEnabled: true } },
+    },
+  });
+  const token = company?.apiConnections[0]?.wbToken;
+  if (!token) return null;
+  try {
+    const countRes = await fetch(
+      "https://advert-api.wildberries.ru/adv/v1/promotion/count",
+      {
+        method: "GET",
+        headers: { Authorization: token },
+        cache: "no-store",
+      }
+    );
+    if (!countRes.ok) return null;
+    const countJson = (await countRes.json()) as {
+      adverts?: { status?: number; advert_list?: { advertId?: number }[] }[];
+    };
+    const ids = Array.from(
+      new Set(
+        (countJson.adverts ?? [])
+          .filter((g) => g.status === 9 || g.status === 11)
+          .flatMap((g) => g.advert_list ?? [])
+          .map((a) => a.advertId)
+          .filter((id): id is number => Boolean(id))
+      )
+    );
+    if (ids.length === 0) return { spend: 0, impressions: 0, clicks: 0 };
+
+    let spend = 0;
+    let impressions = 0;
+    let clicks = 0;
+    // Fetch in chunks of 20 to stay within URL limits
+    for (let i = 0; i < ids.length; i += 20) {
+      const chunk = ids.slice(i, i + 20);
+      const url = new URL(
+        "https://advert-api.wildberries.ru/adv/v3/fullstats"
+      );
+      url.searchParams.set("ids", chunk.join(","));
+      url.searchParams.set("beginDate", dateIso);
+      url.searchParams.set("endDate", dateIso);
+      const res = await fetch(url.toString(), {
+        method: "GET",
+        headers: { Authorization: token },
+        cache: "no-store",
+      });
+      if (res.status === 204) continue;
+      if (!res.ok) continue;
+      const stats = (await res.json()) as {
+        days?: {
+          date?: string;
+          views?: number;
+          clicks?: number;
+          sum?: number;
+        }[];
+        views?: number;
+        clicks?: number;
+        sum?: number;
+      }[];
+      for (const item of Array.isArray(stats) ? stats : []) {
+        for (const day of item.days ?? []) {
+          const d = String(day.date ?? "").slice(0, 10);
+          if (d && d !== dateIso) continue;
+          spend += Number(day.sum ?? 0);
+          impressions += Number(day.views ?? 0);
+          clicks += Number(day.clicks ?? 0);
+        }
+      }
+    }
+    return { spend, impressions, clicks };
+  } catch {
+    return null;
+  }
+}
+
 async function loadWbAdFunnel(
   companyName: string,
   dates: string[],
@@ -459,7 +757,6 @@ async function loadWbAdFunnel(
   let impressionsSum = 0;
   let clicksSum = 0;
   let counterRows = 0;
-  let nullCounterRows = 0;
 
   for (const dateIso of dates) {
     const dateFrom = parseIsoDate(dateIso);
@@ -474,15 +771,12 @@ async function loadWbAdFunnel(
         spend: true,
         impressions: true,
         clicks: true,
-        ctr: true,
-        cpc: true,
       },
     });
-    const exactDay = rows.filter((r) => true);
-    for (const r of exactDay) {
+    for (const r of rows) {
       spend += toNumber(r.spend);
       if (r.impressions == null && r.clicks == null) {
-        nullCounterRows++;
+        /* expense-only row */
       } else {
         counterRows++;
         impressionsSum += Number(r.impressions ?? 0);
@@ -497,7 +791,42 @@ async function loadWbAdFunnel(
       : 0;
 
   if (counterRows === 0) {
-    // Unknown counters — never render as 0.
+    // Live FullStats fallback for exact days (bounded).
+    let liveSpend = 0;
+    let liveImp = 0;
+    let liveClk = 0;
+    let liveOk = false;
+    for (const dateIso of dates) {
+      const live = await liveFetchWbFullStatsCounters(companyName, dateIso);
+      if (!live) continue;
+      liveOk = true;
+      liveSpend += live.spend;
+      liveImp += live.impressions;
+      liveClk += live.clicks;
+    }
+    if (liveOk) {
+      const useSpend = liveSpend > 0.5 ? liveSpend : financialSpend;
+      const status: CounterStatus =
+        liveImp > 0 || liveClk > 0
+          ? "COUNTERS_AVAILABLE_NONZERO"
+          : "COUNTERS_TRUE_ZERO";
+      return {
+        spend: useSpend,
+        impressions: liveImp,
+        clicks: liveClk,
+        ctr: liveImp > 0 ? (liveClk / liveImp) * 100 : null,
+        cpc: liveClk > 0 ? useSpend / liveClk : null,
+        adOrders: null,
+        cpo: null,
+        drr:
+          economicTurnover > 0.0001 ? (useSpend / economicTurnover) * 100 : 0,
+        counterStatus: status,
+        spendSemantics: classifySpendSemantics(useSpend, financialSpend),
+        financialSpend,
+        financialDrr,
+      };
+    }
+
     const useSpend = spend > 0.5 ? spend : financialSpend;
     return {
       spend: useSpend,
@@ -524,7 +853,6 @@ async function loadWbAdFunnel(
   const ctr =
     impressionsSum > 0 ? (clicksSum / impressionsSum) * 100 : null;
   const cpc = clicksSum > 0 ? useSpend / clicksSum : null;
-  void nullCounterRows;
   return {
     spend: useSpend,
     impressions: impressionsSum,
@@ -662,12 +990,23 @@ export async function loadOwnerReportV3Extras(
               distinctCount: 0,
             };
       if (top.source === "TRUE_ORDERS") availableCabinets += 1;
-      for (const t of top.items) {
-        allTop.push({
-          ...t,
-          companyName: company.companyName,
-          marketplace: mp,
-        });
+
+      let topItems = top.items.map((t) => ({
+        ...t,
+        companyName: company.companyName,
+        marketplace: mp,
+        secondaryTitle: null as string | null,
+      }));
+      if (mp === "OZON" && topItems.length > 0) {
+        const enriched = await enrichOzonTopItems(
+          company.companyName,
+          topItems
+        );
+        topItems = enriched.items;
+      }
+
+      for (const t of topItems) {
+        allTop.push(t);
       }
       const ad =
         dates.length > 0
@@ -703,7 +1042,7 @@ export async function loadOwnerReportV3Extras(
         marketplace: mp,
         ...ad,
         economicTurnover: eco,
-        top3: top.items,
+        top3: topItems,
         top3Source: top.source,
         distinctOrderedArticles: top.distinctCount,
       });

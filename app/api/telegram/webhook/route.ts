@@ -678,12 +678,14 @@ async function telegramRequest(method: string, payload: Record<string, unknown>)
 async function sendMessage(
   chatId: string,
   text: string,
-  replyMarkup?: Record<string, unknown>
+  replyMarkup?: Record<string, unknown>,
+  parseMode?: "HTML"
 ) {
   return telegramRequest("sendMessage", {
     chat_id: chatId,
     text,
     disable_web_page_preview: true,
+    ...(parseMode ? { parse_mode: parseMode } : {}),
     ...(replyMarkup ? { reply_markup: replyMarkup } : {}),
   });
 }
@@ -1060,10 +1062,15 @@ function isoDateFromDailyReport(report: { dateLabel?: string }) {
 
 async function formatOwnerReportV3Messages(report: {
   dateLabel?: string;
+  previousReport?: unknown;
   [key: string]: unknown;
 }) {
   const extras = await loadOwnerReportV3Extras(report as any);
-  const v3 = formatOwnerReportV3(report as any, extras);
+  const v3 = formatOwnerReportV3(
+    report as any,
+    extras,
+    (report.previousReport as any) ?? null
+  );
   // Compact owner warning only — no technical READY/session lines when healthy.
   const freshness = await loadOzonDailySourceFreshness(
     isoDateFromDailyReport(report)
@@ -1086,7 +1093,7 @@ async function sendDailyOwnerReport(
 
   if (!useAi) {
     await sendMessage(chatId, message1);
-    await sendMessage(chatId, message2);
+    await sendMessage(chatId, message2, undefined, "HTML");
     return;
   }
 
@@ -1094,7 +1101,7 @@ async function sendDailyOwnerReport(
 
   if (aiResult.text) {
     await sendMessage(chatId, `${message1}\n\n${aiResult.text}`);
-    await sendMessage(chatId, message2);
+    await sendMessage(chatId, message2, undefined, "HTML");
     return;
   }
 
@@ -1109,7 +1116,7 @@ async function sendDailyOwnerReport(
       .filter((line) => line !== null)
       .join("\n")
   );
-  await sendMessage(chatId, message2);
+  await sendMessage(chatId, message2, undefined, "HTML");
 }
 
 
@@ -1124,7 +1131,7 @@ async function sendDailyOwnerReportForRange(
 
   if (!useAi) {
     await sendMessage(chatId, message1);
-    await sendMessage(chatId, message2);
+    await sendMessage(chatId, message2, undefined, "HTML");
     return;
   }
 
@@ -1132,7 +1139,7 @@ async function sendDailyOwnerReportForRange(
 
   if (aiResult.text) {
     await sendMessage(chatId, `${message1}\n\n${aiResult.text}`);
-    await sendMessage(chatId, message2);
+    await sendMessage(chatId, message2, undefined, "HTML");
     return;
   }
 
@@ -1147,7 +1154,7 @@ async function sendDailyOwnerReportForRange(
       .filter((line) => line !== null)
       .join("\n")
   );
-  await sendMessage(chatId, message2);
+  await sendMessage(chatId, message2, undefined, "HTML");
 }
 
 async function sendReportMenu(chatId: string) {

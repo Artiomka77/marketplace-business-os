@@ -176,6 +176,8 @@ export type DailyReport = {
   warnings: string[];
   dataReadiness: DataReadinessSummary | null;
   comparison?: DailyReportComparison | null;
+  /** Same-period previous DailyReport for level dynamics (skipComparison build). */
+  previousReport?: DailyReport | null;
   wbFinancialUnavailable?: boolean;
   combinedFinancialUnavailable?: boolean;
 };
@@ -2560,6 +2562,7 @@ export async function buildDailyReport(params?: {
     });
 
     report.comparison = createReportComparison(report, previousReport);
+    report.previousReport = previousReport;
   }
 
   return report;
