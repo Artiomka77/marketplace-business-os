@@ -3337,8 +3337,6 @@ export {
   formatPointDiff,
   compactChangeSuffix,
   compactPointSuffix,
-  formatAbsMoneyChange,
-  compactAbsMoneySuffix,
 };
 
 function taxableRevenueLine(metrics: MarketplaceDailyMetrics, dateLabel: string) {
