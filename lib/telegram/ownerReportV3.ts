@@ -160,6 +160,11 @@ export function formatOwnerPeriodLabel(
     const y2 = Number(range[4]);
     const m2 = Number(range[5]);
     const d2 = Number(range[6]);
+    if (y1 === y2 && m1 === m2 && d1 === d2) {
+      return formatRuDateIso(
+        `${y1}-${String(m1).padStart(2, "0")}-${String(d1).padStart(2, "0")}`
+      );
+    }
     const lastDay = new Date(Date.UTC(y2, m2, 0)).getUTCDate();
     const isFullCalendarMonth =
       y1 === y2 && m1 === m2 && d1 === 1 && d2 === lastDay;
@@ -169,6 +174,7 @@ export function formatOwnerPeriodLabel(
       (periodHint.includes("месяц") ||
         periodHint.includes("period") ||
         periodHint.includes("выбранный") ||
+        periodHint.includes("аналогич") ||
         !periodHint.includes("недел"))
     ) {
       return `${RU_MONTHS_NOM[m1 - 1]} ${y1}`;

@@ -197,6 +197,10 @@ test("AD_BLOCK period labels: week range + month name", () => {
     "Август 2026"
   );
   assert.equal(formatOwnerPeriodLabel("2026-09-28", "Вчера"), "28.09.2026");
+  assert.equal(
+    formatOwnerPeriodLabel("2026-09-27 — 2026-09-27", "Аналогичный предыдущий период"),
+    "27.09.2026"
+  );
 
   const week = fixtureReport({
     dateLabel: "2026-09-21 — 2026-09-27",

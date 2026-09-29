@@ -74,7 +74,7 @@ jobs:
       - name: Set tags
         id: tags
         run: |
-          STAMP=20260929_2255
+          STAMP=20260929_2310
           echo "stamp=${STAMP}" >> "$GITHUB_OUTPUT"
           echo "tg_tag=avorofin-p0-cogs-telegram:${STAMP}" >> "$GITHUB_OUTPUT"
 
