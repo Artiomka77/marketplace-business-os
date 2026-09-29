@@ -414,9 +414,18 @@ export function formatOwnerReportV3Message1(
   const profitDynParts: string[] = [];
   const prevTotals = (previousReport ?? report.previousReport)?.totals ?? null;
   const curProfit = profit;
-  const prevProfit =
-    prevTotals && !Boolean((previousReport ?? report.previousReport)?.combinedFinancialUnavailable)
+  const prevProfitRaw =
+    prevTotals &&
+    !Boolean(
+      (previousReport ?? report.previousReport)?.combinedFinancialUnavailable
+    )
       ? prevTotals.netProfitImpact
+      : null;
+  const prevProfit =
+    prevProfitRaw !== null &&
+    prevProfitRaw !== undefined &&
+    Number.isFinite(prevProfitRaw)
+      ? prevProfitRaw
       : null;
   const profitSignCross =
     curProfit !== null &&
@@ -432,9 +441,26 @@ export function formatOwnerReportV3Message1(
     );
   } else if (cmp?.netProfitImpactPercent != null) {
     profitDynParts.push(compactChangeSuffix(cmp.netProfitImpactPercent).trim());
+  } else if (curProfit !== null && prevProfit !== null) {
+    // V3.4: never silently drop comparable business profit dyn.
+    profitDynParts.push(
+      compactChangeSuffix(
+        ((curProfit - prevProfit) / Math.abs(prevProfit)) * 100
+      ).trim()
+    );
   }
   if (cmp?.marginPointDiff != null) {
     profitDynParts.push(compactPointSuffix(cmp.marginPointDiff).trim());
+  } else if (
+    curProfit !== null &&
+    prevProfit !== null &&
+    marg !== null &&
+    prevTotals &&
+    Number.isFinite(prevTotals.economicTurnover) &&
+    Math.abs(prevTotals.economicTurnover) > 0.0001
+  ) {
+    const prevMarg = (prevProfit / prevTotals.economicTurnover) * 100;
+    profitDynParts.push(compactPointSuffix(marg - prevMarg).trim());
   }
   const profitDyn =
     profitDynParts.filter(Boolean).length > 0
