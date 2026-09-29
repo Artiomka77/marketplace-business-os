@@ -40,6 +40,9 @@ export type TopOrderItem = {
   ozonOffer?: string | null;
   humanArticle?: string | null;
   size?: string | null;
+  /** Multiple sizes when business-wide family aggregate */
+  familySizes?: string[] | null;
+  isFamilyAggregate?: boolean;
   imageUrl?: string | null;
   mappingPath?: string | null;
   mappingConfidence?: "EXACT" | null;
@@ -499,7 +502,11 @@ function photoIconHtml(url: string | null | undefined) {
   return ` <a href="${safe}">📷</a>`;
 }
 
-function formatTop3List(items: TopOrderItem[], asHtml: boolean) {
+function formatTop3List(
+  items: TopOrderItem[],
+  asHtml: boolean,
+  mode: "cabinet" | "business" = "cabinet"
+) {
   if (items.length === 0) {
     return asHtml
       ? escapeTelegramHtml("н/д — точный SKU-источник заказов недоступен")
@@ -510,23 +517,43 @@ function formatTop3List(items: TopOrderItem[], asHtml: boolean) {
     .map((it, i) => {
       const esc = asHtml ? escapeTelegramHtml : (s: string) => s;
       const qtyAmt = `${formatNumber(it.qty)} шт · ${money(it.amount)}`;
-      if (it.marketplace === "OZON" || it.ozonOffer || it.humanArticle) {
+      const photo = asHtml
+        ? photoIconHtml(it.imageUrl)
+        : it.imageUrl
+          ? " 📷"
+          : "";
+
+      // Business-wide family aggregate: human/family label + sizes row
+      if (mode === "business" && it.isFamilyAggregate) {
+        const label = it.humanArticle || it.article;
+        const sizes =
+          it.familySizes && it.familySizes.length > 0
+            ? `разм. ${it.familySizes.join("/")}`
+            : null;
+        const head = `${i + 1}. ${esc(label)} · ${esc(qtyAmt)}${photo}`;
+        return sizes ? `${head}\n   ${esc(sizes)}` : head;
+      }
+
+      if (
+        mode === "cabinet" &&
+        (it.marketplace === "OZON" || it.ozonOffer || it.humanArticle)
+      ) {
         const offer = it.ozonOffer || it.article;
         const parts = [offer];
         if (it.humanArticle && it.humanArticle !== offer) {
           parts.push(it.humanArticle);
         }
         if (it.size) parts.push(`р.${it.size}`);
-        const head = `${i + 1}. ${parts.map(esc).join(" · ")}${
-          asHtml ? photoIconHtml(it.imageUrl) : it.imageUrl ? " 📷" : ""
-        }`;
+        const head = `${i + 1}. ${parts.map(esc).join(" · ")}${photo}`;
         return `${head}\n   ${esc(qtyAmt)}`;
       }
-      // WB / business: single line, no generic title
-      const head = `${i + 1}. ${esc(it.article)} · ${esc(qtyAmt)}${
-        asHtml ? photoIconHtml(it.imageUrl) : it.imageUrl ? " 📷" : ""
-      }`;
-      return head;
+
+      // WB cabinet / non-family business row
+      const label =
+        mode === "business" && it.humanArticle
+          ? it.humanArticle
+          : it.article;
+      return `${i + 1}. ${esc(label)} · ${esc(qtyAmt)}${photo}`;
     })
     .join("\n");
 }
@@ -650,10 +677,14 @@ export function formatOwnerReportV3Message2(
       esc(`🏆 ТОП-3 по доступным данным — неполно`),
       esc(`(источники: ${extras.businessTop3CabinetCount}/4 кабинетов)`),
       "",
-      formatTop3List(top, true)
+      formatTop3List(top, true, "business")
     );
   } else {
-    parts.push(esc(`🏆 ТОП-3 ПО ВСЕМУ БИЗНЕСУ`), "", formatTop3List(top, true));
+    parts.push(
+      esc(`🏆 ТОП-3 ПО ВСЕМУ БИЗНЕСУ`),
+      "",
+      formatTop3List(top, true, "business")
+    );
     if (top.length > 0) {
       parts.push(
         "",
@@ -699,7 +730,7 @@ export function formatOwnerReportV3Message2(
         esc(`👤 ${company.companyName} · ${emoji} ${label}`),
         "",
         esc(`🏆 ТОП-3 заказов`),
-        formatTop3List(funnel?.top3 ?? [], true),
+        formatTop3List(funnel?.top3 ?? [], true, "cabinet"),
         "",
         esc(formatAdFunnelBlock(funnel ?? fallback))
       );

@@ -97,6 +97,76 @@ export function aggregateTop3(items: TopOrderItem[]): TopOrderItem[] {
     .slice(0, 3);
 }
 
+/**
+ * Business-wide TOP-3: aggregate same canonical family across sizes/offers.
+ * Display must NOT keep one arbitrary size as if all units were that size.
+ */
+export function aggregateBusinessTop3Family(
+  items: TopOrderItem[]
+): TopOrderItem[] {
+  const map = new Map<string, TopOrderItem>();
+  for (const it of items) {
+    const familyKey = (
+      (it.humanArticle && it.mappingConfidence === "EXACT"
+        ? it.humanArticle
+        : null) ||
+      it.article ||
+      "UNKNOWN"
+    )
+      .trim()
+      .toUpperCase();
+    const prev = map.get(familyKey);
+    const size = it.size?.trim() || null;
+    if (prev) {
+      prev.qty += it.qty;
+      prev.amount += it.amount;
+      if (!prev.imageUrl && it.imageUrl) prev.imageUrl = it.imageUrl;
+      if (size) {
+        const sizes = new Set(prev.familySizes ?? []);
+        sizes.add(size);
+        prev.familySizes = [...sizes].sort((a, b) =>
+          a.localeCompare(b, "ru", { numeric: true })
+        );
+      }
+      // Clear single-size/offer label when family spans multiple sizes
+      if ((prev.familySizes?.length ?? 0) > 1) {
+        prev.isFamilyAggregate = true;
+        prev.size = null;
+        prev.ozonOffer = null;
+        prev.article = prev.humanArticle || prev.article;
+      }
+    } else {
+      map.set(familyKey, {
+        ...it,
+        article: it.humanArticle || it.article || familyKey,
+        humanArticle: it.humanArticle ?? null,
+        secondaryTitle: null,
+        familySizes: size ? [size] : [],
+        isFamilyAggregate: Boolean(
+          it.humanArticle && it.mappingConfidence === "EXACT"
+        ),
+      });
+    }
+  }
+  // Mark multi-size families; single-size EXACT human still uses family label
+  for (const row of map.values()) {
+    if ((row.familySizes?.length ?? 0) > 1) {
+      row.isFamilyAggregate = true;
+      row.size = null;
+      row.ozonOffer = null;
+      row.article = row.humanArticle || row.article;
+    } else if (row.humanArticle && row.mappingConfidence === "EXACT") {
+      row.isFamilyAggregate = true;
+      row.article = row.humanArticle;
+      row.ozonOffer = null;
+    }
+  }
+  return [...map.values()]
+    .filter((x) => x.amount > 0 || x.qty > 0)
+    .sort((a, b) => b.amount - a.amount || b.qty - a.qty)
+    .slice(0, 3);
+}
+
 function extractTopFromRawJson(raw: unknown): TopOrderItem[] {
   if (!raw || typeof raw !== "object") return [];
   const obj = raw as Record<string, unknown>;
@@ -124,6 +194,10 @@ function extractTopFromRawJson(raw: unknown): TopOrderItem[] {
         r.orderAmount ?? r.amount ?? r.orderSum ?? r.ordersAmount ?? r.revenue ?? 0
       );
       if (!article && qty === 0 && amount === 0) continue;
+      const offer = vendorCode || article;
+      const sizeMatch = String(offer).match(/^(\d{6,})-(\d{2,4})$/);
+      const human =
+        String(r.humanArticle ?? "").trim() || null;
       items.push({
         article: article || "UNKNOWN",
         qty: Number.isFinite(qty) ? qty : 0,
@@ -131,6 +205,9 @@ function extractTopFromRawJson(raw: unknown): TopOrderItem[] {
         sku: sku || null,
         secondaryTitle: null,
         ozonOffer: vendorCode || null,
+        humanArticle: human,
+        size: String(r.size ?? "").trim() || (sizeMatch ? sizeMatch[2] : null),
+        mappingConfidence: human ? "EXACT" : null,
       });
     }
     if (items.length > 0) return aggregateTop3(items);
@@ -600,6 +677,8 @@ async function loadCabinetTop3(
   source: "TRUE_ORDERS" | "UNAVAILABLE";
   distinctCount: number;
 }> {
+  // V3.3: durable TOP-3 from persisted MarketplaceDailyOrderStat only.
+  // No live marketplace API at Telegram render time.
   const fromDbAll: TopOrderItem[] = [];
   for (const dateIso of dates) {
     const date = parseIsoDate(dateIso);
@@ -622,19 +701,10 @@ async function loadCabinetTop3(
       distinctCount: fromDbAll.length,
     };
   }
-  if (marketplace === "WB") {
-    const live = await loadWbTop3Live(companyName, dates);
-    return {
-      items: live,
-      source: live.length > 0 ? "TRUE_ORDERS" : "UNAVAILABLE",
-      distinctCount: live.length,
-    };
-  }
-  const live = await loadOzonTop3Live(companyName, dates);
   return {
-    items: live.items,
-    source: live.items.length > 0 ? "TRUE_ORDERS" : "UNAVAILABLE",
-    distinctCount: live.distinctCount,
+    items: [],
+    source: "UNAVAILABLE",
+    distinctCount: 0,
   };
 }
 
@@ -791,42 +861,7 @@ async function loadWbAdFunnel(
       : 0;
 
   if (counterRows === 0) {
-    // Live FullStats fallback for exact days (bounded).
-    let liveSpend = 0;
-    let liveImp = 0;
-    let liveClk = 0;
-    let liveOk = false;
-    for (const dateIso of dates) {
-      const live = await liveFetchWbFullStatsCounters(companyName, dateIso);
-      if (!live) continue;
-      liveOk = true;
-      liveSpend += live.spend;
-      liveImp += live.impressions;
-      liveClk += live.clicks;
-    }
-    if (liveOk) {
-      const useSpend = liveSpend > 0.5 ? liveSpend : financialSpend;
-      const status: CounterStatus =
-        liveImp > 0 || liveClk > 0
-          ? "COUNTERS_AVAILABLE_NONZERO"
-          : "COUNTERS_TRUE_ZERO";
-      return {
-        spend: useSpend,
-        impressions: liveImp,
-        clicks: liveClk,
-        ctr: liveImp > 0 ? (liveClk / liveImp) * 100 : null,
-        cpc: liveClk > 0 ? useSpend / liveClk : null,
-        adOrders: null,
-        cpo: null,
-        drr:
-          economicTurnover > 0.0001 ? (useSpend / economicTurnover) * 100 : 0,
-        counterStatus: status,
-        spendSemantics: classifySpendSemantics(useSpend, financialSpend),
-        financialSpend,
-        financialDrr,
-      };
-    }
-
+    // V3.3: no live FullStats at Telegram render. Counters require persisted COMPLETE source.
     const useSpend = spend > 0.5 ? spend : financialSpend;
     return {
       spend: useSpend,
@@ -839,7 +874,27 @@ async function loadWbAdFunnel(
       drr:
         economicTurnover > 0.0001 ? (useSpend / economicTurnover) * 100 : 0,
       counterStatus: "COUNTERS_MISSING",
-      spendSemantics: classifySpendSemantics(useSpend, financialSpend),
+      spendSemantics: "SAME_AS_PNL",
+      financialSpend,
+      financialDrr,
+    };
+  }
+
+  const useSpend = spend > 0.5 ? spend : financialSpend;
+  const semantics = classifySpendSemantics(useSpend, financialSpend);
+  // Partial FullStats coverage must not populate owner-facing counters.
+  if (semantics === "PERFORMANCE_PARTIAL") {
+    return {
+      spend: financialSpend,
+      impressions: null,
+      clicks: null,
+      ctr: null,
+      cpc: null,
+      adOrders: null,
+      cpo: null,
+      drr: financialDrr,
+      counterStatus: "COUNTERS_MISSING",
+      spendSemantics: "SAME_AS_PNL",
       financialSpend,
       financialDrr,
     };
@@ -849,7 +904,6 @@ async function loadWbAdFunnel(
     impressionsSum > 0 || clicksSum > 0
       ? "COUNTERS_AVAILABLE_NONZERO"
       : "COUNTERS_TRUE_ZERO";
-  const useSpend = spend > 0.5 ? spend : financialSpend;
   const ctr =
     impressionsSum > 0 ? (clicksSum / impressionsSum) * 100 : null;
   const cpc = clicksSum > 0 ? useSpend / clicksSum : null;
@@ -863,7 +917,7 @@ async function loadWbAdFunnel(
     cpo: null,
     drr: economicTurnover > 0.0001 ? (useSpend / economicTurnover) * 100 : 0,
     counterStatus: status,
-    spendSemantics: classifySpendSemantics(useSpend, financialSpend),
+    spendSemantics: semantics,
     financialSpend,
     financialDrr,
   };
@@ -1049,7 +1103,7 @@ export async function loadOwnerReportV3Extras(
     }
   }
 
-  const businessTop3 = aggregateTop3(allTop);
+  const businessTop3 = aggregateBusinessTop3Family(allTop);
   const complete = availableCabinets >= 4;
   return {
     businessTop3: complete ? businessTop3 : businessTop3,

@@ -374,13 +374,13 @@ function extrasFixture(): OwnerReportV3Extras {
 
 test("V3.1 dynamics visible on business KPIs (28 vs 27)", () => {
   const m1 = formatOwnerReportV3Message1(fixtureReport());
-  assert.match(m1, /Заказы.*🔴|Заказы.*🟢|Заказы.*-7/);
-  assert.match(m1, /Экон\. оборот.*[🔴🟢]/);
-  assert.match(m1, /Налог\. выручка.*[🔴🟢]/);
+  assert.match(m1, /Заказы.*[▲▼]|Заказы.*-7/);
+  assert.match(m1, /Экон\. оборот.*[▲▼→]/);
+  assert.match(m1, /Налог\. выручка.*[▲▼→]/);
   assert.match(m1, /Себестоимость.*[🔴🟢🔽]|Себестоимость.*п\.п/);
   assert.match(m1, /Реклама.*ДРР/);
   assert.match(m1, /п\.п/);
-  assert.match(m1, /Чистая прибыль.*[🔴🟢]/);
+  assert.match(m1, /Чистая прибыль.*[▲▼→]/);
   assert.match(m1, /vs 27\.09\.2026/);
 });
 
@@ -391,8 +391,8 @@ test("V3.1 weekly/monthly date labels still carry dynamics when comparison prese
   week.comparison!.dateLabel = "2026-09-14 — 2026-09-20";
   const m1 = formatOwnerReportV3Message1(week);
   assert.match(m1, /Период ·/);
-  assert.match(m1, /Заказы.*[🔴🟢]/);
-  assert.match(m1, /Экон\. оборот.*[🔴🟢]/);
+  assert.match(m1, /Заказы.*[▲▼→]/);
+  assert.match(m1, /Экон\. оборот.*[▲▼→]/);
 });
 
 test("V3.1 WB unknown counters render н/д not zero", () => {
@@ -458,12 +458,12 @@ test("V3.1 company sort helper", () => {
 
 test("V3.2 company + cabinet dynamics from previousReport", () => {
   const m1 = formatOwnerReportV3Message1(fixtureReport());
-  assert.match(m1, /👤 ИП Петров[\s\S]*Заказы:.*[🔴🟢]/);
-  assert.match(m1, /👤 ИП Петров[\s\S]*🟣 WB[\s\S]*шт ·.*[🔴🟢]/);
-  assert.match(m1, /👤 ИП Петров[\s\S]*🔵 Ozon[\s\S]*шт ·.*[🔴🟢]/);
-  assert.match(m1, /👤 ИП Лебедева[\s\S]*Заказы:.*[🔴🟢]/);
-  assert.match(m1, /👤 ИП Лебедева[\s\S]*🟣 WB[\s\S]*шт ·.*[🔴🟢]/);
-  assert.match(m1, /👤 ИП Лебедева[\s\S]*🔵 Ozon[\s\S]*шт ·.*[🔴🟢]/);
+  assert.match(m1, /👤 ИП Петров[\s\S]*Заказы:.*[▲▼→]/);
+  assert.match(m1, /👤 ИП Петров[\s\S]*🟣 WB[\s\S]*шт ·.*[▲▼→]/);
+  assert.match(m1, /👤 ИП Петров[\s\S]*🔵 Ozon[\s\S]*шт ·.*[▲▼→]/);
+  assert.match(m1, /👤 ИП Лебедева[\s\S]*Заказы:.*[▲▼→]/);
+  assert.match(m1, /👤 ИП Лебедева[\s\S]*🟣 WB[\s\S]*шт ·.*[▲▼→]/);
+  assert.match(m1, /👤 ИП Лебедева[\s\S]*🔵 Ozon[\s\S]*шт ·.*[▲▼→]/);
 });
 
 test("V3.2 Ozon TOP-3 human identity + HTML photo + no generic title", () => {
@@ -481,4 +481,61 @@ test("V3.2 Ozon TOP-3 human identity + HTML photo + no generic title", () => {
     ownerReportV3Math.escapeTelegramHtml('a<b>&"'),
     "a&lt;b&gt;&amp;&quot;"
   );
+});
+
+test("V3.3 arrow dynamics — no colored balls outside attention", () => {
+  const m1 = formatOwnerReportV3Message1(fixtureReport());
+  const attentionIdx = m1.indexOf("⚠️ ВНИМАНИЕ");
+  const ordinary = attentionIdx >= 0 ? m1.slice(0, attentionIdx) : m1;
+  assert.equal((ordinary.match(/🟢/g) || []).length, 0);
+  assert.equal((ordinary.match(/🔴/g) || []).length, 0);
+  assert.match(ordinary, /[▲▼]/);
+});
+
+test("V3.3 business TOP-3 family aggregation across sizes", async () => {
+  const { aggregateBusinessTop3Family } = await import(
+    "../../lib/telegram/ownerReportV3Loaders"
+  );
+  const items = [
+    {
+      article: "1217252162-158",
+      ozonOffer: "1217252162-158",
+      humanArticle: "Ади-вчерный",
+      size: "158",
+      qty: 9,
+      amount: 66717,
+      mappingConfidence: "EXACT" as const,
+      marketplace: "OZON" as const,
+    },
+    {
+      article: "1217252162-164",
+      ozonOffer: "1217252162-164",
+      humanArticle: "Ади-вчерный",
+      size: "164",
+      qty: 9,
+      amount: 66716,
+      mappingConfidence: "EXACT" as const,
+      marketplace: "OZON" as const,
+    },
+    {
+      article: "жилД-корич",
+      qty: 24,
+      amount: 124800,
+      marketplace: "WB" as const,
+    },
+  ];
+  const top = aggregateBusinessTop3Family(items);
+  assert.equal(top[0].humanArticle || top[0].article, "Ади-вчерный");
+  assert.equal(top[0].qty, 18);
+  assert.equal(top[0].isFamilyAggregate, true);
+  assert.deepEqual(top[0].familySizes, ["158", "164"]);
+  const m2 = formatOwnerReportV3(fixtureReport(), {
+    ...extrasFixture(),
+    businessTop3: top,
+    businessTop3Complete: true,
+    businessTop3CabinetCount: 4,
+  }).message2;
+  assert.match(m2, /Ади-вчерный/);
+  assert.match(m2, /разм\. 158\/164/);
+  assert.doesNotMatch(m2, /1217252162-158 · 18/);
 });

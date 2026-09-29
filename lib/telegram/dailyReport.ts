@@ -3203,38 +3203,28 @@ function marketplaceLine(label: string, metrics: MarketplaceDailyMetrics) {
 }
 
 
-function formatPercentChange(value: number | null, inverse = false) {
+function formatPercentChange(value: number | null, _inverse = false) {
   if (value === null || !Number.isFinite(value)) return "нет базы";
-  if (value === 0) return "0.0%";
+  // Suppress absurd dynamics from tiny/non-comparable bases.
+  if (Math.abs(value) > 250) return "нет базы";
+  if (Math.abs(value) < 0.05) return "→0%";
 
-  const sign = value > 0 ? "+" : "";
-  const marker = inverse
-    ? value < 0
-      ? "🟢"
-      : "🔴"
-    : value > 0
-      ? "🟢"
-      : "🔴";
-
-  return `${marker} ${sign}${formatPercent(value)}`;
+  const abs = formatPercent(Math.abs(value)).replace(/%$/, "");
+  const arrow = value > 0 ? "▲" : "▼";
+  return `${arrow}${abs}%`;
 }
 
-function formatPointDiff(value: number | null, inverse = true) {
+function formatPointDiff(value: number | null, _inverse = true) {
   if (value === null || !Number.isFinite(value)) return "нет базы";
-  if (value === 0) return "0.0 п.п.";
+  if (Math.abs(value) > 50) return "нет базы";
+  if (Math.abs(value) < 0.05) return "→0 п.п.";
 
-  const sign = value > 0 ? "+" : "";
-  const marker = inverse
-    ? value < 0
-      ? "🟢"
-      : "🔴"
-    : value > 0
-      ? "🟢"
-      : "🔴";
-
-  return `${marker} ${sign}${new Intl.NumberFormat("ru-RU", {
+  const abs = new Intl.NumberFormat("ru-RU", {
     maximumFractionDigits: 1,
-  }).format(value)} п.п.`;
+    minimumFractionDigits: 0,
+  }).format(Math.abs(value));
+  const arrow = value > 0 ? "▲" : "▼";
+  return `${arrow}${abs} п.п.`;
 }
 
 function buildComparisonLines(report: DailyReport) {
