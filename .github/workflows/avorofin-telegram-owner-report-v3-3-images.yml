@@ -135,10 +135,10 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: avorofin-p0-cogs-app-20260929_1433
+          name: avorofin-p0-cogs-app-${{ steps.tags.outputs.stamp }}
           path: |
-            artifacts/avorofin-p0-cogs-app-20260929_1433.tar
-            artifacts/avorofin-p0-cogs-app-20260929_1433.tar.sha256
+            artifacts/avorofin-p0-cogs-app-${{ steps.tags.outputs.stamp }}.tar
+            artifacts/avorofin-p0-cogs-app-${{ steps.tags.outputs.stamp }}.tar.sha256
             artifacts/app_IMAGE_ID.txt
             artifacts/app_TAG.txt
             artifacts/IMAGE_BINDING.json
@@ -147,10 +147,10 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: avorofin-p0-cogs-telegram-20260929_1433
+          name: avorofin-p0-cogs-telegram-${{ steps.tags.outputs.stamp }}
           path: |
-            artifacts/avorofin-p0-cogs-telegram-20260929_1433.tar
-            artifacts/avorofin-p0-cogs-telegram-20260929_1433.tar.sha256
+            artifacts/avorofin-p0-cogs-telegram-${{ steps.tags.outputs.stamp }}.tar
+            artifacts/avorofin-p0-cogs-telegram-${{ steps.tags.outputs.stamp }}.tar.sha256
             artifacts/telegram_IMAGE_ID.txt
             artifacts/telegram_TAG.txt
             artifacts/IMAGE_BINDING.json
