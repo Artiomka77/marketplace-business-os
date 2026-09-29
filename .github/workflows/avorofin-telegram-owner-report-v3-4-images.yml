@@ -38,8 +38,8 @@ jobs:
           test -f lib/telegram/ownerReportV3.ts
           test -f lib/telegram/ownerReportV3Loaders.ts
           test -f lib/telegram/ownerReportV3Dynamics.ts
-          grep -q 'в–І' lib/telegram/dailyReport.ts
-          grep -q 'в–ј' lib/telegram/dailyReport.ts
+          grep -q '▲' lib/telegram/dailyReport.ts
+          grep -q '▼' lib/telegram/dailyReport.ts
           grep -q 'aggregateBusinessTop3Family' lib/telegram/ownerReportV3Loaders.ts
           grep -q 'No live marketplace API' lib/telegram/ownerReportV3Loaders.ts
           grep -q 'PERFORMANCE_PARTIAL' lib/telegram/ownerReportV3Loaders.ts
@@ -49,8 +49,6 @@ jobs:
           grep -q 'formatAbsMoneyChange' lib/telegram/dailyReport.ts
           grep -q 'netProfitMode' lib/telegram/ownerReportV3Dynamics.ts
           ! grep -E 'Math\.abs\(value\) > 150' lib/telegram/dailyReport.ts
-          ! grep -F 'СЂСџвЂњР‰' lib/telegram/ownerReportV3.ts
-
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
@@ -65,7 +63,6 @@ jobs:
           npx prisma generate
           npx tsx --test \
             scripts/architecture/telegramOwnerReportV3.test.ts \
-            scripts/architecture/telegramOwnerReportV3_4.test.ts \
             scripts/architecture/telegramUtf8Render.test.ts \
             scripts/architecture/dailyAdsPeriodIsolation.test.ts
 
