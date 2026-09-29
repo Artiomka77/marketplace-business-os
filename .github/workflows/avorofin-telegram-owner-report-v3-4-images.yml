@@ -1,0 +1,141 @@
+name: avorofin-telegram-owner-report-v3-4-images
+
+on:
+  push:
+    branches:
+      - 'audit/avorofin-telegram-owner-report-v3-4-20260929_1901'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: avorofin-telegram-owner-report-v3-4-20260929_1901
+  cancel-in-progress: true
+
+jobs:
+  build-images:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Prove GitHub-hosted runner
+        run: |
+          set -euo pipefail
+          {
+            echo "RUNNER_GITHUB_HOSTED=YES"
+            echo "ImageOS=${ImageOS:-}"
+            hostname
+          } | tee github-runner-proof.txt
+          test -n "${ImageOS:-}"
+
+      - name: Fail-closed V3.4 contracts
+        run: |
+          set -euo pipefail
+          test -f lib/telegram/ownerReportV3.ts
+          test -f lib/telegram/ownerReportV3Loaders.ts
+          test -f lib/telegram/ownerReportV3Dynamics.ts
+          grep -q '▲' lib/telegram/dailyReport.ts
+          grep -q '▼' lib/telegram/dailyReport.ts
+          grep -q 'aggregateBusinessTop3Family' lib/telegram/ownerReportV3Loaders.ts
+          grep -q 'No live marketplace API' lib/telegram/ownerReportV3Loaders.ts
+          grep -q 'PERFORMANCE_PARTIAL' lib/telegram/ownerReportV3Loaders.ts
+          grep -q 'parseMode' lib/telegram/sendTelegramMessage.ts
+          grep -q 'buildDynamicsComparabilityMatrix' lib/telegram/ownerReportV3Dynamics.ts
+          grep -q 'isSuspectedIncompleteOzonCogsZero' lib/telegram/ownerReportV3Dynamics.ts
+          grep -q 'formatAbsMoneyChange' lib/telegram/dailyReport.ts
+          grep -q 'netProfitMode' lib/telegram/ownerReportV3Dynamics.ts
+          ! grep -E 'Math\.abs\(value\) > 150' lib/telegram/dailyReport.ts
+          ! grep -F 'рџ“Љ' lib/telegram/ownerReportV3.ts
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Focused tests
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/avorofin
+        run: |
+          set -euo pipefail
+          npm ci --ignore-scripts
+          npx prisma generate
+          npx tsx --test \
+            scripts/architecture/telegramOwnerReportV3.test.ts \
+            scripts/architecture/telegramUtf8Render.test.ts \
+            scripts/architecture/dailyAdsPeriodIsolation.test.ts
+
+      - name: Set tags
+        id: tags
+        run: |
+          STAMP=20260929_1901
+          echo "stamp=${STAMP}" >> "$GITHUB_OUTPUT"
+          echo "tg_tag=avorofin-p0-cogs-telegram:${STAMP}" >> "$GITHUB_OUTPUT"
+
+      - name: Docker build Telegram only
+        env:
+          NEXT_PUBLIC_SITE_URL: http://127.0.0.1:3000
+          NEXT_PUBLIC_SUPABASE_URL: http://127.0.0.1:54321
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: canary-anon
+          NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: canary-publishable
+        run: |
+          set -euo pipefail
+          tag="${{ steps.tags.outputs.tg_tag }}"
+          docker build --target runner \
+            --build-arg NEXT_PUBLIC_SITE_URL="$NEXT_PUBLIC_SITE_URL" \
+            --build-arg NEXT_PUBLIC_SUPABASE_URL="$NEXT_PUBLIC_SUPABASE_URL" \
+            --build-arg NEXT_PUBLIC_SUPABASE_ANON_KEY="$NEXT_PUBLIC_SUPABASE_ANON_KEY" \
+            --build-arg NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY="$NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY" \
+            --label "avorofin.telegram.owner_report=v3.4" \
+            --label "avorofin.p0.stamp=${{ steps.tags.outputs.stamp }}" \
+            --label "avorofin.p0.sha=${GITHUB_SHA}" \
+            --label "avorofin.p0.role=telegram" \
+            -t "$tag" .
+          docker image inspect -f '{{.Id}}' "$tag" | tee telegram_IMAGE_ID.txt
+          echo "$tag" > telegram_TAG.txt
+
+      - name: Save artifacts
+        run: |
+          set -euo pipefail
+          STAMP="${{ steps.tags.outputs.stamp }}"
+          mkdir -p artifacts
+          tag="${{ steps.tags.outputs.tg_tag }}"
+          docker save "$tag" -o "artifacts/avorofin-p0-cogs-telegram-${STAMP}.tar"
+          sha256sum "artifacts/avorofin-p0-cogs-telegram-${STAMP}.tar" | tee "artifacts/avorofin-p0-cogs-telegram-${STAMP}.tar.sha256"
+          cp telegram_IMAGE_ID.txt telegram_TAG.txt artifacts/
+          cp github-runner-proof.txt artifacts/
+          python3 - <<'PY'
+          import json, pathlib, os
+          stamp=os.environ["STAMP"]
+          out={
+            "GATE":"AVOROFIN_TELEGRAM_OWNER_REPORT_V3_4",
+            "GITHUB_SHA":os.environ["GITHUB_SHA"],
+            "GITHUB_RUN_ID":os.environ["GITHUB_RUN_ID"],
+            "STAMP":stamp,
+            "images":{
+              "telegram":{
+                "tag":pathlib.Path("telegram_TAG.txt").read_text().strip(),
+                "imageId":pathlib.Path("telegram_IMAGE_ID.txt").read_text().strip(),
+                "tarSha256":pathlib.Path(f"artifacts/avorofin-p0-cogs-telegram-{stamp}.tar.sha256").read_text().split()[0],
+              }
+            }
+          }
+          pathlib.Path("artifacts/IMAGE_BINDING.json").write_text(json.dumps(out,indent=2)+"\n")
+          PY
+        env:
+          STAMP: ${{ steps.tags.outputs.stamp }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: avorofin-p0-cogs-telegram-${{ steps.tags.outputs.stamp }}
+          path: |
+            artifacts/avorofin-p0-cogs-telegram-${{ steps.tags.outputs.stamp }}.tar
+            artifacts/avorofin-p0-cogs-telegram-${{ steps.tags.outputs.stamp }}.tar.sha256
+            artifacts/telegram_IMAGE_ID.txt
+            artifacts/telegram_TAG.txt
+            artifacts/IMAGE_BINDING.json
+            artifacts/github-runner-proof.txt
+          retention-days: 14

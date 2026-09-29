@@ -2164,6 +2164,14 @@ function createReportComparison(
 ): DailyReportComparison {
   const currentCogs = current.totals.totalCost;
   const previousCogs = previous.totals.totalCost;
+  const ozonCogsNonComparable = current.companies.some((c) => {
+    const prevC = previous.companies.find((p) => p.companyName === c.companyName);
+    return (
+      Math.abs(prevC?.ozon.totalCost ?? -1) < 0.5 &&
+      (c.ozon.totalCost ?? 0) > 100 &&
+      prevC?.ozon.totalCost !== undefined
+    );
+  });
   const currentCogsShare =
     currentCogs !== undefined &&
     current.totals.economicTurnover > 0.0001
@@ -2188,6 +2196,10 @@ function createReportComparison(
   const previousAfter =
     previous.totals.netProfitImpact - previous.totals.ownerWithdrawals;
 
+  const combinedUnavailable =
+    Boolean(current.combinedFinancialUnavailable) ||
+    Boolean(previous.combinedFinancialUnavailable);
+
   return {
     periodLabel: previous.periodLabel,
     dateLabel: previous.dateLabel,
@@ -2196,15 +2208,20 @@ function createReportComparison(
         current.totals.ordersAmount,
         previous.totals.ordersAmount
       ),
-      salesAmountPercent: percentChange(
-        current.totals.salesAmount,
-        previous.totals.salesAmount
-      ),
-      economicTurnoverPercent: percentChange(
-        current.totals.economicTurnover,
-        previous.totals.economicTurnover
-      ),
+      salesAmountPercent: combinedUnavailable
+        ? null
+        : percentChange(
+            current.totals.salesAmount,
+            previous.totals.salesAmount
+          ),
+      economicTurnoverPercent: combinedUnavailable
+        ? null
+        : percentChange(
+            current.totals.economicTurnover,
+            previous.totals.economicTurnover
+          ),
       taxableRevenuePercent:
+        !combinedUnavailable &&
         !hasEstimatedOzonTaxes(current) &&
         !hasEstimatedOzonTaxes(previous)
           ? percentChange(
@@ -2223,6 +2240,7 @@ function createReportComparison(
       netCashFlowCurrent: current.totals.netCashFlow,
       netCashFlowPrevious: previous.totals.netCashFlow,
       netProfitImpactPercent:
+        !combinedUnavailable &&
         !isPreliminaryFinancialResult(current) &&
         !isPreliminaryFinancialResult(previous)
           ? percentChange(
@@ -2231,25 +2249,32 @@ function createReportComparison(
             )
           : null,
       drrBySalesPointDiff:
+        !combinedUnavailable &&
         Number.isFinite(current.totals.drrBySales) &&
         Number.isFinite(previous.totals.drrBySales)
           ? current.totals.drrBySales - previous.totals.drrBySales
           : null,
       drrByEconomicTurnoverPointDiff:
+        !combinedUnavailable &&
         Number.isFinite(current.totals.drrByEconomicTurnover) &&
         Number.isFinite(previous.totals.drrByEconomicTurnover)
           ? current.totals.drrByEconomicTurnover -
             previous.totals.drrByEconomicTurnover
           : null,
       totalCostPercent:
-        currentCogs !== undefined && previousCogs !== undefined
+        !ozonCogsNonComparable &&
+        currentCogs !== undefined &&
+        previousCogs !== undefined
           ? percentChange(currentCogs, previousCogs)
           : null,
       cogsSharePointDiff:
-        currentCogsShare !== null && previousCogsShare !== null
+        !ozonCogsNonComparable &&
+        currentCogsShare !== null &&
+        previousCogsShare !== null
           ? currentCogsShare - previousCogsShare
           : null,
       marginPointDiff:
+        !combinedUnavailable &&
         currentMargin !== null &&
         previousMargin !== null &&
         !isPreliminaryFinancialResult(current) &&
@@ -2257,6 +2282,7 @@ function createReportComparison(
           ? currentMargin - previousMargin
           : null,
       afterOwnerWithdrawalPercent:
+        !combinedUnavailable &&
         !isPreliminaryFinancialResult(current) &&
         !isPreliminaryFinancialResult(previous)
           ? percentChange(currentAfter, previousAfter)
@@ -3205,8 +3231,9 @@ function marketplaceLine(label: string, metrics: MarketplaceDailyMetrics) {
 
 function formatPercentChange(value: number | null, _inverse = false) {
   if (value === null || !Number.isFinite(value)) return "нет базы";
-  // Suppress absurd dynamics from tiny/non-comparable bases.
-  if (Math.abs(value) > 150) return "нет базы";
+  // V3.4: do NOT suppress valid large % — only near-zero / non-finite.
+  // Comparability (near-zero previous, incomplete coverage, grain mismatch)
+  // is decided upstream; abs(percent) alone is not a suppression reason.
   if (Math.abs(value) < 0.05) return "→0%";
 
   const abs = formatPercent(Math.abs(value)).replace(/%$/, "");
@@ -3216,7 +3243,7 @@ function formatPercentChange(value: number | null, _inverse = false) {
 
 function formatPointDiff(value: number | null, _inverse = true) {
   if (value === null || !Number.isFinite(value)) return "нет базы";
-  if (Math.abs(value) > 50) return "нет базы";
+  // V3.4: large pp moves (e.g. +80.4) stay visible when comparable upstream.
   if (Math.abs(value) < 0.05) return "→0 п.п.";
 
   const abs = new Intl.NumberFormat("ru-RU", {
@@ -3225,6 +3252,22 @@ function formatPointDiff(value: number | null, _inverse = true) {
   }).format(Math.abs(value));
   const arrow = value > 0 ? "▲" : "▼";
   return `${arrow}${abs} п.п.`;
+}
+
+/** Absolute RUB delta for sign-crossing / near-zero-previous profit. */
+export function formatAbsMoneyChange(delta: number | null) {
+  if (delta === null || !Number.isFinite(delta)) return "нет базы";
+  if (Math.abs(delta) < 0.5) return "→0 ₽";
+  const abs = formatMoney(Math.abs(delta));
+  const arrow = delta > 0 ? "▲" : "▼";
+  return `${arrow}${abs}`;
+}
+
+export function compactAbsMoneySuffix(delta: number | null) {
+  if (delta === null || !Number.isFinite(delta)) return "";
+  const formatted = formatAbsMoneyChange(delta);
+  if (formatted === "нет базы") return "";
+  return ` ${formatted}`;
 }
 
 function buildComparisonLines(report: DailyReport) {

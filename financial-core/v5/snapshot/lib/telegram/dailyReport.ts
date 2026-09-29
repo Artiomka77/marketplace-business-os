@@ -32,7 +32,7 @@ export type DailyReportPeriodPreset =
   | "last_30_days"
   | "current_quarter"
   | "ytd"
-  // Старые значения оставляем для обратной совместимости команд и ссылок.
+  // РЎС‚Р°СЂС‹Рµ Р·РЅР°С‡РµРЅРёСЏ РѕСЃС‚Р°РІР»СЏРµРј РґР»СЏ РѕР±СЂР°С‚РЅРѕР№ СЃРѕРІРјРµСЃС‚РёРјРѕСЃС‚Рё РєРѕРјР°РЅРґ Рё СЃСЃС‹Р»РѕРє.
   | "day_before_yesterday"
   | "3d"
   | "7d"
@@ -203,7 +203,7 @@ function toNumber(value: unknown): number {
 function normalizeText(value: unknown) {
   return String(value ?? "")
     .toLowerCase()
-    .replaceAll("С‘", "Рµ")
+    .replaceAll("РЎвЂ", "Р Вµ")
     .replace(/[\u2013\u2014\u2212]/g, "-")
     .replace(/\s+/g, " ")
     .trim();
@@ -249,7 +249,7 @@ function makeMoscowRange(params: {
 
   return {
     dateLabel:
-      params.days === 1 ? dateToLabel : `${dateFromLabel} — ${dateToLabel}`,
+      params.days === 1 ? dateToLabel : `${dateFromLabel} вЂ” ${dateToLabel}`,
     periodLabel: params.label,
     dateFrom,
     dateToExclusive,
@@ -303,8 +303,8 @@ function makeCurrentMoscowWeekRange(now?: Date): DateRange {
     dateLabel:
       dateFrom.getTime() >= dateToExclusive.getTime()
         ? formatDateInput(mondayNoon)
-        : `${formatDateInput(mondayNoon)} — ${formatDateInput(yesterdayNoon)}`,
-    periodLabel: "Текущая неделя",
+        : `${formatDateInput(mondayNoon)} вЂ” ${formatDateInput(yesterdayNoon)}`,
+    periodLabel: "РўРµРєСѓС‰Р°СЏ РЅРµРґРµР»СЏ",
     dateFrom,
     dateToExclusive,
   };
@@ -325,7 +325,7 @@ function makeTodayMoscowRange(now?: Date): DateRange {
 
   return {
     dateLabel,
-    periodLabel: "Сегодня",
+    periodLabel: "РЎРµРіРѕРґРЅСЏ",
     dateFrom,
     dateToExclusive,
   };
@@ -356,8 +356,8 @@ function makePreviousClosedMoscowWeekRange(now?: Date): DateRange {
   );
 
   return {
-    dateLabel: `${formatDateInput(previousMondayNoon)} — ${formatDateInput(previousSundayNoon)}`,
-    periodLabel: "Прошлая закрытая неделя",
+    dateLabel: `${formatDateInput(previousMondayNoon)} вЂ” ${formatDateInput(previousSundayNoon)}`,
+    periodLabel: "РџСЂРѕС€Р»Р°СЏ Р·Р°РєСЂС‹С‚Р°СЏ РЅРµРґРµР»СЏ",
     dateFrom,
     dateToExclusive,
   };
@@ -388,7 +388,7 @@ function makeMoscowMonthRange(params: {
       : new Date(Date.UTC(year, month + 1, 1, -3, 0, 0));
 
   return {
-    dateLabel: `${formatDateInput(monthStartNoon)} — ${formatDateInput(monthEndNoon)}`,
+    dateLabel: `${formatDateInput(monthStartNoon)} вЂ” ${formatDateInput(monthEndNoon)}`,
     periodLabel: params.label,
     dateFrom,
     dateToExclusive,
@@ -411,8 +411,8 @@ function makeCurrentMoscowQuarterRange(now?: Date): DateRange {
   const dateToLabel = formatDateInput(new Date(Date.UTC(year, month, day, 12)));
 
   return {
-    dateLabel: `${dateFromLabel} — ${dateToLabel}`,
-    periodLabel: "Текущий квартал",
+    dateLabel: `${dateFromLabel} вЂ” ${dateToLabel}`,
+    periodLabel: "РўРµРєСѓС‰РёР№ РєРІР°СЂС‚Р°Р»",
     dateFrom,
     dateToExclusive,
   };
@@ -430,8 +430,8 @@ function makeYearToDateMoscowRange(now?: Date): DateRange {
   const dateToExclusive = new Date(Date.UTC(year, month, day + 1, -3, 0, 0));
 
   return {
-    dateLabel: `${formatDateInput(new Date(Date.UTC(year, 0, 1, 12)))} — ${formatDateInput(new Date(Date.UTC(year, month, day, 12)))}`,
-    periodLabel: "С начала года",
+    dateLabel: `${formatDateInput(new Date(Date.UTC(year, 0, 1, 12)))} вЂ” ${formatDateInput(new Date(Date.UTC(year, month, day, 12)))}`,
+    periodLabel: "РЎ РЅР°С‡Р°Р»Р° РіРѕРґР°",
     dateFrom,
     dateToExclusive,
   };
@@ -462,8 +462,8 @@ export function getDailyReportRange(params?: {
 
     if (fromYear && fromMonth && fromDay && toYear && toMonth && toDay) {
       return {
-        dateLabel: `${params.from} — ${params.to}`,
-        periodLabel: "Выбранный период",
+        dateLabel: `${params.from} вЂ” ${params.to}`,
+        periodLabel: "Р’С‹Р±СЂР°РЅРЅС‹Р№ РїРµСЂРёРѕРґ",
         dateFrom: new Date(Date.UTC(fromYear, fromMonth - 1, fromDay, -3, 0, 0)),
         dateToExclusive: new Date(
           Date.UTC(toYear, toMonth - 1, toDay + 1, -3, 0, 0)
@@ -478,7 +478,7 @@ export function getDailyReportRange(params?: {
     if (year && month && day) {
       return {
         dateLabel: params.date,
-        periodLabel: "Выбранный день",
+        periodLabel: "Р’С‹Р±СЂР°РЅРЅС‹Р№ РґРµРЅСЊ",
         dateFrom: new Date(Date.UTC(year, month - 1, day, -3, 0, 0)),
         dateToExclusive: new Date(Date.UTC(year, month - 1, day + 1, -3, 0, 0)),
       };
@@ -494,7 +494,7 @@ export function getDailyReportRange(params?: {
   if (preset === "yesterday") {
     return makeMoscowDayRange({
       offsetDays: 1,
-      label: "Вчера",
+      label: "Р’С‡РµСЂР°",
       now: params?.now,
     });
   }
@@ -502,7 +502,7 @@ export function getDailyReportRange(params?: {
   if (preset === "day_before_yesterday") {
     return makeMoscowDayRange({
       offsetDays: 2,
-      label: "Позавчера",
+      label: "РџРѕР·Р°РІС‡РµСЂР°",
       now: params?.now,
     });
   }
@@ -518,7 +518,7 @@ export function getDailyReportRange(params?: {
   if (preset === "current_month") {
     return makeMoscowMonthRange({
       offsetMonths: 0,
-      label: "Текущий месяц",
+      label: "РўРµРєСѓС‰РёР№ РјРµСЃСЏС†",
       now: params?.now,
     });
   }
@@ -526,7 +526,7 @@ export function getDailyReportRange(params?: {
   if (preset === "previous_month") {
     return makeMoscowMonthRange({
       offsetMonths: -1,
-      label: "Прошлый месяц",
+      label: "РџСЂРѕС€Р»С‹Р№ РјРµСЃСЏС†",
       now: params?.now,
     });
   }
@@ -534,7 +534,7 @@ export function getDailyReportRange(params?: {
   if (preset === "last_30_days") {
     return makeMoscowRange({
       days: 30,
-      label: "Последние 30 дней",
+      label: "РџРѕСЃР»РµРґРЅРёРµ 30 РґРЅРµР№",
       now: params?.now,
     });
   }
@@ -550,7 +550,7 @@ export function getDailyReportRange(params?: {
   if (preset === "3d") {
     return makeMoscowRange({
       days: 3,
-      label: "Последние 3 дня",
+      label: "РџРѕСЃР»РµРґРЅРёРµ 3 РґРЅСЏ",
       now: params?.now,
     });
   }
@@ -558,7 +558,7 @@ export function getDailyReportRange(params?: {
   if (preset === "7d") {
     return makeMoscowRange({
       days: 7,
-      label: "Последние 7 дней",
+      label: "РџРѕСЃР»РµРґРЅРёРµ 7 РґРЅРµР№",
       now: params?.now,
     });
   }
@@ -566,7 +566,7 @@ export function getDailyReportRange(params?: {
   if (preset === "15d") {
     return makeMoscowRange({
       days: 15,
-      label: "Последние 15 дней",
+      label: "РџРѕСЃР»РµРґРЅРёРµ 15 РґРЅРµР№",
       now: params?.now,
     });
   }
@@ -574,14 +574,14 @@ export function getDailyReportRange(params?: {
   if (preset === "6m") {
     return makeMoscowRange({
       days: 183,
-      label: "Последние 6 месяцев",
+      label: "РџРѕСЃР»РµРґРЅРёРµ 6 РјРµСЃСЏС†РµРІ",
       now: params?.now,
     });
   }
 
   return makeMoscowDayRange({
     offsetDays: 1,
-    label: "Вчера",
+    label: "Р’С‡РµСЂР°",
     now: params?.now,
   });
 }
@@ -606,16 +606,16 @@ function hasIncompleteOrderData(report: DailyReport) {
 
 function isWbSaleOperation(reason: string | null | undefined) {
   const value = normalizeText(reason);
-  return value === "продажа" || value === "сторно возвратов";
+  return value === "РїСЂРѕРґР°Р¶Р°" || value === "СЃС‚РѕСЂРЅРѕ РІРѕР·РІСЂР°С‚РѕРІ";
 }
 
 function isWbReturnOperation(reason: string | null | undefined) {
   const value = normalizeText(reason);
 
-  // В ежедневных и детализированных WB-отчётах возврат может приходить
-  // не только точным значением "Возврат", но и расширенным текстом операции.
-  // "Сторно возвратов" при этом оставляем положительной операцией.
-  return value.includes("возврат") && value !== "сторно возвратов";
+  // Р’ РµР¶РµРґРЅРµРІРЅС‹С… Рё РґРµС‚Р°Р»РёР·РёСЂРѕРІР°РЅРЅС‹С… WB-РѕС‚С‡С‘С‚Р°С… РІРѕР·РІСЂР°С‚ РјРѕР¶РµС‚ РїСЂРёС…РѕРґРёС‚СЊ
+  // РЅРµ С‚РѕР»СЊРєРѕ С‚РѕС‡РЅС‹Рј Р·РЅР°С‡РµРЅРёРµРј "Р’РѕР·РІСЂР°С‚", РЅРѕ Рё СЂР°СЃС€РёСЂРµРЅРЅС‹Рј С‚РµРєСЃС‚РѕРј РѕРїРµСЂР°С†РёРё.
+  // "РЎС‚РѕСЂРЅРѕ РІРѕР·РІСЂР°С‚РѕРІ" РїСЂРё СЌС‚РѕРј РѕСЃС‚Р°РІР»СЏРµРј РїРѕР»РѕР¶РёС‚РµР»СЊРЅРѕР№ РѕРїРµСЂР°С†РёРµР№.
+  return value.includes("РІРѕР·РІСЂР°С‚") && value !== "СЃС‚РѕСЂРЅРѕ РІРѕР·РІСЂР°С‚РѕРІ";
 }
 
 function getDateSpan(dateFrom: Date | null, dateTo: Date | null) {
@@ -794,8 +794,8 @@ async function getLatestWbStockQty(companyName: string) {
       })
     : [];
 
-  // Часть API-синхронизаций хранит актуальные остатки без ImportSession.
-  // Поэтому если по последней сессии строк нет, берём текущие строки компании.
+  // Р§Р°СЃС‚СЊ API-СЃРёРЅС…СЂРѕРЅРёР·Р°С†РёР№ С…СЂР°РЅРёС‚ Р°РєС‚СѓР°Р»СЊРЅС‹Рµ РѕСЃС‚Р°С‚РєРё Р±РµР· ImportSession.
+  // РџРѕСЌС‚РѕРјСѓ РµСЃР»Рё РїРѕ РїРѕСЃР»РµРґРЅРµР№ СЃРµСЃСЃРёРё СЃС‚СЂРѕРє РЅРµС‚, Р±РµСЂС‘Рј С‚РµРєСѓС‰РёРµ СЃС‚СЂРѕРєРё РєРѕРјРїР°РЅРёРё.
   if (rows.length === 0) {
     rows = await prisma.wbStock.findMany({
       where: {
@@ -820,8 +820,8 @@ async function getLatestWbStockQty(companyName: string) {
 }
 
 async function getLatestOzonStockQty(companyName: string) {
-  // Ozon stock sync перезаписывает текущие строки по компании и часто хранит
-  // importSessionId = null. Поэтому нельзя искать только последнюю ImportSession.
+  // Ozon stock sync РїРµСЂРµР·Р°РїРёСЃС‹РІР°РµС‚ С‚РµРєСѓС‰РёРµ СЃС‚СЂРѕРєРё РїРѕ РєРѕРјРїР°РЅРёРё Рё С‡Р°СЃС‚Рѕ С…СЂР°РЅРёС‚
+  // importSessionId = null. РџРѕСЌС‚РѕРјСѓ РЅРµР»СЊР·СЏ РёСЃРєР°С‚СЊ С‚РѕР»СЊРєРѕ РїРѕСЃР»РµРґРЅСЋСЋ ImportSession.
   const rows = await prisma.ozonStock.findMany({
     where: {
       companyName,
@@ -851,12 +851,12 @@ function isOzonFinanceAdOperation(operationType: string | null | undefined) {
   const value = normalizeText(operationType);
 
   return (
-    value.includes("оплата за клик") ||
-    value.includes("продвижение с оплатой за заказ") ||
-    value.includes("продвижение") ||
-    value.includes("СЂРµРєР»Р°РјР°") ||
-    value.includes("СЂРµРєР»Р°Рј") ||
-    value.includes("трафарет") ||
+    value.includes("РѕРїР»Р°С‚Р° Р·Р° РєР»РёРє") ||
+    value.includes("РїСЂРѕРґРІРёР¶РµРЅРёРµ СЃ РѕРїР»Р°С‚РѕР№ Р·Р° Р·Р°РєР°Р·") ||
+    value.includes("РїСЂРѕРґРІРёР¶РµРЅРёРµ") ||
+    value.includes("РЎР‚Р ВµР С”Р В»Р В°Р СР В°") ||
+    value.includes("РЎР‚Р ВµР С”Р В»Р В°Р С") ||
+    value.includes("С‚СЂР°С„Р°СЂРµС‚") ||
     value.includes("cpc") ||
     value.includes("cpo")
   );
@@ -1334,8 +1334,8 @@ function selectPreferredWbSaleRows<
     const finalRows = dayRows.filter((row) => !isWbDailyStatisticsSaleRow(row));
     const dailyRows = dayRows.filter((row) => isWbDailyStatisticsSaleRow(row));
 
-    // Если за день уже есть финальный недельный WB Sales — используем его.
-    // Иначе используем оперативный daily sales, чтобы не было пустоты в утреннем отчёте.
+    // Р•СЃР»Рё Р·Р° РґРµРЅСЊ СѓР¶Рµ РµСЃС‚СЊ С„РёРЅР°Р»СЊРЅС‹Р№ РЅРµРґРµР»СЊРЅС‹Р№ WB Sales вЂ” РёСЃРїРѕР»СЊР·СѓРµРј РµРіРѕ.
+    // РРЅР°С‡Рµ РёСЃРїРѕР»СЊР·СѓРµРј РѕРїРµСЂР°С‚РёРІРЅС‹Р№ daily sales, С‡С‚РѕР±С‹ РЅРµ Р±С‹Р»Рѕ РїСѓСЃС‚РѕС‚С‹ РІ СѓС‚СЂРµРЅРЅРµРј РѕС‚С‡С‘С‚Рµ.
     preferredRows.push(...(finalRows.length > 0 ? finalRows : dailyRows));
   }
 
@@ -1517,15 +1517,15 @@ async function getWbMetrics(companyName: string, range: DateRange) {
   const ordersDataIncomplete =
     !ordersDataMissing && orderStats.loadedDays < orderStats.expectedDays;
   const ordersDataMissingReason = ordersDataMissing
-    ? "WB заказы за этот период ещё не загружены в MarketplaceDailyOrderStat"
+    ? "WB Р·Р°РєР°Р·С‹ Р·Р° СЌС‚РѕС‚ РїРµСЂРёРѕРґ РµС‰С‘ РЅРµ Р·Р°РіСЂСѓР¶РµРЅС‹ РІ MarketplaceDailyOrderStat"
     : ordersDataIncomplete
-      ? `WB заказы загружены частично: ${orderStats.loadedDays} из ${orderStats.expectedDays} дней`
+      ? `WB Р·Р°РєР°Р·С‹ Р·Р°РіСЂСѓР¶РµРЅС‹ С‡Р°СЃС‚РёС‡РЅРѕ: ${orderStats.loadedDays} РёР· ${orderStats.expectedDays} РґРЅРµР№`
       : null;
 
   const salesDataMissing =
     effectiveSalesRows.length === 0 && orderStats.ordersQty > 0;
   const salesDataMissingReason = salesDataMissing
-    ? "WB Sales/выкупы за этот период ещё не загружены в WbSale"
+    ? "WB Sales/РІС‹РєСѓРїС‹ Р·Р° СЌС‚РѕС‚ РїРµСЂРёРѕРґ РµС‰С‘ РЅРµ Р·Р°РіСЂСѓР¶РµРЅС‹ РІ WbSale"
     : null;
 
   const adsRows = keepLatestWbAdsRowsPerDate(adsRowsRaw);
@@ -1544,12 +1544,12 @@ async function getWbMetrics(companyName: string, range: DateRange) {
       ordersDataMissingReason,
       salesQty: 0,
       salesAmount: 0,
-      salesLabel: "Экономический оборот",
+      salesLabel: "Р­РєРѕРЅРѕРјРёС‡РµСЃРєРёР№ РѕР±РѕСЂРѕС‚",
       salesQtyIsReliable: false,
       salesDataMissing: true,
-      salesDataMissingReason: "WB финансовые данные неполны",
+      salesDataMissingReason: "WB С„РёРЅР°РЅСЃРѕРІС‹Рµ РґР°РЅРЅС‹Рµ РЅРµРїРѕР»РЅС‹",
       adSpend: wbProfitAnalytics.independentAds.adsCost,
-      adSpendSource: "WB Ads (не полный P&L)",
+      adSpendSource: "WB Ads (РЅРµ РїРѕР»РЅС‹Р№ P&L)",
       adDataMissing: false,
       adDataMissingReason: null,
       drrByOrders: 0,
@@ -1650,18 +1650,18 @@ async function getWbMetrics(companyName: string, range: DateRange) {
   const wbFallbackNetProfitUnavailable =
     !profitAnalyticsHasWbData && wbFallbackTaxBlockedReason != null;
 
-  // Если ежедневный финансовый отчёт WB загружен, Telegram считает прибыль
-  // от "Итого к оплате WB", как /profit-wb и управленческая экономика:
-  // Итого к оплате WB − себестоимость − реклама − налог.
+  // Р•СЃР»Рё РµР¶РµРґРЅРµРІРЅС‹Р№ С„РёРЅР°РЅСЃРѕРІС‹Р№ РѕС‚С‡С‘С‚ WB Р·Р°РіСЂСѓР¶РµРЅ, Telegram СЃС‡РёС‚Р°РµС‚ РїСЂРёР±С‹Р»СЊ
+  // РѕС‚ "РС‚РѕРіРѕ Рє РѕРїР»Р°С‚Рµ WB", РєР°Рє /profit-wb Рё СѓРїСЂР°РІР»РµРЅС‡РµСЃРєР°СЏ СЌРєРѕРЅРѕРјРёРєР°:
+  // РС‚РѕРіРѕ Рє РѕРїР»Р°С‚Рµ WB в€’ СЃРµР±РµСЃС‚РѕРёРјРѕСЃС‚СЊ в€’ СЂРµРєР»Р°РјР° в€’ РЅР°Р»РѕРі.
   const canonicalNetProfitAfterTax =
     financeTotals.totalToPay -
     canonicalCostOfGoods -
     finalAdSpend -
     canonicalTaxesAmount;
 
-  // Единый источник истины: прибыль WB должна совпадать с /profit-wb.
-  // Самостоятельный расчёт DailyReport остаётся только fallback, когда
-  // каноническая аналитика ещё не вернула данные.
+  // Р•РґРёРЅС‹Р№ РёСЃС‚РѕС‡РЅРёРє РёСЃС‚РёРЅС‹: РїСЂРёР±С‹Р»СЊ WB РґРѕР»Р¶РЅР° СЃРѕРІРїР°РґР°С‚СЊ СЃ /profit-wb.
+  // РЎР°РјРѕСЃС‚РѕСЏС‚РµР»СЊРЅС‹Р№ СЂР°СЃС‡С‘С‚ DailyReport РѕСЃС‚Р°С‘С‚СЃСЏ С‚РѕР»СЊРєРѕ fallback, РєРѕРіРґР°
+  // РєР°РЅРѕРЅРёС‡РµСЃРєР°СЏ Р°РЅР°Р»РёС‚РёРєР° РµС‰С‘ РЅРµ РІРµСЂРЅСѓР»Р° РґР°РЅРЅС‹Рµ.
   const finalNetProfitAfterTax = profitAnalyticsHasWbData
     ? profitTotals.netProfitAfterTax
     : wbFallbackNetProfitUnavailable
@@ -1681,7 +1681,7 @@ async function getWbMetrics(companyName: string, range: DateRange) {
     ordersDataMissingReason,
     salesQty: finalSalesQty,
     salesAmount: finalSalesAmount,
-    salesLabel: "Экономический оборот",
+    salesLabel: "Р­РєРѕРЅРѕРјРёС‡РµСЃРєРёР№ РѕР±РѕСЂРѕС‚",
     salesQtyIsReliable: !salesDataMissing,
     salesDataMissing,
     salesDataMissingReason,
@@ -1870,8 +1870,8 @@ async function getOzonMetrics(companyName: string, range: DateRange) {
   ).length;
   const performanceAdRowsCount = adsRows.length;
 
-  // Для управленческого отчёта берём фактические рекламные списания из Ozon Finance,
-  // если они есть. Performance API оставляем как fallback, чтобы не задвоить CPC/CPO.
+  // Р”Р»СЏ СѓРїСЂР°РІР»РµРЅС‡РµСЃРєРѕРіРѕ РѕС‚С‡С‘С‚Р° Р±РµСЂС‘Рј С„Р°РєС‚РёС‡РµСЃРєРёРµ СЂРµРєР»Р°РјРЅС‹Рµ СЃРїРёСЃР°РЅРёСЏ РёР· Ozon Finance,
+  // РµСЃР»Рё РѕРЅРё РµСЃС‚СЊ. Performance API РѕСЃС‚Р°РІР»СЏРµРј РєР°Рє fallback, С‡С‚РѕР±С‹ РЅРµ Р·Р°РґРІРѕРёС‚СЊ CPC/CPO.
   const adSpend =
     financeAdRowsCount > 0 ? financeAdSpend : performanceAdSpend;
   const adSpendSource =
@@ -1917,9 +1917,9 @@ async function getOzonMetrics(companyName: string, range: DateRange) {
     profitAnalyticsHasOzonEconomicActivity(profitTotals) &&
     (!taxRevenueCoverageComplete || !discountPointsCoverageComplete);
   const ozonEconomicsWarning = ozonEconomicsIncomplete
-    ? "налоговая выручка / баллы Ozon ещё не закрыты — прибыль до налогов рассчитана от экономического оборота, налог и чистая прибыль предварительные"
+    ? "РЅР°Р»РѕРіРѕРІР°СЏ РІС‹СЂСѓС‡РєР° / Р±Р°Р»Р»С‹ Ozon РµС‰С‘ РЅРµ Р·Р°РєСЂС‹С‚С‹ вЂ” РїСЂРёР±С‹Р»СЊ РґРѕ РЅР°Р»РѕРіРѕРІ СЂР°СЃСЃС‡РёС‚Р°РЅР° РѕС‚ СЌРєРѕРЅРѕРјРёС‡РµСЃРєРѕРіРѕ РѕР±РѕСЂРѕС‚Р°, РЅР°Р»РѕРі Рё С‡РёСЃС‚Р°СЏ РїСЂРёР±С‹Р»СЊ РїСЂРµРґРІР°СЂРёС‚РµР»СЊРЅС‹Рµ"
     : canonicalDayIncomplete
-      ? "Ожидаем данные начислений Ozon"
+      ? "РћР¶РёРґР°РµРј РґР°РЅРЅС‹Рµ РЅР°С‡РёСЃР»РµРЅРёР№ Ozon"
       : null;
   const ozonFinancialUnavailable = canonicalDayIncomplete;
   const ozonFinancialUnavailableReason = ozonFinancialUnavailable
@@ -1940,9 +1940,9 @@ async function getOzonMetrics(companyName: string, range: DateRange) {
       ? profitTotals.economicTurnover
       : profitTotals.revenue
     : salesAmount;
-  // Единый источник истины: реклама и прибыль Ozon должны совпадать
-  // с /profit-ozon. Второй независимый пересчёт внутри DailyReport
-  // создавал расхождения между страницами и Telegram.
+  // Р•РґРёРЅС‹Р№ РёСЃС‚РѕС‡РЅРёРє РёСЃС‚РёРЅС‹: СЂРµРєР»Р°РјР° Рё РїСЂРёР±С‹Р»СЊ Ozon РґРѕР»Р¶РЅС‹ СЃРѕРІРїР°РґР°С‚СЊ
+  // СЃ /profit-ozon. Р’С‚РѕСЂРѕР№ РЅРµР·Р°РІРёСЃРёРјС‹Р№ РїРµСЂРµСЃС‡С‘С‚ РІРЅСѓС‚СЂРё DailyReport
+  // СЃРѕР·РґР°РІР°Р» СЂР°СЃС…РѕР¶РґРµРЅРёСЏ РјРµР¶РґСѓ СЃС‚СЂР°РЅРёС†Р°РјРё Рё Telegram.
   const finalAdSpend = profitAnalyticsHasOzonData
     ? profitTotals.adsCost
     : adSpend;
@@ -1954,9 +1954,9 @@ async function getOzonMetrics(companyName: string, range: DateRange) {
   const ordersDataIncomplete =
     !ordersDataMissing && orderStats.loadedDays < orderStats.expectedDays;
   const ordersDataMissingReason = ordersDataMissing
-    ? "Ozon заказы за этот период ещё не загружены в MarketplaceDailyOrderStat"
+    ? "Ozon Р·Р°РєР°Р·С‹ Р·Р° СЌС‚РѕС‚ РїРµСЂРёРѕРґ РµС‰С‘ РЅРµ Р·Р°РіСЂСѓР¶РµРЅС‹ РІ MarketplaceDailyOrderStat"
     : ordersDataIncomplete
-      ? `Ozon заказы загружены частично: ${orderStats.loadedDays} из ${orderStats.expectedDays} дней`
+      ? `Ozon Р·Р°РєР°Р·С‹ Р·Р°РіСЂСѓР¶РµРЅС‹ С‡Р°СЃС‚РёС‡РЅРѕ: ${orderStats.loadedDays} РёР· ${orderStats.expectedDays} РґРЅРµР№`
       : null;
 
   const hasOzonActivity = orderStats.rowsCount > 0 || finalSalesAmount > 0;
@@ -1966,7 +1966,7 @@ async function getOzonMetrics(companyName: string, range: DateRange) {
     financeAdRowsCount === 0 &&
     performanceAdRowsCount === 0;
   const adDataMissingReason = adDataMissing
-    ? "Ozon рекламные расходы за этот период ещё не загружены из Ozon Finance/Performance"
+    ? "Ozon СЂРµРєР»Р°РјРЅС‹Рµ СЂР°СЃС…РѕРґС‹ Р·Р° СЌС‚РѕС‚ РїРµСЂРёРѕРґ РµС‰С‘ РЅРµ Р·Р°РіСЂСѓР¶РµРЅС‹ РёР· Ozon Finance/Performance"
     : null;
 
   if (ozonFinancialUnavailable) {
@@ -1981,12 +1981,12 @@ async function getOzonMetrics(companyName: string, range: DateRange) {
       ordersDataMissingReason,
       salesQty: 0,
       salesAmount: 0,
-      salesLabel: "Экономический оборот",
+      salesLabel: "Р­РєРѕРЅРѕРјРёС‡РµСЃРєРёР№ РѕР±РѕСЂРѕС‚",
       salesQtyIsReliable: false,
       salesDataMissing: true,
-      salesDataMissingReason: "Ожидаем данные начислений Ozon",
+      salesDataMissingReason: "РћР¶РёРґР°РµРј РґР°РЅРЅС‹Рµ РЅР°С‡РёСЃР»РµРЅРёР№ Ozon",
       adSpend: finalAdSpend,
-      adSpendSource: "Ozon Ads (не полный P&L)",
+      adSpendSource: "Ozon Ads (РЅРµ РїРѕР»РЅС‹Р№ P&L)",
       adDataMissing,
       adDataMissingReason,
       drrByOrders: 0,
@@ -2012,7 +2012,7 @@ async function getOzonMetrics(companyName: string, range: DateRange) {
       taxRevenueMissingDays: profitTotals.taxRevenueMissingDays ?? [],
       discountPointsMissingDays: profitTotals.discountPointsMissingDays ?? [],
       ozonEconomicsWarning:
-        ozonEconomicsWarning ?? "Ожидаем данные начислений Ozon",
+        ozonEconomicsWarning ?? "РћР¶РёРґР°РµРј РґР°РЅРЅС‹Рµ РЅР°С‡РёСЃР»РµРЅРёР№ Ozon",
       marginProfit: undefined,
       taxesAmount: undefined,
       taxCalculationBase: undefined,
@@ -2036,13 +2036,13 @@ async function getOzonMetrics(companyName: string, range: DateRange) {
     ordersDataMissingReason,
     salesQty: 0,
     salesAmount: finalSalesAmount,
-    salesLabel: profitAnalyticsHasOzonData ? "Экономический оборот" : "Начисления",
+    salesLabel: profitAnalyticsHasOzonData ? "Р­РєРѕРЅРѕРјРёС‡РµСЃРєРёР№ РѕР±РѕСЂРѕС‚" : "РќР°С‡РёСЃР»РµРЅРёСЏ",
     salesQtyIsReliable: false,
     salesDataMissing: false,
     salesDataMissingReason: null,
     adSpend: finalAdSpend,
     adSpendSource: profitAnalyticsHasOzonData
-      ? "Ozon Finance / реализация"
+      ? "Ozon Finance / СЂРµР°Р»РёР·Р°С†РёСЏ"
       : adSpendSource,
     adDataMissing,
     adDataMissingReason,
@@ -2145,8 +2145,8 @@ function getPreviousComparableRange(range: DateRange): DateRange {
   const inclusiveTo = getInclusiveDateTo(dateToExclusive);
 
   return {
-    dateLabel: `${getMoscowDateInput(dateFrom)} — ${getMoscowDateInput(inclusiveTo)}`,
-    periodLabel: "Аналогичный предыдущий период",
+    dateLabel: `${getMoscowDateInput(dateFrom)} вЂ” ${getMoscowDateInput(inclusiveTo)}`,
+    periodLabel: "РђРЅР°Р»РѕРіРёС‡РЅС‹Р№ РїСЂРµРґС‹РґСѓС‰РёР№ РїРµСЂРёРѕРґ",
     dateFrom,
     dateToExclusive,
   };
@@ -2289,33 +2289,33 @@ function buildWarnings(report: DailyReport) {
 
   if (!suppressReadinessWarnings) {
     if (report.totals.ordersQty <= 0 && report.totals.ordersAmount <= 0) {
-      warnings.push("нет заказов за период");
+      warnings.push("РЅРµС‚ Р·Р°РєР°Р·РѕРІ Р·Р° РїРµСЂРёРѕРґ");
     }
 
     if (hasIncompleteOrderData(report)) {
       warnings.push(
-        `заказы загружены не за весь выбранный период: ${report.totals.orderDataLoadedDays} из ${report.totals.orderDataExpectedDays} дневных срезов. ДРР от заказов может быть завышен`
+        `Р·Р°РєР°Р·С‹ Р·Р°РіСЂСѓР¶РµРЅС‹ РЅРµ Р·Р° РІРµСЃСЊ РІС‹Р±СЂР°РЅРЅС‹Р№ РїРµСЂРёРѕРґ: ${report.totals.orderDataLoadedDays} РёР· ${report.totals.orderDataExpectedDays} РґРЅРµРІРЅС‹С… СЃСЂРµР·РѕРІ. Р”Р Р  РѕС‚ Р·Р°РєР°Р·РѕРІ РјРѕР¶РµС‚ Р±С‹С‚СЊ Р·Р°РІС‹С€РµРЅ`
       );
     }
 
     if (report.totals.economicTurnover <= 0) {
-      warnings.push("нет экономического оборота за период");
+      warnings.push("РЅРµС‚ СЌРєРѕРЅРѕРјРёС‡РµСЃРєРѕРіРѕ РѕР±РѕСЂРѕС‚Р° Р·Р° РїРµСЂРёРѕРґ");
     }
 
     if (report.totals.drrByEconomicTurnover > 20) {
       warnings.push(
-        `ДРР от экономического оборота выше 20%: ${formatPercent(report.totals.drrByEconomicTurnover)}`
+        `Р”Р Р  РѕС‚ СЌРєРѕРЅРѕРјРёС‡РµСЃРєРѕРіРѕ РѕР±РѕСЂРѕС‚Р° РІС‹С€Рµ 20%: ${formatPercent(report.totals.drrByEconomicTurnover)}`
       );
     }
   }
 
   if (report.totals.netCashFlow < 0) {
-    warnings.push(`отрицательный ДДС: ${formatMoney(report.totals.netCashFlow)}`);
+    warnings.push(`РѕС‚СЂРёС†Р°С‚РµР»СЊРЅС‹Р№ Р”Р”РЎ: ${formatMoney(report.totals.netCashFlow)}`);
   }
 
   if (report.totals.netProfitImpact < 0) {
     warnings.push(
-      `${isPreliminaryFinancialResult(report) ? "отрицательная предварительная прибыль" : "отрицательная чистая прибыль"}: ${formatMoney(
+      `${isPreliminaryFinancialResult(report) ? "РѕС‚СЂРёС†Р°С‚РµР»СЊРЅР°СЏ РїСЂРµРґРІР°СЂРёС‚РµР»СЊРЅР°СЏ РїСЂРёР±С‹Р»СЊ" : "РѕС‚СЂРёС†Р°С‚РµР»СЊРЅР°СЏ С‡РёСЃС‚Р°СЏ РїСЂРёР±С‹Р»СЊ"}: ${formatMoney(
         report.totals.netProfitImpact
       )}`
     );
@@ -2324,53 +2324,53 @@ function buildWarnings(report: DailyReport) {
   if (!suppressReadinessWarnings) {
     for (const company of report.companies) {
       if (company.wb.ordersDataMissing) {
-        warnings.push(`${company.companyName} WB: заказы ещё не загружены`);
+        warnings.push(`${company.companyName} WB: Р·Р°РєР°Р·С‹ РµС‰С‘ РЅРµ Р·Р°РіСЂСѓР¶РµРЅС‹`);
       } else if (company.wb.ordersDataIncomplete) {
         warnings.push(
-          `${company.companyName} WB: заказы загружены частично (${company.wb.orderDataLoadedDays} из ${company.wb.orderDataExpectedDays} дней)`
+          `${company.companyName} WB: Р·Р°РєР°Р·С‹ Р·Р°РіСЂСѓР¶РµРЅС‹ С‡Р°СЃС‚РёС‡РЅРѕ (${company.wb.orderDataLoadedDays} РёР· ${company.wb.orderDataExpectedDays} РґРЅРµР№)`
         );
       }
 
       if (company.ozon.ordersDataMissing) {
-        warnings.push(`${company.companyName} Ozon: заказы ещё не загружены`);
+        warnings.push(`${company.companyName} Ozon: Р·Р°РєР°Р·С‹ РµС‰С‘ РЅРµ Р·Р°РіСЂСѓР¶РµРЅС‹`);
       } else if (company.ozon.ordersDataIncomplete) {
         warnings.push(
-          `${company.companyName} Ozon: заказы загружены частично (${company.ozon.orderDataLoadedDays} из ${company.ozon.orderDataExpectedDays} дней)`
+          `${company.companyName} Ozon: Р·Р°РєР°Р·С‹ Р·Р°РіСЂСѓР¶РµРЅС‹ С‡Р°СЃС‚РёС‡РЅРѕ (${company.ozon.orderDataLoadedDays} РёР· ${company.ozon.orderDataExpectedDays} РґРЅРµР№)`
         );
       }
 
       if (company.wb.adDataMissing) {
-        warnings.push(`${company.companyName} WB: реклама ещё не загружена`);
+        warnings.push(`${company.companyName} WB: СЂРµРєР»Р°РјР° РµС‰С‘ РЅРµ Р·Р°РіСЂСѓР¶РµРЅР°`);
       }
 
       if (company.ozon.adDataMissing) {
-        warnings.push(`${company.companyName} Ozon: реклама ещё не загружена`);
+        warnings.push(`${company.companyName} Ozon: СЂРµРєР»Р°РјР° РµС‰С‘ РЅРµ Р·Р°РіСЂСѓР¶РµРЅР°`);
       }
 
       if (company.wb.salesDataMissing) {
         warnings.push(
-          `${company.companyName} WB: продажи/выкупы ещё не загружены`
+          `${company.companyName} WB: РїСЂРѕРґР°Р¶Рё/РІС‹РєСѓРїС‹ РµС‰С‘ РЅРµ Р·Р°РіСЂСѓР¶РµРЅС‹`
         );
       }
 
       if (company.wb.netProfitUnavailable) {
         warnings.push(
-          `${company.companyName} WB: чистая прибыль недоступна — не определён тип отчёта для налога (${company.wb.netProfitUnavailableReason ?? "WB_TAX_REPORT_KIND_UNRESOLVED"})`
+          `${company.companyName} WB: С‡РёСЃС‚Р°СЏ РїСЂРёР±С‹Р»СЊ РЅРµРґРѕСЃС‚СѓРїРЅР° вЂ” РЅРµ РѕРїСЂРµРґРµР»С‘РЅ С‚РёРї РѕС‚С‡С‘С‚Р° РґР»СЏ РЅР°Р»РѕРіР° (${company.wb.netProfitUnavailableReason ?? "WB_TAX_REPORT_KIND_UNRESOLVED"})`
         );
       }
 
       if (company.ozon.salesDataMissing) {
         warnings.push(
-          `${company.companyName} Ozon: продажи/начисления ещё не загружены`
+          `${company.companyName} Ozon: РїСЂРѕРґР°Р¶Рё/РЅР°С‡РёСЃР»РµРЅРёСЏ РµС‰С‘ РЅРµ Р·Р°РіСЂСѓР¶РµРЅС‹`
         );
       }
 
       if (company.ozon.ozonEconomicsWarning) {
         const missingTaxDays = company.ozon.taxRevenueMissingDays?.length
-          ? ` Нет налоговой выручки за дни: ${company.ozon.taxRevenueMissingDays.join(", ")}.`
+          ? ` РќРµС‚ РЅР°Р»РѕРіРѕРІРѕР№ РІС‹СЂСѓС‡РєРё Р·Р° РґРЅРё: ${company.ozon.taxRevenueMissingDays.join(", ")}.`
           : "";
         const missingPointDays = company.ozon.discountPointsMissingDays?.length
-          ? ` Нет баллов за дни: ${company.ozon.discountPointsMissingDays.join(", ")}.`
+          ? ` РќРµС‚ Р±Р°Р»Р»РѕРІ Р·Р° РґРЅРё: ${company.ozon.discountPointsMissingDays.join(", ")}.`
           : "";
         warnings.push(
           `${company.companyName} Ozon: ${company.ozon.ozonEconomicsWarning}.${missingTaxDays}${missingPointDays}`
@@ -2380,7 +2380,7 @@ function buildWarnings(report: DailyReport) {
   }
 
   if (report.totals.stockQty <= 0) {
-    warnings.push("не вижу остатков по последним загруженным отчётам");
+    warnings.push("РЅРµ РІРёР¶Сѓ РѕСЃС‚Р°С‚РєРѕРІ РїРѕ РїРѕСЃР»РµРґРЅРёРј Р·Р°РіСЂСѓР¶РµРЅРЅС‹Рј РѕС‚С‡С‘С‚Р°Рј");
   }
 
   return warnings;
@@ -2406,12 +2406,12 @@ export async function buildDailyReport(params?: {
       name: true,
     },
   });
-  // Owner report order: ИП Петров then ИП Лебедева (stable beyond name asc).
+  // Owner report order: РРџ РџРµС‚СЂРѕРІ then РРџ Р›РµР±РµРґРµРІР° (stable beyond name asc).
   const companies = [...companiesRaw].sort((a, b) => {
     const rank = (name: string) => {
       const n = name.toLowerCase();
-      if (n.includes("петров")) return 0;
-      if (n.includes("лебед")) return 1;
+      if (n.includes("РїРµС‚СЂРѕРІ")) return 0;
+      if (n.includes("Р»РµР±РµРґ")) return 1;
       return 10;
     };
     const ra = rank(a.name);
@@ -2602,7 +2602,7 @@ export function formatRuDateShort(value: string | null | undefined) {
 
 export function formatCompactMoney(value: number) {
   const abs = Math.abs(value);
-  const sign = value < 0 ? "−" : "";
+  const sign = value < 0 ? "в€’" : "";
 
   if (abs >= 1_000_000) {
     const millions = abs / 1_000_000;
@@ -2610,7 +2610,7 @@ export function formatCompactMoney(value: number) {
       minimumFractionDigits: 3,
       maximumFractionDigits: 3,
     }).format(millions);
-    return `${sign}${formatted} млн ₽`;
+    return `${sign}${formatted} РјР»РЅ в‚Ѕ`;
   }
 
   if (abs >= 1000) {
@@ -2619,10 +2619,10 @@ export function formatCompactMoney(value: number) {
       minimumFractionDigits: 1,
       maximumFractionDigits: 1,
     }).format(thousands);
-    return `${sign}${formatted} тыс. ₽`;
+    return `${sign}${formatted} С‚С‹СЃ. в‚Ѕ`;
   }
 
-  return `${sign}${formatNumber(abs)} ₽`;
+  return `${sign}${formatNumber(abs)} в‚Ѕ`;
 }
 
 export function formatSignedMoney(value: number) {
@@ -2724,15 +2724,15 @@ export function collectTelegramReadinessIssues(
       push(
         company.companyName,
         "WB",
-        "заказы",
-        `не загружены заказы за ${dateShort}`
+        "Р·Р°РєР°Р·С‹",
+        `РЅРµ Р·Р°РіСЂСѓР¶РµРЅС‹ Р·Р°РєР°Р·С‹ Р·Р° ${dateShort}`
       );
     } else if (company.wb.ordersDataIncomplete) {
       push(
         company.companyName,
         "WB",
-        "заказы",
-        `заказы загружены частично за ${dateShort}: ${company.wb.orderDataLoadedDays} из ${company.wb.orderDataExpectedDays} РґРЅ.`
+        "Р·Р°РєР°Р·С‹",
+        `Р·Р°РєР°Р·С‹ Р·Р°РіСЂСѓР¶РµРЅС‹ С‡Р°СЃС‚РёС‡РЅРѕ Р·Р° ${dateShort}: ${company.wb.orderDataLoadedDays} РёР· ${company.wb.orderDataExpectedDays} Р Т‘Р Р….`
       );
     }
 
@@ -2740,8 +2740,8 @@ export function collectTelegramReadinessIssues(
       push(
         company.companyName,
         "WB",
-        "продажи",
-        `не загружены продажи/выкупы за ${dateShort}`
+        "РїСЂРѕРґР°Р¶Рё",
+        `РЅРµ Р·Р°РіСЂСѓР¶РµРЅС‹ РїСЂРѕРґР°Р¶Рё/РІС‹РєСѓРїС‹ Р·Р° ${dateShort}`
       );
     }
 
@@ -2749,8 +2749,8 @@ export function collectTelegramReadinessIssues(
       push(
         company.companyName,
         "WB",
-        "СЂРµРєР»Р°РјР°",
-        `не загружена реклама за ${dateShort}`
+        "РЎР‚Р ВµР С”Р В»Р В°Р СР В°",
+        `РЅРµ Р·Р°РіСЂСѓР¶РµРЅР° СЂРµРєР»Р°РјР° Р·Р° ${dateShort}`
       );
     }
 
@@ -2762,15 +2762,15 @@ export function collectTelegramReadinessIssues(
       push(
         company.companyName,
         "Ozon",
-        "заказы",
-        `не загружены заказы за ${dateShort}`
+        "Р·Р°РєР°Р·С‹",
+        `РЅРµ Р·Р°РіСЂСѓР¶РµРЅС‹ Р·Р°РєР°Р·С‹ Р·Р° ${dateShort}`
       );
     } else if (company.ozon.ordersDataIncomplete) {
       push(
         company.companyName,
         "Ozon",
-        "заказы",
-        `заказы загружены частично за ${dateShort}: ${company.ozon.orderDataLoadedDays} из ${company.ozon.orderDataExpectedDays} РґРЅ.`
+        "Р·Р°РєР°Р·С‹",
+        `Р·Р°РєР°Р·С‹ Р·Р°РіСЂСѓР¶РµРЅС‹ С‡Р°СЃС‚РёС‡РЅРѕ Р·Р° ${dateShort}: ${company.ozon.orderDataLoadedDays} РёР· ${company.ozon.orderDataExpectedDays} Р Т‘Р Р….`
       );
     }
 
@@ -2778,8 +2778,8 @@ export function collectTelegramReadinessIssues(
       push(
         company.companyName,
         "Ozon",
-        "СЂРµРєР»Р°РјР°",
-        `не загружена реклама за ${dateShort}`
+        "РЎР‚Р ВµР С”Р В»Р В°Р СР В°",
+        `РЅРµ Р·Р°РіСЂСѓР¶РµРЅР° СЂРµРєР»Р°РјР° Р·Р° ${dateShort}`
       );
     }
 
@@ -2787,8 +2787,8 @@ export function collectTelegramReadinessIssues(
       push(
         company.companyName,
         "Ozon",
-        "начисления",
-        `ожидаем данные начислений Ozon за ${dateShort}`
+        "РЅР°С‡РёСЃР»РµРЅРёСЏ",
+        `РѕР¶РёРґР°РµРј РґР°РЅРЅС‹Рµ РЅР°С‡РёСЃР»РµРЅРёР№ Ozon Р·Р° ${dateShort}`
       );
     } else if (company.ozon.taxRevenueCoverageComplete === false) {
       const missing = company.ozon.taxRevenueMissingDays?.length
@@ -2797,8 +2797,8 @@ export function collectTelegramReadinessIssues(
       push(
         company.companyName,
         "Ozon",
-        "отчёт начислений",
-        `нет отчёта начислений за ${missing}`
+        "РѕС‚С‡С‘С‚ РЅР°С‡РёСЃР»РµРЅРёР№",
+        `РЅРµС‚ РѕС‚С‡С‘С‚Р° РЅР°С‡РёСЃР»РµРЅРёР№ Р·Р° ${missing}`
       );
     }
 
@@ -2812,8 +2812,8 @@ export function collectTelegramReadinessIssues(
       push(
         company.companyName,
         "Ozon",
-        "отчёт баллов",
-        `нет отчёта баллов за ${missing}`
+        "РѕС‚С‡С‘С‚ Р±Р°Р»Р»РѕРІ",
+        `РЅРµС‚ РѕС‚С‡С‘С‚Р° Р±Р°Р»Р»РѕРІ Р·Р° ${missing}`
       );
     }
   }
@@ -2827,22 +2827,22 @@ export function formatTelegramReadinessBlock(
   if (issues.length === 0) return [];
 
   return [
-    "⚠️ Неполные данные:",
+    "вљ пёЏ РќРµРїРѕР»РЅС‹Рµ РґР°РЅРЅС‹Рµ:",
     ...issues.map(
       (issue) =>
-        `• ${issue.companyName} · ${issue.marketplace}: ${issue.reason}`
+        `вЂў ${issue.companyName} В· ${issue.marketplace}: ${issue.reason}`
     ),
   ];
 }
 
 function marketplaceSalesLine(metrics: MarketplaceDailyMetrics) {
   if (metrics.salesDataMissing) {
-    return `${metrics.salesLabel}: данные ещё не загружены`;
+    return `${metrics.salesLabel}: РґР°РЅРЅС‹Рµ РµС‰С‘ РЅРµ Р·Р°РіСЂСѓР¶РµРЅС‹`;
   }
 
   if (metrics.economicTurnover !== undefined) {
     if (metrics.marketplace === "OZON" && metrics.ozonEconomicsWarning) {
-      return `Экономический оборот: ${formatMoney(metrics.economicTurnover)} (${metrics.ozonEconomicsWarning})`;
+      return `Р­РєРѕРЅРѕРјРёС‡РµСЃРєРёР№ РѕР±РѕСЂРѕС‚: ${formatMoney(metrics.economicTurnover)} (${metrics.ozonEconomicsWarning})`;
     }
 
     const details: string[] = [];
@@ -2851,15 +2851,15 @@ function marketplaceSalesLine(metrics: MarketplaceDailyMetrics) {
     const partnerProgramsAmount = metrics.partnerProgramsAmount ?? 0;
 
     if (metrics.taxableRevenue !== undefined) {
-      details.push(`налоговая выручка ${formatMoney(taxableRevenue)}`);
+      details.push(`РЅР°Р»РѕРіРѕРІР°СЏ РІС‹СЂСѓС‡РєР° ${formatMoney(taxableRevenue)}`);
     }
 
     if (metrics.discountPointsAmount !== undefined && Math.abs(discountPointsAmount) > 0.5) {
-      details.push(`баллы ${formatMoney(discountPointsAmount)}`);
+      details.push(`Р±Р°Р»Р»С‹ ${formatMoney(discountPointsAmount)}`);
     }
 
     if (metrics.partnerProgramsAmount !== undefined && Math.abs(partnerProgramsAmount) > 0.5) {
-      details.push(`программы партнёров ${formatMoney(partnerProgramsAmount)}`);
+      details.push(`РїСЂРѕРіСЂР°РјРјС‹ РїР°СЂС‚РЅС‘СЂРѕРІ ${formatMoney(partnerProgramsAmount)}`);
     }
 
     const knownEconomicParts =
@@ -2869,16 +2869,16 @@ function marketplaceSalesLine(metrics: MarketplaceDailyMetrics) {
     const unclassifiedEconomicPart = metrics.economicTurnover - knownEconomicParts;
 
     if (metrics.marketplace === "OZON" && details.length > 0 && Math.abs(unclassifiedEconomicPart) > 0.5) {
-      details.push(`неразнесённая часть ${formatMoney(unclassifiedEconomicPart)}`);
+      details.push(`РЅРµСЂР°Р·РЅРµСЃС‘РЅРЅР°СЏ С‡Р°СЃС‚СЊ ${formatMoney(unclassifiedEconomicPart)}`);
     }
 
-    return `Экономический оборот: ${formatMoney(metrics.economicTurnover)}${
+    return `Р­РєРѕРЅРѕРјРёС‡РµСЃРєРёР№ РѕР±РѕСЂРѕС‚: ${formatMoney(metrics.economicTurnover)}${
       details.length > 0 ? ` (${details.join(" + ")})` : ""
     }`;
   }
 
   if (metrics.salesQtyIsReliable) {
-    return `${metrics.salesLabel}: ${formatNumber(metrics.salesQty)} шт / ${formatMoney(
+    return `${metrics.salesLabel}: ${formatNumber(metrics.salesQty)} С€С‚ / ${formatMoney(
       metrics.salesAmount
     )}`;
   }
@@ -2888,26 +2888,26 @@ function marketplaceSalesLine(metrics: MarketplaceDailyMetrics) {
 
 function marketplaceOrdersLine(metrics: MarketplaceDailyMetrics) {
   if (metrics.ordersDataMissing) {
-    return "Заказы: данные ещё не загружены";
+    return "Р—Р°РєР°Р·С‹: РґР°РЅРЅС‹Рµ РµС‰С‘ РЅРµ Р·Р°РіСЂСѓР¶РµРЅС‹";
   }
 
   const coverageText = metrics.ordersDataIncomplete
-    ? ` · частично: ${formatNumber(metrics.orderDataLoadedDays)} из ${formatNumber(
+    ? ` В· С‡Р°СЃС‚РёС‡РЅРѕ: ${formatNumber(metrics.orderDataLoadedDays)} РёР· ${formatNumber(
         metrics.orderDataExpectedDays
-      )} дней`
+      )} РґРЅРµР№`
     : "";
 
-  return `Заказы: ${formatNumber(metrics.ordersQty)} шт / ${formatMoney(
+  return `Р—Р°РєР°Р·С‹: ${formatNumber(metrics.ordersQty)} С€С‚ / ${formatMoney(
     metrics.ordersAmount
   )}${coverageText}`;
 }
 
 function marketplaceAdLine(metrics: MarketplaceDailyMetrics) {
   if (metrics.adDataMissing) {
-    return "Реклама: данные ещё не загружены";
+    return "Р РµРєР»Р°РјР°: РґР°РЅРЅС‹Рµ РµС‰С‘ РЅРµ Р·Р°РіСЂСѓР¶РµРЅС‹";
   }
 
-  return `Реклама: ${formatMoney(metrics.adSpend)}`;
+  return `Р РµРєР»Р°РјР°: ${formatMoney(metrics.adSpend)}`;
 }
 
 type MarketplaceConclusionItem = {
@@ -2968,70 +2968,70 @@ function getDrrConclusion(report: DailyReport) {
   const totalDrr = report.totals.drrByEconomicTurnover;
 
   if (report.totals.adSpend <= 0 || report.totals.economicTurnover <= 0) {
-    return "Реклама: нет достаточно данных для оценки ДРР.";
+    return "Р РµРєР»Р°РјР°: РЅРµС‚ РґРѕСЃС‚Р°С‚РѕС‡РЅРѕ РґР°РЅРЅС‹С… РґР»СЏ РѕС†РµРЅРєРё Р”Р Р .";
   }
 
   if (totalDrr <= 7) {
-    return `Реклама в рабочей зоне: ДРР ${formatPercent(
+    return `Р РµРєР»Р°РјР° РІ СЂР°Р±РѕС‡РµР№ Р·РѕРЅРµ: Р”Р Р  ${formatPercent(
       totalDrr
-    )} от экономического оборота.`;
+    )} РѕС‚ СЌРєРѕРЅРѕРјРёС‡РµСЃРєРѕРіРѕ РѕР±РѕСЂРѕС‚Р°.`;
   }
 
   if (totalDrr <= 10) {
-    return `Реклама требует контроля: ДРР ${formatPercent(
+    return `Р РµРєР»Р°РјР° С‚СЂРµР±СѓРµС‚ РєРѕРЅС‚СЂРѕР»СЏ: Р”Р Р  ${formatPercent(
       totalDrr
-    )} от экономического оборота.`;
+    )} РѕС‚ СЌРєРѕРЅРѕРјРёС‡РµСЃРєРѕРіРѕ РѕР±РѕСЂРѕС‚Р°.`;
   }
 
-  return `Реклама перегрета: ДРР ${formatPercent(
+  return `Р РµРєР»Р°РјР° РїРµСЂРµРіСЂРµС‚Р°: Р”Р Р  ${formatPercent(
     totalDrr
-  )} от экономического оборота, нужно проверить кампании.`;
+  )} РѕС‚ СЌРєРѕРЅРѕРјРёС‡РµСЃРєРѕРіРѕ РѕР±РѕСЂРѕС‚Р°, РЅСѓР¶РЅРѕ РїСЂРѕРІРµСЂРёС‚СЊ РєР°РјРїР°РЅРёРё.`;
 }
 
 function getCashFlowConclusion(report: DailyReport) {
   if (report.totals.netCashFlow < 0) {
-    return `Денежный поток отрицательный: ${formatMoney(
+    return `Р”РµРЅРµР¶РЅС‹Р№ РїРѕС‚РѕРє РѕС‚СЂРёС†Р°С‚РµР»СЊРЅС‹Р№: ${formatMoney(
       report.totals.netCashFlow
-    )}. Деньги из бизнеса уходят быстрее, чем заходят.`;
+    )}. Р”РµРЅСЊРіРё РёР· Р±РёР·РЅРµСЃР° СѓС…РѕРґСЏС‚ Р±С‹СЃС‚СЂРµРµ, С‡РµРј Р·Р°С…РѕРґСЏС‚.`;
   }
 
   if (report.totals.netCashFlow > 0) {
-    return `Денежный поток положительный: ${formatMoney(
+    return `Р”РµРЅРµР¶РЅС‹Р№ РїРѕС‚РѕРє РїРѕР»РѕР¶РёС‚РµР»СЊРЅС‹Р№: ${formatMoney(
       report.totals.netCashFlow
-    )}. За период касса прошла устойчиво.`;
+    )}. Р—Р° РїРµСЂРёРѕРґ РєР°СЃСЃР° РїСЂРѕС€Р»Р° СѓСЃС‚РѕР№С‡РёРІРѕ.`;
   }
 
-  return "Денежный поток около нуля: касса без запаса прочности.";
+  return "Р”РµРЅРµР¶РЅС‹Р№ РїРѕС‚РѕРє РѕРєРѕР»Рѕ РЅСѓР»СЏ: РєР°СЃСЃР° Р±РµР· Р·Р°РїР°СЃР° РїСЂРѕС‡РЅРѕСЃС‚Рё.";
 }
 
 function getProfitConclusion(report: DailyReport) {
   const preliminary = isPreliminaryFinancialResult(report);
   const label = preliminary
-    ? "Предварительная прибыль"
-    : "Чистая прибыль";
+    ? "РџСЂРµРґРІР°СЂРёС‚РµР»СЊРЅР°СЏ РїСЂРёР±С‹Р»СЊ"
+    : "Р§РёСЃС‚Р°СЏ РїСЂРёР±С‹Р»СЊ";
 
   if (report.totals.netProfitImpact < 0) {
-    return `${label} РїРѕРґ РґР°РІР»РµРЅРёРµРј: ${formatMoney(
+    return `${label} Р С—Р С•Р Т‘ Р Т‘Р В°Р Р†Р В»Р ВµР Р…Р С‘Р ВµР С: ${formatMoney(
       report.totals.netProfitImpact
-    )}. ${preliminary ? "Итог уточнится после закрытия налоговой выручки Ozon и финансового периода WB." : "Нужно смотреть расходы и выводы."}`;
+    )}. ${preliminary ? "РС‚РѕРі СѓС‚РѕС‡РЅРёС‚СЃСЏ РїРѕСЃР»Рµ Р·Р°РєСЂС‹С‚РёСЏ РЅР°Р»РѕРіРѕРІРѕР№ РІС‹СЂСѓС‡РєРё Ozon Рё С„РёРЅР°РЅСЃРѕРІРѕРіРѕ РїРµСЂРёРѕРґР° WB." : "РќСѓР¶РЅРѕ СЃРјРѕС‚СЂРµС‚СЊ СЂР°СЃС…РѕРґС‹ Рё РІС‹РІРѕРґС‹."}`;
   }
 
   if (report.totals.netProfitImpact > 0) {
-    return `${label} за период положительная: ${formatMoney(
+    return `${label} Р·Р° РїРµСЂРёРѕРґ РїРѕР»РѕР¶РёС‚РµР»СЊРЅР°СЏ: ${formatMoney(
       report.totals.netProfitImpact
-    )}.${preliminary ? " Итог уточнится после закрытия налоговой выручки Ozon и финансового периода WB." : ""}`;
+    )}.${preliminary ? " РС‚РѕРі СѓС‚РѕС‡РЅРёС‚СЃСЏ РїРѕСЃР»Рµ Р·Р°РєСЂС‹С‚РёСЏ РЅР°Р»РѕРіРѕРІРѕР№ РІС‹СЂСѓС‡РєРё Ozon Рё С„РёРЅР°РЅСЃРѕРІРѕРіРѕ РїРµСЂРёРѕРґР° WB." : ""}`;
   }
 
-  return `${label} около нуля.${preliminary ? " Итог пока предварительный." : ""}`;
+  return `${label} РѕРєРѕР»Рѕ РЅСѓР»СЏ.${preliminary ? " РС‚РѕРі РїРѕРєР° РїСЂРµРґРІР°СЂРёС‚РµР»СЊРЅС‹Р№." : ""}`;
 }
 
 function buildOwnerConclusion(report: DailyReport) {
-  const lines: string[] = ["Вывод по периоду:"];
+  const lines: string[] = ["Р’С‹РІРѕРґ РїРѕ РїРµСЂРёРѕРґСѓ:"];
 
   lines.push(
-    `Оборот заказов: ${formatMoney(report.totals.ordersAmount)} при остатках ${formatNumber(
+    `РћР±РѕСЂРѕС‚ Р·Р°РєР°Р·РѕРІ: ${formatMoney(report.totals.ordersAmount)} РїСЂРё РѕСЃС‚Р°С‚РєР°С… ${formatNumber(
       report.totals.stockQty
-    )} шт.`
+    )} С€С‚.`
   );
 
   lines.push(getDrrConclusion(report));
@@ -3040,9 +3040,9 @@ function buildOwnerConclusion(report: DailyReport) {
 
   if (report.totals.ownerWithdrawals > 0 && report.totals.netCashFlow < 0) {
     lines.push(
-      `Вывод собственника ${formatMoney(
+      `Р’С‹РІРѕРґ СЃРѕР±СЃС‚РІРµРЅРЅРёРєР° ${formatMoney(
         report.totals.ownerWithdrawals
-      )} усилил кассовый разрыв за период.`
+      )} СѓСЃРёР»РёР» РєР°СЃСЃРѕРІС‹Р№ СЂР°Р·СЂС‹РІ Р·Р° РїРµСЂРёРѕРґ.`
     );
   }
 
@@ -3050,9 +3050,9 @@ function buildOwnerConclusion(report: DailyReport) {
 
   if (highestDrrItem && highestDrrItem.drrByEconomicTurnover >= 10) {
     lines.push(
-      `Самая дорогая связка по рекламе: ${
+      `РЎР°РјР°СЏ РґРѕСЂРѕРіР°СЏ СЃРІСЏР·РєР° РїРѕ СЂРµРєР»Р°РјРµ: ${
         highestDrrItem.label
-      } — ДРР ${formatPercent(highestDrrItem.drrByEconomicTurnover)} от экономического оборота.`
+      } вЂ” Р”Р Р  ${formatPercent(highestDrrItem.drrByEconomicTurnover)} РѕС‚ СЌРєРѕРЅРѕРјРёС‡РµСЃРєРѕРіРѕ РѕР±РѕСЂРѕС‚Р°.`
     );
   }
 
@@ -3067,12 +3067,12 @@ function getHighDrrAction(report: DailyReport) {
   }
 
   if (highestDrrItem.economicTurnover < 50000) {
-    return `Проверить ${highestDrrItem.label}: ДРР высокий, но объём экономического оборота маленький — не масштабировать рекламу без проверки товаров и ставок.`;
+    return `РџСЂРѕРІРµСЂРёС‚СЊ ${highestDrrItem.label}: Р”Р Р  РІС‹СЃРѕРєРёР№, РЅРѕ РѕР±СЉС‘Рј СЌРєРѕРЅРѕРјРёС‡РµСЃРєРѕРіРѕ РѕР±РѕСЂРѕС‚Р° РјР°Р»РµРЅСЊРєРёР№ вЂ” РЅРµ РјР°СЃС€С‚Р°Р±РёСЂРѕРІР°С‚СЊ СЂРµРєР»Р°РјСѓ Р±РµР· РїСЂРѕРІРµСЂРєРё С‚РѕРІР°СЂРѕРІ Рё СЃС‚Р°РІРѕРє.`;
   }
 
-  return `Проверить ${highestDrrItem.label}: ДРР ${formatPercent(
+  return `РџСЂРѕРІРµСЂРёС‚СЊ ${highestDrrItem.label}: Р”Р Р  ${formatPercent(
     highestDrrItem.drrByEconomicTurnover
-  )} от экономического оборота — найти кампании/товары, которые съедают бюджет.`;
+  )} РѕС‚ СЌРєРѕРЅРѕРјРёС‡РµСЃРєРѕРіРѕ РѕР±РѕСЂРѕС‚Р° вЂ” РЅР°Р№С‚Рё РєР°РјРїР°РЅРёРё/С‚РѕРІР°СЂС‹, РєРѕС‚РѕСЂС‹Рµ СЃСЉРµРґР°СЋС‚ Р±СЋРґР¶РµС‚.`;
 }
 
 function getSalesGapAction(report: DailyReport) {
@@ -3082,9 +3082,9 @@ function getSalesGapAction(report: DailyReport) {
     (report.totals.salesAmount / report.totals.ordersAmount) * 100;
 
   if (salesToOrdersRatio < 55) {
-    return `Проверить разрыв заказов и продаж/начислений: сейчас продажи/начисления ≈ ${formatPercent(
+    return `РџСЂРѕРІРµСЂРёС‚СЊ СЂР°Р·СЂС‹РІ Р·Р°РєР°Р·РѕРІ Рё РїСЂРѕРґР°Р¶/РЅР°С‡РёСЃР»РµРЅРёР№: СЃРµР№С‡Р°СЃ РїСЂРѕРґР°Р¶Рё/РЅР°С‡РёСЃР»РµРЅРёСЏ в‰€ ${formatPercent(
       salesToOrdersRatio
-    )} от суммы заказов. Для выбранного периода это может быть нормальной задержкой, но тренд нужно смотреть в динамике.`;
+    )} РѕС‚ СЃСѓРјРјС‹ Р·Р°РєР°Р·РѕРІ. Р”Р»СЏ РІС‹Р±СЂР°РЅРЅРѕРіРѕ РїРµСЂРёРѕРґР° СЌС‚Рѕ РјРѕР¶РµС‚ Р±С‹С‚СЊ РЅРѕСЂРјР°Р»СЊРЅРѕР№ Р·Р°РґРµСЂР¶РєРѕР№, РЅРѕ С‚СЂРµРЅРґ РЅСѓР¶РЅРѕ СЃРјРѕС‚СЂРµС‚СЊ РІ РґРёРЅР°РјРёРєРµ.`;
   }
 
   return null;
@@ -3095,19 +3095,19 @@ function buildOwnerActions(report: DailyReport) {
 
   if (hasIncompleteOrderData(report) && (!report.dataReadiness || report.dataReadiness.isFinal)) {
     actions.push(
-      "Не делать окончательные выводы по ДРР от заказов, пока заказы не накопятся за весь период. Главный ориентир — ДРР от экономического оборота."
+      "РќРµ РґРµР»Р°С‚СЊ РѕРєРѕРЅС‡Р°С‚РµР»СЊРЅС‹Рµ РІС‹РІРѕРґС‹ РїРѕ Р”Р Р  РѕС‚ Р·Р°РєР°Р·РѕРІ, РїРѕРєР° Р·Р°РєР°Р·С‹ РЅРµ РЅР°РєРѕРїСЏС‚СЃСЏ Р·Р° РІРµСЃСЊ РїРµСЂРёРѕРґ. Р“Р»Р°РІРЅС‹Р№ РѕСЂРёРµРЅС‚РёСЂ вЂ” Р”Р Р  РѕС‚ СЌРєРѕРЅРѕРјРёС‡РµСЃРєРѕРіРѕ РѕР±РѕСЂРѕС‚Р°."
     );
   }
 
   if (report.totals.netCashFlow < 0) {
     actions.push(
-      "Проверить крупные расходы периода и отделить обязательные платежи от тех, что можно перенести."
+      "РџСЂРѕРІРµСЂРёС‚СЊ РєСЂСѓРїРЅС‹Рµ СЂР°СЃС…РѕРґС‹ РїРµСЂРёРѕРґР° Рё РѕС‚РґРµР»РёС‚СЊ РѕР±СЏР·Р°С‚РµР»СЊРЅС‹Рµ РїР»Р°С‚РµР¶Рё РѕС‚ С‚РµС…, С‡С‚Рѕ РјРѕР¶РЅРѕ РїРµСЂРµРЅРµСЃС‚Рё."
     );
   }
 
   if (report.totals.ownerWithdrawals > 0 && report.totals.netCashFlow < 0) {
     actions.push(
-      "В периоды с минусовым ДДС не увеличивать вывод собственника без проверки ближайших платежей."
+      "Р’ РїРµСЂРёРѕРґС‹ СЃ РјРёРЅСѓСЃРѕРІС‹Рј Р”Р”РЎ РЅРµ СѓРІРµР»РёС‡РёРІР°С‚СЊ РІС‹РІРѕРґ СЃРѕР±СЃС‚РІРµРЅРЅРёРєР° Р±РµР· РїСЂРѕРІРµСЂРєРё Р±Р»РёР¶Р°Р№С€РёС… РїР»Р°С‚РµР¶РµР№."
     );
   }
 
@@ -3125,13 +3125,13 @@ function buildOwnerActions(report: DailyReport) {
 
   if (report.totals.stockQty > 0) {
     actions.push(
-      `Остатки ${formatNumber(
+      `РћСЃС‚Р°С‚РєРё ${formatNumber(
         report.totals.stockQty
-      )} шт: следующим шагом смотреть не общий остаток, а SKU с большим запасом и слабым спросом.`
+      )} С€С‚: СЃР»РµРґСѓСЋС‰РёРј С€Р°РіРѕРј СЃРјРѕС‚СЂРµС‚СЊ РЅРµ РѕР±С‰РёР№ РѕСЃС‚Р°С‚РѕРє, Р° SKU СЃ Р±РѕР»СЊС€РёРј Р·Р°РїР°СЃРѕРј Рё СЃР»Р°Р±С‹Рј СЃРїСЂРѕСЃРѕРј.`
     );
   }
 
-  return ["Что сделать дальше:", ...actions.slice(0, 4).map((action, index) => `${index + 1}. ${action}`)];
+  return ["Р§С‚Рѕ СЃРґРµР»Р°С‚СЊ РґР°Р»СЊС€Рµ:", ...actions.slice(0, 4).map((action, index) => `${index + 1}. ${action}`)];
 }
 
 function marketplaceLine(label: string, metrics: MarketplaceDailyMetrics) {
@@ -3143,8 +3143,8 @@ function marketplaceLine(label: string, metrics: MarketplaceDailyMetrics) {
   if (metrics.marketplace === "OZON" && metrics.netOzonExpenses !== undefined) {
     lines.push(
       metrics.discountPointsCoverageComplete === false
-        ? `Расходы Ozon по загруженным данным: ${formatMoney(metrics.netOzonExpenses)}`
-        : `Чистые расходы Ozon после баллов: ${formatMoney(metrics.netOzonExpenses)}`
+        ? `Р Р°СЃС…РѕРґС‹ Ozon РїРѕ Р·Р°РіСЂСѓР¶РµРЅРЅС‹Рј РґР°РЅРЅС‹Рј: ${formatMoney(metrics.netOzonExpenses)}`
+        : `Р§РёСЃС‚С‹Рµ СЂР°СЃС…РѕРґС‹ Ozon РїРѕСЃР»Рµ Р±Р°Р»Р»РѕРІ: ${formatMoney(metrics.netOzonExpenses)}`
     );
   }
 
@@ -3155,23 +3155,23 @@ function marketplaceLine(label: string, metrics: MarketplaceDailyMetrics) {
   ) {
     if (metrics.taxesEstimated) {
       lines.push(
-        "Налоговая выручка: ожидается отчёт начислений",
-        `Налоговый резерв: ${formatMoney(
+        "РќР°Р»РѕРіРѕРІР°СЏ РІС‹СЂСѓС‡РєР°: РѕР¶РёРґР°РµС‚СЃСЏ РѕС‚С‡С‘С‚ РЅР°С‡РёСЃР»РµРЅРёР№",
+        `РќР°Р»РѕРіРѕРІС‹Р№ СЂРµР·РµСЂРІ: ${formatMoney(
           metrics.taxesAmount
-        )} — предварительно от экономического оборота ${formatMoney(
+        )} вЂ” РїСЂРµРґРІР°СЂРёС‚РµР»СЊРЅРѕ РѕС‚ СЌРєРѕРЅРѕРјРёС‡РµСЃРєРѕРіРѕ РѕР±РѕСЂРѕС‚Р° ${formatMoney(
           metrics.taxCalculationBase
         )}`,
-        `Прибыль до налогов: ${formatMoney(metrics.marginProfit ?? 0)}`,
-        `Предварительная чистая прибыль Ozon: ${formatMoney(
+        `РџСЂРёР±С‹Р»СЊ РґРѕ РЅР°Р»РѕРіРѕРІ: ${formatMoney(metrics.marginProfit ?? 0)}`,
+        `РџСЂРµРґРІР°СЂРёС‚РµР»СЊРЅР°СЏ С‡РёСЃС‚Р°СЏ РїСЂРёР±С‹Р»СЊ Ozon: ${formatMoney(
           metrics.netProfitAfterTax
         )}`
       );
     } else {
       lines.push(
-        `Налоговая выручка: ${formatMoney(metrics.taxableRevenue ?? 0)}`,
-        `Налоги: ${formatMoney(metrics.taxesAmount)}`,
-        `Прибыль до налогов: ${formatMoney(metrics.marginProfit ?? 0)}`,
-        `Чистая прибыль Ozon: ${formatMoney(metrics.netProfitAfterTax)}`
+        `РќР°Р»РѕРіРѕРІР°СЏ РІС‹СЂСѓС‡РєР°: ${formatMoney(metrics.taxableRevenue ?? 0)}`,
+        `РќР°Р»РѕРіРё: ${formatMoney(metrics.taxesAmount)}`,
+        `РџСЂРёР±С‹Р»СЊ РґРѕ РЅР°Р»РѕРіРѕРІ: ${formatMoney(metrics.marginProfit ?? 0)}`,
+        `Р§РёСЃС‚Р°СЏ РїСЂРёР±С‹Р»СЊ Ozon: ${formatMoney(metrics.netProfitAfterTax)}`
       );
     }
   }
@@ -3182,7 +3182,7 @@ function marketplaceLine(label: string, metrics: MarketplaceDailyMetrics) {
     Math.abs(metrics.excludedLoansFactoringAmount) > 0.5
   ) {
     lines.push(
-      `Исключено из прибыли: займы / факторинг ${formatMoney(
+      `РСЃРєР»СЋС‡РµРЅРѕ РёР· РїСЂРёР±С‹Р»Рё: Р·Р°Р№РјС‹ / С„Р°РєС‚РѕСЂРёРЅРі ${formatMoney(
         metrics.excludedLoansFactoringAmount
       )}`
     );
@@ -3191,12 +3191,12 @@ function marketplaceLine(label: string, metrics: MarketplaceDailyMetrics) {
   const taxDrrText =
     metrics.marketplace === "OZON" &&
     metrics.taxRevenueCoverageComplete === false
-      ? "ожидается отчёт начислений"
+      ? "РѕР¶РёРґР°РµС‚СЃСЏ РѕС‚С‡С‘С‚ РЅР°С‡РёСЃР»РµРЅРёР№"
       : formatPercent(metrics.drrByTaxableRevenue);
 
   lines.push(
-    `ДРР: от экон. оборота ${formatPercent(metrics.drrByEconomicTurnover)} (от налоговой выручки ${taxDrrText}, от заказов ${formatPercent(metrics.drrByOrders)})`,
-    `Остатки: ${formatNumber(metrics.stockQty)} шт`
+    `Р”Р Р : РѕС‚ СЌРєРѕРЅ. РѕР±РѕСЂРѕС‚Р° ${formatPercent(metrics.drrByEconomicTurnover)} (РѕС‚ РЅР°Р»РѕРіРѕРІРѕР№ РІС‹СЂСѓС‡РєРё ${taxDrrText}, РѕС‚ Р·Р°РєР°Р·РѕРІ ${formatPercent(metrics.drrByOrders)})`,
+    `РћСЃС‚Р°С‚РєРё: ${formatNumber(metrics.stockQty)} С€С‚`
   );
 
   return lines.join("\n");
@@ -3205,8 +3205,9 @@ function marketplaceLine(label: string, metrics: MarketplaceDailyMetrics) {
 
 function formatPercentChange(value: number | null, _inverse = false) {
   if (value === null || !Number.isFinite(value)) return "нет базы";
-  // Suppress absurd dynamics from tiny/non-comparable bases.
-  if (Math.abs(value) > 150) return "нет базы";
+  // V3.4: do NOT suppress valid large % — only near-zero / non-finite.
+  // Comparability (near-zero previous, incomplete coverage, grain mismatch)
+  // is decided upstream; abs(percent) alone is not a suppression reason.
   if (Math.abs(value) < 0.05) return "→0%";
 
   const abs = formatPercent(Math.abs(value)).replace(/%$/, "");
@@ -3215,16 +3216,15 @@ function formatPercentChange(value: number | null, _inverse = false) {
 }
 
 function formatPointDiff(value: number | null, _inverse = true) {
-  if (value === null || !Number.isFinite(value)) return "нет базы";
-  if (Math.abs(value) > 50) return "нет базы";
-  if (Math.abs(value) < 0.05) return "→0 п.п.";
+  if (value === null || !Number.isFinite(value)) return "РЅРµС‚ Р±Р°Р·С‹";
+  if (Math.abs(value) < 0.05) return "в†’0 Рї.Рї.";
 
   const abs = new Intl.NumberFormat("ru-RU", {
     maximumFractionDigits: 1,
     minimumFractionDigits: 0,
   }).format(Math.abs(value));
-  const arrow = value > 0 ? "▲" : "▼";
-  return `${arrow}${abs} п.п.`;
+  const arrow = value > 0 ? "в–І" : "в–ј";
+  return `${arrow}${abs} Рї.Рї.`;
 }
 
 function buildComparisonLines(report: DailyReport) {
@@ -3232,28 +3232,28 @@ function buildComparisonLines(report: DailyReport) {
 
   const lines = [
     "",
-    `Динамика к аналогичному периоду (${report.comparison.dateLabel}):`,
-    `• Заказы ₽: ${formatPercentChange(report.comparison.totals.ordersAmountPercent)}`,
-    `• Экономический оборот: ${formatPercentChange(report.comparison.totals.economicTurnoverPercent)}`,
+    `Р”РёРЅР°РјРёРєР° Рє Р°РЅР°Р»РѕРіРёС‡РЅРѕРјСѓ РїРµСЂРёРѕРґСѓ (${report.comparison.dateLabel}):`,
+    `вЂў Р—Р°РєР°Р·С‹ в‚Ѕ: ${formatPercentChange(report.comparison.totals.ordersAmountPercent)}`,
+    `вЂў Р­РєРѕРЅРѕРјРёС‡РµСЃРєРёР№ РѕР±РѕСЂРѕС‚: ${formatPercentChange(report.comparison.totals.economicTurnoverPercent)}`,
   ];
 
   if (report.comparison.totals.taxableRevenuePercent !== null) {
     lines.push(
-      `• Налоговая выручка: ${formatPercentChange(
+      `вЂў РќР°Р»РѕРіРѕРІР°СЏ РІС‹СЂСѓС‡РєР°: ${formatPercentChange(
         report.comparison.totals.taxableRevenuePercent
       )}`
     );
   }
 
   lines.push(
-    `• Реклама: ${formatPercentChange(report.comparison.totals.adSpendPercent, true)}`,
-    `• ДРР от экон. оборота: ${formatPointDiff(report.comparison.totals.drrByEconomicTurnoverPointDiff, true)}`,
-    `• ДДС: ${formatPercentChange(report.comparison.totals.netCashFlowPercent)}`
+    `вЂў Р РµРєР»Р°РјР°: ${formatPercentChange(report.comparison.totals.adSpendPercent, true)}`,
+    `вЂў Р”Р Р  РѕС‚ СЌРєРѕРЅ. РѕР±РѕСЂРѕС‚Р°: ${formatPointDiff(report.comparison.totals.drrByEconomicTurnoverPointDiff, true)}`,
+    `вЂў Р”Р”РЎ: ${formatPercentChange(report.comparison.totals.netCashFlowPercent)}`
   );
 
   if (report.comparison.totals.netProfitImpactPercent !== null) {
     lines.push(
-      `• Чистая прибыль: ${formatPercentChange(
+      `вЂў Р§РёСЃС‚Р°СЏ РїСЂРёР±С‹Р»СЊ: ${formatPercentChange(
         report.comparison.totals.netProfitImpactPercent
       )}`
     );
@@ -3264,12 +3264,12 @@ function buildComparisonLines(report: DailyReport) {
 
 function inlinePercentChange(value: number | null, inverse = false) {
   const formatted = formatPercentChange(value, inverse);
-  return formatted === "нет базы" ? "" : ` (${formatted})`;
+  return formatted === "РЅРµС‚ Р±Р°Р·С‹" ? "" : ` (${formatted})`;
 }
 
 function inlinePointDiff(value: number | null, inverse = true) {
   const formatted = formatPointDiff(value, inverse);
-  return formatted === "нет базы" ? "" : ` (${formatted})`;
+  return formatted === "РЅРµС‚ Р±Р°Р·С‹" ? "" : ` (${formatted})`;
 }
 
 function compactChangeSuffix(
@@ -3278,14 +3278,14 @@ function compactChangeSuffix(
 ) {
   if (percent === null || !Number.isFinite(percent)) return "";
   const formatted = formatPercentChange(percent, inverse);
-  if (formatted === "нет базы") return "";
+  if (formatted === "РЅРµС‚ Р±Р°Р·С‹") return "";
   return ` ${formatted}`;
 }
 
 function compactPointSuffix(value: number | null) {
   if (value === null || !Number.isFinite(value)) return "";
   const formatted = formatPointDiff(value, true);
-  if (formatted === "нет базы") return "";
+  if (formatted === "РЅРµС‚ Р±Р°Р·С‹") return "";
   return ` ${formatted}`;
 }
 
@@ -3304,14 +3304,14 @@ function taxableRevenueLine(metrics: MarketplaceDailyMetrics, dateLabel: string)
     const missing = metrics.taxRevenueMissingDays?.length
       ? metrics.taxRevenueMissingDays.map(formatRuDateShort).join(", ")
       : formatRuDateShort(dateLabel);
-    return `Налоговая выручка: нет отчёта начислений за ${missing}`;
+    return `РќР°Р»РѕРіРѕРІР°СЏ РІС‹СЂСѓС‡РєР°: РЅРµС‚ РѕС‚С‡С‘С‚Р° РЅР°С‡РёСЃР»РµРЅРёР№ Р·Р° ${missing}`;
   }
 
   if (metrics.taxableRevenue === undefined) {
     return null;
   }
 
-  return `Налоговая выручка: ${formatMoney(metrics.taxableRevenue)}`;
+  return `РќР°Р»РѕРіРѕРІР°СЏ РІС‹СЂСѓС‡РєР°: ${formatMoney(metrics.taxableRevenue)}`;
 }
 
 function compactMarketplaceBlock(
@@ -3324,12 +3324,12 @@ function compactMarketplaceBlock(
     const marketplaceLabel = metrics.marketplace === "OZON" ? "Ozon" : "WB";
     const adsLine =
       metrics.adSpend > 0
-        ? `Реклама ${marketplaceLabel} отдельно (не P&L): ${formatMoney(metrics.adSpend)}`
-        : `Реклама ${marketplaceLabel} отдельно не показана как финансовый результат.`;
+        ? `Р РµРєР»Р°РјР° ${marketplaceLabel} РѕС‚РґРµР»СЊРЅРѕ (РЅРµ P&L): ${formatMoney(metrics.adSpend)}`
+        : `Р РµРєР»Р°РјР° ${marketplaceLabel} РѕС‚РґРµР»СЊРЅРѕ РЅРµ РїРѕРєР°Р·Р°РЅР° РєР°Рє С„РёРЅР°РЅСЃРѕРІС‹Р№ СЂРµР·СѓР»СЊС‚Р°С‚.`;
     const financeLine =
       metrics.marketplace === "OZON"
-        ? "Ozon финансовые данные неполны. Оборот, налоговая выручка, прибыль и ДРР недоступны и не равны 0 ₽. Ожидаем данные начислений Ozon."
-        : "WB финансовые данные неполны. Прибыль, оборот и ДРР недоступны и не равны 0 ₽.";
+        ? "Ozon С„РёРЅР°РЅСЃРѕРІС‹Рµ РґР°РЅРЅС‹Рµ РЅРµРїРѕР»РЅС‹. РћР±РѕСЂРѕС‚, РЅР°Р»РѕРіРѕРІР°СЏ РІС‹СЂСѓС‡РєР°, РїСЂРёР±С‹Р»СЊ Рё Р”Р Р  РЅРµРґРѕСЃС‚СѓРїРЅС‹ Рё РЅРµ СЂР°РІРЅС‹ 0 в‚Ѕ. РћР¶РёРґР°РµРј РґР°РЅРЅС‹Рµ РЅР°С‡РёСЃР»РµРЅРёР№ Ozon."
+        : "WB С„РёРЅР°РЅСЃРѕРІС‹Рµ РґР°РЅРЅС‹Рµ РЅРµРїРѕР»РЅС‹. РџСЂРёР±С‹Р»СЊ, РѕР±РѕСЂРѕС‚ Рё Р”Р Р  РЅРµРґРѕСЃС‚СѓРїРЅС‹ Рё РЅРµ СЂР°РІРЅС‹ 0 в‚Ѕ.";
     const orderLine =
       metrics.marketplace === "OZON" ? marketplaceOrdersLine(metrics) : null;
     return [
@@ -3337,7 +3337,7 @@ function compactMarketplaceBlock(
       financeLine,
       orderLine,
       adsLine,
-      `Остатки: ${formatNumber(metrics.stockQty)} шт`,
+      `РћСЃС‚Р°С‚РєРё: ${formatNumber(metrics.stockQty)} С€С‚`,
     ]
       .filter(Boolean)
       .join("\n");
@@ -3349,14 +3349,14 @@ function compactMarketplaceBlock(
       metrics.discountPointsCoverageComplete === false);
   const profitLabel =
     metrics.marketplace === "WB"
-      ? "Прибыль после налогов WB"
+      ? "РџСЂРёР±С‹Р»СЊ РїРѕСЃР»Рµ РЅР°Р»РѕРіРѕРІ WB"
       : ozonPreliminary
-        ? "Предварительная прибыль после налогов Ozon"
-        : "Прибыль после налогов Ozon";
+        ? "РџСЂРµРґРІР°СЂРёС‚РµР»СЊРЅР°СЏ РїСЂРёР±С‹Р»СЊ РїРѕСЃР»Рµ РЅР°Р»РѕРіРѕРІ Ozon"
+        : "РџСЂРёР±С‹Р»СЊ РїРѕСЃР»Рµ РЅР°Р»РѕРіРѕРІ Ozon";
   const lines = [
     `${emoji === label ? label : `${emoji} ${label}`}`,
     marketplaceOrdersLine(metrics),
-    `Экономический оборот: ${formatMoney(metrics.economicTurnover ?? metrics.salesAmount)}`,
+    `Р­РєРѕРЅРѕРјРёС‡РµСЃРєРёР№ РѕР±РѕСЂРѕС‚: ${formatMoney(metrics.economicTurnover ?? metrics.salesAmount)}`,
   ];
 
   const taxableLine = taxableRevenueLine(metrics, dateLabel);
@@ -3365,13 +3365,13 @@ function compactMarketplaceBlock(
   lines.push(marketplaceAdLine(metrics));
   lines.push(
     metrics.netProfitUnavailable
-      ? "Чистая прибыль: недоступна — WB: не определён тип отчёта для налога"
+      ? "Р§РёСЃС‚Р°СЏ РїСЂРёР±С‹Р»СЊ: РЅРµРґРѕСЃС‚СѓРїРЅР° вЂ” WB: РЅРµ РѕРїСЂРµРґРµР»С‘РЅ С‚РёРї РѕС‚С‡С‘С‚Р° РґР»СЏ РЅР°Р»РѕРіР°"
       : `${profitLabel}: ${formatSignedMoney(metrics.netProfitAfterTax)}`
   );
   lines.push(
-    `ДРР: от экон. оборота ${formatPercent(metrics.drrByEconomicTurnover)}`
+    `Р”Р Р : РѕС‚ СЌРєРѕРЅ. РѕР±РѕСЂРѕС‚Р° ${formatPercent(metrics.drrByEconomicTurnover)}`
   );
-  lines.push(`Остатки: ${formatNumber(metrics.stockQty)} шт`);
+  lines.push(`РћСЃС‚Р°С‚РєРё: ${formatNumber(metrics.stockQty)} С€С‚`);
   return lines.join("\n");
 }
 
@@ -3379,7 +3379,7 @@ function buildAttentionLines(report: DailyReport) {
   const lines: string[] = [];
 
   if (report.totals.netCashFlow < 0) {
-    lines.push(`🔴 ДДС: ${formatCompactMoney(report.totals.netCashFlow)}`);
+    lines.push(`рџ”ґ Р”Р”РЎ: ${formatCompactMoney(report.totals.netCashFlow)}`);
   }
 
   for (const company of report.companies) {
@@ -3395,9 +3395,9 @@ function buildAttentionLines(report: DailyReport) {
         (item.metrics.economicTurnover ?? 0) > 0 &&
         item.metrics.drrByEconomicTurnover >= 10
       ) {
-        const tone = item.metrics.drrByEconomicTurnover >= 12 ? "🟠" : "🟡";
+        const tone = item.metrics.drrByEconomicTurnover >= 12 ? "рџџ " : "рџџЎ";
         lines.push(
-          `${tone} ${company.companyName} · ${item.marketplace}: ДРР ${formatPercent(
+          `${tone} ${company.companyName} В· ${item.marketplace}: Р”Р Р  ${formatPercent(
             item.metrics.drrByEconomicTurnover
           )}`
         );
@@ -3409,14 +3409,14 @@ function buildAttentionLines(report: DailyReport) {
       ) {
         const dateShort = formatRuDateShort(primaryReportDate(report));
         lines.push(
-          `⚠️ ${company.companyName} · Ozon: ожидаются начисления за ${dateShort}`
+          `вљ пёЏ ${company.companyName} В· Ozon: РѕР¶РёРґР°СЋС‚СЃСЏ РЅР°С‡РёСЃР»РµРЅРёСЏ Р·Р° ${dateShort}`
         );
       }
     }
   }
 
   if (lines.length === 0) return [];
-  return ["⚠️ ВНИМАНИЕ", ...lines];
+  return ["вљ пёЏ Р’РќРРњРђРќРР•", ...lines];
 }
 
 export function formatDailyReportForTelegram(report: DailyReport) {
@@ -3438,9 +3438,9 @@ export function formatDailyReportForTelegram(report: DailyReport) {
       : 0;
 
   const header = [
-    `📊 AvoroFin — сводка собственника`,
-    `Период: ${report.periodLabel}${periodDate ? ` (${periodDate})` : ""}`,
-    comparisonDate ? `Сравнение: ${comparisonDate}` : "",
+    `рџ“Љ AvoroFin вЂ” СЃРІРѕРґРєР° СЃРѕР±СЃС‚РІРµРЅРЅРёРєР°`,
+    `РџРµСЂРёРѕРґ: ${report.periodLabel}${periodDate ? ` (${periodDate})` : ""}`,
+    comparisonDate ? `РЎСЂР°РІРЅРµРЅРёРµ: ${comparisonDate}` : "",
     ...formatTelegramReadinessBlock(readinessIssues),
   ].filter(Boolean);
 
@@ -3454,34 +3454,34 @@ export function formatDailyReportForTelegram(report: DailyReport) {
         company.ozon.discountPointsCoverageComplete === false,
     );
   const netProfitLabel = businessPreliminary
-    ? "Предварительная чистая прибыль после налогов"
-    : "Чистая прибыль после налогов";
+    ? "РџСЂРµРґРІР°СЂРёС‚РµР»СЊРЅР°СЏ С‡РёСЃС‚Р°СЏ РїСЂРёР±С‹Р»СЊ РїРѕСЃР»Рµ РЅР°Р»РѕРіРѕРІ"
+    : "Р§РёСЃС‚Р°СЏ РїСЂРёР±С‹Р»СЊ РїРѕСЃР»Рµ РЅР°Р»РѕРіРѕРІ";
 
   const topBlock = [
-    "ИТОГО ПО БИЗНЕСУ",
+    "РРўРћР“Рћ РџРћ Р‘РР—РќР•РЎРЈ",
     combinedUnavailable
-      ? "Финансовые данные маркетплейса неполны. Combined оборот/прибыль/ДРР недоступны и не равны 0 ₽."
-      : `Экон. оборот: ${formatCompactMoney(
+      ? "Р¤РёРЅР°РЅСЃРѕРІС‹Рµ РґР°РЅРЅС‹Рµ РјР°СЂРєРµС‚РїР»РµР№СЃР° РЅРµРїРѕР»РЅС‹. Combined РѕР±РѕСЂРѕС‚/РїСЂРёР±С‹Р»СЊ/Р”Р Р  РЅРµРґРѕСЃС‚СѓРїРЅС‹ Рё РЅРµ СЂР°РІРЅС‹ 0 в‚Ѕ."
+      : `Р­РєРѕРЅ. РѕР±РѕСЂРѕС‚: ${formatCompactMoney(
           report.totals.economicTurnover
         )}${compactChangeSuffix(comparison?.economicTurnoverPercent ?? null)}`,
     combinedUnavailable
-      ? `${netProfitLabel}: недоступна`
+      ? `${netProfitLabel}: РЅРµРґРѕСЃС‚СѓРїРЅР°`
       : `${netProfitLabel}: ${formatCompactMoney(
           report.totals.netProfitImpact
-        )} · маржа ${formatPercent(marginPercent ?? 0)}`,
+        )} В· РјР°СЂР¶Р° ${formatPercent(marginPercent ?? 0)}`,
     combinedUnavailable
-      ? "ДРР combined недоступен"
-      : `Реклама: ${formatCompactMoney(report.totals.adSpend)} · ДРР ${formatPercent(
+      ? "Р”Р Р  combined РЅРµРґРѕСЃС‚СѓРїРµРЅ"
+      : `Р РµРєР»Р°РјР°: ${formatCompactMoney(report.totals.adSpend)} В· Р”Р Р  ${formatPercent(
           report.totals.drrByEconomicTurnover
         )}${compactPointSuffix(comparison?.drrByEconomicTurnoverPointDiff ?? null)}`,
-    `ДДС: ${formatCompactMoney(report.totals.netCashFlow)}`,
-    `Вывод собственника: ${formatMoney(report.totals.ownerWithdrawals)}`,
+    `Р”Р”РЎ: ${formatCompactMoney(report.totals.netCashFlow)}`,
+    `Р’С‹РІРѕРґ СЃРѕР±СЃС‚РІРµРЅРЅРёРєР°: ${formatMoney(report.totals.ownerWithdrawals)}`,
     combinedUnavailable || profitAfterOwnerWithdrawal === null
-      ? "Чистая прибыль после вывода собственника: недоступна"
-      : `Чистая прибыль после вывода собственника: ${formatCompactMoney(
+      ? "Р§РёСЃС‚Р°СЏ РїСЂРёР±С‹Р»СЊ РїРѕСЃР»Рµ РІС‹РІРѕРґР° СЃРѕР±СЃС‚РІРµРЅРЅРёРєР°: РЅРµРґРѕСЃС‚СѓРїРЅР°"
+      : `Р§РёСЃС‚Р°СЏ РїСЂРёР±С‹Р»СЊ РїРѕСЃР»Рµ РІС‹РІРѕРґР° СЃРѕР±СЃС‚РІРµРЅРЅРёРєР°: ${formatCompactMoney(
           profitAfterOwnerWithdrawal
         )}`,
-    `Остатки: ${formatNumber(report.totals.stockQty)} шт`,
+    `РћСЃС‚Р°С‚РєРё: ${formatNumber(report.totals.stockQty)} С€С‚`,
   ];
 
   const lines: string[] = [...header, "", ...topBlock];
@@ -3510,25 +3510,25 @@ export function formatDailyReportForTelegram(report: DailyReport) {
 
     lines.push(
       "",
-      "──────────────",
+      "в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ",
       `${company.companyName}`,
       "",
       companyUnavailable || companyNetProfit === null
-        ? "Итого combined: недоступно — финансовые данные маркетплейса неполны."
-        : `${companyPreliminary ? "Итого (предварительно)" : "Итого"}: ${
+        ? "РС‚РѕРіРѕ combined: РЅРµРґРѕСЃС‚СѓРїРЅРѕ вЂ” С„РёРЅР°РЅСЃРѕРІС‹Рµ РґР°РЅРЅС‹Рµ РјР°СЂРєРµС‚РїР»РµР№СЃР° РЅРµРїРѕР»РЅС‹."
+        : `${companyPreliminary ? "РС‚РѕРіРѕ (РїСЂРµРґРІР°СЂРёС‚РµР»СЊРЅРѕ)" : "РС‚РѕРіРѕ"}: ${
             companyNetProfit >= 0 ? "+" : ""
           }${formatSignedMoney(companyNetProfit)}`,
-      `Остатки: ${formatNumber(companyStock)} шт`,
-      `ДДС: ${formatMoney(company.finance.netCashFlow)}`,
+      `РћСЃС‚Р°С‚РєРё: ${formatNumber(companyStock)} С€С‚`,
+      `Р”Р”РЎ: ${formatMoney(company.finance.netCashFlow)}`,
       "",
-      compactMarketplaceBlock("🟣", "WB", company.wb, dateIso),
+      compactMarketplaceBlock("рџџЈ", "WB", company.wb, dateIso),
       "",
-      compactMarketplaceBlock("🔵", "Ozon", company.ozon, dateIso)
+      compactMarketplaceBlock("рџ”µ", "Ozon", company.ozon, dateIso)
     );
 
     if (Math.abs(company.finance.netProfitImpact) > 0.5) {
       lines.push(
-        `🧾 Прочие P&L операции: ${formatSignedMoney(
+        `рџ§ѕ РџСЂРѕС‡РёРµ P&L РѕРїРµСЂР°С†РёРё: ${formatSignedMoney(
           company.finance.netProfitImpact
         )}`
       );
@@ -3536,13 +3536,13 @@ export function formatDailyReportForTelegram(report: DailyReport) {
 
     if (company.finance.ownerWithdrawals !== 0) {
       lines.push(
-        `Вывод собственника: ${formatMoney(company.finance.ownerWithdrawals)}`,
+        `Р’С‹РІРѕРґ СЃРѕР±СЃС‚РІРµРЅРЅРёРєР°: ${formatMoney(company.finance.ownerWithdrawals)}`,
         companyUnavailable || companyNetProfit === null
-          ? "Чистая прибыль после вывода: недоступна"
+          ? "Р§РёСЃС‚Р°СЏ РїСЂРёР±С‹Р»СЊ РїРѕСЃР»Рµ РІС‹РІРѕРґР°: РЅРµРґРѕСЃС‚СѓРїРЅР°"
           : `${
               companyPreliminary
-                ? "Предварительная чистая прибыль после вывода"
-                : "Чистая прибыль после вывода"
+                ? "РџСЂРµРґРІР°СЂРёС‚РµР»СЊРЅР°СЏ С‡РёСЃС‚Р°СЏ РїСЂРёР±С‹Р»СЊ РїРѕСЃР»Рµ РІС‹РІРѕРґР°"
+                : "Р§РёСЃС‚Р°СЏ РїСЂРёР±С‹Р»СЊ РїРѕСЃР»Рµ РІС‹РІРѕРґР°"
             }: ${formatSignedMoney(
               companyNetProfit - company.finance.ownerWithdrawals
             )}`

@@ -4,6 +4,7 @@
  */
 import type { DailyReport } from "@/lib/telegram/dailyReport";
 import {
+  compactAbsMoneySuffix,
   compactChangeSuffix,
   compactPointSuffix,
   formatCompactMoney,
@@ -17,6 +18,9 @@ import {
   buildLevelComparisonMaps,
   dynPct,
   dynPp,
+  formatAfterOwnerDynSuffix,
+  formatProfitDynSuffix,
+  isSuspectedIncompleteOzonCogsZero,
   joinDyn,
   type LevelComparisonMaps,
   type LevelDynamics,
@@ -61,7 +65,8 @@ export type CabinetAdFunnel = {
   marketplace: "WB" | "OZON";
   spend: number;
   financialSpend: number;
-  financialDrr: number;
+  /** null when eco denominator unavailable — never fake 0%. */
+  financialDrr: number | null;
   spendSemantics: AdSpendSemantics;
   impressions: number | null;
   clicks: number | null;
@@ -71,7 +76,8 @@ export type CabinetAdFunnel = {
   cpo: number | null;
   counterStatus: CounterStatus;
   economicTurnover: number;
-  drr: number;
+  /** null when eco denominator unavailable — never fake 0%. */
+  drr: number | null;
   top3: TopOrderItem[];
   top3Source: "TRUE_ORDERS" | "UNAVAILABLE";
   distinctOrderedArticles?: number;
@@ -181,6 +187,9 @@ function formatMarketplaceCabinet(
   const marg = profit === null ? null : margin(profit, eco);
   const taxable = m.taxableRevenue;
 
+  const drrText =
+    Math.abs(eco) < 0.0001 ? "н/д" : pct(m.drrByEconomicTurnover);
+
   const lines = [
     `${emoji} ${label}`,
     `🛒 ${formatNumber(m.ordersQty)} шт · ${money(m.ordersAmount)}${dynPct(dyn?.ordersAmountPercent ?? null)}`,
@@ -196,7 +205,7 @@ function formatMarketplaceCabinet(
           dynPct(dyn?.totalCostPercent ?? null, true),
           dynPp(dyn?.cogsSharePointDiff ?? null)
         )}`,
-    `📣 Реклама ${money(m.adSpend)} · ДРР ${pct(m.drrByEconomicTurnover)}${joinDyn(
+    `📣 Реклама ${money(m.adSpend)} · ДРР ${drrText}${joinDyn(
       dynPct(dyn?.adSpendPercent ?? null, true),
       dynPp(dyn?.drrPointDiff ?? null)
     )}`,
@@ -204,10 +213,7 @@ function formatMarketplaceCabinet(
       ? `💰 Прибыль недоступна`
       : `💰 Прибыль ${formatSignedMoney(profit)}${
           marg === null ? "" : ` · ${pct(marg)}`
-        }${joinDyn(
-          dynPct(dyn?.netProfitPercent ?? null),
-          dynPp(dyn?.marginPointDiff ?? null)
-        )}`,
+        }${formatProfitDynSuffix(dyn)}`,
     `📦 Остатки ${formatNumber(m.stockQty)} шт`,
   ];
   return lines.join("\n");
@@ -220,6 +226,8 @@ function formatCompanyBlock(
   const unavailable = Boolean(
     company.wb.financialUnavailable || company.ozon.financialUnavailable
   );
+  const wbKnownEco = ecoOf(company.wb);
+  const ozKnownEco = ecoOf(company.ozon);
   const wbProfit = company.wb.netProfitUnavailable
     ? 0
     : company.wb.netProfitAfterTax;
@@ -229,10 +237,12 @@ function formatCompanyBlock(
       : wbProfit +
         company.ozon.netProfitAfterTax +
         company.finance.netProfitImpact;
-  const eco =
-    (ecoOf(company.wb) ?? 0) + (ecoOf(company.ozon) ?? 0);
+  // V3.4: never present WB-only (or Ozon-only) eco as complete company total.
+  const eco = unavailable
+    ? null
+    : (wbKnownEco ?? 0) + (ozKnownEco ?? 0);
   const companyMargin =
-    companyNet === null ? null : margin(companyNet, eco);
+    companyNet === null || eco === null ? null : margin(companyNet, eco);
   const stock = company.wb.stockQty + company.ozon.stockQty;
   const afterOwner =
     companyNet === null
@@ -241,14 +251,31 @@ function formatCompanyBlock(
   const ordersQty = company.wb.ordersQty + company.ozon.ordersQty;
   const ordersAmount = company.wb.ordersAmount + company.ozon.ordersAmount;
   const ads = company.wb.adSpend + company.ozon.adSpend;
-  const drr = eco > 0.0001 ? (ads / eco) * 100 : 0;
+  const drr =
+    eco === null || Math.abs(eco) < 0.0001 ? null : (ads / eco) * 100;
   const dyn = maps.company.get(company.companyName) ?? null;
+
+  const knownMpEcoBits: string[] = [];
+  if (unavailable) {
+    if (wbKnownEco !== null) {
+      knownMpEcoBits.push(`WB известно: ${compact(wbKnownEco)}`);
+    }
+    if (ozKnownEco !== null) {
+      knownMpEcoBits.push(`Ozon известно: ${compact(ozKnownEco)}`);
+    }
+  }
 
   const lines = [
     `👤 ${company.companyName}`,
     `🛒 Заказы: ${formatNumber(ordersQty)} · ${money(ordersAmount)}${dynPct(dyn?.ordersAmountPercent ?? null)}`,
-    `📈 Оборот: ${money(eco)}${dynPct(dyn?.economicTurnoverPercent ?? null)}`,
-    `📣 Реклама: ${money(ads)} · ДРР ${pct(drr)}${joinDyn(
+    unavailable || eco === null
+      ? `📈 Оборот: н/д${
+          knownMpEcoBits.length ? `\n   ${knownMpEcoBits.join(" · ")}` : ""
+        }`
+      : `📈 Оборот: ${money(eco)}${dynPct(dyn?.economicTurnoverPercent ?? null)}`,
+    `📣 Реклама: ${money(ads)} · ДРР ${
+      drr === null ? "н/д" : pct(drr)
+    }${joinDyn(
       dynPct(dyn?.adSpendPercent ?? null, true),
       dynPp(dyn?.drrPointDiff ?? null)
     )}`,
@@ -256,18 +283,15 @@ function formatCompanyBlock(
       ? `💰 Прибыль: недоступно`
       : `💰 Прибыль: ${formatSignedMoney(companyNet)}${
           companyMargin === null ? "" : ` · маржа ${pct(companyMargin)}`
-        }${joinDyn(
-          dynPct(dyn?.netProfitPercent ?? null),
-          dynPp(dyn?.marginPointDiff ?? null)
-        )}`,
+        }${formatProfitDynSuffix(dyn)}`,
     `💸 ДДС: ${money(company.finance.netCashFlow)}`,
   ];
   if (Math.abs(company.finance.ownerWithdrawals) > 0.5) {
     lines.push(`💳 Вывод: ${money(company.finance.ownerWithdrawals)}`);
     if (afterOwner !== null) {
       lines.push(
-        `💵 После вывода: ${formatSignedMoney(afterOwner)}${dynPct(
-          dyn?.afterOwnerPercent ?? null
+        `💵 После вывода: ${formatSignedMoney(afterOwner)}${formatAfterOwnerDynSuffix(
+          dyn
         )}`
       );
     }
@@ -388,7 +412,25 @@ export function formatOwnerReportV3Message1(
       : "";
 
   const profitDynParts: string[] = [];
-  if (cmp?.netProfitImpactPercent != null) {
+  const prevTotals = (previousReport ?? report.previousReport)?.totals ?? null;
+  const curProfit = profit;
+  const prevProfit =
+    prevTotals && !Boolean((previousReport ?? report.previousReport)?.combinedFinancialUnavailable)
+      ? prevTotals.netProfitImpact
+      : null;
+  const profitSignCross =
+    curProfit !== null &&
+    prevProfit !== null &&
+    curProfit !== 0 &&
+    prevProfit !== 0 &&
+    Math.sign(curProfit) !== Math.sign(prevProfit);
+  const profitNearZeroPrev =
+    curProfit !== null && prevProfit !== null && Math.abs(prevProfit) < 0.0001;
+  if (profitSignCross || profitNearZeroPrev) {
+    profitDynParts.push(
+      compactAbsMoneySuffix(curProfit! - prevProfit!).trim()
+    );
+  } else if (cmp?.netProfitImpactPercent != null) {
     profitDynParts.push(compactChangeSuffix(cmp.netProfitImpactPercent).trim());
   }
   if (cmp?.marginPointDiff != null) {
@@ -398,6 +440,48 @@ export function formatOwnerReportV3Message1(
     profitDynParts.filter(Boolean).length > 0
       ? ` ${profitDynParts.filter(Boolean).join(" · ")}`
       : "";
+
+  // After-owner: same sign-crossing rule
+  const afterDynParts: string[] = [];
+  const prevAfter =
+    prevProfit !== null && prevTotals
+      ? prevProfit - prevTotals.ownerWithdrawals
+      : null;
+  const afterSignCross =
+    afterOwner !== null &&
+    prevAfter !== null &&
+    afterOwner !== 0 &&
+    prevAfter !== 0 &&
+    Math.sign(afterOwner) !== Math.sign(prevAfter);
+  const afterNearZeroPrev =
+    afterOwner !== null && prevAfter !== null && Math.abs(prevAfter) < 0.0001;
+  if (afterSignCross || afterNearZeroPrev) {
+    afterDynParts.push(compactAbsMoneySuffix(afterOwner! - prevAfter!).trim());
+  } else if (cmp?.afterOwnerWithdrawalPercent != null) {
+    afterDynParts.push(
+      compactChangeSuffix(cmp.afterOwnerWithdrawalPercent).trim()
+    );
+  }
+  const afterDyn =
+    afterDynParts.filter(Boolean).length > 0
+      ? ` ${afterDynParts.filter(Boolean).join(" · ")}`
+      : "";
+
+  // Suppress business COGS dyn when previous Ozon COGS is suspected incomplete zero
+  let businessCogsDyn = cogsDyn;
+  const prevReport = previousReport ?? report.previousReport ?? null;
+  if (prevReport) {
+    const ozonCogsBlocked = report.companies.some((c) => {
+      const prevC = prevReport.companies.find(
+        (p) => p.companyName === c.companyName
+      );
+      return isSuspectedIncompleteOzonCogsZero(
+        prevC?.ozon.totalCost,
+        c.ozon.totalCost
+      );
+    });
+    if (ozonCogsBlocked) businessCogsDyn = "";
+  }
 
   const business = [
     `🏢 ИТОГО ПО БИЗНЕСУ`,
@@ -420,12 +504,17 @@ export function formatOwnerReportV3Message1(
       ? `📦 Себестоимость   н/д`
       : `📦 Себестоимость   ${compact(cogs)}${
           cogsShare === null ? "" : ` · ${pct(cogsShare)}`
-        }${cogsDyn}`,
+        }${businessCogsDyn}`,
     combinedUnavailable
       ? `📣 Реклама         недоступна`
-      : `📣 Реклама         ${compact(report.totals.adSpend)} · ДРР ${pct(
-          report.totals.drrByEconomicTurnover
-        )}${adsDyn}`,
+      : Math.abs(eco) < 0.0001
+        ? `📣 Реклама         ${compact(report.totals.adSpend)} · ДРР н/д${adsDyn.replace(
+            / · ▲.*п\.п\.| · ▼.*п\.п\./g,
+            ""
+          )}`
+        : `📣 Реклама         ${compact(report.totals.adSpend)} · ДРР ${pct(
+            report.totals.drrByEconomicTurnover
+          )}${adsDyn}`,
     profit === null
       ? `💰 Чистая прибыль  недоступна`
       : `💰 Чистая прибыль  ${compact(profit)}${
@@ -436,9 +525,7 @@ export function formatOwnerReportV3Message1(
     `💳 Вывод            ${money(report.totals.ownerWithdrawals)}`,
     afterOwner === null
       ? `💵 После вывода     недоступна`
-      : `💵 После вывода     ${compact(afterOwner)}${compactChangeSuffix(
-          cmp?.afterOwnerWithdrawalPercent ?? null
-        )}`,
+      : `💵 После вывода     ${compact(afterOwner)}${afterDyn}`,
     `📦 Остатки          ${formatNumber(report.totals.stockQty)} шт`,
   ];
 
@@ -509,8 +596,10 @@ function formatTop3List(
 ) {
   if (items.length === 0) {
     return asHtml
-      ? escapeTelegramHtml("н/д — точный SKU-источник заказов недоступен")
-      : "н/д — точный SKU-источник заказов недоступен";
+      ? escapeTelegramHtml(
+          "н/д — исторический SKU-срез заказов за этот период не был сохранён"
+        )
+      : "н/д — исторический SKU-срез заказов за этот период не был сохранён";
   }
   return items
     .slice(0, 3)
@@ -571,6 +660,13 @@ function formatCounter(value: number | null, status: CounterStatus) {
 
 function formatAdFunnelBlock(funnel: CabinetAdFunnel) {
   const lines: string[] = [`📣 РЕКЛАМА`];
+  const ecoOk =
+    Number.isFinite(funnel.economicTurnover) &&
+    Math.abs(funnel.economicTurnover) > 0.0001;
+  const drrPnlLabel =
+    ecoOk && funnel.financialDrr !== null ? pct(funnel.financialDrr) : "н/д";
+  const drrPerfLabel =
+    ecoOk && funnel.drr !== null ? pct(funnel.drr) : "н/д";
   if (funnel.spendSemantics === "PERFORMANCE_PARTIAL") {
     lines.push(`Performance:`);
     lines.push(`Расход      ${money(funnel.spend)}`);
@@ -609,13 +705,11 @@ function formatAdFunnelBlock(funnel: CabinetAdFunnel) {
     }
     if (funnel.cpo !== null) lines.push(`CPO          ${money(funnel.cpo)}`);
     lines.push(
-      `Реклама P&L: ${money(funnel.financialSpend)} · ДРР ${pct(
-        funnel.financialDrr
-      )}`
+      `Реклама P&L: ${money(funnel.financialSpend)} · ДРР ${drrPnlLabel}`
     );
   } else {
     lines.push(
-      `Расход      ${money(funnel.spend)} · ДРР ${pct(funnel.drr)}`
+      `Расход      ${money(funnel.spend)} · ДРР ${drrPerfLabel}`
     );
     lines.push(
       `Показы      ${formatCounter(funnel.impressions, funnel.counterStatus)}`
@@ -674,11 +768,17 @@ export function formatOwnerReportV3Message2(
 
   if (!extras.businessTop3Complete) {
     parts.push(
-      esc(`🏆 ТОП-3 по доступным данным — неполно`),
-      esc(`(источники: ${extras.businessTop3CabinetCount}/4 кабинетов)`),
-      "",
-      formatTop3List(top, true, "business")
+      extras.businessTop3CabinetCount === 0
+        ? esc(`🏆 TOP-3 недоступен для этого периода`)
+        : esc(`🏆 ТОП-3 по доступным данным — неполно`),
+      extras.businessTop3CabinetCount === 0
+        ? esc(`н/д — исторический SKU-срез заказов за этот период не был сохранён`)
+        : esc(`(источники: ${extras.businessTop3CabinetCount}/4 кабинетов)`),
+      ""
     );
+    if (top.length > 0) {
+      parts.push(formatTop3List(top, true, "business"));
+    }
   } else {
     parts.push(
       esc(`🏆 ТОП-3 ПО ВСЕМУ БИЗНЕСУ`),
@@ -704,12 +804,19 @@ export function formatOwnerReportV3Message2(
       const emoji = mp === "WB" ? "🟣" : "🔵";
       const label = mp === "WB" ? "WB" : "Ozon";
       const metrics = mp === "WB" ? company.wb : company.ozon;
+      const ecoFallback = metrics.financialUnavailable
+        ? 0
+        : metrics.economicTurnover ?? 0;
+      const drrFallback =
+        metrics.financialUnavailable || Math.abs(ecoFallback) < 0.0001
+          ? null
+          : metrics.drrByEconomicTurnover;
       const fallback: CabinetAdFunnel = {
         companyName: company.companyName,
         marketplace: mp,
         spend: metrics.adSpend,
         financialSpend: metrics.adSpend,
-        financialDrr: metrics.drrByEconomicTurnover,
+        financialDrr: drrFallback,
         spendSemantics: "SAME_AS_PNL",
         impressions: null,
         clicks: null,
@@ -718,8 +825,8 @@ export function formatOwnerReportV3Message2(
         adOrders: null,
         cpo: null,
         counterStatus: "COUNTERS_MISSING",
-        economicTurnover: metrics.economicTurnover ?? 0,
-        drr: metrics.drrByEconomicTurnover,
+        economicTurnover: ecoFallback,
+        drr: drrFallback,
         top3: [],
         top3Source: "UNAVAILABLE",
       };

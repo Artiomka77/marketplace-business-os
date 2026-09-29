@@ -539,3 +539,163 @@ test("V3.3 business TOP-3 family aggregation across sizes", async () => {
   assert.match(m2, /разм\. 158\/164/);
   assert.doesNotMatch(m2, /1217252162-158 · 18/);
 });
+
+test("V3.4 high valid percent not suppressed (Lebedeva WB eco ~+380%)", () => {
+  const report = fixtureReport();
+  report.companies[0].wb = baseMetrics("WB", {
+    economicTurnover: 24198,
+    taxableRevenue: 14739,
+    adSpend: 0,
+    totalCost: 4345,
+    netProfitAfterTax: 4062,
+    drrByEconomicTurnover: 0,
+    ordersAmount: 43979,
+    ordersQty: 9,
+    stockQty: 282,
+  });
+  report.previousReport!.companies[0].wb = baseMetrics("WB", {
+    economicTurnover: 5039,
+    taxableRevenue: 2103,
+    adSpend: 0,
+    totalCost: 835,
+    netProfitAfterTax: -3205,
+    drrByEconomicTurnover: 0,
+    ordersAmount: 43734,
+    ordersQty: 9,
+    stockQty: 280,
+  });
+  const m1 = formatOwnerReportV3Message1(report);
+  const leb = m1.slice(m1.indexOf("👤 ИП Лебедева"));
+  const wb = leb.slice(leb.indexOf("🟣 WB"), leb.indexOf("🔵 Ozon"));
+  assert.match(wb, /Оборот.*▲380/);
+  assert.match(wb, /Налог\..*▲600/);
+  assert.match(wb, /COGS.*▲420/);
+  assert.match(wb, /Прибыль.*▲7[\s\u00a0]?267/);
+  assert.doesNotMatch(wb, /Прибыль.*▲226/);
+  assert.match(wb, /п\.п/);
+});
+
+test("V3.4 fake historical Ozon COGS zero not comparable", async () => {
+  const {
+    compareSnapshots,
+    marketplaceSnapshotForTests,
+    isSuspectedIncompleteOzonCogsZero,
+  } = await import("../../lib/telegram/ownerReportV3Dynamics");
+  assert.equal(isSuspectedIncompleteOzonCogsZero(0, 880735), true);
+  const cur = marketplaceSnapshotForTests(
+    baseMetrics("OZON", {
+      totalCost: 880735,
+      economicTurnover: 6_800_000,
+    }) as never
+  );
+  const prev = marketplaceSnapshotForTests(
+    baseMetrics("OZON", {
+      totalCost: 0,
+      economicTurnover: 5_000_000,
+    }) as never
+  );
+  const dyn = compareSnapshots(cur, prev);
+  assert.equal(dyn.totalCostPercent, null);
+  assert.equal(dyn.cogsSharePointDiff, null);
+  assert.ok(
+    dyn.comparabilityReasons.includes(
+      "previous_ozon_cogs_incomplete_or_fake_zero"
+    )
+  );
+});
+
+test("V3.4 unavailable denominator -> DRR nd; partial company not WB-only total", () => {
+  const report = fixtureReport();
+  report.companies[1].ozon = baseMetrics("OZON", {
+    financialUnavailable: true,
+    economicTurnover: 0,
+    adSpend: 7152814,
+    drrByEconomicTurnover: 0,
+    ordersAmount: 0,
+  });
+  report.companies[1].wb = baseMetrics("WB", {
+    economicTurnover: 25_300_000,
+    adSpend: 1_360_000,
+    drrByEconomicTurnover: 5.4,
+    ordersAmount: 30_000_000,
+  });
+  const m1 = formatOwnerReportV3Message1(report);
+  const petrov = m1.slice(
+    m1.indexOf("👤 ИП Петров"),
+    m1.indexOf("👤 ИП Лебедева")
+  );
+  assert.match(petrov, /Оборот: н\/д/);
+  assert.match(petrov, /WB известно:/);
+  assert.match(petrov, /ДРР н\/д/);
+  assert.doesNotMatch(petrov, /👤 ИП Петров[\s\S]*📣 Реклама:.*ДРР 0%/);
+  assert.match(petrov, /🔵 Ozon[\s\S]*неполны/);
+});
+
+test("V3.4 Message2 DRR nd when eco unavailable", () => {
+  const extras = extrasFixture();
+  extras.cabinets[1].economicTurnover = 0;
+  extras.cabinets[1].financialSpend = 7_152_814;
+  extras.cabinets[1].financialDrr = 0;
+  extras.cabinets[1].spendSemantics = "PERFORMANCE_PARTIAL";
+  const m2 = formatOwnerReportV3(fixtureReport(), extras).message2;
+  assert.match(m2, /Реклама P&amp;L:.*ДРР н\/д/);
+  assert.doesNotMatch(m2, /Реклама P&amp;L:.*ДРР 0%/);
+});
+
+test("V3.4 true zero remains zero; historical TOP-3 unavailable label", () => {
+  const report = fixtureReport();
+  report.companies[0].wb = baseMetrics("WB", {
+    economicTurnover: 10000,
+    adSpend: 0,
+    drrByEconomicTurnover: 0,
+    totalCost: 1000,
+    netProfitAfterTax: 500,
+  });
+  const m1 = formatOwnerReportV3Message1(report);
+  assert.match(m1, /🟣 WB[\s\S]*Реклама 0[^\d]/);
+  const incomplete = extrasFixture();
+  incomplete.businessTop3Complete = false;
+  incomplete.businessTop3CabinetCount = 0;
+  incomplete.businessTop3 = [];
+  incomplete.businessTop3Source = "UNAVAILABLE";
+  const m2 = formatOwnerReportV3(report, incomplete).message2;
+  assert.match(m2, /TOP-3 недоступен для этого периода|исторический SKU-срез/);
+});
+
+test("V3.4 comparability matrix built per level/metric", async () => {
+  const { buildDynamicsComparabilityMatrix } = await import(
+    "../../lib/telegram/ownerReportV3Dynamics"
+  );
+  const report = fixtureReport();
+  const matrix = buildDynamicsComparabilityMatrix(
+    report,
+    report.previousReport!
+  );
+  assert.ok(matrix.length > 20);
+  const metrics = new Set(matrix.map((r) => r.metric));
+  for (const m of [
+    "ordersAmount",
+    "economicTurnover",
+    "taxableRevenue",
+    "COGS",
+    "cogsShare",
+    "ads",
+    "DRR",
+    "profit",
+    "margin",
+    "DDS",
+    "afterOwner",
+  ]) {
+    assert.ok(metrics.has(m), "missing metric " + m);
+  }
+  const levels = new Set(matrix.map((r) => r.level));
+  assert.ok([...levels].some((l) => l.startsWith("business")));
+  assert.ok([...levels].some((l) => l.includes("Петров") && l.includes("WB")));
+});
+
+test("V3.4 formatPercentChange keeps large valid percent", async () => {
+  const { formatPercentChange } = await import("../../lib/telegram/dailyReport");
+  assert.match(formatPercentChange(380.2), /▲380/);
+  assert.match(formatPercentChange(0), /→0%/);
+  assert.equal(formatPercentChange(null), "нет базы");
+});

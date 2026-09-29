@@ -858,10 +858,10 @@ async function loadWbAdFunnel(
   const financialDrr =
     economicTurnover > 0.0001
       ? (financialSpend / economicTurnover) * 100
-      : 0;
+      : null;
 
   if (counterRows === 0) {
-    // V3.3: no live FullStats at Telegram render. Counters require persisted COMPLETE source.
+    // V3.3/V3.4: no live FullStats at Telegram render. Counters require persisted COMPLETE source.
     const useSpend = spend > 0.5 ? spend : financialSpend;
     return {
       spend: useSpend,
@@ -872,7 +872,7 @@ async function loadWbAdFunnel(
       adOrders: null,
       cpo: null,
       drr:
-        economicTurnover > 0.0001 ? (useSpend / economicTurnover) * 100 : 0,
+        economicTurnover > 0.0001 ? (useSpend / economicTurnover) * 100 : null,
       counterStatus: "COUNTERS_MISSING",
       spendSemantics: "SAME_AS_PNL",
       financialSpend,
@@ -915,7 +915,7 @@ async function loadWbAdFunnel(
     cpc,
     adOrders: null,
     cpo: null,
-    drr: economicTurnover > 0.0001 ? (useSpend / economicTurnover) * 100 : 0,
+    drr: economicTurnover > 0.0001 ? (useSpend / economicTurnover) * 100 : null,
     counterStatus: status,
     spendSemantics: semantics,
     financialSpend,
@@ -978,7 +978,7 @@ async function loadOzonAdFunnel(
   const financialDrr =
     economicTurnover > 0.0001
       ? (financialSpend / economicTurnover) * 100
-      : 0;
+      : null;
 
   if (rowsFound === 0) {
     return {
@@ -1014,7 +1014,7 @@ async function loadOzonAdFunnel(
     cpc,
     adOrders,
     cpo,
-    drr: economicTurnover > 0.0001 ? (spend / economicTurnover) * 100 : 0,
+    drr: economicTurnover > 0.0001 ? (spend / economicTurnover) * 100 : null,
     counterStatus: status,
     spendSemantics: semantics,
     financialSpend,
