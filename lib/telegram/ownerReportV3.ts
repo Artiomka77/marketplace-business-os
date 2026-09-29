@@ -4,11 +4,14 @@
  */
 import type { DailyReport } from "@/lib/telegram/dailyReport";
 import {
+  compactChangeSuffix,
+  compactPointSuffix,
   formatCompactMoney,
   formatMoney,
   formatNumber,
   formatPercent,
   formatSignedMoney,
+  shouldShowCashFlowPercent,
 } from "@/lib/telegram/dailyReport";
 
 export type OwnerReportV3Messages = {
@@ -23,27 +26,44 @@ export type TopOrderItem = {
   amount: number;
   companyName?: string;
   marketplace?: "WB" | "OZON";
+  sku?: string | null;
+  secondaryTitle?: string | null;
 };
+
+export type CounterStatus =
+  | "COUNTERS_TRUE_ZERO"
+  | "COUNTERS_AVAILABLE_NONZERO"
+  | "COUNTERS_MISSING"
+  | "COUNTERS_STALE";
+
+export type AdSpendSemantics = "SAME_AS_PNL" | "PERFORMANCE_PARTIAL" | "FUNNEL_ONLY";
 
 export type CabinetAdFunnel = {
   companyName: string;
   marketplace: "WB" | "OZON";
   spend: number;
-  impressions: number;
-  clicks: number;
+  financialSpend: number;
+  financialDrr: number;
+  spendSemantics: AdSpendSemantics;
+  impressions: number | null;
+  clicks: number | null;
   ctr: number | null;
   cpc: number | null;
   adOrders: number | null;
   cpo: number | null;
+  counterStatus: CounterStatus;
   economicTurnover: number;
   drr: number;
   top3: TopOrderItem[];
   top3Source: "TRUE_ORDERS" | "UNAVAILABLE";
+  distinctOrderedArticles?: number;
 };
 
 export type OwnerReportV3Extras = {
   businessTop3: TopOrderItem[];
-  businessTop3Source: "TRUE_ORDERS" | "UNAVAILABLE";
+  businessTop3Source: "TRUE_ORDERS" | "INCOMPLETE" | "UNAVAILABLE";
+  businessTop3CabinetCount: number;
+  businessTop3Complete: boolean;
   cabinets: CabinetAdFunnel[];
 };
 
@@ -260,40 +280,95 @@ export function formatOwnerReportV3Message1(report: DailyReport): string {
     header.push("", "⚠️ Данные неполные:", ...warnings.slice(0, 3));
   }
 
+  const cmp = report.comparison?.totals ?? null;
+  const ddsDyn =
+    cmp &&
+    shouldShowCashFlowPercent({
+      current: cmp.netCashFlowCurrent,
+      previous: cmp.netCashFlowPrevious,
+      percent: cmp.netCashFlowPercent,
+    })
+      ? compactChangeSuffix(cmp.netCashFlowPercent)
+      : "";
+
+  const cogsDynParts: string[] = [];
+  if (cmp?.totalCostPercent != null) {
+    cogsDynParts.push(compactChangeSuffix(cmp.totalCostPercent).trim());
+  }
+  if (cmp?.cogsSharePointDiff != null) {
+    cogsDynParts.push(compactPointSuffix(cmp.cogsSharePointDiff).trim());
+  }
+  const cogsDyn =
+    cogsDynParts.filter(Boolean).length > 0
+      ? ` ${cogsDynParts.filter(Boolean).join(" · ")}`
+      : "";
+
+  const adsDynParts: string[] = [];
+  if (cmp?.adSpendPercent != null) {
+    adsDynParts.push(compactChangeSuffix(cmp.adSpendPercent, true).trim());
+  }
+  if (cmp?.drrByEconomicTurnoverPointDiff != null) {
+    adsDynParts.push(
+      compactPointSuffix(cmp.drrByEconomicTurnoverPointDiff).trim()
+    );
+  }
+  const adsDyn =
+    adsDynParts.filter(Boolean).length > 0
+      ? ` ${adsDynParts.filter(Boolean).join(" · ")}`
+      : "";
+
+  const profitDynParts: string[] = [];
+  if (cmp?.netProfitImpactPercent != null) {
+    profitDynParts.push(compactChangeSuffix(cmp.netProfitImpactPercent).trim());
+  }
+  if (cmp?.marginPointDiff != null) {
+    profitDynParts.push(compactPointSuffix(cmp.marginPointDiff).trim());
+  }
+  const profitDyn =
+    profitDynParts.filter(Boolean).length > 0
+      ? ` ${profitDynParts.filter(Boolean).join(" · ")}`
+      : "";
+
   const business = [
     `🏢 ИТОГО ПО БИЗНЕСУ`,
     "",
     `🛒 Заказы          ${formatNumber(report.totals.ordersQty)} шт · ${money(
       report.totals.ordersAmount
-    )}`,
+    )}${compactChangeSuffix(cmp?.ordersAmountPercent ?? null)}`,
     combinedUnavailable
       ? `📈 Экон. оборот    недоступен`
-      : `📈 Экон. оборот    ${compact(eco)}`,
+      : `📈 Экон. оборот    ${compact(eco)}${compactChangeSuffix(
+          cmp?.economicTurnoverPercent ?? null
+        )}`,
     combinedUnavailable
       ? `🧾 Налог. выручка  недоступна`
-      : `🧾 Налог. выручка  ${compact(report.totals.taxableRevenue)}`,
+      : `🧾 Налог. выручка  ${compact(report.totals.taxableRevenue)}${compactChangeSuffix(
+          cmp?.taxableRevenuePercent ?? null
+        )}`,
     "",
     cogs === undefined || combinedUnavailable
       ? `📦 Себестоимость   н/д`
       : `📦 Себестоимость   ${compact(cogs)}${
-          cogsShare === null ? "" : ` · ${pct(cogsShare)} оборота`
-        }`,
+          cogsShare === null ? "" : ` · ${pct(cogsShare)}`
+        }${cogsDyn}`,
     combinedUnavailable
       ? `📣 Реклама         недоступна`
       : `📣 Реклама         ${compact(report.totals.adSpend)} · ДРР ${pct(
           report.totals.drrByEconomicTurnover
-        )}`,
+        )}${adsDyn}`,
     profit === null
       ? `💰 Чистая прибыль  недоступна`
       : `💰 Чистая прибыль  ${compact(profit)}${
           marg === null ? "" : ` · маржа ${pct(marg)}`
-        }`,
+        }${profitDyn}`,
     "",
-    `💸 ДДС             ${compact(report.totals.netCashFlow)}`,
+    `💸 ДДС             ${compact(report.totals.netCashFlow)}${ddsDyn}`,
     `💳 Вывод            ${money(report.totals.ownerWithdrawals)}`,
     afterOwner === null
       ? `💵 После вывода     недоступна`
-      : `💵 После вывода     ${compact(afterOwner)}`,
+      : `💵 После вывода     ${compact(afterOwner)}${compactChangeSuffix(
+          cmp?.afterOwnerWithdrawalPercent ?? null
+        )}`,
     `📦 Остатки          ${formatNumber(report.totals.stockQty)} шт`,
   ];
 
@@ -347,29 +422,112 @@ function formatTop3List(items: TopOrderItem[]) {
   if (items.length === 0) return "н/д — точный SKU-источник заказов недоступен";
   return items
     .slice(0, 3)
-    .map(
-      (it, i) =>
-        `${i + 1}. ${it.article} · ${formatNumber(it.qty)} шт · ${money(
-          it.amount
-        )}`
-    )
+    .map((it, i) => {
+      const primary = `${i + 1}. ${it.article} · ${formatNumber(it.qty)} шт · ${money(
+        it.amount
+      )}`;
+      if (it.secondaryTitle) {
+        return `${primary}\n   ${it.secondaryTitle}`;
+      }
+      return primary;
+    })
     .join("\n");
 }
 
-function formatAdFunnelBlock(funnel: CabinetAdFunnel) {
-  const lines = [
-    `📣 РЕКЛАМА`,
-    `Расход      ${money(funnel.spend)} · ДРР ${pct(funnel.drr)}`,
-    `Показы      ${formatNumber(funnel.impressions)}`,
-    `Клики       ${formatNumber(funnel.clicks)}`,
-  ];
-  if (funnel.ctr !== null) lines.push(`CTR         ${pct(funnel.ctr)}`);
-  if (funnel.cpc !== null) lines.push(`CPC         ${money(funnel.cpc)}`);
-  if (funnel.adOrders !== null) {
-    lines.push(`Рекл. заказы ${formatNumber(funnel.adOrders)}`);
+function formatCounter(value: number | null, status: CounterStatus) {
+  if (
+    status === "COUNTERS_MISSING" ||
+    status === "COUNTERS_STALE" ||
+    value === null
+  ) {
+    return "н/д";
   }
-  if (funnel.cpo !== null) lines.push(`CPO          ${money(funnel.cpo)}`);
-  // cart / organic / paid traffic omitted — no exact durable comparable source
+  return formatNumber(value);
+}
+
+function formatAdFunnelBlock(funnel: CabinetAdFunnel) {
+  const lines: string[] = [`📣 РЕКЛАМА`];
+  if (funnel.spendSemantics === "PERFORMANCE_PARTIAL") {
+    lines.push(`Performance:`);
+    lines.push(`Расход      ${money(funnel.spend)}`);
+    lines.push(
+      `Показы      ${formatCounter(funnel.impressions, funnel.counterStatus)}`
+    );
+    lines.push(
+      `Клики       ${formatCounter(funnel.clicks, funnel.counterStatus)}`
+    );
+    if (
+      funnel.ctr !== null &&
+      funnel.counterStatus !== "COUNTERS_MISSING" &&
+      funnel.counterStatus !== "COUNTERS_STALE"
+    ) {
+      lines.push(`CTR         ${pct(funnel.ctr)}`);
+    } else if (
+      funnel.counterStatus === "COUNTERS_MISSING" ||
+      funnel.counterStatus === "COUNTERS_STALE"
+    ) {
+      lines.push(`CTR         н/д`);
+    }
+    if (
+      funnel.cpc !== null &&
+      funnel.counterStatus !== "COUNTERS_MISSING" &&
+      funnel.counterStatus !== "COUNTERS_STALE"
+    ) {
+      lines.push(`CPC         ${money(funnel.cpc)}`);
+    } else if (
+      funnel.counterStatus === "COUNTERS_MISSING" ||
+      funnel.counterStatus === "COUNTERS_STALE"
+    ) {
+      lines.push(`CPC         н/д`);
+    }
+    if (funnel.adOrders !== null) {
+      lines.push(`Рекл. заказы ${formatNumber(funnel.adOrders)}`);
+    }
+    if (funnel.cpo !== null) lines.push(`CPO          ${money(funnel.cpo)}`);
+    lines.push(
+      `Реклама P&L: ${money(funnel.financialSpend)} · ДРР ${pct(
+        funnel.financialDrr
+      )}`
+    );
+  } else {
+    lines.push(
+      `Расход      ${money(funnel.spend)} · ДРР ${pct(funnel.drr)}`
+    );
+    lines.push(
+      `Показы      ${formatCounter(funnel.impressions, funnel.counterStatus)}`
+    );
+    lines.push(
+      `Клики       ${formatCounter(funnel.clicks, funnel.counterStatus)}`
+    );
+    if (
+      funnel.ctr !== null &&
+      funnel.counterStatus !== "COUNTERS_MISSING" &&
+      funnel.counterStatus !== "COUNTERS_STALE"
+    ) {
+      lines.push(`CTR         ${pct(funnel.ctr)}`);
+    } else if (
+      funnel.counterStatus === "COUNTERS_MISSING" ||
+      funnel.counterStatus === "COUNTERS_STALE"
+    ) {
+      lines.push(`CTR         н/д`);
+    }
+    if (
+      funnel.cpc !== null &&
+      funnel.counterStatus !== "COUNTERS_MISSING" &&
+      funnel.counterStatus !== "COUNTERS_STALE"
+    ) {
+      lines.push(`CPC         ${money(funnel.cpc)}`);
+    } else if (
+      funnel.counterStatus === "COUNTERS_MISSING" ||
+      funnel.counterStatus === "COUNTERS_STALE"
+    ) {
+      lines.push(`CPC         н/д`);
+    }
+    if (funnel.adOrders !== null) {
+      lines.push(`Рекл. заказы ${formatNumber(funnel.adOrders)}`);
+    }
+    if (funnel.cpo !== null) lines.push(`CPO          ${money(funnel.cpo)}`);
+  }
   return lines.join("\n");
 }
 
@@ -387,16 +545,24 @@ export function formatOwnerReportV3Message2(
     `📦 AvoroFin — товары и реклама`,
     dateRu,
     "",
-    `🏆 ТОП-3 ПО ВСЕМУ БИЗНЕСУ`,
-    "",
-    formatTop3List(top),
   ];
-  if (top.length > 0) {
+
+  if (!extras.businessTop3Complete) {
     parts.push(
+      `🏆 ТОП-3 по доступным данным — неполно`,
+      `(источники: ${extras.businessTop3CabinetCount}/4 кабинетов)`,
       "",
-      `Всего TOP-3:`,
-      `${formatNumber(topQty)} шт · ${money(topAmt)}`
+      formatTop3List(top)
     );
+  } else {
+    parts.push(`🏆 ТОП-3 ПО ВСЕМУ БИЗНЕСУ`, "", formatTop3List(top));
+    if (top.length > 0) {
+      parts.push(
+        "",
+        `Всего TOP-3:`,
+        `${formatNumber(topQty)} шт · ${money(topAmt)}`
+      );
+    }
   }
 
   const order = sortCompaniesOwnerOrder(report.companies);
@@ -408,6 +574,26 @@ export function formatOwnerReportV3Message2(
       );
       const emoji = mp === "WB" ? "🟣" : "🔵";
       const label = mp === "WB" ? "WB" : "Ozon";
+      const metrics = mp === "WB" ? company.wb : company.ozon;
+      const fallback: CabinetAdFunnel = {
+        companyName: company.companyName,
+        marketplace: mp,
+        spend: metrics.adSpend,
+        financialSpend: metrics.adSpend,
+        financialDrr: metrics.drrByEconomicTurnover,
+        spendSemantics: "SAME_AS_PNL",
+        impressions: null,
+        clicks: null,
+        ctr: null,
+        cpc: null,
+        adOrders: null,
+        cpo: null,
+        counterStatus: "COUNTERS_MISSING",
+        economicTurnover: metrics.economicTurnover ?? 0,
+        drr: metrics.drrByEconomicTurnover,
+        top3: [],
+        top3Source: "UNAVAILABLE",
+      };
       parts.push(
         "",
         "──────────────",
@@ -417,29 +603,7 @@ export function formatOwnerReportV3Message2(
         `🏆 ТОП-3 заказов`,
         formatTop3List(funnel?.top3 ?? []),
         "",
-        formatAdFunnelBlock(
-          funnel ?? {
-            companyName: company.companyName,
-            marketplace: mp,
-            spend: mp === "WB" ? company.wb.adSpend : company.ozon.adSpend,
-            impressions: 0,
-            clicks: 0,
-            ctr: null,
-            cpc: null,
-            adOrders: null,
-            cpo: null,
-            economicTurnover:
-              (mp === "WB"
-                ? company.wb.economicTurnover
-                : company.ozon.economicTurnover) ?? 0,
-            drr:
-              mp === "WB"
-                ? company.wb.drrByEconomicTurnover
-                : company.ozon.drrByEconomicTurnover,
-            top3: [],
-            top3Source: "UNAVAILABLE",
-          }
-        )
+        formatAdFunnelBlock(funnel ?? fallback)
       );
     }
   }

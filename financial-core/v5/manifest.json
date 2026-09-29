@@ -59,8 +59,8 @@
     {
       "path": "lib/telegram/dailyReport.ts",
       "role": "Единая финансовая сводка Dashboard и Telegram",
-      "sha256": "637526a07e1074ff5cf98ce7bdbb0d14adc7ccbdfa927a7f716dbcc499a68243",
-      "snapshotSha256": "637526a07e1074ff5cf98ce7bdbb0d14adc7ccbdfa927a7f716dbcc499a68243",
+      "sha256": "b61a88c5dddc224b2a069109a8f76aeb907ff56be7f9bf5cd51a83cdb9e821c6",
+      "snapshotSha256": "b61a88c5dddc224b2a069109a8f76aeb907ff56be7f9bf5cd51a83cdb9e821c6",
       "sizeBytes": 111798
     },
     {

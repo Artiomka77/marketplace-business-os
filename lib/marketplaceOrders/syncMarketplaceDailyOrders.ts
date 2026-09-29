@@ -109,9 +109,13 @@ type WbSalesFunnelProduct = {
 
 type TopOrderPersistRow = {
   article: string;
+  sku?: string | null;
+  vendorCode?: string | null;
+  title?: string | null;
   nmId: string | null;
   qty: number;
   amount: number;
+  orderAmount?: number;
 };
 
 type WbSalesFunnelResponse = {
@@ -622,55 +626,82 @@ async function fetchOzonOrdersForDate(
     offset += limit;
   }
 
-  // SKU-level true orders for Telegram TOP-3 (best-effort; day totals stay primary).
+  // SKU-level true orders for Telegram TOP-3 (paginate; map SKU id -> vendorCode later).
   let topByOrderAmount: TopOrderPersistRow[] = [];
   try {
-    const skuResponse = await fetch(
-      "https://api-seller.ozon.ru/v1/analytics/data",
-      {
-        method: "POST",
-        headers: {
-          "Client-Id": clientId,
-          "Api-Key": apiKey,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          date_from: dateText,
-          date_to: dateText,
-          metrics: ["ordered_units", "revenue"],
-          dimension: ["sku"],
-          filters: [],
-          sort: [{ key: "revenue", order: "DESC" }],
-          limit: 1000,
-          offset: 0,
-        }),
-        cache: "no-store",
-      }
-    );
-    if (skuResponse.ok) {
+    const ranked: TopOrderPersistRow[] = [];
+    let skuOffset = 0;
+    const skuLimit = 1000;
+    while (true) {
+      const skuResponse = await fetch(
+        "https://api-seller.ozon.ru/v1/analytics/data",
+        {
+          method: "POST",
+          headers: {
+            "Client-Id": clientId,
+            "Api-Key": apiKey,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            date_from: dateText,
+            date_to: dateText,
+            metrics: ["ordered_units", "revenue"],
+            dimension: ["sku"],
+            filters: [],
+            sort: [{ key: "revenue", order: "DESC" }],
+            limit: skuLimit,
+            offset: skuOffset,
+          }),
+          cache: "no-store",
+        }
+      );
+      if (!skuResponse.ok) break;
       const skuJson = (await skuResponse.json()) as OzonAnalyticsResponse;
-      const ranked: TopOrderPersistRow[] = [];
-      for (const row of skuJson.result?.data ?? []) {
+      const page = skuJson.result?.data ?? [];
+      for (const row of page) {
         const dims = row.dimensions ?? [];
-        const article = String(
-          dims.find((d) => d.id === "sku")?.name ??
-            dims[0]?.name ??
-            dims[0]?.id ??
-            ""
+        // Ozon sku dimension: id = numeric SKU, name = product title (do NOT use title as article).
+        const skuDim =
+          dims.find((d) => String(d.id ?? "").toLowerCase() === "sku") ??
+          dims[0];
+        const sku = String(
+          // When dimension=["sku"], each row's dimension entry usually has id=<sku> name=<title>
+          // or id="sku" name=<sku>. Prefer numeric-looking id, else name if numeric.
+          (() => {
+            const a = String(skuDim?.id ?? "").trim();
+            const b = String(skuDim?.name ?? "").trim();
+            if (/^\d+$/.test(a)) return a;
+            if (/^\d+$/.test(b)) return b;
+            return a && a.toLowerCase() !== "sku" ? a : b;
+          })()
         ).trim();
         const qty = Math.trunc(toNumber(row.metrics?.[0]));
         const amount = toNumber(row.metrics?.[1]);
-        if (!article && qty === 0 && amount === 0) continue;
+        if (!sku && qty === 0 && amount === 0) continue;
         ranked.push({
-          article: article || "UNKNOWN",
+          article: sku ? `Ozon SKU ${sku}` : "UNKNOWN",
+          sku: sku || null,
+          vendorCode: null,
           nmId: null,
           qty,
           amount,
         });
       }
-      ranked.sort((a, b) => b.amount - a.amount || b.qty - a.qty);
-      topByOrderAmount = ranked.slice(0, 50);
+      if (page.length < skuLimit) break;
+      skuOffset += skuLimit;
     }
+    // Resolve vendorCode from OzonProduct mapping (seller article is primary label).
+    if (ranked.length > 0) {
+      const skus = ranked
+        .map((r) => r.sku)
+        .filter((s): s is string => Boolean(s));
+      if (skus.length > 0) {
+        // companyName not in fetchOzonOrdersForDate — resolve in upsert caller.
+        // Keep sku in article fallback; syncOzonDailyOrdersForCompany remaps.
+      }
+    }
+    ranked.sort((a, b) => b.amount - a.amount || b.qty - a.qty);
+    topByOrderAmount = ranked.slice(0, 50);
   } catch {
     topByOrderAmount = [];
   }
@@ -865,6 +896,40 @@ export async function syncOzonDailyOrdersForCompany(params: {
     params.date
   );
 
+  let topByOrderAmount = result.topByOrderAmount ?? [];
+  const skus = topByOrderAmount
+    .map((r) => r.sku)
+    .filter((s): s is string => Boolean(s));
+  if (skus.length > 0) {
+    const products = await prisma.ozonProduct.findMany({
+      where: {
+        companyName: params.company.name,
+        sku: { in: skus },
+      },
+      select: { sku: true, vendorCode: true, productName: true },
+    });
+    const bySku = new Map(
+      products.map((p) => [
+        p.sku,
+        {
+          vendorCode: p.vendorCode?.trim() || null,
+          title: p.productName ? String(p.productName).slice(0, 80) : null,
+        },
+      ])
+    );
+    topByOrderAmount = topByOrderAmount.map((row) => {
+      const mapped = row.sku ? bySku.get(row.sku) : undefined;
+      const vendorCode = mapped?.vendorCode || row.vendorCode || null;
+      return {
+        ...row,
+        vendorCode,
+        title: mapped?.title || row.title || null,
+        article: vendorCode || (row.sku ? `Ozon SKU ${row.sku}` : row.article),
+        orderAmount: row.amount,
+      };
+    });
+  }
+
   await upsertDailyOrderStat({
     companyName: params.company.name,
     marketplace: "OZON",
@@ -874,9 +939,9 @@ export async function syncOzonDailyOrdersForCompany(params: {
     rawJson: {
       sample: result.rawData.slice(0, 10),
       rows: result.rawData.length,
-      topByOrderAmount: result.topByOrderAmount ?? [],
+      topByOrderAmount,
       ozonSkuOrders: {
-        topByOrderAmount: result.topByOrderAmount ?? [],
+        topByOrderAmount,
       },
     },
   });

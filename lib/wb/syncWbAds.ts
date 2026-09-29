@@ -403,5 +403,22 @@ export async function syncWbAds(
   companyId: string,
   options: WbAdsSyncOptions = {}
 ) {
-  return syncWbAdsExpenseHistory(companyId, options);
+  const expense = await syncWbAdsExpenseHistory(companyId, options);
+  let fullStats: Record<string, unknown> | null = null;
+  try {
+    const { syncWbAdsFullStats } = await import("@/lib/wb/syncWbAdsFullStats");
+    fullStats = await syncWbAdsFullStats(companyId, {
+      dateFrom: options.dateFrom,
+      dateTo: options.dateTo,
+    });
+  } catch (error) {
+    fullStats = {
+      name: "WB Ads FullStats",
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+  return {
+    ...expense,
+    fullStats,
+  };
 }

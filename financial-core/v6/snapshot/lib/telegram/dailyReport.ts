@@ -137,6 +137,10 @@ type DailyReportComparison = {
     netCashFlowCurrent: number;
     netCashFlowPrevious: number;
     netProfitImpactPercent: number | null;
+    totalCostPercent: number | null;
+    cogsSharePointDiff: number | null;
+    marginPointDiff: number | null;
+    afterOwnerWithdrawalPercent: number | null;
     drrBySalesPointDiff: number | null;
     drrByEconomicTurnoverPointDiff: number | null;
   };
@@ -2156,6 +2160,32 @@ function createReportComparison(
   current: DailyReport,
   previous: DailyReport
 ): DailyReportComparison {
+  const currentCogs = current.totals.totalCost;
+  const previousCogs = previous.totals.totalCost;
+  const currentCogsShare =
+    currentCogs !== undefined &&
+    current.totals.economicTurnover > 0.0001
+      ? (currentCogs / current.totals.economicTurnover) * 100
+      : null;
+  const previousCogsShare =
+    previousCogs !== undefined &&
+    previous.totals.economicTurnover > 0.0001
+      ? (previousCogs / previous.totals.economicTurnover) * 100
+      : null;
+  const currentMargin =
+    current.totals.economicTurnover > 0.0001
+      ? (current.totals.netProfitImpact / current.totals.economicTurnover) * 100
+      : null;
+  const previousMargin =
+    previous.totals.economicTurnover > 0.0001
+      ? (previous.totals.netProfitImpact / previous.totals.economicTurnover) *
+        100
+      : null;
+  const currentAfter =
+    current.totals.netProfitImpact - current.totals.ownerWithdrawals;
+  const previousAfter =
+    previous.totals.netProfitImpact - previous.totals.ownerWithdrawals;
+
   return {
     periodLabel: previous.periodLabel,
     dateLabel: previous.dateLabel,
@@ -2206,7 +2236,28 @@ function createReportComparison(
       drrByEconomicTurnoverPointDiff:
         Number.isFinite(current.totals.drrByEconomicTurnover) &&
         Number.isFinite(previous.totals.drrByEconomicTurnover)
-          ? current.totals.drrByEconomicTurnover - previous.totals.drrByEconomicTurnover
+          ? current.totals.drrByEconomicTurnover -
+            previous.totals.drrByEconomicTurnover
+          : null,
+      totalCostPercent:
+        currentCogs !== undefined && previousCogs !== undefined
+          ? percentChange(currentCogs, previousCogs)
+          : null,
+      cogsSharePointDiff:
+        currentCogsShare !== null && previousCogsShare !== null
+          ? currentCogsShare - previousCogsShare
+          : null,
+      marginPointDiff:
+        currentMargin !== null &&
+        previousMargin !== null &&
+        !isPreliminaryFinancialResult(current) &&
+        !isPreliminaryFinancialResult(previous)
+          ? currentMargin - previousMargin
+          : null,
+      afterOwnerWithdrawalPercent:
+        !isPreliminaryFinancialResult(current) &&
+        !isPreliminaryFinancialResult(previous)
+          ? percentChange(currentAfter, previousAfter)
           : null,
     },
   };
@@ -3244,6 +3295,13 @@ function compactPointSuffix(value: number | null) {
   if (formatted === "нет базы") return "";
   return ` ${formatted}`;
 }
+
+export {
+  formatPercentChange,
+  formatPointDiff,
+  compactChangeSuffix,
+  compactPointSuffix,
+};
 
 function taxableRevenueLine(metrics: MarketplaceDailyMetrics, dateLabel: string) {
   if (
