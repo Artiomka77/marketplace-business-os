@@ -3206,7 +3206,7 @@ function marketplaceLine(label: string, metrics: MarketplaceDailyMetrics) {
 function formatPercentChange(value: number | null, _inverse = false) {
   if (value === null || !Number.isFinite(value)) return "нет базы";
   // Suppress absurd dynamics from tiny/non-comparable bases.
-  if (Math.abs(value) > 250) return "нет базы";
+  if (Math.abs(value) > 150) return "нет базы";
   if (Math.abs(value) < 0.05) return "→0%";
 
   const abs = formatPercent(Math.abs(value)).replace(/%$/, "");

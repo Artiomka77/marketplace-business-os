@@ -1,4 +1,4 @@
-name: avorofin-telegram-owner-report-v3-3-images
+﻿name: avorofin-telegram-owner-report-v3-3-images
 
 on:
   push:
@@ -38,13 +38,13 @@ jobs:
           test -f lib/telegram/ownerReportV3.ts
           test -f lib/telegram/ownerReportV3Loaders.ts
           test -f lib/telegram/ownerReportV3Dynamics.ts
-          grep -q '▲' lib/telegram/dailyReport.ts
-          grep -q '▼' lib/telegram/dailyReport.ts
+          grep -q 'в–І' lib/telegram/dailyReport.ts
+          grep -q 'в–ј' lib/telegram/dailyReport.ts
           grep -q 'aggregateBusinessTop3Family' lib/telegram/ownerReportV3Loaders.ts
           grep -q 'No live marketplace API' lib/telegram/ownerReportV3Loaders.ts
           grep -q 'PERFORMANCE_PARTIAL' lib/telegram/ownerReportV3Loaders.ts
           grep -q 'parseMode' lib/telegram/sendTelegramMessage.ts
-          ! grep -F 'рџ“Љ' lib/telegram/ownerReportV3.ts
+          ! grep -F 'СЂСџвЂњР‰' lib/telegram/ownerReportV3.ts
 
       - uses: actions/setup-node@v4
         with:
@@ -66,7 +66,7 @@ jobs:
       - name: Set tags
         id: tags
         run: |
-          STAMP=20260929_1433
+          STAMP=20260929_1535
           echo "stamp=${STAMP}" >> "$GITHUB_OUTPUT"
           echo "app_tag=avorofin-p0-cogs-app:${STAMP}" >> "$GITHUB_OUTPUT"
           echo "tg_tag=avorofin-p0-cogs-telegram:${STAMP}" >> "$GITHUB_OUTPUT"

@@ -682,14 +682,14 @@ async function loadCabinetTop3(
   const fromDbAll: TopOrderItem[] = [];
   for (const dateIso of dates) {
     const date = parseIsoDate(dateIso);
-    const row = await prisma.marketplaceDailyOrderStat.findUnique({
+    // Order stats are stored at UTC noon by sync; match the whole UTC day.
+    const row = await prisma.marketplaceDailyOrderStat.findFirst({
       where: {
-        companyName_marketplace_orderDate: {
-          companyName,
-          marketplace,
-          orderDate: date,
-        },
+        companyName,
+        marketplace,
+        orderDate: { gte: date, lt: addUtcDays(date, 1) },
       },
+      orderBy: { orderDate: "desc" },
     });
     fromDbAll.push(...extractTopFromRawJson(row?.rawJson));
   }
