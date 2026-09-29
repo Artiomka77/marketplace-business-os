@@ -13,7 +13,7 @@ import {
 } from "@/lib/telegram/sendTelegramMessage";
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 function isRequestAllowed(req: Request) {
   const secret = process.env.TELEGRAM_DAILY_REPORT_SECRET ?? "";
