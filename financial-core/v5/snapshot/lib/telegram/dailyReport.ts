@@ -2241,8 +2241,8 @@ function createReportComparison(
       netCashFlowPrevious: previous.totals.netCashFlow,
       netProfitImpactPercent:
         !combinedUnavailable &&
-        !isPreliminaryFinancialResult(current) &&
-        !isPreliminaryFinancialResult(previous)
+        !hasEstimatedOzonTaxes(current) &&
+        !hasEstimatedOzonTaxes(previous)
           ? percentChange(
               current.totals.netProfitImpact,
               previous.totals.netProfitImpact
@@ -2277,14 +2277,14 @@ function createReportComparison(
         !combinedUnavailable &&
         currentMargin !== null &&
         previousMargin !== null &&
-        !isPreliminaryFinancialResult(current) &&
-        !isPreliminaryFinancialResult(previous)
+        !hasEstimatedOzonTaxes(current) &&
+        !hasEstimatedOzonTaxes(previous)
           ? currentMargin - previousMargin
           : null,
       afterOwnerWithdrawalPercent:
         !combinedUnavailable &&
-        !isPreliminaryFinancialResult(current) &&
-        !isPreliminaryFinancialResult(previous)
+        !hasEstimatedOzonTaxes(current) &&
+        !hasEstimatedOzonTaxes(previous)
           ? percentChange(currentAfter, previousAfter)
           : null,
     },
