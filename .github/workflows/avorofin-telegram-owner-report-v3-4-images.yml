@@ -48,6 +48,9 @@ jobs:
           grep -q 'isSuspectedIncompleteOzonCogsZero' lib/telegram/ownerReportV3Dynamics.ts
           grep -q 'formatAbsMoneyChange' lib/telegram/dailyReport.ts
           grep -q 'netProfitMode' lib/telegram/ownerReportV3Dynamics.ts
+          grep -q 'Кабинет WB' lib/telegram/ownerReportV3.ts
+          grep -q 'formatOwnerPeriodLabel' lib/telegram/ownerReportV3.ts
+          grep -q 'cabinetSpendComplete' lib/telegram/ownerReportV3.ts
           ! grep -E 'Math\.abs\(value\) > 150' lib/telegram/dailyReport.ts
       - uses: actions/setup-node@v4
         with:
@@ -63,13 +66,15 @@ jobs:
           npx prisma generate
           npx tsx --test \
             scripts/architecture/telegramOwnerReportV3.test.ts \
+            scripts/architecture/telegramOwnerReportV3_4.test.ts \
+            scripts/architecture/telegramAdBlockFinal.test.ts \
             scripts/architecture/telegramUtf8Render.test.ts \
             scripts/architecture/dailyAdsPeriodIsolation.test.ts
 
       - name: Set tags
         id: tags
         run: |
-          STAMP=20260929_2015
+          STAMP=20260929_2255
           echo "stamp=${STAMP}" >> "$GITHUB_OUTPUT"
           echo "tg_tag=avorofin-p0-cogs-telegram:${STAMP}" >> "$GITHUB_OUTPUT"
 

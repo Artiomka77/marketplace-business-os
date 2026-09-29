@@ -805,7 +805,8 @@ async function loadWbAdFunnel(
   companyName: string,
   dates: string[],
   economicTurnover: number,
-  financialSpend: number
+  financialSpend: number,
+  financialDrrCanonical: number | null
 ): Promise<
   Pick<
     CabinetAdFunnel,
@@ -821,12 +822,14 @@ async function loadWbAdFunnel(
     | "spendSemantics"
     | "financialSpend"
     | "financialDrr"
+    | "cabinetSpendComplete"
   >
 > {
   let spend = 0;
   let impressionsSum = 0;
   let clicksSum = 0;
   let counterRows = 0;
+  let expenseRowCount = 0;
 
   for (const dateIso of dates) {
     const dateFrom = parseIsoDate(dateIso);
@@ -844,6 +847,7 @@ async function loadWbAdFunnel(
       },
     });
     for (const r of rows) {
+      expenseRowCount += 1;
       spend += toNumber(r.spend);
       if (r.impressions == null && r.clicks == null) {
         /* expense-only row */
@@ -855,46 +859,45 @@ async function loadWbAdFunnel(
     }
   }
 
-  const financialDrr =
-    economicTurnover > 0.0001
-      ? (financialSpend / economicTurnover) * 100
-      : null;
+  const financialDrr = financialDrrCanonical;
+  const cabinetSpendComplete = expenseRowCount > 0;
+  // Never fold P&L into cabinet spend — Message 2 must label sources separately.
+  const cabinetSpend = cabinetSpendComplete ? spend : 0;
 
-  if (counterRows === 0) {
-    // V3.3/V3.4: no live FullStats at Telegram render. Counters require persisted COMPLETE source.
-    const useSpend = spend > 0.5 ? spend : financialSpend;
+  if (!cabinetSpendComplete || counterRows === 0) {
+    // Counters require persisted COMPLETE FullStats coverage.
     return {
-      spend: useSpend,
+      spend: cabinetSpend,
       impressions: null,
       clicks: null,
       ctr: null,
       cpc: null,
       adOrders: null,
       cpo: null,
-      drr:
-        economicTurnover > 0.0001 ? (useSpend / economicTurnover) * 100 : null,
+      drr: null,
       counterStatus: "COUNTERS_MISSING",
-      spendSemantics: "SAME_AS_PNL",
+      spendSemantics: cabinetSpendComplete ? "FUNNEL_ONLY" : "SAME_AS_PNL",
+      cabinetSpendComplete,
       financialSpend,
       financialDrr,
     };
   }
 
-  const useSpend = spend > 0.5 ? spend : financialSpend;
-  const semantics = classifySpendSemantics(useSpend, financialSpend);
+  const semantics = classifySpendSemantics(cabinetSpend, financialSpend);
   // Partial FullStats coverage must not populate owner-facing counters.
   if (semantics === "PERFORMANCE_PARTIAL") {
     return {
-      spend: financialSpend,
+      spend: cabinetSpend,
       impressions: null,
       clicks: null,
       ctr: null,
       cpc: null,
       adOrders: null,
       cpo: null,
-      drr: financialDrr,
+      drr: null,
       counterStatus: "COUNTERS_MISSING",
-      spendSemantics: "SAME_AS_PNL",
+      spendSemantics: "FUNNEL_ONLY",
+      cabinetSpendComplete: true,
       financialSpend,
       financialDrr,
     };
@@ -906,18 +909,19 @@ async function loadWbAdFunnel(
       : "COUNTERS_TRUE_ZERO";
   const ctr =
     impressionsSum > 0 ? (clicksSum / impressionsSum) * 100 : null;
-  const cpc = clicksSum > 0 ? useSpend / clicksSum : null;
+  const cpc = clicksSum > 0 ? cabinetSpend / clicksSum : null;
   return {
-    spend: useSpend,
+    spend: cabinetSpend,
     impressions: impressionsSum,
     clicks: clicksSum,
     ctr,
     cpc,
     adOrders: null,
     cpo: null,
-    drr: economicTurnover > 0.0001 ? (useSpend / economicTurnover) * 100 : null,
+    drr: null,
     counterStatus: status,
-    spendSemantics: semantics,
+    spendSemantics: semantics === "SAME_AS_PNL" ? "SAME_AS_PNL" : "FUNNEL_ONLY",
+    cabinetSpendComplete: true,
     financialSpend,
     financialDrr,
   };
@@ -1035,6 +1039,10 @@ export async function loadOwnerReportV3Extras(
       const metrics = mp === "WB" ? company.wb : company.ozon;
       const eco = metrics.economicTurnover ?? metrics.salesAmount ?? 0;
       const financialSpend = metrics.adSpend ?? 0;
+      const financialDrrCanonical =
+        metrics.financialUnavailable || Math.abs(eco) < 0.0001
+          ? null
+          : metrics.drrByEconomicTurnover;
       const top =
         dates.length > 0
           ? await loadCabinetTop3(company.companyName, mp, dates)
@@ -1069,7 +1077,8 @@ export async function loadOwnerReportV3Extras(
                 company.companyName,
                 dates,
                 eco,
-                financialSpend
+                financialSpend,
+                financialDrrCanonical
               )
             : await loadOzonAdFunnel(
                 company.companyName,
@@ -1078,18 +1087,19 @@ export async function loadOwnerReportV3Extras(
                 financialSpend
               )
           : {
-              spend: financialSpend,
+              spend: mp === "WB" ? 0 : financialSpend,
               impressions: null as number | null,
               clicks: null as number | null,
               ctr: null as number | null,
               cpc: null as number | null,
               adOrders: null as number | null,
               cpo: null as number | null,
-              drr: eco > 0.0001 ? (financialSpend / eco) * 100 : 0,
+              drr: null as number | null,
               counterStatus: "COUNTERS_MISSING" as CounterStatus,
               spendSemantics: "SAME_AS_PNL" as AdSpendSemantics,
+              cabinetSpendComplete: false,
               financialSpend,
-              financialDrr: eco > 0.0001 ? (financialSpend / eco) * 100 : 0,
+              financialDrr: financialDrrCanonical,
             };
       cabinets.push({
         companyName: company.companyName,

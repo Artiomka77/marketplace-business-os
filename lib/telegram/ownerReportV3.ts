@@ -68,6 +68,11 @@ export type CabinetAdFunnel = {
   /** null when eco denominator unavailable — never fake 0%. */
   financialDrr: number | null;
   spendSemantics: AdSpendSemantics;
+  /**
+   * WB cabinet/expense source completeness for Message 2.
+   * false → owner-facing «Расход н/д» (do not fall back to P&L).
+   */
+  cabinetSpendComplete?: boolean;
   impressions: number | null;
   clicks: number | null;
   ctr: number | null;
@@ -124,9 +129,77 @@ function formatRuDateIso(iso: string) {
   return `${m[3]}.${m[2]}.${m[1]}`;
 }
 
-function primaryDateIso(report: DailyReport) {
-  const m = String(report.dateLabel ?? "").match(/\d{4}-\d{2}-\d{2}/);
-  return m?.[0] ?? "";
+const RU_MONTHS_NOM = [
+  "Январь",
+  "Февраль",
+  "Март",
+  "Апрель",
+  "Май",
+  "Июнь",
+  "Июль",
+  "Август",
+  "Сентябрь",
+  "Октябрь",
+  "Ноябрь",
+  "Декабрь",
+] as const;
+
+/** Owner-facing period label: day / week range / calendar month name. */
+export function formatOwnerPeriodLabel(
+  dateLabel: string,
+  periodLabel?: string | null
+): string {
+  const label = String(dateLabel ?? "").trim();
+  const range = label.match(
+    /(\d{4})-(\d{2})-(\d{2})\s*[—\-]\s*(\d{4})-(\d{2})-(\d{2})/
+  );
+  if (range) {
+    const y1 = Number(range[1]);
+    const m1 = Number(range[2]);
+    const d1 = Number(range[3]);
+    const y2 = Number(range[4]);
+    const m2 = Number(range[5]);
+    const d2 = Number(range[6]);
+    const lastDay = new Date(Date.UTC(y2, m2, 0)).getUTCDate();
+    const isFullCalendarMonth =
+      y1 === y2 && m1 === m2 && d1 === 1 && d2 === lastDay;
+    const periodHint = String(periodLabel ?? "").toLowerCase();
+    if (
+      isFullCalendarMonth &&
+      (periodHint.includes("месяц") ||
+        periodHint.includes("period") ||
+        periodHint.includes("выбранный") ||
+        !periodHint.includes("недел"))
+    ) {
+      return `${RU_MONTHS_NOM[m1 - 1]} ${y1}`;
+    }
+    const left = `${String(d1).padStart(2, "0")}.${String(m1).padStart(2, "0")}`;
+    const right = `${String(d2).padStart(2, "0")}.${String(m2).padStart(2, "0")}.${y2}`;
+    if (y1 === y2) {
+      return `${left}–${right}`;
+    }
+    return `${left}.${y1}–${right}`;
+  }
+  const one = label.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (one) return formatRuDateIso(one[0]);
+  const embedded = label.match(/(\d{4}-\d{2}-\d{2})/);
+  if (embedded) return formatRuDateIso(embedded[1]);
+  return label;
+}
+
+function ownerPeriodHeaderWord(report: DailyReport): string {
+  const label = String(report.dateLabel ?? "");
+  const period = String(report.periodLabel ?? "").toLowerCase();
+  if (label.includes("—") || label.includes(" - ") || /\d{4}-\d{2}-\d{2}\s*[—\-]/.test(label)) {
+    return "Период";
+  }
+  if (period.includes("недел") || period.includes("месяц") || period.includes("квартал")) {
+    return "Период";
+  }
+  if (period.includes("вчера") || period.includes("сегодня") || period.includes("день")) {
+    return period.includes("сегодня") ? "Сегодня" : "Вчера";
+  }
+  return "Вчера";
 }
 
 /** Petrov then Lebedeva; other companies keep name asc. */
@@ -321,12 +394,11 @@ export function formatOwnerReportV3Message1(
   report: DailyReport,
   previousReport: DailyReport | null = null
 ): string {
-  const dateIso = primaryDateIso(report);
-  const dateRu = formatRuDateIso(dateIso);
+  const dateRu = formatOwnerPeriodLabel(report.dateLabel, report.periodLabel);
   const comparisonDate = report.comparison
-    ? formatRuDateIso(
-        String(report.comparison.dateLabel).match(/\d{4}-\d{2}-\d{2}/)?.[0] ??
-          report.comparison.dateLabel
+    ? formatOwnerPeriodLabel(
+        report.comparison.dateLabel,
+        report.comparison.periodLabel
       )
     : "";
 
@@ -345,11 +417,7 @@ export function formatOwnerReportV3Message1(
   const afterOwner =
     profit === null ? null : profit - report.totals.ownerWithdrawals;
 
-  const periodWord =
-    report.periodLabel?.toLowerCase().includes("недел") ||
-    String(report.dateLabel).includes("—")
-      ? "Период"
-      : "Вчера";
+  const periodWord = ownerPeriodHeaderWord(report);
   const header = [
     `📊 AvoroFin — сводка собственника`,
     `${periodWord} · ${dateRu}`,
@@ -684,7 +752,64 @@ function formatCounter(value: number | null, status: CounterStatus) {
   return formatNumber(value);
 }
 
+function formatFunnelCounters(funnel: CabinetAdFunnel): string[] {
+  const lines: string[] = [];
+  lines.push(
+    `Показы      ${formatCounter(funnel.impressions, funnel.counterStatus)}`
+  );
+  lines.push(
+    `Клики       ${formatCounter(funnel.clicks, funnel.counterStatus)}`
+  );
+  if (
+    funnel.ctr !== null &&
+    funnel.counterStatus !== "COUNTERS_MISSING" &&
+    funnel.counterStatus !== "COUNTERS_STALE"
+  ) {
+    lines.push(`CTR         ${pct(funnel.ctr)}`);
+  } else if (
+    funnel.counterStatus === "COUNTERS_MISSING" ||
+    funnel.counterStatus === "COUNTERS_STALE"
+  ) {
+    lines.push(`CTR         н/д`);
+  }
+  if (
+    funnel.cpc !== null &&
+    funnel.counterStatus !== "COUNTERS_MISSING" &&
+    funnel.counterStatus !== "COUNTERS_STALE"
+  ) {
+    lines.push(`CPC         ${money(funnel.cpc)}`);
+  } else if (
+    funnel.counterStatus === "COUNTERS_MISSING" ||
+    funnel.counterStatus === "COUNTERS_STALE"
+  ) {
+    lines.push(`CPC         н/д`);
+  }
+  return lines;
+}
+
+/** WB Message 2: cabinet source labeled separately; P&L owns DRR; no second DRR. */
+function formatWbAdFunnelBlock(funnel: CabinetAdFunnel): string {
+  const ecoOk =
+    Number.isFinite(funnel.economicTurnover) &&
+    Math.abs(funnel.economicTurnover) > 0.0001;
+  const drrPnlLabel =
+    ecoOk && funnel.financialDrr !== null ? pct(funnel.financialDrr) : "н/д";
+  const cabinetComplete = funnel.cabinetSpendComplete === true;
+  const spendLabel = cabinetComplete ? money(funnel.spend) : "н/д";
+  const lines: string[] = [
+    `📣 РЕКЛАМА`,
+    `Кабинет WB:`,
+    `Расход      ${spendLabel}`,
+    ...formatFunnelCounters(funnel),
+    `Реклама P&L: ${money(funnel.financialSpend)} · ДРР ${drrPnlLabel}`,
+  ];
+  return lines.join("\n");
+}
+
 function formatAdFunnelBlock(funnel: CabinetAdFunnel) {
+  if (funnel.marketplace === "WB") {
+    return formatWbAdFunnelBlock(funnel);
+  }
   const lines: string[] = [`📣 РЕКЛАМА`];
   const ecoOk =
     Number.isFinite(funnel.economicTurnover) &&
@@ -696,36 +821,7 @@ function formatAdFunnelBlock(funnel: CabinetAdFunnel) {
   if (funnel.spendSemantics === "PERFORMANCE_PARTIAL") {
     lines.push(`Performance:`);
     lines.push(`Расход      ${money(funnel.spend)}`);
-    lines.push(
-      `Показы      ${formatCounter(funnel.impressions, funnel.counterStatus)}`
-    );
-    lines.push(
-      `Клики       ${formatCounter(funnel.clicks, funnel.counterStatus)}`
-    );
-    if (
-      funnel.ctr !== null &&
-      funnel.counterStatus !== "COUNTERS_MISSING" &&
-      funnel.counterStatus !== "COUNTERS_STALE"
-    ) {
-      lines.push(`CTR         ${pct(funnel.ctr)}`);
-    } else if (
-      funnel.counterStatus === "COUNTERS_MISSING" ||
-      funnel.counterStatus === "COUNTERS_STALE"
-    ) {
-      lines.push(`CTR         н/д`);
-    }
-    if (
-      funnel.cpc !== null &&
-      funnel.counterStatus !== "COUNTERS_MISSING" &&
-      funnel.counterStatus !== "COUNTERS_STALE"
-    ) {
-      lines.push(`CPC         ${money(funnel.cpc)}`);
-    } else if (
-      funnel.counterStatus === "COUNTERS_MISSING" ||
-      funnel.counterStatus === "COUNTERS_STALE"
-    ) {
-      lines.push(`CPC         н/д`);
-    }
+    lines.push(...formatFunnelCounters(funnel));
     if (funnel.adOrders !== null) {
       lines.push(`Рекл. заказы ${formatNumber(funnel.adOrders)}`);
     }
@@ -737,36 +833,7 @@ function formatAdFunnelBlock(funnel: CabinetAdFunnel) {
     lines.push(
       `Расход      ${money(funnel.spend)} · ДРР ${drrPerfLabel}`
     );
-    lines.push(
-      `Показы      ${formatCounter(funnel.impressions, funnel.counterStatus)}`
-    );
-    lines.push(
-      `Клики       ${formatCounter(funnel.clicks, funnel.counterStatus)}`
-    );
-    if (
-      funnel.ctr !== null &&
-      funnel.counterStatus !== "COUNTERS_MISSING" &&
-      funnel.counterStatus !== "COUNTERS_STALE"
-    ) {
-      lines.push(`CTR         ${pct(funnel.ctr)}`);
-    } else if (
-      funnel.counterStatus === "COUNTERS_MISSING" ||
-      funnel.counterStatus === "COUNTERS_STALE"
-    ) {
-      lines.push(`CTR         н/д`);
-    }
-    if (
-      funnel.cpc !== null &&
-      funnel.counterStatus !== "COUNTERS_MISSING" &&
-      funnel.counterStatus !== "COUNTERS_STALE"
-    ) {
-      lines.push(`CPC         ${money(funnel.cpc)}`);
-    } else if (
-      funnel.counterStatus === "COUNTERS_MISSING" ||
-      funnel.counterStatus === "COUNTERS_STALE"
-    ) {
-      lines.push(`CPC         н/д`);
-    }
+    lines.push(...formatFunnelCounters(funnel));
     if (funnel.adOrders !== null) {
       lines.push(`Рекл. заказы ${formatNumber(funnel.adOrders)}`);
     }
@@ -779,8 +846,7 @@ export function formatOwnerReportV3Message2(
   report: DailyReport,
   extras: OwnerReportV3Extras
 ): string {
-  const dateIso = primaryDateIso(report);
-  const dateRu = formatRuDateIso(dateIso);
+  const dateRu = formatOwnerPeriodLabel(report.dateLabel, report.periodLabel);
   const top = extras.businessTop3.slice(0, 3);
   const topQty = top.reduce((s, x) => s + x.qty, 0);
   const topAmt = top.reduce((s, x) => s + x.amount, 0);
@@ -844,6 +910,7 @@ export function formatOwnerReportV3Message2(
         financialSpend: metrics.adSpend,
         financialDrr: drrFallback,
         spendSemantics: "SAME_AS_PNL",
+        cabinetSpendComplete: mp === "WB" ? false : true,
         impressions: null,
         clicks: null,
         ctr: null,
