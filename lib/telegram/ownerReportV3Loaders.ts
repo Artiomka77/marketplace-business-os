@@ -991,11 +991,11 @@ export async function loadOwnerReportV3Extras(
             };
       if (top.source === "TRUE_ORDERS") availableCabinets += 1;
 
-      let topItems = top.items.map((t) => ({
+      let topItems: TopOrderItem[] = top.items.map((t) => ({
         ...t,
         companyName: company.companyName,
         marketplace: mp,
-        secondaryTitle: null as string | null,
+        secondaryTitle: null,
       }));
       if (mp === "OZON" && topItems.length > 0) {
         const enriched = await enrichOzonTopItems(
