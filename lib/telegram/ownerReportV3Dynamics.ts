@@ -6,7 +6,7 @@ import type { DailyReport } from "@/lib/telegram/dailyReport";
 import {
   compactChangeSuffix,
   compactPointSuffix,
-} from "@/lib/telegram/dailyReport";
+} from "@/lib/telegram/ownerReportFormatHelpers";
 
 export type MetricSnapshot = {
   ordersQty: number;

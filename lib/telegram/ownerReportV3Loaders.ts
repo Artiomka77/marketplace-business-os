@@ -1,7 +1,7 @@
 /**
  * Loaders for Owner Report V3.2 — TOP-3 (human Ozon id + photo) + ad funnel.
  */
-import { extractSizedOfferBaseNmId } from "@/lib/analytics/productCostResolver";
+import { extractSizedOfferBaseNmId } from "@/lib/analytics/canonicalUnitCost";
 import { prisma } from "@/lib/prisma";
 import type { DailyReport } from "@/lib/telegram/dailyReport";
 import type {

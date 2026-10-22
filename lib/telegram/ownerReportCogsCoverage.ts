@@ -2,8 +2,8 @@ import { prisma } from "@/lib/prisma";
 import {
   buildCanonicalPositiveCostLookups,
   normalizeProductCostKey,
-  resolveCanonicalUnitCost,
 } from "@/lib/analytics/productCostResolver";
+import { resolveCanonicalUnitCost } from "@/lib/analytics/canonicalUnitCost";
 import { getProfitAnalyticsOzon } from "@/lib/analytics/profitAnalyticsOzon";
 import {
   classifyCanonicalWbProductOperation,

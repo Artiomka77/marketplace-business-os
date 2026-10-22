@@ -3,7 +3,7 @@
  * No fuzzy matching. Persists into canonical OzonProduct (+ optional SpecialSkuAlias).
  */
 import { prisma } from "@/lib/prisma";
-import { extractSizedOfferBaseNmId } from "@/lib/analytics/productCostResolver";
+import { extractSizedOfferBaseNmId } from "@/lib/analytics/canonicalUnitCost";
 
 export type ExactOzonSkuHydrateEvidence = {
   companyName: string;

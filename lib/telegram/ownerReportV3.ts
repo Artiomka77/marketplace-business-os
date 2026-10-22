@@ -7,12 +7,12 @@
 import type { DailyReport } from "@/lib/telegram/dailyReport";
 import {
   formatCompactMoney,
-  formatCompactSignedMoney,
   formatMoney,
   formatNumber,
   formatPercent,
   formatSignedMoney,
 } from "@/lib/telegram/dailyReport";
+import { formatCompactSignedMoney } from "@/lib/telegram/ownerReportFormatHelpers";
 import {
   formatOzonUnclassifiedOwnerWarning,
   parseUnclassifiedAdjustmentAmount,
