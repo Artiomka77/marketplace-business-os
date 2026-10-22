@@ -3,10 +3,18 @@
  * Uses existing DailyReport pairs only; no second financial path.
  */
 import type { DailyReport } from "@/lib/telegram/dailyReport";
+import { isMarketplaceFinancialUnavailable } from "@/lib/telegram/dailyReportDisplay";
 import {
   compactChangeSuffix,
   compactPointSuffix,
 } from "@/lib/telegram/ownerReportFormatHelpers";
+
+type MarketplaceMetricsInput = DailyReport["companies"][0]["wb"] & {
+  financialUnavailable?: boolean;
+  totalCost?: number | null;
+  netProfitUnavailable?: boolean;
+  stockQty?: number;
+};
 
 export type MetricSnapshot = {
   ordersQty: number;
@@ -69,10 +77,8 @@ function marginOf(profit: number | null, eco: number): number | null {
   return (profit / eco) * 100;
 }
 
-function marketplaceSnapshot(
-  m: DailyReport["companies"][0]["wb"]
-): MetricSnapshot {
-  const unavailable = Boolean(m.financialUnavailable);
+function marketplaceSnapshot(m: MarketplaceMetricsInput): MetricSnapshot {
+  const unavailable = isMarketplaceFinancialUnavailable(m);
   const eco = unavailable ? 0 : m.economicTurnover ?? m.salesAmount ?? 0;
   const cogs =
     unavailable || m.totalCost === undefined || m.totalCost === null
@@ -109,7 +115,11 @@ function companySnapshot(c: DailyReport["companies"][0]): MetricSnapshot {
       ? null
       : (wb.totalCost ?? 0) + (oz.totalCost ?? 0);
   const profit =
-    unavailable || c.wb.netProfitUnavailable
+    unavailable ||
+    Boolean(
+      (c.wb as MarketplaceMetricsInput).netProfitUnavailable ||
+        (c.ozon as MarketplaceMetricsInput).netProfitUnavailable
+    )
       ? null
       : (wb.netProfit ?? 0) +
         (oz.netProfit ?? 0) +

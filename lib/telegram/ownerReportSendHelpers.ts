@@ -68,8 +68,16 @@ export async function executeOwnerMorningGateSend(params: {
 
   const report = await buildDailyReport({ date: businessDate });
   if (
-    report.combinedFinancialUnavailable ||
-    report.companies.some((c) => c.ozon?.financialUnavailable)
+    Boolean(
+      (report as { combinedFinancialUnavailable?: boolean })
+        .combinedFinancialUnavailable
+    ) ||
+    report.companies.some((c) =>
+      Boolean(
+        (c.ozon as { financialUnavailable?: boolean } | undefined)
+          ?.financialUnavailable
+      )
+    )
   ) {
     return {
       businessDate,

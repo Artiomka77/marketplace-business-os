@@ -12,7 +12,13 @@ import {
   formatPercent,
   formatSignedMoney,
 } from "@/lib/telegram/dailyReport";
+import { isMarketplaceFinancialUnavailable } from "@/lib/telegram/dailyReportDisplay";
 import { formatCompactSignedMoney } from "@/lib/telegram/ownerReportFormatHelpers";
+
+type MarketplaceMetricsInput = DailyReport["companies"][0]["wb"] & {
+  financialUnavailable?: boolean;
+  netProfitUnavailable?: boolean;
+};
 import {
   formatOzonUnclassifiedOwnerWarning,
   parseUnclassifiedAdjustmentAmount,
@@ -223,7 +229,7 @@ function formatCompactMarketplaceCabinet(
   emoji: string,
   companyName: string,
   label: string,
-  m: DailyReport["companies"][0]["wb"],
+  m: MarketplaceMetricsInput,
   dyn: LevelDynamics | null = null,
   profitPreliminary = false,
 ) {
@@ -240,8 +246,9 @@ function formatCompactMarketplaceCabinet(
     percent: dyn?.economicTurnoverPercent ?? null,
     fromZero: dyn?.economicTurnoverFromZero,
   });
+  const unavailable = isMarketplaceFinancialUnavailable(m);
 
-  if (m.financialUnavailable) {
+  if (unavailable) {
     return [
       `${emoji} ${shortName} · ${label}`,
       `⚠️ Финансовые данные неполны — не равны 0 ₽.`,
@@ -256,7 +263,7 @@ function formatCompactMarketplaceCabinet(
   const drrLabel = formatDrrLabel({
     drr: m.drrByEconomicTurnover,
     denominator: ecoOf(m),
-    financialUnavailable: m.financialUnavailable,
+    financialUnavailable: unavailable,
   });
   const profitLine =
     profit === null
@@ -280,7 +287,10 @@ function formatCompactMarketplaceCabinet(
 }
 
 function buildAttentionItems(report: DailyReport): string[] {
-  const combinedUnavailable = Boolean(report.combinedFinancialUnavailable);
+  const combinedUnavailable = Boolean(
+    (report as { combinedFinancialUnavailable?: boolean })
+      .combinedFinancialUnavailable
+  );
   const profit = combinedUnavailable ? null : report.totals.netProfitImpact;
   const items: string[] = [];
   const seen = new Set<string>();
@@ -303,7 +313,8 @@ function buildAttentionItems(report: DailyReport): string[] {
   let unclassifiedAbs = 0;
   for (const c of report.companies) {
     const amount = parseUnclassifiedAdjustmentAmount(
-      c.ozon.ozonMissingEvidence ?? null,
+      (c.ozon as { ozonMissingEvidence?: string | null }).ozonMissingEvidence ??
+        null,
     );
     if (amount != null) unclassifiedAbs += amount;
   }
@@ -313,10 +324,10 @@ function buildAttentionItems(report: DailyReport): string[] {
 
   for (const c of sortCompaniesOwnerOrder(report.companies)) {
     for (const item of [
-      { mp: "WB" as const, m: c.wb },
-      { mp: "Ozon" as const, m: c.ozon },
+      { mp: "WB" as const, m: c.wb as MarketplaceMetricsInput },
+      { mp: "Ozon" as const, m: c.ozon as MarketplaceMetricsInput },
     ]) {
-      if (item.m.financialUnavailable) {
+      if (isMarketplaceFinancialUnavailable(item.m)) {
         push(
           `⚠️ ${c.companyName} · ${item.mp}: нет полного финансового источника`
         );
@@ -374,7 +385,10 @@ export function formatOwnerReportV3Message1(
     previousReport ?? report.previousReport ?? null;
   const levelMaps = buildLevelComparisonMaps(report, prev);
 
-  const combinedUnavailable = Boolean(report.combinedFinancialUnavailable);
+  const combinedUnavailable = Boolean(
+    (report as { combinedFinancialUnavailable?: boolean })
+      .combinedFinancialUnavailable
+  );
   const eco = report.totals.economicTurnover;
   const profit = combinedUnavailable ? null : report.totals.netProfitImpact;
   const marg = profit === null ? null : margin(profit, eco);

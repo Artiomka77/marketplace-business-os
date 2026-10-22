@@ -20,6 +20,7 @@ import { calculateFinanceMetricsForRows } from "@/lib/finance/financeMetrics";
 import { getEffectiveFinanceTransactions } from "@/lib/finance/effectiveFinanceTransactions";
 import { prisma } from "@/lib/prisma";
 import { buildDailyReport } from "@/lib/telegram/dailyReport";
+import { isMarketplaceFinancialUnavailable } from "@/lib/telegram/dailyReportDisplay";
 
 import {
   FINANCIAL_CORE_V6_PERIOD_READMODEL_V1,
@@ -324,8 +325,8 @@ export async function buildV6DashboardPeriodCompanyRows(params: {
     const totalRevenue =
       wbRevenue == null || ozonRevenue == null ? null : wbRevenue + ozonRevenue;
     const marketplaceFinancialPartial =
-      companyReport?.wb.financialUnavailable === true ||
-      companyReport?.ozon.financialUnavailable === true;
+      isMarketplaceFinancialUnavailable(companyReport?.wb) ||
+      isMarketplaceFinancialUnavailable(companyReport?.ozon);
     const operatingProfitAfterTax = marketplaceFinancialPartial
       ? null
       : wbNetProfitAfterTax + ozonNetProfitAfterTax;
@@ -386,10 +387,14 @@ export async function buildV6DashboardPeriodCompanyRows(params: {
       ozonRevenue,
       totalRevenue,
       operatingProfitAfterTax,
-      wbOperatingProfitAfterTax: companyReport?.wb.financialUnavailable
+      wbOperatingProfitAfterTax: isMarketplaceFinancialUnavailable(
+        companyReport?.wb
+      )
         ? null
         : wbNetProfitAfterTax,
-      ozonOperatingProfitAfterTax: companyReport?.ozon.financialUnavailable
+      ozonOperatingProfitAfterTax: isMarketplaceFinancialUnavailable(
+        companyReport?.ozon
+      )
         ? null
         : ozonNetProfitAfterTax,
       netProfit,
