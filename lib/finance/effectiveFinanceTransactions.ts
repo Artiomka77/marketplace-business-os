@@ -23,7 +23,6 @@ import {
   getPaymentInterest,
   getPaymentPrincipal,
   getPaymentTotal,
-  isCreditCardLoan,
 } from "@/lib/finance/loanState";
 import { toMoscowDateKey } from "@/lib/finance/loanBusinessDate";
 
@@ -161,6 +160,16 @@ function isInterestCategory(category: string): boolean {
   );
 }
 
+function isCreditCardPrincipalFact(row: {
+  category: string;
+  sourceType: string | null;
+}): boolean {
+  if (row.sourceType === "CREDIT_CARD_MIN_PAYMENT") return true;
+  const c = (row.category || "").toLowerCase();
+  // Credit-card cash events are principal (grace-period interest=0 model).
+  return c.includes("кредитн") && c.includes("карт");
+}
+
 function matchesKind(
   row: { category: string; sourceType: string | null },
   kind: "principal" | "interest",
@@ -168,10 +177,13 @@ function matchesKind(
   if (kind === "principal") {
     return (
       isPrincipalCategory(row.category) ||
+      isCreditCardPrincipalFact(row) ||
       row.sourceType === "LOAN_PAYMENT_PRINCIPAL" ||
       row.sourceType === "LOAN_PAYMENT"
     );
   }
+  // Credit-card min payments are never interest coverage.
+  if (row.sourceType === "CREDIT_CARD_MIN_PAYMENT") return false;
   return (
     isInterestCategory(row.category) ||
     row.sourceType === "LOAN_PAYMENT_INTEREST" ||
@@ -345,8 +357,10 @@ export async function getEffectiveFinanceTransactions(
   const unsupportedResiduals: EffectiveFactUnsupportedResidual[] = [];
 
   for (const loan of loans as any[]) {
-    if (isCreditCardLoan(loan)) continue;
-
+    // Credit-card loans use the same due-schedule → effective FACT path as
+    // amortizing loans. Explicit FACT (incl. CREDIT_CARD_MIN_PAYMENT linked by
+    // sourceId=LoanPayment.id) dedupes via hasExplicitFactCovering — never skip
+    // the loan type, and never double-count PLAN+FACT for the same payment.
     const early = earlyByLoan.get(loan.id) ?? null;
     const payments = (loan.payments || []) as Array<{
       id: string;

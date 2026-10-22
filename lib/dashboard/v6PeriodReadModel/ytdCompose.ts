@@ -100,16 +100,20 @@ export function enumerateMonthPartitions(
   return out;
 }
 
+/**
+ * Per-metric YTD sum with completeness: if any month partition is missing a
+ * required numeric (null/undefined/non-finite), the YTD metric is null —
+ * never a false "full" total from partial months. Known 0 is valid.
+ */
 function sumOrNull(values: Array<number | null | undefined>): number | null {
+  if (values.length === 0) return null;
   let sum = 0;
-  let any = false;
   for (const v of values) {
-    if (v === null || v === undefined) continue;
-    if (typeof v !== "number" || !Number.isFinite(v)) continue;
-    any = true;
+    if (v === null || v === undefined) return null;
+    if (typeof v !== "number" || !Number.isFinite(v)) return null;
     sum += v;
   }
-  return any ? sum : null;
+  return sum;
 }
 
 function sumFinite(values: Array<number | null | undefined>): number {
@@ -184,6 +188,25 @@ function composePayloadFromMonths(params: {
   const ordersAmount = sumFinite(payloads.map((p) => p.ordersAmount));
   const ordersQty = sumFinite(payloads.map((p) => p.ordersQty));
 
+  // Point-in-time stock/ABC from the LAST month partition only — never sum
+  // months, never hardcode zeros for ABC/warehouse when the end snapshot exists.
+  const pointOrNull = (
+    key:
+      | "wbStockQty"
+      | "ozonStockQty"
+      | "warehouseStockQty"
+      | "wbAbcA"
+      | "wbAbcB"
+      | "wbAbcC"
+      | "ozonAbcA"
+      | "ozonAbcB"
+      | "ozonAbcC",
+  ): number | null => {
+    if (!last) return null;
+    const v = last[key];
+    return typeof v === "number" && Number.isFinite(v) ? v : null;
+  };
+
   return {
     companyName: params.scope,
     ordersQty,
@@ -213,15 +236,17 @@ function composePayloadFromMonths(params: {
     personalExpenses: params.finance.ownerWithdrawals,
     financialExpenses: params.finance.creditInterest,
     cashOnlyExpenses: params.finance.cashOnlyTotal,
-    wbStockQty: last?.wbStockQty ?? 0,
-    ozonStockQty: last?.ozonStockQty ?? 0,
-    warehouseStockQty: 0,
-    wbAbcA: 0,
-    wbAbcB: 0,
-    wbAbcC: 0,
-    ozonAbcA: 0,
-    ozonAbcB: 0,
-    ozonAbcC: 0,
+    // Contract fields are numbers; null→NaN so JSON/UI can treat as unavailable
+    // without a trusted invented 0 for missing end-of-period snapshot.
+    wbStockQty: pointOrNull("wbStockQty") ?? Number.NaN,
+    ozonStockQty: pointOrNull("ozonStockQty") ?? Number.NaN,
+    warehouseStockQty: pointOrNull("warehouseStockQty") ?? Number.NaN,
+    wbAbcA: pointOrNull("wbAbcA") ?? Number.NaN,
+    wbAbcB: pointOrNull("wbAbcB") ?? Number.NaN,
+    wbAbcC: pointOrNull("wbAbcC") ?? Number.NaN,
+    ozonAbcA: pointOrNull("ozonAbcA") ?? Number.NaN,
+    ozonAbcB: pointOrNull("ozonAbcB") ?? Number.NaN,
+    ozonAbcC: pointOrNull("ozonAbcC") ?? Number.NaN,
     wbSourceOwnershipFinal: payloads.every(
       (p) => p.wbSourceOwnershipFinal === true
     ),
