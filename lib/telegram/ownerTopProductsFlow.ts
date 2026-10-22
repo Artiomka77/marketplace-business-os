@@ -9,8 +9,8 @@ import { getProfitAnalyticsOzon } from "@/lib/analytics/profitAnalyticsOzon";
 import { prisma } from "@/lib/prisma";
 import {
   formatCompactMoney,
-  formatCompactSignedMoney,
 } from "@/lib/telegram/dailyReport";
+import { formatCompactSignedMoney } from "@/lib/telegram/ownerReportFormatHelpers";
 import { loadCompleteOrderUniverse } from "@/lib/telegram/ownerTopOrderUniverse";
 import {
   derivedMarginPct,
