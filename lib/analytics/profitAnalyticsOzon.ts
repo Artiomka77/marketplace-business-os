@@ -174,6 +174,11 @@ function formatDateKey(date: Date) {
   return date.toISOString().slice(0, 10);
 }
 
+function dateKeyToDayNumber(value: string) {
+  const [year, month, day] = value.split("-").map(Number);
+  return Math.floor(Date.UTC(year, month - 1, day) / 86_400_000);
+}
+
 function expectedDateKeys(dateFrom: string, dateTo: string) {
   const result: string[] = [];
   const current = startOfDay(dateFrom);
@@ -189,6 +194,113 @@ function expectedDateKeys(dateFrom: string, dateTo: string) {
 
 function findMissingDateKeys(expected: string[], actual: Set<string>) {
   return expected.filter((dateKey) => !actual.has(dateKey));
+}
+
+type PeriodSummaryInterval = {
+  dateFrom: Date | string;
+  dateTo: Date | string;
+};
+
+function getPeriodSummaryDateKey(value: Date | string) {
+  return value instanceof Date
+    ? formatDateKey(value)
+    : String(value).slice(0, 10);
+}
+
+function selectExactPeriodSummaryCoverage<T extends PeriodSummaryInterval>(
+  rows: T[],
+  dateFrom: string,
+  dateTo: string,
+) {
+  const selectedStart = dateKeyToDayNumber(dateFrom);
+  const selectedEnd = dateKeyToDayNumber(dateTo);
+
+  const normalized = rows
+    .map((row) => {
+      const startKey = getPeriodSummaryDateKey(row.dateFrom);
+      const endKey = getPeriodSummaryDateKey(row.dateTo);
+      const start = dateKeyToDayNumber(startKey);
+      const end = dateKeyToDayNumber(endKey);
+
+      return {
+        row,
+        start: Math.min(start, end),
+        end: Math.max(start, end),
+      };
+    })
+    .filter(
+      (item) =>
+        item.start >= selectedStart &&
+        item.end <= selectedEnd,
+    );
+
+  const rowsByStart = new Map<number, typeof normalized>();
+
+  for (const item of normalized) {
+    const current = rowsByStart.get(item.start) ?? [];
+    current.push(item);
+    rowsByStart.set(item.start, current);
+  }
+
+  for (const items of rowsByStart.values()) {
+    items.sort((left, right) => right.end - left.end);
+  }
+
+  const bestByNextDay = new Map<number, T[]>();
+  bestByNextDay.set(selectedStart, []);
+
+  for (
+    let dayNumber = selectedStart;
+    dayNumber <= selectedEnd;
+    dayNumber += 1
+  ) {
+    const currentPath = bestByNextDay.get(dayNumber);
+
+    if (!currentPath) {
+      continue;
+    }
+
+    for (const item of rowsByStart.get(dayNumber) ?? []) {
+      const nextDay = item.end + 1;
+      const candidatePath = [...currentPath, item.row];
+      const existingPath = bestByNextDay.get(nextDay);
+
+      if (!existingPath || candidatePath.length < existingPath.length) {
+        bestByNextDay.set(nextDay, candidatePath);
+      }
+    }
+  }
+
+  return bestByNextDay.get(selectedEnd + 1) ?? null;
+}
+
+function getMissingPeriodSummaryDays<T extends PeriodSummaryInterval>(
+  rows: T[],
+  dateFrom: string,
+  dateTo: string,
+) {
+  const expected = expectedDateKeys(dateFrom, dateTo);
+  const selectedStart = dateKeyToDayNumber(dateFrom);
+  const selectedEnd = dateKeyToDayNumber(dateTo);
+  const covered = new Set<string>();
+
+  for (const row of rows) {
+    const startKey = getPeriodSummaryDateKey(row.dateFrom);
+    const endKey = getPeriodSummaryDateKey(row.dateTo);
+    const start = dateKeyToDayNumber(startKey);
+    const end = dateKeyToDayNumber(endKey);
+
+    if (start < selectedStart || end > selectedEnd) {
+      continue;
+    }
+
+    for (let dayNumber = start; dayNumber <= end; dayNumber += 1) {
+      const date = new Date(dayNumber * 86_400_000);
+      covered.add(formatDateKey(date));
+    }
+  }
+
+  return findMissingDateKeys(expected, covered);
 }
 
 function signedOzonExpenseAmount(value: unknown) {
@@ -260,6 +372,13 @@ export type OzonProfitTotals = {
   discountPointsSource: string;
   discountPointsCoverageComplete: boolean;
   discountPointsMissingDays: string[];
+
+  taxCalculationMode:
+    | "FINAL_TAXABLE_REVENUE"
+    | "ESTIMATED_ECONOMIC_TURNOVER";
+  taxCalculationBase: number;
+  taxesEstimated: boolean;
+  netProfitStatus: "FINAL" | "PRELIMINARY";
 
   sellerPayout: number;
 
@@ -831,8 +950,9 @@ function applyOzonEconomicModel(
     result.totals.returnedAmount = returnedAmount;
     result.totals.partnerProgramsAmount = partnerProgramsAmount;
   } else {
-    // Нет полного источника налоговой выручки за выбранный период.
-    // Не подменяем налоговую выручку экономическим оборотом: это разные показатели.
+    // Налоговая выручка ещё не закрыта отчётом начислений.
+    // Управленческая экономика продолжает считаться от экономического оборота.
+    // Точный налог будет заменён после появления отчёта реализации.
     result.totals.taxableRevenue = 0;
   }
 
@@ -849,9 +969,20 @@ function applyOzonEconomicModel(
       ? result.totals.economicTurnover
       : result.totals.revenue;
 
+  result.totals.taxCalculationMode = realizationCoverageComplete
+    ? "FINAL_TAXABLE_REVENUE"
+    : "ESTIMATED_ECONOMIC_TURNOVER";
+  result.totals.taxCalculationBase = realizationCoverageComplete
+    ? result.totals.revenue
+    : result.totals.economicTurnover;
+  result.totals.taxesEstimated = !realizationCoverageComplete;
+  result.totals.netProfitStatus = realizationCoverageComplete
+    ? "FINAL"
+    : "PRELIMINARY";
+
   result.totals.taxesAmount =
-    result.totals.revenue * (usnRate / 100) +
-    calculateVatTax(result.totals.revenue, vatRate);
+    result.totals.taxCalculationBase * (usnRate / 100) +
+    calculateVatTax(result.totals.taxCalculationBase, vatRate);
 
   applyOzonFinancialCategoryFactsToTotals(
     result.totals,
@@ -930,6 +1061,11 @@ function createEmptyTotals(
     discountPointsSource: "NONE",
     discountPointsCoverageComplete: true,
     discountPointsMissingDays: [],
+
+    taxCalculationMode: "FINAL_TAXABLE_REVENUE",
+    taxCalculationBase: 0,
+    taxesEstimated: false,
+    netProfitStatus: "FINAL",
 
     sellerPayout: 0,
 
@@ -1049,6 +1185,7 @@ function mergeOzonTotals(
     "compensationAmount",
     "excludedLoansFactoringAmount",
     "marginProfit",
+    "taxCalculationBase",
     "taxesAmount",
     "netProfitAfterTax",
   ];
@@ -1079,6 +1216,13 @@ function mergeOzonTotals(
   result.discountPointsSource = result.discountPointsCoverageComplete
     ? "MERGED_COMPLETE"
     : "MERGED_INCOMPLETE";
+  result.taxCalculationMode = result.taxRevenueCoverageComplete
+    ? "FINAL_TAXABLE_REVENUE"
+    : "ESTIMATED_ECONOMIC_TURNOVER";
+  result.taxesEstimated = !result.taxRevenueCoverageComplete;
+  result.netProfitStatus = result.taxRevenueCoverageComplete
+    ? "FINAL"
+    : "PRELIMINARY";
 
   return finalizeOzonTotals(result);
 }
@@ -1402,13 +1546,16 @@ function calculateRowsAndTotals({
     const salesAmount = toNumber(financeRow.salesAmount);
     const totalAmount = toNumber(financeRow.totalAmount);
 
-    if (salesAmount > 0 || quantity > 0) {
+    // Cost of goods belongs only to real product sales and returns.
+    // Service rows may carry quantity and positive reversals, so quantity or
+    // totalAmount must never be used as sale/return classifiers.
+    if (salesAmount > 0) {
       current.salesQty += quantity;
       current.netSalesQty += quantity;
       current.totalCost += current.costPrice * quantity;
     }
 
-    if (salesAmount < 0 || totalAmount < 0) {
+    if (salesAmount < 0) {
       current.returnsQty += quantity;
       current.netSalesQty -= quantity;
       current.totalCost -= current.costPrice * quantity;
@@ -1607,57 +1754,16 @@ async function findOzonRealizationSummaryByPeriod(params?: {
 }): Promise<OzonRealizationSummaryRecord | null> {
   if (!params?.dateFrom || !params?.dateTo) return null;
 
-  const expected = expectedDateKeys(params.dateFrom, params.dateTo);
-
-  const exactRows = params.companyName
-    ? await prisma.$queryRaw<OzonRealizationSummaryRecord[]>`
-        SELECT
-          COALESCE(SUM("realizedAmount"), 0) AS "realizedAmount",
-          COALESCE(SUM("returnedAmount"), 0) AS "returnedAmount",
-          COALESCE(SUM("taxableRevenue"), 0) AS "taxableRevenue",
-          COALESCE(SUM("partnerProgramsAmount"), 0) AS "partnerProgramsAmount",
-          COUNT(*)::int AS "rows"
-        FROM "OzonRealizationSummary"
-        WHERE "dateFrom"::date = CAST(${params.dateFrom} AS date)
-          AND "dateTo"::date = CAST(${params.dateTo} AS date)
-          AND "companyName" = ${params.companyName}
-      `
-    : await prisma.$queryRaw<OzonRealizationSummaryRecord[]>`
-        SELECT
-          COALESCE(SUM("realizedAmount"), 0) AS "realizedAmount",
-          COALESCE(SUM("returnedAmount"), 0) AS "returnedAmount",
-          COALESCE(SUM("taxableRevenue"), 0) AS "taxableRevenue",
-          COALESCE(SUM("partnerProgramsAmount"), 0) AS "partnerProgramsAmount",
-          COUNT(*)::int AS "rows"
-        FROM "OzonRealizationSummary"
-        WHERE "dateFrom"::date = CAST(${params.dateFrom} AS date)
-          AND "dateTo"::date = CAST(${params.dateTo} AS date)
-      `;
-
-  const exactSummary = exactRows[0];
-  const exactAmount =
-    Math.abs(toNumber(exactSummary?.realizedAmount)) +
-    Math.abs(toNumber(exactSummary?.returnedAmount)) +
-    Math.abs(toNumber(exactSummary?.taxableRevenue)) +
-    Math.abs(toNumber(exactSummary?.partnerProgramsAmount));
-
-  if (exactSummary && exactAmount > 0.005) {
-    return {
-      ...exactSummary,
-      source: "exact-period",
-      coverageComplete: true,
-      missingDays: [],
-    };
-  }
-
-  type DailyRealizationSummary = OzonRealizationSummaryRecord & {
-    dateKey: Date | string;
+  type IntervalRow = OzonRealizationSummaryRecord & {
+    dateFrom: Date | string;
+    dateTo: Date | string;
   };
 
-  const dailyRows = params.companyName
-    ? await prisma.$queryRaw<DailyRealizationSummary[]>`
+  const rows = params.companyName
+    ? await prisma.$queryRaw<IntervalRow[]>`
         SELECT
-          "dateFrom"::date AS "dateKey",
+          "dateFrom"::date AS "dateFrom",
+          "dateTo"::date AS "dateTo",
           COALESCE(SUM("realizedAmount"), 0) AS "realizedAmount",
           COALESCE(SUM("returnedAmount"), 0) AS "returnedAmount",
           COALESCE(SUM("taxableRevenue"), 0) AS "taxableRevenue",
@@ -1666,13 +1772,14 @@ async function findOzonRealizationSummaryByPeriod(params?: {
         FROM "OzonRealizationSummary"
         WHERE "dateFrom"::date >= CAST(${params.dateFrom} AS date)
           AND "dateTo"::date <= CAST(${params.dateTo} AS date)
-          AND "dateFrom"::date = "dateTo"::date
           AND "companyName" = ${params.companyName}
-        GROUP BY "dateFrom"::date
+        GROUP BY "dateFrom"::date, "dateTo"::date
+        ORDER BY "dateFrom"::date, "dateTo"::date
       `
-    : await prisma.$queryRaw<DailyRealizationSummary[]>`
+    : await prisma.$queryRaw<IntervalRow[]>`
         SELECT
-          "dateFrom"::date AS "dateKey",
+          "dateFrom"::date AS "dateFrom",
+          "dateTo"::date AS "dateTo",
           COALESCE(SUM("realizedAmount"), 0) AS "realizedAmount",
           COALESCE(SUM("returnedAmount"), 0) AS "returnedAmount",
           COALESCE(SUM("taxableRevenue"), 0) AS "taxableRevenue",
@@ -1681,20 +1788,17 @@ async function findOzonRealizationSummaryByPeriod(params?: {
         FROM "OzonRealizationSummary"
         WHERE "dateFrom"::date >= CAST(${params.dateFrom} AS date)
           AND "dateTo"::date <= CAST(${params.dateTo} AS date)
-          AND "dateFrom"::date = "dateTo"::date
-        GROUP BY "dateFrom"::date
+        GROUP BY "dateFrom"::date, "dateTo"::date
+        ORDER BY "dateFrom"::date, "dateTo"::date
       `;
 
-  const actual = new Set(
-    dailyRows.map((row) =>
-      row.dateKey instanceof Date
-        ? formatDateKey(row.dateKey)
-        : String(row.dateKey).slice(0, 10),
-    ),
+  const selectedRows = selectExactPeriodSummaryCoverage(
+    rows,
+    params.dateFrom,
+    params.dateTo,
   );
-  const missingDays = findMissingDateKeys(expected, actual);
 
-  if (missingDays.length > 0) {
+  if (!selectedRows) {
     return {
       realizedAmount: 0,
       returnedAmount: 0,
@@ -1702,12 +1806,16 @@ async function findOzonRealizationSummaryByPeriod(params?: {
       partnerProgramsAmount: 0,
       source: "inside-period-incomplete",
       coverageComplete: false,
-      missingDays,
-      rows: dailyRows.length,
+      missingDays: getMissingPeriodSummaryDays(
+        rows,
+        params.dateFrom,
+        params.dateTo,
+      ),
+      rows: rows.length,
     };
   }
 
-  const aggregateSummary = dailyRows.reduce(
+  const aggregateSummary = selectedRows.reduce(
     (acc, row) => {
       acc.realizedAmount += toNumber(row.realizedAmount);
       acc.returnedAmount += toNumber(row.returnedAmount);
@@ -1725,20 +1833,19 @@ async function findOzonRealizationSummaryByPeriod(params?: {
     },
   );
 
-  const aggregateAmount =
-    Math.abs(aggregateSummary.realizedAmount) +
-    Math.abs(aggregateSummary.returnedAmount) +
-    Math.abs(aggregateSummary.taxableRevenue) +
-    Math.abs(aggregateSummary.partnerProgramsAmount);
+  const exactPeriod =
+    selectedRows.length === 1 &&
+    getPeriodSummaryDateKey(selectedRows[0].dateFrom) === params.dateFrom &&
+    getPeriodSummaryDateKey(selectedRows[0].dateTo) === params.dateTo;
 
-  return aggregateAmount > 0.005
-    ? {
-        ...aggregateSummary,
-        source: "inside-period-complete",
-        coverageComplete: true,
-        missingDays: [],
-      }
-    : null;
+  return {
+    ...aggregateSummary,
+    source: exactPeriod
+      ? "exact-period"
+      : "inside-period-complete",
+    coverageComplete: true,
+    missingDays: [],
+  };
 }
 
 async function findOzonRealizationSummaryByDatePeriod(params?: {
@@ -1762,54 +1869,16 @@ async function findOzonDiscountPointsSummaryByPeriod(params?: {
 }): Promise<OzonDiscountPointsSummaryRecord | null> {
   if (!params?.dateFrom || !params?.dateTo) return null;
 
-  const expected = expectedDateKeys(params.dateFrom, params.dateTo);
-
-  const exactRows = params.companyName
-    ? await prisma.$queryRaw<OzonDiscountPointsSummaryRecord[]>`
-        SELECT
-          COALESCE(SUM("pointsAccrued"), 0) AS "pointsAccrued",
-          COALESCE(SUM("pointsWrittenOff"), 0) AS "pointsWrittenOff",
-          COALESCE(SUM("totalPaidByPoints"), 0) AS "totalPaidByPoints",
-          COUNT(*)::int AS "rows"
-        FROM "OzonDiscountPointsSummary"
-        WHERE "dateFrom"::date = CAST(${params.dateFrom} AS date)
-          AND "dateTo"::date = CAST(${params.dateTo} AS date)
-          AND "companyName" = ${params.companyName}
-      `
-    : await prisma.$queryRaw<OzonDiscountPointsSummaryRecord[]>`
-        SELECT
-          COALESCE(SUM("pointsAccrued"), 0) AS "pointsAccrued",
-          COALESCE(SUM("pointsWrittenOff"), 0) AS "pointsWrittenOff",
-          COALESCE(SUM("totalPaidByPoints"), 0) AS "totalPaidByPoints",
-          COUNT(*)::int AS "rows"
-        FROM "OzonDiscountPointsSummary"
-        WHERE "dateFrom"::date = CAST(${params.dateFrom} AS date)
-          AND "dateTo"::date = CAST(${params.dateTo} AS date)
-      `;
-
-  const exactSummary = exactRows[0];
-  const exactAmount =
-    toNumber(exactSummary?.totalPaidByPoints) ||
-    toNumber(exactSummary?.pointsWrittenOff) ||
-    toNumber(exactSummary?.pointsAccrued);
-
-  if (exactSummary && Math.abs(exactAmount) > 0.005) {
-    return {
-      ...exactSummary,
-      source: "exact-period",
-      coverageComplete: true,
-      missingDays: [],
-    };
-  }
-
-  type DailyDiscountSummary = OzonDiscountPointsSummaryRecord & {
-    dateKey: Date | string;
+  type IntervalRow = OzonDiscountPointsSummaryRecord & {
+    dateFrom: Date | string;
+    dateTo: Date | string;
   };
 
-  const dailyRows = params.companyName
-    ? await prisma.$queryRaw<DailyDiscountSummary[]>`
+  const rows = params.companyName
+    ? await prisma.$queryRaw<IntervalRow[]>`
         SELECT
-          "dateFrom"::date AS "dateKey",
+          "dateFrom"::date AS "dateFrom",
+          "dateTo"::date AS "dateTo",
           COALESCE(SUM("pointsAccrued"), 0) AS "pointsAccrued",
           COALESCE(SUM("pointsWrittenOff"), 0) AS "pointsWrittenOff",
           COALESCE(SUM("totalPaidByPoints"), 0) AS "totalPaidByPoints",
@@ -1817,13 +1886,14 @@ async function findOzonDiscountPointsSummaryByPeriod(params?: {
         FROM "OzonDiscountPointsSummary"
         WHERE "dateFrom"::date >= CAST(${params.dateFrom} AS date)
           AND "dateTo"::date <= CAST(${params.dateTo} AS date)
-          AND "dateFrom"::date = "dateTo"::date
           AND "companyName" = ${params.companyName}
-        GROUP BY "dateFrom"::date
+        GROUP BY "dateFrom"::date, "dateTo"::date
+        ORDER BY "dateFrom"::date, "dateTo"::date
       `
-    : await prisma.$queryRaw<DailyDiscountSummary[]>`
+    : await prisma.$queryRaw<IntervalRow[]>`
         SELECT
-          "dateFrom"::date AS "dateKey",
+          "dateFrom"::date AS "dateFrom",
+          "dateTo"::date AS "dateTo",
           COALESCE(SUM("pointsAccrued"), 0) AS "pointsAccrued",
           COALESCE(SUM("pointsWrittenOff"), 0) AS "pointsWrittenOff",
           COALESCE(SUM("totalPaidByPoints"), 0) AS "totalPaidByPoints",
@@ -1831,32 +1901,33 @@ async function findOzonDiscountPointsSummaryByPeriod(params?: {
         FROM "OzonDiscountPointsSummary"
         WHERE "dateFrom"::date >= CAST(${params.dateFrom} AS date)
           AND "dateTo"::date <= CAST(${params.dateTo} AS date)
-          AND "dateFrom"::date = "dateTo"::date
-        GROUP BY "dateFrom"::date
+        GROUP BY "dateFrom"::date, "dateTo"::date
+        ORDER BY "dateFrom"::date, "dateTo"::date
       `;
 
-  const actual = new Set(
-    dailyRows.map((row) =>
-      row.dateKey instanceof Date
-        ? formatDateKey(row.dateKey)
-        : String(row.dateKey).slice(0, 10),
-    ),
+  const selectedRows = selectExactPeriodSummaryCoverage(
+    rows,
+    params.dateFrom,
+    params.dateTo,
   );
-  const missingDays = findMissingDateKeys(expected, actual);
 
-  if (missingDays.length > 0) {
+  if (!selectedRows) {
     return {
       pointsAccrued: 0,
       pointsWrittenOff: 0,
       totalPaidByPoints: 0,
       source: "inside-period-incomplete",
       coverageComplete: false,
-      missingDays,
-      rows: dailyRows.length,
+      missingDays: getMissingPeriodSummaryDays(
+        rows,
+        params.dateFrom,
+        params.dateTo,
+      ),
+      rows: rows.length,
     };
   }
 
-  const aggregateSummary = dailyRows.reduce(
+  const aggregateSummary = selectedRows.reduce(
     (acc, row) => {
       acc.pointsAccrued += toNumber(row.pointsAccrued);
       acc.pointsWrittenOff += toNumber(row.pointsWrittenOff);
@@ -1872,19 +1943,19 @@ async function findOzonDiscountPointsSummaryByPeriod(params?: {
     },
   );
 
-  const aggregateAmount =
-    toNumber(aggregateSummary.totalPaidByPoints) ||
-    toNumber(aggregateSummary.pointsWrittenOff) ||
-    toNumber(aggregateSummary.pointsAccrued);
+  const exactPeriod =
+    selectedRows.length === 1 &&
+    getPeriodSummaryDateKey(selectedRows[0].dateFrom) === params.dateFrom &&
+    getPeriodSummaryDateKey(selectedRows[0].dateTo) === params.dateTo;
 
-  return Math.abs(aggregateAmount) > 0.005
-    ? {
-        ...aggregateSummary,
-        source: "inside-period-complete",
-        coverageComplete: true,
-        missingDays: [],
-      }
-    : null;
+  return {
+    ...aggregateSummary,
+    source: exactPeriod
+      ? "exact-period"
+      : "inside-period-complete",
+    coverageComplete: true,
+    missingDays: [],
+  };
 }
 
 async function findOzonDiscountPointsSummaryByDatePeriod(params?: {
@@ -2115,22 +2186,58 @@ export async function getProfitAnalyticsOzon(params?: {
   vatRate?: string | number | null;
   companyName?: string | null;
 }): Promise<OzonProfitAnalyticsResult> {
-  const usnRate = clampRate(params?.usnRate, [0, 1, 2, 3, 4, 5, 6], 1);
-  const vatRate = clampRate(params?.vatRate, [0, 5, 7], 5);
   const requestedCompanyName =
     params?.companyName && params.companyName !== "ALL"
       ? params.companyName
       : null;
 
+  // Единый источник налоговых ставок для всех потребителей аналитики.
+  // Страница /profit-ozon передаёт ставки явно, а Dashboard/Telegram могут
+  // вызывать аналитику только с companyName. В таком случае ставки должны
+  // браться из настроек компании, а не превращаться в 0%.
+  const companyTaxSettings =
+    requestedCompanyName &&
+    (params?.usnRate === null ||
+      params?.usnRate === undefined ||
+      params?.vatRate === null ||
+      params?.vatRate === undefined)
+      ? await prisma.company.findFirst({
+          where: {
+            name: requestedCompanyName,
+          },
+          select: {
+            usnRate: true,
+            vatRate: true,
+          },
+        })
+      : null;
+
+  const usnRate = clampRate(
+    params?.usnRate ?? companyTaxSettings?.usnRate ?? 1,
+    [0, 1, 2, 3, 4, 5, 6],
+    1
+  );
+  const vatRate = clampRate(
+    params?.vatRate ?? companyTaxSettings?.vatRate ?? 5,
+    [0, 5, 7],
+    5
+  );
+
   if (!requestedCompanyName) {
-    const companyResults = await Promise.all(
-      OZON_COMPANY_NAMES.map((companyName) =>
-        getProfitAnalyticsOzon({
+    const companyResults: OzonProfitAnalyticsResult[] = [];
+
+    for (const companyName of OZON_COMPANY_NAMES) {
+      companyResults.push(
+        await getProfitAnalyticsOzon({
           ...params,
           companyName,
-        }),
-      ),
-    );
+          // Mixed-company analytics must always use each company's saved tax
+          // settings. Legacy page query parameters must not override them.
+          usnRate: undefined,
+          vatRate: undefined,
+        })
+      );
+    }
 
     return mergeOzonAnalyticsResults(companyResults, usnRate, vatRate);
   }

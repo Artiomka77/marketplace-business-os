@@ -5,7 +5,6 @@ import {
   normalizeProductCostKey,
 } from "@/lib/analytics/productCostResolver";
 import { calculateWbV6RevenueComponents } from "@/lib/analytics/wbFinancialCoreV6";
-import { sequentialAll } from "@/lib/db/sequentialAll";
 import { prisma } from "@/lib/prisma";
 
 export const WB_CANONICAL_SALE_SELECT = {
@@ -244,110 +243,6 @@ export function selectMinimalWbFinanceCover(
   return best.get(requested.end + 1) ?? [];
 }
 
-export type WbFinanceCoverGap = DateRange;
-
-export type WbMaximalFinanceCover = {
-  segments: FinanceIntervalGroup[];
-  gaps: WbFinanceCoverGap[];
-};
-
-export function selectMaximalWbFinanceCover(
-  rows: WbOwnershipFinanceRow[],
-  dateFrom: string,
-  dateTo: string
-): WbMaximalFinanceCover {
-  const requested = buildRange(dateFrom, dateTo);
-  if (!requested) return { segments: [], gaps: [] };
-  const groups = buildFinanceGroups(rows).filter(
-    (group) =>
-      group.start >= requested.start && group.end <= requested.end
-  );
-  const byStart = new Map<number, FinanceIntervalGroup[]>();
-  for (const group of groups) {
-    const current = byStart.get(group.start) ?? [];
-    current.push(group);
-    current.sort((left, right) => right.end - left.end);
-    byStart.set(group.start, current);
-  }
-  const segments: FinanceIntervalGroup[] = [];
-  const gaps: WbFinanceCoverGap[] = [];
-  let cursor = requested.start;
-  while (cursor <= requested.end) {
-    const candidates = byStart.get(cursor) ?? [];
-    if (candidates.length > 0) {
-      const pick = candidates[0];
-      segments.push(pick);
-      cursor = pick.end + 1;
-      continue;
-    }
-    let next = requested.end + 1;
-    for (const group of groups) {
-      if (group.start > cursor && group.start < next) next = group.start;
-    }
-    gaps.push({
-      start: cursor,
-      end: next - 1,
-      startKey: dayKey(cursor),
-      endKey: dayKey(next - 1),
-    });
-    cursor = next;
-  }
-  return { segments, gaps };
-}
-
-function isCalendarMonthSpanLocal(dateFrom: string, dateTo: string) {
-  const from = dateFrom.slice(0, 10);
-  const to = dateTo.slice(0, 10);
-  const match = /^(\d{4})-(\d{2})-01$/.exec(from);
-  if (!match) return false;
-  const year = Number(match[1]);
-  const month = Number(match[2]);
-  const last = new Date(Date.UTC(year, month, 0)).getUTCDate();
-  return (
-    to ===
-    `${year}-${String(month).padStart(2, "0")}-${String(last).padStart(2, "0")}`
-  );
-}
-
-function isCalendarQuarterSpanLocal(dateFrom: string, dateTo: string) {
-  const from = dateFrom.slice(0, 10);
-  const to = dateTo.slice(0, 10);
-  const year = from.slice(0, 4);
-  return (
-    [
-      [`${year}-01-01`, `${year}-03-31`],
-      [`${year}-04-01`, `${year}-06-30`],
-      [`${year}-07-01`, `${year}-09-30`],
-      [`${year}-10-01`, `${year}-12-31`],
-    ] as const
-  ).some(([start, end]) => from === start && to === end);
-}
-
-function isYtdStyleSpanLocal(dateFrom: string, dateTo: string) {
-  const from = dateFrom.slice(0, 10);
-  const to = dateTo.slice(0, 10);
-  if (!/^\d{4}-01-01$/.test(from)) return false;
-  if (to <= from) return false;
-  if (isCalendarMonthSpanLocal(from, to)) return false;
-  return from.slice(0, 4) === to.slice(0, 4);
-}
-
-export function requestedAllowsPreliminaryWbFallback(
-  dateFrom: string,
-  dateTo: string
-) {
-  const from = dateFrom.slice(0, 10);
-  const to = dateTo.slice(0, 10);
-  const requested = buildRange(from, to);
-  if (!requested) return false;
-  const days = requested.end - requested.start + 1;
-  if (days >= 1 && days <= 7) return true;
-  if (isCalendarMonthSpanLocal(from, to)) return false;
-  if (isCalendarQuarterSpanLocal(from, to)) return false;
-  if (isYtdStyleSpanLocal(from, to)) return false;
-  return false;
-}
-
 function normalizeCompany(value: string | null | undefined) {
   return String(value ?? "").trim();
 }
@@ -457,113 +352,19 @@ export function planWbSourceOwnership(input: {
     );
 
     if (financeCover.length === 0) {
-      const allowPrelim = requestedAllowsPreliminaryWbFallback(
-        input.dateFrom,
-        input.dateTo
-      );
-      if (allowPrelim) {
-        intervals.push({
-          companyName,
-          dateFrom: input.dateFrom,
-          dateTo: input.dateTo,
-          mode: "PRELIMINARY_NO_SOURCE",
-          reportNumbers: [],
-          selectedSessionIds: [],
-          exactCoverageComplete: false,
-          dailyCalendarCoverageComplete: false,
-          dailyReportCoverageComplete: false,
-          isFinanciallyFinal: false,
-          preliminaryReasons: ["FINANCE_INTERVAL_COVER_INCOMPLETE"],
-        });
-        continue;
-      }
-      const maximal = selectMaximalWbFinanceCover(
-        companyFinanceRows,
-        input.dateFrom,
-        input.dateTo
-      );
-      if (maximal.segments.length === 0) {
-        intervals.push({
-          companyName,
-          dateFrom: input.dateFrom,
-          dateTo: input.dateTo,
-          mode: "PRELIMINARY_NO_SOURCE",
-          reportNumbers: [],
-          selectedSessionIds: [],
-          exactCoverageComplete: false,
-          dailyCalendarCoverageComplete: false,
-          dailyReportCoverageComplete: false,
-          isFinanciallyFinal: false,
-          preliminaryReasons: [
-            "SOURCE_INCOMPLETE",
-            "FINANCE_INTERVAL_COVER_INCOMPLETE",
-          ],
-        });
-        continue;
-      }
-      for (const gap of maximal.gaps) {
-        intervals.push({
-          companyName,
-          dateFrom: gap.startKey,
-          dateTo: gap.endKey,
-          mode: "PRELIMINARY_NO_SOURCE",
-          reportNumbers: [],
-          selectedSessionIds: [],
-          exactCoverageComplete: false,
-          dailyCalendarCoverageComplete: false,
-          dailyReportCoverageComplete: false,
-          isFinanciallyFinal: false,
-          preliminaryReasons: [
-            "SOURCE_INCOMPLETE",
-            "FINANCE_INTERVAL_COVER_INCOMPLETE",
-          ],
-        });
-      }
-      for (const interval of maximal.segments) {
-        const exactHasBlankReportNumber = interval.rows.some(
-          (row) => !String(row.reportNumber ?? "").trim()
-        );
-        const exactReportNumbers = uniqueReportNumbers(interval.rows);
-        const exact = matchRequiredReports(
-          companyName,
-          exactReportNumbers,
-          input.sessions
-        );
-        if (exact.complete && !exactHasBlankReportNumber) {
-          intervals.push({
-            companyName,
-            dateFrom: interval.startKey,
-            dateTo: interval.endKey,
-            mode: "EXACT_FINANCE_COVER_SESSIONS_ALL_ROWS",
-            reportNumbers: exactReportNumbers,
-            selectedSessionIds: exact.selectedSessionIds,
-            exactCoverageComplete: true,
-            dailyCalendarCoverageComplete: false,
-            dailyReportCoverageComplete: false,
-            isFinanciallyFinal: true,
-            preliminaryReasons: [],
-          });
-          continue;
-        }
-        intervals.push({
-          companyName,
-          dateFrom: interval.startKey,
-          dateTo: interval.endKey,
-          mode: "PRELIMINARY_NO_SOURCE",
-          reportNumbers: [],
-          selectedSessionIds: [],
-          exactCoverageComplete: false,
-          dailyCalendarCoverageComplete: false,
-          dailyReportCoverageComplete: false,
-          isFinanciallyFinal: false,
-          preliminaryReasons: [
-            "SOURCE_INCOMPLETE",
-            ...(exactHasBlankReportNumber ? ["EXACT_REPORT_NUMBER_BLANK"] : []),
-            ...exact.missing.map((value) => `EXACT_REPORT_MISSING:${value}`),
-            ...exact.ambiguous.map((value) => `EXACT_REPORT_AMBIGUOUS:${value}`),
-          ],
-        });
-      }
+      intervals.push({
+        companyName,
+        dateFrom: input.dateFrom,
+        dateTo: input.dateTo,
+        mode: "PRELIMINARY_NO_SOURCE",
+        reportNumbers: [],
+        selectedSessionIds: [],
+        exactCoverageComplete: false,
+        dailyCalendarCoverageComplete: false,
+        dailyReportCoverageComplete: false,
+        isFinanciallyFinal: false,
+        preliminaryReasons: ["FINANCE_INTERVAL_COVER_INCOMPLETE"],
+      });
       continue;
     }
 
@@ -781,80 +582,10 @@ async function selectPreliminaryRows(
   return [];
 }
 
-
-/**
- * Calendar-additive ownership: take a stable envelope canonical source
- * (e.g. YTD Jan1→asOf) and keep only finance intervals that overlap
- * [dateFrom, dateTo]. Union of month partitions == envelope.
- */
-export async function selectCanonicalWbSaleSourcePartitioned(params: {
-  envelopeFrom: string;
-  envelopeTo: string;
-  dateFrom: string;
-  dateTo: string;
-  companyName?: string | null;
-}): Promise<WbCanonicalSourceSelection> {
-  // Retain known owned rows even when the live envelope tail is incomplete.
-  // Month buckets are finality-scoped below; wiping the envelope to [] made
-  // every calendar month report wbRevenue=0 while YTD (final asOf) stayed full.
-  const envelope = await selectCanonicalWbSaleSource({
-    dateFrom: params.envelopeFrom,
-    dateTo: params.envelopeTo,
-    companyName: params.companyName,
-    retainRowsWhenIncomplete: true,
-  });
-  const requested = buildRange(params.dateFrom, params.dateTo);
-  if (!requested) {
-    return {
-      ...envelope,
-      intervals: [],
-      selectedSessionIds: [],
-      rows: [],
-      isFinanciallyFinal: false,
-    };
-  }
-  // Assign each envelope interval to exactly one subperiod by its dateFrom
-  // (finance-cover segment start), clamped into the ownership envelope so
-  // pre-year-start cover segments still land in the first month of YTD.
-  const envelopeRange = buildRange(params.envelopeFrom, params.envelopeTo);
-  const intervals = envelope.intervals.filter((interval) => {
-    const startKey = dateKeyFromInput(interval.dateFrom);
-    if (!startKey || !envelopeRange) return false;
-    let startDay = dayNumber(startKey);
-    if (startDay < envelopeRange.start) startDay = envelopeRange.start;
-    if (startDay > envelopeRange.end) startDay = envelopeRange.end;
-    return startDay >= requested.start && startDay <= requested.end;
-  });
-  const selectedSessionIds = Array.from(
-    new Set(intervals.flatMap((interval) => interval.selectedSessionIds))
-  );
-  const selected = new Set(selectedSessionIds);
-  const rows = envelope.rows.filter(
-    (row) =>
-      row.importSessionId !== null && selected.has(row.importSessionId)
-  );
-  return {
-    ...envelope,
-    intervals,
-    selectedSessionIds,
-    rows,
-    isFinanciallyFinal:
-      intervals.length > 0 &&
-      intervals.every((interval) => interval.isFinanciallyFinal),
-  };
-}
-
 export async function selectCanonicalWbSaleSource(params: {
   dateFrom: string;
   dateTo: string;
   companyName?: string | null;
-  /**
-   * When true, keep finance-cover owned rows even if the requested span is not
-   * fully financially final. Used by Partitioned month/YTD buckets so an
-   * incomplete envelope tail cannot discard known numbers (AvoroFin rule:
-   * PRELIMINARY is metadata, not permission to discard known numbers).
-   */
-  retainRowsWhenIncomplete?: boolean;
 }): Promise<WbCanonicalSourceSelection> {
   const from = moscowStartUtc(params.dateFrom);
   const toExclusive = nextMoscowStartUtc(params.dateTo);
@@ -864,44 +595,41 @@ export async function selectCanonicalWbSaleSource(params: {
     ? { companyName: params.companyName }
     : {};
 
-  // Certified pool max=1: never nest global Prisma reads under concurrent fan-out.
-  const [financeRows, sessions] = await sequentialAll([
-    () =>
-      prisma.wbFinance.findMany({
-        where: {
-          ...companyFilter,
-          OR: [
-            { dateFrom: { gte: widenedFrom, lt: widenedTo } },
-            { dateTo: { gte: widenedFrom, lt: widenedTo } },
-            { dateFrom: { lte: from }, dateTo: { gte: toExclusive } },
-          ],
+  const [financeRows, sessions] = await Promise.all([
+    prisma.wbFinance.findMany({
+      where: {
+        ...companyFilter,
+        OR: [
+          { dateFrom: { gte: widenedFrom, lt: widenedTo } },
+          { dateTo: { gte: widenedFrom, lt: widenedTo } },
+          { dateFrom: { lte: from }, dateTo: { gte: toExclusive } },
+        ],
+      },
+      select: {
+        companyName: true,
+        reportNumber: true,
+        dateFrom: true,
+        dateTo: true,
+      },
+    }),
+    prisma.importSession.findMany({
+      where: {
+        ...companyFilter,
+        reportType: {
+          in: ["WB_SALES", "WB_SALES_OPERATIONAL", "WB_SALES_DAILY"],
         },
-        select: {
-          companyName: true,
-          reportNumber: true,
-          dateFrom: true,
-          dateTo: true,
-        },
-      }),
-    () =>
-      prisma.importSession.findMany({
-        where: {
-          ...companyFilter,
-          reportType: {
-            in: ["WB_SALES", "WB_SALES_OPERATIONAL", "WB_SALES_DAILY"],
-          },
-          status: "SUCCESS",
-        },
-        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-        select: {
-          id: true,
-          fileName: true,
-          companyName: true,
-          reportType: true,
-          status: true,
-          createdAt: true,
-        },
-      }),
+        status: "SUCCESS",
+      },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      select: {
+        id: true,
+        fileName: true,
+        companyName: true,
+        reportType: true,
+        status: true,
+        createdAt: true,
+      },
+    }),
   ]);
 
   const companyNames = params.companyName
@@ -936,69 +664,14 @@ export async function selectCanonicalWbSaleSource(params: {
       : [];
   const evidencedPlan = applyWbPersistedOwnerEvidence(plan, ownedRows);
   const finalSessionIds = new Set(evidencedPlan.selectedSessionIds);
-  const allowPrelim = requestedAllowsPreliminaryWbFallback(
-    params.dateFrom,
-    params.dateTo
+  const rows = ownedRows.filter(
+    (row) =>
+      row.importSessionId !== null && finalSessionIds.has(row.importSessionId)
   );
-  const longIncomplete = !allowPrelim && !evidencedPlan.isFinanciallyFinal;
-  // Incomplete non-prelim spans used to wipe rows to []. That discarded known
-  // finance-cover facts whenever the live asOf tail was open — Partitioned
-  // months then stored wbRevenue=0 while a final YTD asOf stayed full.
-  const wipeRowsForIncomplete =
-    longIncomplete && params.retainRowsWhenIncomplete !== true;
-
-  /**
-   * Finance-cover modes select sessions by reportNumber, then historically kept
-   * ALL session rows. Blank / foreign reportNumber SALE+RETURN lines cannot
-   * resolve ordinary vs buyout and fail-closed the whole period tax to
-   * WB_TAX_REPORT_KIND_UNRESOLVED (taxesAmount=0). Restrict finance-cover
-   * sessions to rows whose reportNumber is in the owning interval set.
-   */
-  const financeCoverReportNumbersBySession = new Map<string, Set<string>>();
-  for (const interval of evidencedPlan.intervals) {
-    if (
-      interval.mode !== "EXACT_FINANCE_COVER_SESSIONS_ALL_ROWS" &&
-      interval.mode !== "DAILY_FINANCE_MATCHED_SESSIONS_ALL_ROWS"
-    ) {
-      continue;
-    }
-    const allowed = new Set(
-      interval.reportNumbers
-        .map((value) => String(value ?? "").trim())
-        .filter(Boolean)
-    );
-    if (allowed.size === 0) continue;
-    for (const sessionId of interval.selectedSessionIds) {
-      const existing =
-        financeCoverReportNumbersBySession.get(sessionId) ?? new Set<string>();
-      for (const reportNumber of allowed) existing.add(reportNumber);
-      financeCoverReportNumbersBySession.set(sessionId, existing);
-    }
-  }
-
-  const rows = wipeRowsForIncomplete
-    ? []
-    : ownedRows.filter((row) => {
-        if (
-          row.importSessionId === null ||
-          !finalSessionIds.has(row.importSessionId)
-        ) {
-          return false;
-        }
-        const allowed = financeCoverReportNumbersBySession.get(
-          row.importSessionId
-        );
-        if (!allowed) return true;
-        const reportNumber = String(row.reportNumber ?? "").trim();
-        return reportNumber !== "" && allowed.has(reportNumber);
-      });
-  if (!wipeRowsForIncomplete) {
-    for (const interval of evidencedPlan.intervals.filter(
-      (item) => !item.isFinanciallyFinal
-    )) {
-      if (interval.preliminaryReasons.includes("SOURCE_INCOMPLETE")) continue;
-      rows.push(...(await selectPreliminaryRows(interval)));
-    }
+  for (const interval of evidencedPlan.intervals.filter(
+    (item) => !item.isFinanciallyFinal
+  )) {
+    rows.push(...(await selectPreliminaryRows(interval)));
   }
 
   return {

@@ -10,6 +10,8 @@ export type DataReadinessIssue = {
     | "ORDER_DATA_MISSING"
     | "WB_FINANCE_MISSING"
     | "OZON_FINANCE_MISSING"
+    | "OZON_REALIZATION_SUMMARY_INCOMPLETE"
+    | "OZON_DISCOUNT_POINTS_INCOMPLETE"
     | "OZON_ADS_PENDING";
   level: Exclude<DataReadinessLevel, "ok">;
   title: string;
@@ -95,6 +97,91 @@ function buildDateWhere(dateFrom: Date, dateToExclusive: Date) {
     gte: dateFrom,
     lt: dateToExclusive,
   };
+}
+
+
+type PeriodCoverageRow = {
+  companyName: string | null;
+  dateFrom: Date | string;
+  dateTo: Date | string;
+};
+
+function getCoverageDateKey(value: Date | string) {
+  return value instanceof Date
+    ? value.toISOString().slice(0, 10)
+    : String(value).slice(0, 10);
+}
+
+function dateKeyToDayNumber(value: string) {
+  const [year, month, day] = value.split("-").map(Number);
+  return Math.floor(Date.UTC(year, month - 1, day) / 86_400_000);
+}
+
+function selectExactPeriodCoverage(
+  rows: PeriodCoverageRow[],
+  dateFrom: string,
+  dateTo: string
+) {
+  const selectedStart = dateKeyToDayNumber(dateFrom);
+  const selectedEnd = dateKeyToDayNumber(dateTo);
+
+  const normalized = rows
+    .map((row) => {
+      const startKey = getCoverageDateKey(row.dateFrom);
+      const endKey = getCoverageDateKey(row.dateTo);
+      const start = dateKeyToDayNumber(startKey);
+      const end = dateKeyToDayNumber(endKey);
+
+      return {
+        row,
+        start: Math.min(start, end),
+        end: Math.max(start, end),
+      };
+    })
+    .filter(
+      (item) =>
+        item.start >= selectedStart &&
+        item.end <= selectedEnd
+    );
+
+  const rowsByStart = new Map<number, typeof normalized>();
+
+  for (const item of normalized) {
+    const current = rowsByStart.get(item.start) ?? [];
+    current.push(item);
+    rowsByStart.set(item.start, current);
+  }
+
+  for (const items of rowsByStart.values()) {
+    items.sort((left, right) => right.end - left.end);
+  }
+
+  const bestByNextDay = new Map<number, PeriodCoverageRow[]>();
+  bestByNextDay.set(selectedStart, []);
+
+  for (
+    let dayNumber = selectedStart;
+    dayNumber <= selectedEnd;
+    dayNumber += 1
+  ) {
+    const currentPath = bestByNextDay.get(dayNumber);
+
+    if (!currentPath) {
+      continue;
+    }
+
+    for (const item of rowsByStart.get(dayNumber) ?? []) {
+      const nextDay = item.end + 1;
+      const candidatePath = [...currentPath, item.row];
+      const existingPath = bestByNextDay.get(nextDay);
+
+      if (!existingPath || candidatePath.length < existingPath.length) {
+        bestByNextDay.set(nextDay, candidatePath);
+      }
+    }
+  }
+
+  return bestByNextDay.get(selectedEnd + 1) ?? null;
 }
 
 export function getDataReadinessTone(status: DataReadinessStatus) {
@@ -191,6 +278,7 @@ export async function getDataReadinessSummary(
     ozonFinanceRows,
     ozonFinanceAdRows,
     ozonAdsRows,
+    ozonFinanceCompanies,
   ] = await Promise.all([
     prisma.marketplaceDailyOrderStat.count({
       where: buildOrderWhere(safeCompanyNames, startDate, dateToExclusive),
@@ -236,6 +324,16 @@ export async function getDataReadinessSummary(
       where: {
         ...companyWhere,
         reportDate: dateRange,
+      },
+    }),
+    prisma.ozonFinance.groupBy({
+      by: ["companyName"],
+      where: {
+        ...companyWhere,
+        accrualDate: dateRange,
+      },
+      _count: {
+        _all: true,
       },
     }),
   ]);
@@ -286,6 +384,100 @@ export async function getDataReadinessSummary(
       level: isFullyPastPeriod ? "danger" : "warning",
       title: "Ozon Finance не загружен",
       text: "Для Ozon финансовый результат должен опираться на Ozon Finance. Пока его нет, прибыль и расходы Ozon предварительные.",
+    });
+  }
+
+  const ozonActivityCompanyNames = ozonFinanceCompanies
+    .filter((row) => row.companyName && row._count._all > 0)
+    .map((row) => row.companyName as string);
+
+  // Проверка готовности обязана использовать те же границы дат,
+  // что и канонический Ozon-расчёт. Prisma DateTime может смещать
+  // календарную дату из-за часового пояса, поэтому интервалы читаем
+  // как PostgreSQL date и группируем точно так же, как в
+  // profitAnalyticsOzon.ts.
+  const ozonRealizationSummaryRows: PeriodCoverageRow[] = [];
+  const ozonDiscountSummaryRows: PeriodCoverageRow[] = [];
+
+  for (const activityCompanyName of ozonActivityCompanyNames) {
+    const [realizationRows, discountRows] = await Promise.all([
+      prisma.$queryRaw<PeriodCoverageRow[]>`
+        SELECT
+          "companyName",
+          "dateFrom"::date AS "dateFrom",
+          "dateTo"::date AS "dateTo"
+        FROM "OzonRealizationSummary"
+        WHERE "dateFrom"::date >= CAST(${dateFrom} AS date)
+          AND "dateTo"::date <= CAST(${dateTo} AS date)
+          AND "companyName" = ${activityCompanyName}
+        GROUP BY
+          "companyName",
+          "dateFrom"::date,
+          "dateTo"::date
+        ORDER BY
+          "dateFrom"::date,
+          "dateTo"::date
+      `,
+      prisma.$queryRaw<PeriodCoverageRow[]>`
+        SELECT
+          "companyName",
+          "dateFrom"::date AS "dateFrom",
+          "dateTo"::date AS "dateTo"
+        FROM "OzonDiscountPointsSummary"
+        WHERE "dateFrom"::date >= CAST(${dateFrom} AS date)
+          AND "dateTo"::date <= CAST(${dateTo} AS date)
+          AND "companyName" = ${activityCompanyName}
+        GROUP BY
+          "companyName",
+          "dateFrom"::date,
+          "dateTo"::date
+        ORDER BY
+          "dateFrom"::date,
+          "dateTo"::date
+      `,
+    ]);
+
+    ozonRealizationSummaryRows.push(...realizationRows);
+    ozonDiscountSummaryRows.push(...discountRows);
+  }
+
+  const realizationCoverageMissingCompanies = ozonActivityCompanyNames.filter(
+    (companyName) =>
+      !selectExactPeriodCoverage(
+        ozonRealizationSummaryRows.filter(
+          (row) => row.companyName === companyName
+        ),
+        dateFrom,
+        dateTo
+      )
+  );
+
+  if (realizationCoverageMissingCompanies.length > 0) {
+    issues.push({
+      kind: "OZON_REALIZATION_SUMMARY_INCOMPLETE",
+      level: isFullyPastPeriod ? "danger" : "warning",
+      title: "Налоговая выручка Ozon покрыта не полностью",
+      text: `Нет точного непересекающегося покрытия отчётами начислений для: ${realizationCoverageMissingCompanies.join(", ")}.`,
+    });
+  }
+
+  const discountCoverageMissingCompanies = ozonActivityCompanyNames.filter(
+    (companyName) =>
+      !selectExactPeriodCoverage(
+        ozonDiscountSummaryRows.filter(
+          (row) => row.companyName === companyName
+        ),
+        dateFrom,
+        dateTo
+      )
+  );
+
+  if (discountCoverageMissingCompanies.length > 0) {
+    issues.push({
+      kind: "OZON_DISCOUNT_POINTS_INCOMPLETE",
+      level: isFullyPastPeriod ? "danger" : "warning",
+      title: "Баллы Ozon покрыты не полностью",
+      text: `Нет точного непересекающегося покрытия отчётами баллов для: ${discountCoverageMissingCompanies.join(", ")}.`,
     });
   }
 

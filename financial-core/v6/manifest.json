@@ -1,0 +1,369 @@
+{
+  "version": "financial-core-v6",
+  "parentVersion": "financial-core-v5",
+  "createdAt": "2026-08-20T14:10:07.982Z",
+  "tagName": "financial-core-v6-rev5-1-narrow-delta-2026-08-20",
+  "status": "LOCAL_CANDIDATE_SERVER_VERIFY_REQUIRED",
+  "sourceCommit": "1370176bf360184c126fd789fd12eb7873560716",
+  "workingTreeDirty": true,
+  "policy": {
+    "economicTurnover": "ABS_RETAIL_PRICE_WITH_DISCOUNT_NO_SPP_DOUBLE_ADD",
+    "buyerPaid": "ABS_WB_REALIZED_AMOUNT",
+    "marketplaceTaxTopUp": "MAX_ZERO_PAYOUT_MINUS_BUYER_PAID_PER_ROW",
+    "taxableRevenue": "BUYER_PAID_PLUS_MARKETPLACE_TAX_TOP_UP",
+    "taxableRevenueScope": "TAX_AND_INFORMATIONAL_USE_ONLY",
+    "returnTreatment": "REVERSE_SAME_ROW_LEVEL_AMOUNTS",
+    "managementPercentageDenominator": "ECONOMIC_TURNOVER",
+    "managementSharesAbcAndAllocation": "REVENUE_ALIAS_AND_SELLER_RETAIL_AMOUNT_EQUAL_ECONOMIC_TURNOVER",
+    "canonicalRevenueCompleteness": "MATERIAL_SALE_RETURN_REQUIRES_ALL_CANONICAL_V6_INPUTS",
+    "productCost": "FINITE_POSITIVE_DETERMINISTIC_COSTDATE_CREATEDAT_ID_RESOLVER",
+    "productCostKey": "LOWERCASE_YO_DASH_SPACING_AND_WHITESPACE_CANONICAL_NORMALIZATION",
+    "pnlExpenseReconciliation": "ECONOMIC_TURNOVER_MINUS_NET_PROFIT_AFTER_TAX",
+    "closedPeriodSourceOwnership": "EXACT_FINANCE_REPORT_SESSIONS_THEN_COMPLETE_DAILY_FINANCE_SESSIONS",
+    "ownedReportRows": "ALL_SESSION_ROWS_NO_SALE_DATE_RESLICE",
+    "productOperationClassifier": "SHARED_PAYMENT_REASON_OR_DOCUMENT_TYPE_SALE_RETURN_OTHER",
+    "closedWeekProfit": "CANONICAL_PNL_SETTLEMENT_MINUS_CANONICAL_COGS_MINUS_TAXES_MINUS_EXTERNAL_PNL_COSTS",
+    "officialCashSettlement": "WB_FINANCE_TOTAL_TO_PAY_RECONCILIATION_ONLY",
+    "deductionClassification": "ADS_AND_OPERATING_IN_PNL_CREDIT_EXCLUDED_UNKNOWN_FAILS_CLOSED",
+    "wbPromotion": "CLASSIFIED_PNL_DEDUCTION_NEVER_SUBTRACTED_TWICE",
+    "officialLogisticsPriority": "PRESERVED_FROM_FINANCIAL_CORE_V5",
+    "ozonLogic": "UNCHANGED_FROM_FINANCIAL_CORE_V5"
+  },
+  "sourceSelection": {
+    "precedence": [
+      "EXACT_FINANCE_COVER_SESSIONS_ALL_ROWS",
+      "DAILY_FINANCE_MATCHED_SESSIONS_ALL_ROWS",
+      "PRELIMINARY_SINGLE_CLASS_FALLBACK"
+    ],
+    "ownershipKey": "COMPANY_FINANCE_INTERVAL_AND_REPORT_NUMBER",
+    "allCompanies": "SUM_SEPARATELY_SELECTED_COMPANY_OWNERS",
+    "dailyCoverage": "EVERY_MOSCOW_CALENDAR_DAY_AND_REPORT_NUMBER_REQUIRED",
+    "persistedOwnerEvidence": "EVERY_SELECTED_FINAL_SESSION_REQUIRES_PERSISTED_WBSALE_ROWS",
+    "officialClosedWeekExpenses": "WB_FINANCE_MINIMAL_NON_OVERLAPPING_INTERVAL_COVER"
+  },
+  "protectedFiles": [
+    {
+      "path": "lib/analytics/profitAnalytics.ts",
+      "role": "Канонический расчёт прибыли Wildberries",
+      "sha256": "a29129f7101bdfc844ce3eb2f332480e283bfdfb278290ac601350df5eabaf31",
+      "snapshotSha256": "a29129f7101bdfc844ce3eb2f332480e283bfdfb278290ac601350df5eabaf31",
+      "sizeBytes": 76250
+    },
+    {
+      "path": "lib/analytics/profitAnalyticsOzon.ts",
+      "role": "Канонический расчёт прибыли Ozon",
+      "sha256": "7e74eb841bd3906d356e11641391295b8f52a63de8c2c75ed968c6fd3e13dd11",
+      "snapshotSha256": "7e74eb841bd3906d356e11641391295b8f52a63de8c2c75ed968c6fd3e13dd11",
+      "sizeBytes": 68679
+    },
+    {
+      "path": "lib/analytics/dataReadiness.ts",
+      "role": "Определение полноты и финальности данных периода",
+      "sha256": "100dcd757defbce1538cf6380fe9bb328e9ce3f751fc834e5c98d81abbd512bc",
+      "snapshotSha256": "100dcd757defbce1538cf6380fe9bb328e9ce3f751fc834e5c98d81abbd512bc",
+      "sizeBytes": 18137
+    },
+    {
+      "path": "lib/finance/financeMetrics.ts",
+      "role": "ДДС, влияние финансовых операций и выводы собственника",
+      "sha256": "ea9d671f620f3af4849577b75d10b5e9636a86b5a5ada34eb4dd687eba3d94f3",
+      "snapshotSha256": "ea9d671f620f3af4849577b75d10b5e9636a86b5a5ada34eb4dd687eba3d94f3",
+      "sizeBytes": 12812
+    },
+    {
+      "path": "lib/telegram/dailyReport.ts",
+      "role": "Единая финансовая сводка Dashboard и Telegram",
+      "sha256": "d18e2f487e53d2e24b21fd045139d94091d9a43f009c1b13ce6b84b5a8ab170a",
+      "snapshotSha256": "d18e2f487e53d2e24b21fd045139d94091d9a43f009c1b13ce6b84b5a8ab170a",
+      "sizeBytes": 97384
+    },
+    {
+      "path": "lib/import/detectReportType.ts",
+      "role": "Распознавание типов импортируемых отчётов",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "snapshotSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "sizeBytes": 0
+    },
+    {
+      "path": "lib/import/reportDetector.ts",
+      "role": "Контракт определения финансовых источников",
+      "sha256": "f32adb4dce27e7667778dd4b7cc3b4c6e75a78caaabdae231a80090f5879928d",
+      "snapshotSha256": "f32adb4dce27e7667778dd4b7cc3b4c6e75a78caaabdae231a80090f5879928d",
+      "sizeBytes": 14888
+    },
+    {
+      "path": "lib/import/normalizers/productCostNormalizer.ts",
+      "role": "Нормализация себестоимости и Excel-дат",
+      "sha256": "e5b7db3ca0f2ac37ababec3ace7575b1834533dee21d4122225b77f95e76bba2",
+      "snapshotSha256": "e5b7db3ca0f2ac37ababec3ace7575b1834533dee21d4122225b77f95e76bba2",
+      "sizeBytes": 3920
+    },
+    {
+      "path": "lib/import/normalizers/wbSalesNormalizer.ts",
+      "role": "Нормализация продаж Wildberries",
+      "sha256": "3ceccc2c93e1a6f8f2e63686638eaa4727011bcbe4e2b90e3c5051530aef486e",
+      "snapshotSha256": "3ceccc2c93e1a6f8f2e63686638eaa4727011bcbe4e2b90e3c5051530aef486e",
+      "sizeBytes": 10402
+    },
+    {
+      "path": "lib/import/normalizers/wbFinanceNormalizer.ts",
+      "role": "Нормализация финансового отчёта Wildberries",
+      "sha256": "b8c8d5747bcbf33b2bdb0e8ad4eac3a53dd9c3dcf5971fd8d3df3f59390dd5c9",
+      "snapshotSha256": "b8c8d5747bcbf33b2bdb0e8ad4eac3a53dd9c3dcf5971fd8d3df3f59390dd5c9",
+      "sizeBytes": 4653
+    },
+    {
+      "path": "lib/import/normalizers/wbAdsNormalizer.ts",
+      "role": "Нормализация рекламы Wildberries",
+      "sha256": "86f733ac864c5ceccc0a8257904e94b85ecd3183177954cd56edef9dd4fc0e66",
+      "snapshotSha256": "86f733ac864c5ceccc0a8257904e94b85ecd3183177954cd56edef9dd4fc0e66",
+      "sizeBytes": 6495
+    },
+    {
+      "path": "lib/import/normalizers/ozonFinanceNormalizer.ts",
+      "role": "Нормализация финансового отчёта Ozon",
+      "sha256": "1d60270c20875273b6f32c4034c2e0b40e14c795f8302ba00c288e97917d24f4",
+      "snapshotSha256": "1d60270c20875273b6f32c4034c2e0b40e14c795f8302ba00c288e97917d24f4",
+      "sizeBytes": 5710
+    },
+    {
+      "path": "lib/import/normalizers/ozonAdsNormalizer.ts",
+      "role": "Нормализация рекламы Ozon",
+      "sha256": "e4ec16a9cf29f37c886d205eb898e2007716d1eb810ccb4895e34ffb54c88733",
+      "snapshotSha256": "e4ec16a9cf29f37c886d205eb898e2007716d1eb810ccb4895e34ffb54c88733",
+      "sizeBytes": 2607
+    },
+    {
+      "path": "lib/import/normalizers/financeTransactionNormalizer.ts",
+      "role": "Нормализация внутренних финансовых операций",
+      "sha256": "2d79d46fb4152ed30870f7d28bb30a11f1960ae7b7d6795549dce1230707b3ce",
+      "snapshotSha256": "2d79d46fb4152ed30870f7d28bb30a11f1960ae7b7d6795549dce1230707b3ce",
+      "sizeBytes": 10720
+    },
+    {
+      "path": "lib/analytics/wbFinancialCoreV6.ts",
+      "role": "Контракты выручки, сверки удержаний, cash и P&L settlement WB V6",
+      "sha256": "7cd071438e1d5b62cd0abb3e94bf54b3467e1493109bd1a5e0c8e17b7ac62802",
+      "snapshotSha256": "7cd071438e1d5b62cd0abb3e94bf54b3467e1493109bd1a5e0c8e17b7ac62802",
+      "sizeBytes": 7806
+    },
+    {
+      "path": "lib/wb/sourceOwnership.ts",
+      "role": "Канонический владелец WB Sales источника по finance reportNumber",
+      "sha256": "406ba9648f102fedf2966e84bd5c1f6ded2d431c25200ba8feb336e409859a13",
+      "snapshotSha256": "406ba9648f102fedf2966e84bd5c1f6ded2d431c25200ba8feb336e409859a13",
+      "sizeBytes": 22704
+    },
+    {
+      "path": "app/profit-wb/page.tsx",
+      "role": "Пользовательские определения показателей WB V6",
+      "sha256": "d2a5e49dee28744f4ef86283aaec8b23d05299004e850fc9832a2c702b21b7ff",
+      "snapshotSha256": "d2a5e49dee28744f4ef86283aaec8b23d05299004e850fc9832a2c702b21b7ff",
+      "sizeBytes": 88301
+    },
+    {
+      "path": "lib/analytics/productCostResolver.ts",
+      "role": "Единый детерминированный resolver положительной себестоимости",
+      "sha256": "adcff625bd21616ed15bdc76d9dd35304e06430afb5c66bd42eb721d38682a89",
+      "snapshotSha256": "adcff625bd21616ed15bdc76d9dd35304e06430afb5c66bd42eb721d38682a89",
+      "sizeBytes": 2187
+    },
+    {
+      "path": "lib/analytics/wbFinality.ts",
+      "role": "Fail-closed контракт FINAL для stock и planning consumers",
+      "sha256": "9db779d6490573236553928876047a4b2d690a002d44fef5f1d96ba3af38e6a9",
+      "snapshotSha256": "9db779d6490573236553928876047a4b2d690a002d44fef5f1d96ba3af38e6a9",
+      "sizeBytes": 1811
+    },
+    {
+      "path": "lib/analytics/wbSizeAllocation.ts",
+      "role": "Signed SALE/RETURN агрегация и reconciliation размеров WB",
+      "sha256": "545943b008333284953a9dca091a523f40a796b152a6fd42efa5aa829cca7ef2",
+      "snapshotSha256": "545943b008333284953a9dca091a523f40a796b152a6fd42efa5aa829cca7ef2",
+      "sizeBytes": 2945
+    },
+    {
+      "path": "lib/analytics/costCoverage.ts",
+      "role": "Coverage себестоимости на общем положительном resolver",
+      "sha256": "eee6563f6a92316d2734ed63a1d6d72e46c5a5d29bfcb3c275d9c361efd535bd",
+      "snapshotSha256": "eee6563f6a92316d2734ed63a1d6d72e46c5a5d29bfcb3c275d9c361efd535bd",
+      "sizeBytes": 12256
+    },
+    {
+      "path": "lib/stocks/stockAbcSnapshots.ts",
+      "role": "Запрет WB ABC snapshot из PRELIMINARY аналитики",
+      "sha256": "dbfd30746f90334082a394edb60f4b51cf0ce4adb3d51602701066096b89922c",
+      "snapshotSha256": "dbfd30746f90334082a394edb60f4b51cf0ce4adb3d51602701066096b89922c",
+      "sizeBytes": 15012
+    },
+    {
+      "path": "app/api/stocks/supply-plan/export/route.ts",
+      "role": "Запрет supply-plan export из PRELIMINARY WB аналитики",
+      "sha256": "5ddeef328d1b27f0e96aac005c5f19c167f7cf28e9d6c1e3f20012c077ede7c2",
+      "snapshotSha256": "5ddeef328d1b27f0e96aac005c5f19c167f7cf28e9d6c1e3f20012c077ede7c2",
+      "sizeBytes": 77886
+    },
+    {
+      "path": "app/api/stocks/production-plan/export/route.ts",
+      "role": "Запрет production-plan export из PRELIMINARY WB аналитики",
+      "sha256": "5ae9c6c7520f54943702a25a5f3a8d8a6fad26f0ffca0bb73679a61a77e617ea",
+      "snapshotSha256": "5ae9c6c7520f54943702a25a5f3a8d8a6fad26f0ffca0bb73679a61a77e617ea",
+      "sizeBytes": 59894
+    }
+  ],
+  "consumerContracts": [
+    {
+      "path": "app/page.tsx",
+      "requiredPatterns": [
+        "buildDailyReport",
+        "@/lib/telegram/dailyReport"
+      ],
+      "forbiddenPatterns": []
+    },
+    {
+      "path": "app/insights/page.tsx",
+      "requiredPatterns": [
+        "getProfitAnalytics",
+        "@/lib/analytics/profitAnalytics",
+        "getProfitAnalyticsOzon",
+        "@/lib/analytics/profitAnalyticsOzon"
+      ],
+      "forbiddenPatterns": [
+        "buildDailyReport"
+      ]
+    },
+    {
+      "path": "app/profit-wb/page.tsx",
+      "requiredPatterns": [
+        "getProfitAnalytics",
+        "@/lib/analytics/profitAnalytics"
+      ],
+      "forbiddenPatterns": []
+    },
+    {
+      "path": "app/profit-ozon/page.tsx",
+      "requiredPatterns": [
+        "getProfitAnalyticsOzon",
+        "@/lib/analytics/profitAnalyticsOzon"
+      ],
+      "forbiddenPatterns": []
+    }
+  ],
+  "packageScriptContract": {
+    "financial-core:verify": "node scripts/financial-core/verify-financial-core-v6.mjs",
+    "financial-core:regression": "bash scripts/financial-core/run-financial-core-regression-v1.sh",
+    "financial-core:restore": "node scripts/financial-core/restore-financial-core-v6.mjs",
+    "wb-finance:verify": "node scripts/wb/verify-wb-official-finance-priority.mjs",
+    "wb-financial-core-v6:verify": "tsx scripts/wb/verify-wb-financial-core-v6.ts",
+    "prebuild": "npm run financial-core:verify",
+    "predev": "npm run financial-core:verify"
+  },
+  "controlValues": {
+    "currency": "RUB",
+    "2026-08-03..2026-08-09|ИП Петров": {
+      "economicTurnover": 3731559.73,
+      "buyerPaid": 2125455.72,
+      "platformDiscount": 1606104.01,
+      "sellerPayout": 2024884.25,
+      "prePayoutBridge": 1706675.48,
+      "marketplaceTaxTopUp": 24665.75,
+      "taxableRevenue": 2150121.47,
+      "officialLogistics": 499259.76,
+      "officialStorage": 1503.7,
+      "officialAcceptance": 0,
+      "officialWbPromotion": 163422,
+      "officialPenalties": 30,
+      "officialCashSettlement": 1360668.79,
+      "canonicalPnlSettlement": 1360668.79,
+      "cogs": 562890,
+      "taxes": 123887.95,
+      "netProfitAfterTax": 673890.84,
+      "marginAfterTaxPercent": 18.0592,
+      "sourceOwner": "DAILY_FINANCE_MATCHED_SESSIONS_ALL_ROWS",
+      "sourceProof": "PRIOR_READ_ONLY_SERVER_DIAGNOSTIC"
+    },
+    "2026-08-10..2026-08-16|ИП Петров": {
+      "economicTurnover": 4423576.82,
+      "buyerPaid": 2701877.81,
+      "platformDiscount": 1721699.01,
+      "sellerPayout": 2374350.14,
+      "prePayoutBridge": 2049226.68,
+      "marketplaceTaxTopUp": 6021.42,
+      "taxableRevenue": 2707899.23,
+      "officialLogistics": 594955.92,
+      "officialStorage": 471.11,
+      "officialAcceptance": 0,
+      "officialWbPromotion": 511778,
+      "officialPenalties": 10,
+      "officialCashSettlement": 1267135.11,
+      "canonicalPnlSettlement": 1267135.11,
+      "cogs": 649425,
+      "taxes": 156026.57,
+      "netProfitAfterTax": 461683.54,
+      "marginAfterTaxPercent": 10.4369,
+      "sourceOwner": "EXACT_FINANCE_COVER_SESSIONS_ALL_ROWS",
+      "sourceProof": "PRIOR_READ_ONLY_SERVER_DIAGNOSTIC"
+    },
+    "2026-08-03..2026-08-09|ИП Лебедева": {
+      "economicTurnover": 500617.5,
+      "buyerPaid": 293400.95,
+      "sellerPayout": 277022.34,
+      "marketplaceTaxTopUp": 6338.63,
+      "taxableRevenue": 299739.58,
+      "cogs": 87195,
+      "taxes": 32257.69,
+      "officialWbPromotion": 5498,
+      "officialCashSettlement": 211108.15,
+      "canonicalPnlSettlement": 211108.15,
+      "netProfitAfterTax": 91655.46,
+      "marginAfterTaxPercent": 18.3085,
+      "sourceOwner": "DAILY_FINANCE_MATCHED_SESSIONS_ALL_ROWS",
+      "sourceProof": "PRIOR_READ_ONLY_SERVER_DIAGNOSTIC"
+    },
+    "2026-08-10..2026-08-16|ИП Лебедева": {
+      "economicTurnover": 432667.21,
+      "buyerPaid": 276309.01,
+      "sellerPayout": 237861.65,
+      "marketplaceTaxTopUp": 1895.91,
+      "taxableRevenue": 278204.92,
+      "cogs": 75810,
+      "taxes": 29940.15,
+      "officialWbPromotion": 29055,
+      "officialCashSettlement": 135120.13,
+      "canonicalPnlSettlement": 135120.13,
+      "netProfitAfterTax": 29369.98,
+      "marginAfterTaxPercent": 6.7881,
+      "sourceOwner": "EXACT_FINANCE_COVER_SESSIONS_ALL_ROWS",
+      "sourceProof": "PRIOR_READ_ONLY_SERVER_DIAGNOSTIC"
+    },
+    "2026-08-03..2026-08-09|ALL": {
+      "economicTurnover": 4232177.23,
+      "buyerPaid": 2418856.67,
+      "marketplaceTaxTopUp": 31004.38,
+      "taxableRevenue": 2449861.05,
+      "cogs": 650085,
+      "taxes": 156145.64,
+      "canonicalPnlSettlement": 1571776.94,
+      "netProfitAfterTax": 765546.3,
+      "marginAfterTaxPercent": 18.0887
+    },
+    "2026-08-10..2026-08-16|ALL": {
+      "economicTurnover": 4856244.03,
+      "buyerPaid": 2978186.82,
+      "marketplaceTaxTopUp": 7917.33,
+      "taxableRevenue": 2986104.15,
+      "cogs": 725235,
+      "taxes": 185966.72,
+      "canonicalPnlSettlement": 1402255.24,
+      "netProfitAfterTax": 491053.52,
+      "marginAfterTaxPercent": 10.1118
+    }
+  },
+  "evidence": {
+    "directory": "__v6_evidence",
+    "stateAtImplementation": "EMPTY",
+    "productionSourceSha256Available": false,
+    "officialXlsxAvailable": false,
+    "productionAccess": "NONE"
+  }
+}

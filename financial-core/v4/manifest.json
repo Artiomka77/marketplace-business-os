@@ -1,0 +1,243 @@
+{
+  "version": "financial-core-v4",
+  "createdAt": "2026-08-04T11:27:09.081472+00:00",
+  "tagName": "financial-core-v4-hybrid-wb-ads-source-lock-v196-2026-08-04",
+  "status": "SOURCE_LOCK_CREATED_NOT_DEPLOYED",
+  "sourceCommit": "623ccb3f256faad084d315dec23c3c368ba1a49a",
+  "workingTreeDirty": true,
+  "parentVersion": "financial-core-v3",
+  "policy": {
+    "purpose": "Protect the fully regressed V4 hybrid financial core before production deployment.",
+    "requireNewAuditFor": [
+      "WB/Ozon profit, tax, DRR and source precedence formulas",
+      "WB Ads deduplication or WB Promotion reconciliation",
+      "ProductCost resolution and marketplace financial normalizers",
+      "data readiness and Telegram/Dashboard financial consumers"
+    ]
+  },
+  "wbSourcePolicy": {
+    "timezone": "Europe/Moscow",
+    "salesPriority": [
+      "WB_SALES",
+      "WB_SALES_OPERATIONAL_FALLBACK",
+      "WB_SALES_DAILY_FALLBACK"
+    ],
+    "advertisingExpenseSource": "DEDUPLICATED_FULL_WB_ADS_API",
+    "wbPromotionRole": "PERIOD_RECONCILIATION_ONLY",
+    "postingDateOverride": false,
+    "campaignsWithoutSalesRetained": true
+  },
+  "protectedFiles": [
+    {
+      "path": "lib/analytics/profitAnalytics.ts",
+      "role": "Канонический расчёт прибыли Wildberries",
+      "sha256": "6b0fca00812620209d946c6253bc46136796eeddabd7b0d0e6243b0c46aceb6a",
+      "snapshotSha256": "6b0fca00812620209d946c6253bc46136796eeddabd7b0d0e6243b0c46aceb6a",
+      "sizeBytes": 66529
+    },
+    {
+      "path": "lib/analytics/profitAnalyticsOzon.ts",
+      "role": "Канонический расчёт прибыли Ozon",
+      "sha256": "7e74eb841bd3906d356e11641391295b8f52a63de8c2c75ed968c6fd3e13dd11",
+      "snapshotSha256": "7e74eb841bd3906d356e11641391295b8f52a63de8c2c75ed968c6fd3e13dd11",
+      "sizeBytes": 68679
+    },
+    {
+      "path": "lib/analytics/dataReadiness.ts",
+      "role": "Определение полноты и финальности данных периода",
+      "sha256": "100dcd757defbce1538cf6380fe9bb328e9ce3f751fc834e5c98d81abbd512bc",
+      "snapshotSha256": "100dcd757defbce1538cf6380fe9bb328e9ce3f751fc834e5c98d81abbd512bc",
+      "sizeBytes": 18137
+    },
+    {
+      "path": "lib/finance/financeMetrics.ts",
+      "role": "ДДС, влияние финансовых операций и выводы собственника",
+      "sha256": "ea9d671f620f3af4849577b75d10b5e9636a86b5a5ada34eb4dd687eba3d94f3",
+      "snapshotSha256": "ea9d671f620f3af4849577b75d10b5e9636a86b5a5ada34eb4dd687eba3d94f3",
+      "sizeBytes": 12812
+    },
+    {
+      "path": "lib/telegram/dailyReport.ts",
+      "role": "Единая финансовая сводка Dashboard и Telegram",
+      "sha256": "7832ae9e85f519fc4aab9b18de71f0e83fc452e5a8f6c538297e97bc8d7bac82",
+      "snapshotSha256": "7832ae9e85f519fc4aab9b18de71f0e83fc452e5a8f6c538297e97bc8d7bac82",
+      "sizeBytes": 87636
+    },
+    {
+      "path": "lib/import/detectReportType.ts",
+      "role": "Распознавание типов импортируемых отчётов",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "snapshotSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "sizeBytes": 0
+    },
+    {
+      "path": "lib/import/reportDetector.ts",
+      "role": "Контракт определения финансовых источников",
+      "sha256": "f32adb4dce27e7667778dd4b7cc3b4c6e75a78caaabdae231a80090f5879928d",
+      "snapshotSha256": "f32adb4dce27e7667778dd4b7cc3b4c6e75a78caaabdae231a80090f5879928d",
+      "sizeBytes": 14888
+    },
+    {
+      "path": "lib/import/normalizers/productCostNormalizer.ts",
+      "role": "Нормализация себестоимости и Excel-дат",
+      "sha256": "e5b7db3ca0f2ac37ababec3ace7575b1834533dee21d4122225b77f95e76bba2",
+      "snapshotSha256": "e5b7db3ca0f2ac37ababec3ace7575b1834533dee21d4122225b77f95e76bba2",
+      "sizeBytes": 3920
+    },
+    {
+      "path": "lib/import/normalizers/wbSalesNormalizer.ts",
+      "role": "Нормализация продаж Wildberries",
+      "sha256": "3ceccc2c93e1a6f8f2e63686638eaa4727011bcbe4e2b90e3c5051530aef486e",
+      "snapshotSha256": "3ceccc2c93e1a6f8f2e63686638eaa4727011bcbe4e2b90e3c5051530aef486e",
+      "sizeBytes": 10402
+    },
+    {
+      "path": "lib/import/normalizers/wbFinanceNormalizer.ts",
+      "role": "Нормализация финансового отчёта Wildberries",
+      "sha256": "b8c8d5747bcbf33b2bdb0e8ad4eac3a53dd9c3dcf5971fd8d3df3f59390dd5c9",
+      "snapshotSha256": "b8c8d5747bcbf33b2bdb0e8ad4eac3a53dd9c3dcf5971fd8d3df3f59390dd5c9",
+      "sizeBytes": 4653
+    },
+    {
+      "path": "lib/import/normalizers/wbAdsNormalizer.ts",
+      "role": "Нормализация рекламы Wildberries",
+      "sha256": "86f733ac864c5ceccc0a8257904e94b85ecd3183177954cd56edef9dd4fc0e66",
+      "snapshotSha256": "86f733ac864c5ceccc0a8257904e94b85ecd3183177954cd56edef9dd4fc0e66",
+      "sizeBytes": 6495
+    },
+    {
+      "path": "lib/import/normalizers/ozonFinanceNormalizer.ts",
+      "role": "Нормализация финансового отчёта Ozon",
+      "sha256": "1d60270c20875273b6f32c4034c2e0b40e14c795f8302ba00c288e97917d24f4",
+      "snapshotSha256": "1d60270c20875273b6f32c4034c2e0b40e14c795f8302ba00c288e97917d24f4",
+      "sizeBytes": 5710
+    },
+    {
+      "path": "lib/import/normalizers/ozonAdsNormalizer.ts",
+      "role": "Нормализация рекламы Ozon",
+      "sha256": "e4ec16a9cf29f37c886d205eb898e2007716d1eb810ccb4895e34ffb54c88733",
+      "snapshotSha256": "e4ec16a9cf29f37c886d205eb898e2007716d1eb810ccb4895e34ffb54c88733",
+      "sizeBytes": 2607
+    },
+    {
+      "path": "lib/import/normalizers/financeTransactionNormalizer.ts",
+      "role": "Нормализация внутренних финансовых операций",
+      "sha256": "2d79d46fb4152ed30870f7d28bb30a11f1960ae7b7d6795549dce1230707b3ce",
+      "snapshotSha256": "2d79d46fb4152ed30870f7d28bb30a11f1960ae7b7d6795549dce1230707b3ce",
+      "sizeBytes": 10720
+    }
+  ],
+  "consumerContracts": [
+    {
+      "path": "app/page.tsx",
+      "requiredPatterns": [
+        "buildDailyReport",
+        "@/lib/telegram/dailyReport"
+      ],
+      "forbiddenPatterns": []
+    },
+    {
+      "path": "app/insights/page.tsx",
+      "requiredPatterns": [
+        "getProfitAnalytics",
+        "@/lib/analytics/profitAnalytics",
+        "getProfitAnalyticsOzon",
+        "@/lib/analytics/profitAnalyticsOzon"
+      ],
+      "forbiddenPatterns": [
+        "buildDailyReport"
+      ]
+    },
+    {
+      "path": "app/profit-wb/page.tsx",
+      "requiredPatterns": [
+        "getProfitAnalytics",
+        "@/lib/analytics/profitAnalytics"
+      ],
+      "forbiddenPatterns": []
+    },
+    {
+      "path": "app/profit-ozon/page.tsx",
+      "requiredPatterns": [
+        "getProfitAnalyticsOzon",
+        "@/lib/analytics/profitAnalyticsOzon"
+      ],
+      "forbiddenPatterns": []
+    }
+  ],
+  "externalRuntimeContracts": [
+    {
+      "server": "TELEGRAM_VPS",
+      "path": "/root/avorofin-bot-test/run-daily-telegram-report.sh",
+      "sha256": "e115e4d65d323662a79d1b06db85f572c6472f9eab15370e97336ea30ee137eb",
+      "sourceAudit": "v191",
+      "liveRecheckInV195": false
+    }
+  ],
+  "toolingFiles": [
+    {
+      "path": "scripts/financial-core/verify-financial-core-v4.mjs",
+      "sha256": "270a9c3204b29c2e9102cb390695bcaa906b2c5c55cc83d8dcb3416fe0062aba",
+      "sizeBytes": 2952
+    },
+    {
+      "path": "scripts/financial-core/restore-financial-core-v4.mjs",
+      "sha256": "25adf54d6752da6b7a167455c5810a1594f15bce2e5d352bc5a7a7053d8ee334",
+      "sizeBytes": 1439
+    }
+  ],
+  "packageScriptContract": {
+    "financial-core:verify": "node scripts/financial-core/verify-financial-core-v4.mjs",
+    "financial-core:regression": "bash scripts/financial-core/run-financial-core-regression-v1.sh",
+    "financial-core:restore": "node scripts/financial-core/restore-financial-core-v4.mjs",
+    "prebuild": "npm run financial-core:verify",
+    "predev": "npm run financial-core:verify"
+  },
+  "supportingSourceChanges": [
+    {
+      "path": "app/api/upload/route.ts",
+      "purpose": "Type-only build blocker fix; no import calculation behavior change",
+      "sha256": "5bb67c01178f842d99454b624a4c59502a96f7869522867f980fa0ccf658657b"
+    }
+  ],
+  "validationEvidence": {
+    "candidateAudit": "v195-3",
+    "candidateStatus": "CANDIDATE_REGRESSION_PASS",
+    "candidateBuildExitCode": 0,
+    "aliasCompatibilityBuildExitCode": 0,
+    "regressionCases": 15,
+    "passedChecks": 50,
+    "failedChecks": 0,
+    "candidateManifestSha256": "e65ccb868b26ab7fb68f626d2fa227dd1ebf69bc6476771f554e87a3e8e94b35",
+    "candidateDecisionSha256": "6194dd4360d652953c01a3695bd973f3db016fa84db979850f98675529c49054"
+  },
+  "controlValues": {
+    "currency": "RUB",
+    "2026-07-08|IP Petrov": {
+      "wbSalesQty": 1,
+      "wbTaxableRevenue": 3724.1,
+      "wbEconomicTurnover": 4475.62,
+      "wbAdsCost": 34435.0
+    },
+    "2026-07-12|IP Petrov": {
+      "wbSalesQty": 68,
+      "wbReturnsQty": 4,
+      "wbTaxableRevenue": 363377.12,
+      "wbEconomicTurnover": 528341.33,
+      "wbAdsCost": 42191.0,
+      "wbPromotionReconciliation": 191617.0
+    },
+    "2026-07-01..2026-07-26|ALL": {
+      "wbSalesQty": 2438,
+      "wbReturnsQty": 115,
+      "wbTaxableRevenue": 12683681.09,
+      "wbEconomicTurnover": 18227836.37,
+      "wbAdsCost": 978203.0,
+      "wbPromotionReconciliation": 20154.0,
+      "wbNetProfitAfterTax": 1298689.6297904765
+    }
+  },
+  "databaseChanges": "NONE",
+  "productionChanges": "NONE",
+  "telegramChanges": "NONE"
+}

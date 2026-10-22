@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import {
   buildFinanceCategoryTreatmentIndex,
-  getFinanceTransactionCashEffect,
+  getFinanceTransactionAccountEffect,
 } from "@/lib/finance/financeMetrics";
 
 function getAmount(value: unknown) {
@@ -11,6 +11,21 @@ function getAmount(value: unknown) {
 
 function accountKey(companyName: string, bankAccount: string) {
   return `${companyName}|||${bankAccount}`;
+}
+
+/** Accounts page: displayed CURRENT BALANCE is the stored FinanceAccount stock. */
+export function resolveDisplayedAccountBalance(account: {
+  currentBalance: unknown;
+}) {
+  return getAmount(account.currentBalance);
+}
+
+/** Pure reconstruct: openingBalance + Σ account effects (PLAN already filtered by caller). */
+export function computeAccountBalanceFromOpeningAndEffects(
+  openingBalance: unknown,
+  effects: number[]
+) {
+  return getAmount(openingBalance) + effects.reduce((sum, effect) => sum + effect, 0);
 }
 
 export async function recalculateAccountBalances() {
@@ -39,11 +54,9 @@ export async function recalculateAccountBalances() {
         },
 
         // В текущий остаток счёта входят только фактические операции.
-        // Плановые операции нужны для календаря и прогноза, но не должны
-        // уменьшать currentBalance заранее.
-        transactionStatus: {
-          not: "PLAN",
-        },
+        // PLAN / FORECAST_ONLY нужны для календаря и прогноза, но не должны
+        // менять currentBalance.
+        transactionStatus: "FACT",
       },
     }),
   ]);
@@ -58,7 +71,7 @@ export async function recalculateAccountBalances() {
 
     const key = accountKey(operation.companyName, bankAccount);
 
-    const effect = getFinanceTransactionCashEffect(
+    const effect = getFinanceTransactionAccountEffect(
       operation,
       categoryTreatmentIndex
     );

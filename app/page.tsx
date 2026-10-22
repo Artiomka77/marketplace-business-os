@@ -1,18 +1,49 @@
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
 import Link from "next/link";
+import { ReadModelPendingAutoRefresh } from "@/components/readModel/ReadModelPendingAutoRefresh";
 import { Suspense, type ReactNode } from "react";
 
 import { prisma } from "@/lib/prisma";
-import {
-  getDashboardDailyAnalytics,
-  type DashboardDailyPoint,
-} from "@/lib/analytics/dashboardDailyAnalytics";
-import { calculateFinanceMetricsForRows } from "@/lib/finance/financeMetrics";
 import { buildDailyReport } from "@/lib/telegram/dailyReport";
+import type { DashboardDailyPoint } from "@/lib/analytics/dashboardDailyAnalytics";
+import {
+  alignPreviousChartBuckets,
+  buildDashboardChartBuckets,
+  dashboardChartInsightTitles,
+  resolveDashboardChartGrain,
+  type DashboardChartBucket,
+} from "@/lib/analytics/dashboardChartBuckets";
+import { evaluateDashboardIncompleteWeek } from "@/lib/dashboard/incompleteWeekGuard";
 import { getCostCoverageSummary } from "@/lib/analytics/costCoverage";
 import {
-  getDataReadinessSummary,
   getDataReadinessTone,
 } from "@/lib/analytics/dataReadiness";
+import { DashboardPeriodPopup } from "@/components/dashboard/DashboardPeriodPopup";
+import { financialDynamicsMayShowNumericClaim, sanitizeLegacyCompanyFinancialRow } from "@/lib/dashboard/managementRevenue";
+import {
+  adsCardPresentation,
+  combinedPnlCardPresentation,
+  comparableDeltaValue,
+  isCoverageComparableForDelta,
+  ozonSkuMappingWarningLabel,
+  resolveOzonFinanceBadge,
+  salesCardPresentation,
+} from "@/lib/analytics/dashboardDisplayState";
+import {
+  formatOzonUnclassifiedOwnerWarning,
+  parseUnclassifiedAdjustmentAmount,
+} from "@/lib/ozon/accrualDayStatus";
+import { loadOzonAccrualDayStatuses } from "@/lib/ozon/accrualDayStatusStore";
+import { withAnalyticsPageFailSoft } from "@/lib/analytics/withAnalyticsPageFailSoft";
+import {
+  FINANCIAL_CORE_V6_PERIOD_READMODEL_V2,
+  getDefaultV6PeriodReadModelRepository,
+  isDashboardV6ReadModelFirstEnabled,
+  loadDashboardV6PeriodReadModel,
+  type PeriodCompanyMarketplaceMetricsPayload,
+} from "@/lib/dashboard/v6PeriodReadModel";
+import { resolveSelectedScopeIdentity } from "@/lib/dashboard/selectedScopeIdentity";
 
 type Props = {
   searchParams?: Promise<{
@@ -44,12 +75,12 @@ type CompanyDashboardRow = {
   ordersAmount: number;
   orderDataLoadedDays: number;
   orderDataExpectedDays: number;
-  wbRevenue: number;
-  ozonRevenue: number;
-  totalRevenue: number;
-  operatingProfitAfterTax: number;
-  netProfit: number;
-  profitAfterOwnerWithdrawal: number;
+  wbRevenue: number | null;
+  ozonRevenue: number | null;
+  totalRevenue: number | null;
+  operatingProfitAfterTax: number | null;
+  netProfit: number | null;
+  profitAfterOwnerWithdrawal: number | null;
   cashFlowResult: number;
   adsCost: number;
   wbAdsCost: number;
@@ -71,6 +102,8 @@ type CompanyDashboardRow = {
   ozonAbcA: number;
   ozonAbcB: number;
   ozonAbcC: number;
+  ozonCoverageComplete?: boolean;
+  ozonCoverageNote?: string | null;
 };
 
 type DashboardSummary = {
@@ -79,12 +112,14 @@ type DashboardSummary = {
   ordersAmount: number;
   orderDataLoadedDays: number;
   orderDataExpectedDays: number;
-  totalRevenue: number;
-  wbRevenue: number;
-  ozonRevenue: number;
-  operatingProfitAfterTax: number;
-  netProfit: number;
-  profitAfterOwnerWithdrawal: number;
+  totalRevenue: number | null;
+  wbRevenue: number | null;
+  ozonRevenue: number | null;
+  marketplaceTotalIncomplete: boolean;
+  ozonCoverageNote: string | null;
+  operatingProfitAfterTax: number | null;
+  netProfit: number | null;
+  profitAfterOwnerWithdrawal: number | null;
   cashFlowResult: number;
   adsCost: number;
   drr: number | null;
@@ -205,7 +240,7 @@ const chartPresets: ChartPresetConfig[] = [
       barToClassName: "to-violet-300",
     },
     secondary: {
-      label: "Кредиты",
+      label: "Платежи по кредитам",
       kind: "money",
       colorClassName: "text-red-700",
       dotClassName: "bg-red-500",
@@ -286,7 +321,8 @@ const quickActions = [
   },
 ];
 
-function formatCurrency(value: number) {
+function formatCurrency(value: number | null | undefined) {
+  if (value == null || !Number.isFinite(value)) return "н/д";
   return new Intl.NumberFormat("ru-RU", {
     style: "currency",
     currency: "RUB",
@@ -300,7 +336,8 @@ function formatNumber(value: number) {
   }).format(value);
 }
 
-function formatPercent(value: number) {
+function formatPercent(value: number | null) {
+  if (value == null || !Number.isFinite(value)) return "н/д";
   return `${value.toFixed(1)}%`;
 }
 
@@ -328,23 +365,6 @@ function formatAxisValue(value: number, kind: ChartMetricKind) {
   return formatCompactMoney(value);
 }
 
-function getChartDates(dateFrom: string, dateTo: string) {
-  const start = parseIsoDate(dateFrom);
-  const end = parseIsoDate(dateTo);
-  const days = getInclusiveDays(dateFrom, dateTo);
-  const visiblePoints = Math.min(Math.max(days, 1), 14);
-
-  if (days <= visiblePoints) {
-    return Array.from({ length: days }, (_, index) => addDays(start, index));
-  }
-
-  return Array.from({ length: visiblePoints }, (_, index) => {
-    const ratio = visiblePoints === 1 ? 0 : index / (visiblePoints - 1);
-    const offset = Math.round((days - 1) * ratio);
-    return addDays(start, offset);
-  }).filter((date) => date.getTime() <= end.getTime());
-}
-
 function formatChartDate(date: Date) {
   const day = String(date.getUTCDate()).padStart(2, "0");
   const month = String(date.getUTCMonth() + 1).padStart(2, "0");
@@ -352,6 +372,12 @@ function formatChartDate(date: Date) {
     dateLabel: `${day}.${month}`,
     weekDayLabel: weekDayLabels[date.getUTCDay()],
   };
+}
+
+function chartGrainColumnLabel(grain: ReturnType<typeof resolveDashboardChartGrain>) {
+  if (grain === "month") return "Месяц";
+  if (grain === "week") return "Неделя";
+  return "День";
 }
 
 function getSeriesHeight(value: number, max: number) {
@@ -371,42 +397,29 @@ function getSeriesStats(values: number[]) {
   };
 }
 
-function compactDailyPairs(
-  currentPoints: DashboardDailyPoint[],
-  previousPoints: DashboardDailyPoint[],
-  maxPoints = 14
-): Array<{ current: DashboardDailyPoint; previous: DashboardDailyPoint | null }> {
-  const result: Array<{ current: DashboardDailyPoint; previous: DashboardDailyPoint | null }> = [];
-
-  if (currentPoints.length === 0) return result;
-
-  if (currentPoints.length <= maxPoints) {
-    currentPoints.forEach((current, index) => {
-      result.push({
-        current,
-        previous: previousPoints[index] ?? previousPoints[previousPoints.length - 1] ?? null,
-      });
-    });
-
-    return result;
+function buildChartBucketPairs(params: {
+  currentPoints: DashboardDailyPoint[];
+  previousPoints: DashboardDailyPoint[];
+  dateFrom: string;
+  dateTo: string;
+  previousDateFrom?: string | null;
+  previousDateTo?: string | null;
+  comparisonAvailable: boolean;
+}): Array<{ current: DashboardChartBucket; previous: DashboardChartBucket | null }> {
+  const currentBuckets = buildDashboardChartBuckets(
+    params.currentPoints,
+    params.dateFrom,
+    params.dateTo
+  );
+  if (!params.comparisonAvailable) {
+    return currentBuckets.map((current) => ({ current, previous: null }));
   }
-
-  const lastIndex = currentPoints.length - 1;
-
-  Array.from({ length: maxPoints }, (_, index) => {
-    const ratio = maxPoints === 1 ? 0 : index / (maxPoints - 1);
-    const sourceIndex = Math.round(lastIndex * ratio);
-    const current = currentPoints[sourceIndex];
-
-    if (!current) return;
-
-    result.push({
-      current,
-      previous: previousPoints[sourceIndex] ?? previousPoints[previousPoints.length - 1] ?? null,
-    });
-  });
-
-  return result;
+  return alignPreviousChartBuckets(
+    currentBuckets,
+    params.previousPoints,
+    params.previousDateFrom,
+    params.previousDateTo
+  );
 }
 
 function metricValueFromDailyPoint(
@@ -418,7 +431,7 @@ function metricValueFromDailyPoint(
   if (metric.label === "Выручка") return point.revenue;
   if (metric.label === "ДРР") return point.drr ?? 0;
   if (metric.label === "Опер. прибыль") return point.operatingProfitAfterTax;
-  if (metric.label === "Кредиты") return point.loanPayments;
+  if (metric.label === "Платежи по кредитам") return point.loanPayments;
   if (metric.label === "Чистая прибыль") return point.netProfit;
   if (metric.label === "Денежный поток") return point.cashFlowResult;
 
@@ -445,7 +458,7 @@ function metricTotalFromDailyPoints(
   if (metric.label === "Опер. прибыль") {
     return sumDailyValue(points, (point) => point.operatingProfitAfterTax);
   }
-  if (metric.label === "Кредиты") return sumDailyValue(points, (point) => point.loanPayments);
+  if (metric.label === "Платежи по кредитам") return sumDailyValue(points, (point) => point.loanPayments);
   if (metric.label === "Чистая прибыль") return sumDailyValue(points, (point) => point.netProfit);
   if (metric.label === "Денежный поток") return sumDailyValue(points, (point) => point.cashFlowResult);
 
@@ -495,12 +508,12 @@ function isNearlySamePercent(periodValue: number | null, dailyValue: number | nu
   return Math.abs(dailyValue - periodValue) <= 0.1;
 }
 
-function getRevenuePercent(value: number, revenue: number) {
-  if (revenue === 0) return null;
+function getRevenuePercent(value: number | null, revenue: number | null) {
+  if (value == null || revenue == null || revenue <= 0) return null;
   return (value / revenue) * 100;
 }
 
-function formatRevenuePercent(value: number, revenue: number) {
+function formatRevenuePercent(value: number | null, revenue: number | null) {
   const percent = getRevenuePercent(value, revenue);
 
   if (percent === null) return "— от продаж/начислений";
@@ -524,24 +537,31 @@ function formatOrderCoverage(summary: DashboardSummary) {
     return "Заказы загружены за весь выбранный период";
   }
 
-  return `Заказы загружены частично: ${formatNumber(
+  return `Заказы: неполный период — ${formatNumber(
     summary.orderDataLoadedDays
   )} из ${formatNumber(
     summary.orderDataExpectedDays
-  )} дневных срезов. ДРР от заказов может быть завышен.`;
+  )} дневных срезов. ДРР от заказов — предварительно / неполный знаменатель.`;
 }
 
 function formatOrdersSubtitle(summary: DashboardSummary) {
+  const partial = hasPartialOrderCoverage(summary);
   const drrText =
     summary.drrByOrders !== null ? formatPercent(summary.drrByOrders) : "—";
+  const drrLabel = partial
+    ? `ДРР от заказов — предварительно / неполный знаменатель: ${drrText}`
+    : `ДРР от заказов: ${drrText}`;
 
-  return `Количество: ${formatNumber(
+  return `${partial ? "Заказы по доступным данным · " : ""}Количество: ${formatNumber(
     summary.ordersQty
-  )} шт · ДРР от заказов: ${drrText}`;
+  )} шт · ${drrLabel}`;
 }
 
-function calculateCompanyDelta(current: number, previous?: number | null) {
-  const previousValue = previous ?? 0;
+function calculateCompanyDelta(current: number | null, previous?: number | null) {
+  if (current == null || previous == null) {
+    return { label: "н/д", className: "text-slate-400" };
+  }
+  const previousValue = previous;
 
   if (previousValue === 0) {
     if (current === 0) return { label: "0.0%", className: "text-slate-400" };
@@ -562,7 +582,7 @@ function CompanyKpiMeta({
   previous,
 }: {
   revenuePercent?: string | null;
-  current: number;
+  current: number | null;
   previous?: number | null;
 }) {
   const delta = calculateCompanyDelta(current, previous);
@@ -793,11 +813,13 @@ function safeNumber(value: unknown) {
   return Number.isFinite(number) ? number : 0;
 }
 
-function valueColor(value: number) {
+function valueColor(value: number | null) {
+  if (value == null) return "text-slate-500";
   return value >= 0 ? "text-emerald-600" : "text-red-600";
 }
 
-function valueTone(value: number) {
+function valueTone(value: number | null) {
+  if (value == null) return "bg-slate-50 text-slate-600 ring-slate-200";
   return value >= 0
     ? "bg-emerald-50 text-emerald-700 ring-emerald-200"
     : "bg-red-50 text-red-700 ring-red-200";
@@ -816,10 +838,17 @@ function trendTone(isGood: boolean | null) {
 }
 
 function buildMoneyTrend(params: {
-  current: number;
-  previous: number;
+  current: number | null;
+  previous: number | null;
   goodWhen: "up" | "down";
 }): MetricTrend {
+  if (params.current == null || params.previous == null) {
+    return {
+      label: "н/д",
+      title: "Сравнение недоступно: период не сопоставим",
+      className: trendTone(null),
+    };
+  }
   const delta = params.current - params.previous;
   const percent =
     params.previous !== 0 ? (delta / Math.abs(params.previous)) * 100 : null;
@@ -912,34 +941,6 @@ function hasAnyCompanyMetric(row: CompanyDashboardRow) {
     row.wbStockQty !== 0 ||
     row.ozonStockQty !== 0 ||
     row.warehouseStockQty !== 0
-  );
-}
-
-function companyReportHasAnyDashboardMetric(
-  companyReport: Awaited<ReturnType<typeof buildDailyReport>>["companies"][number] | undefined
-) {
-  if (!companyReport) return false;
-
-  return (
-    companyReport.wb.ordersQty !== 0 ||
-    companyReport.wb.ordersAmount !== 0 ||
-    companyReport.wb.salesQty !== 0 ||
-    companyReport.wb.salesAmount !== 0 ||
-    companyReport.wb.adSpend !== 0 ||
-    companyReport.wb.stockQty !== 0 ||
-    companyReport.wb.netProfitAfterTax !== 0 ||
-    companyReport.ozon.ordersQty !== 0 ||
-    companyReport.ozon.ordersAmount !== 0 ||
-    companyReport.ozon.salesQty !== 0 ||
-    companyReport.ozon.salesAmount !== 0 ||
-    companyReport.ozon.adSpend !== 0 ||
-    companyReport.ozon.stockQty !== 0 ||
-    companyReport.ozon.netProfitAfterTax !== 0 ||
-    companyReport.finance.cashIncome !== 0 ||
-    companyReport.finance.cashOutflow !== 0 ||
-    companyReport.finance.netCashFlow !== 0 ||
-    companyReport.finance.netProfitImpact !== 0 ||
-    companyReport.finance.ownerWithdrawals !== 0
   );
 }
 
@@ -1200,10 +1201,17 @@ function InteractiveDonut({
   ozonRevenue,
   compact = false,
 }: {
-  wbRevenue: number;
-  ozonRevenue: number;
+  wbRevenue: number | null;
+  ozonRevenue: number | null;
   compact?: boolean;
 }) {
+  if (wbRevenue == null || ozonRevenue == null) {
+    return (
+      <div className="flex h-40 w-full items-center justify-center rounded-[24px] bg-slate-50 p-4 text-sm font-bold text-slate-500 ring-1 ring-slate-200 sm:h-44">
+        Доля маркетплейса недоступна
+      </div>
+    );
+  }
   const total = wbRevenue + ozonRevenue;
   const wbPercent = total > 0 ? (wbRevenue / total) * 100 : 0;
   const ozonPercent = total > 0 ? (ozonRevenue / total) * 100 : 0;
@@ -1290,8 +1298,8 @@ function InsightValue({
   );
 }
 
-function percentDelta(currentValue: number, previousValue: number) {
-  if (previousValue === 0) return null;
+function percentDelta(currentValue: number | null, previousValue: number | null) {
+  if (currentValue == null || previousValue == null || previousValue === 0) return null;
   return ((currentValue - previousValue) / Math.abs(previousValue)) * 100;
 }
 
@@ -1325,23 +1333,45 @@ function InteractiveTrendChart({
   preset,
   currentPoints,
   previousPoints,
+  dateFrom,
+  dateTo,
+  previousDateFrom,
+  previousDateTo,
+  comparisonAvailable,
 }: {
   preset: ChartPresetConfig;
   currentPoints: DashboardDailyPoint[];
   previousPoints: DashboardDailyPoint[];
+  dateFrom: string;
+  dateTo: string;
+  previousDateFrom?: string | null;
+  previousDateTo?: string | null;
+  comparisonAvailable: boolean;
 }) {
-  const dailyPairs = compactDailyPairs(currentPoints, previousPoints);
+  const dailyPairs = buildChartBucketPairs({
+    currentPoints,
+    previousPoints,
+    dateFrom,
+    dateTo,
+    previousDateFrom,
+    previousDateTo,
+    comparisonAvailable,
+  });
   const primarySeries = dailyPairs.map((pair) =>
-    metricValueFromDailyPoint(pair.current, preset.primary)
+    metricValueFromDailyPoint(pair.current.point, preset.primary)
   );
   const secondarySeries = dailyPairs.map((pair) =>
-    metricValueFromDailyPoint(pair.current, preset.secondary)
+    metricValueFromDailyPoint(pair.current.point, preset.secondary)
   );
   const previousPrimarySeries = dailyPairs.map((pair) =>
-    metricValueFromDailyPoint(pair.previous, preset.primary)
+    comparisonAvailable
+      ? metricValueFromDailyPoint(pair.previous?.point, preset.primary)
+      : 0
   );
   const previousSecondarySeries = dailyPairs.map((pair) =>
-    metricValueFromDailyPoint(pair.previous, preset.secondary)
+    comparisonAvailable
+      ? metricValueFromDailyPoint(pair.previous?.point, preset.secondary)
+      : 0
   );
   const maxPrimary = Math.max(
     ...primarySeries.map(Math.abs),
@@ -1468,23 +1498,27 @@ function InteractiveTrendChart({
             const previousBarWidth = barWidth;
             const y = plotTop + plotHeight - height;
             const previousY = plotTop + plotHeight - previousHeight;
-            const { dateLabel, weekDayLabel } = formatChartDate(parseIsoDate(dailyPairs[index].current.date));
+            const bucket = dailyPairs[index]?.current;
+            const dateLabel = bucket?.label ?? "";
+            const weekDayLabel = bucket?.subLabel ?? "";
 
             return (
-              <g key={dailyPairs[index].current.date}>
+              <g key={bucket?.key ?? String(index)}>
+                {comparisonAvailable ? (
+                  <rect
+                    x={x - previousBarWidth / 2 + barWidth * 0.45}
+                    y={previousY}
+                    width={previousBarWidth}
+                    height={previousHeight}
+                    rx="10"
+                    fill="#ddd6fe"
+                    opacity="0.72"
+                    stroke="#c4b5fd"
+                    strokeDasharray="4 3"
+                  />
+                ) : null}
                 <rect
-                  x={x - previousBarWidth / 2 + barWidth * 0.45}
-                  y={previousY}
-                  width={previousBarWidth}
-                  height={previousHeight}
-                  rx="10"
-                  fill="#ddd6fe"
-                  opacity="0.72"
-                  stroke="#c4b5fd"
-                  strokeDasharray="4 3"
-                />
-                <rect
-                  x={x - barWidth / 2 - barWidth * 0.3}
+                  x={x - barWidth / 2 - (comparisonAvailable ? barWidth * 0.3 : 0)}
                   y={y}
                   width={barWidth}
                   height={height}
@@ -1499,27 +1533,31 @@ function InteractiveTrendChart({
                 >
                   {dateLabel}
                 </text>
-                <text
-                  x={x}
-                  y={plotTop + plotHeight + 36}
-                  textAnchor="middle"
-                  className="fill-slate-400 text-[10px] font-bold"
-                >
-                  {weekDayLabel}
-                </text>
+                {weekDayLabel ? (
+                  <text
+                    x={x}
+                    y={plotTop + plotHeight + 36}
+                    textAnchor="middle"
+                    className="fill-slate-400 text-[10px] font-bold"
+                  >
+                    {weekDayLabel}
+                  </text>
+                ) : null}
               </g>
             );
           })}
 
-          <polyline
-            fill="none"
-            stroke="#fdba74"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth="3"
-            strokeDasharray="5 6"
-            points={previousLinePoints}
-          />
+          {comparisonAvailable ? (
+            <polyline
+              fill="none"
+              stroke="#fdba74"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth="3"
+              strokeDasharray="5 6"
+              points={previousLinePoints}
+            />
+          ) : null}
           <polyline
             fill="none"
             stroke={preset.secondary.strokeColor}
@@ -1536,7 +1574,7 @@ function InteractiveTrendChart({
 
             return (
               <circle
-                key={dailyPairs[index].current.date}
+                key={dailyPairs[index]?.current.key ?? String(index)}
                 cx={x}
                 cy={y}
                 r="4.5"
@@ -1561,12 +1599,10 @@ function InteractiveTrendChart({
             const secondaryValue = secondarySeries[index] ?? 0;
             const previousPrimaryValue = previousPrimarySeries[index] ?? 0;
             const previousSecondaryValue = previousSecondarySeries[index] ?? 0;
-            const { dateLabel, weekDayLabel } = formatChartDate(parseIsoDate(pair.current.date));
-            const comparisonDate = pair.previous?.date ?? pair.current.date;
-            const {
-              dateLabel: comparisonDateLabel,
-              weekDayLabel: comparisonWeekDayLabel,
-            } = formatChartDate(parseIsoDate(comparisonDate));
+            const dateLabel = pair.current.label;
+            const weekDayLabel = pair.current.subLabel;
+            const comparisonDateLabel = pair.previous?.label ?? "н/д";
+            const comparisonWeekDayLabel = pair.previous?.subLabel ?? "";
             const tooltipPosition =
               index <= 1
                 ? "left-0 translate-x-0"
@@ -1575,13 +1611,14 @@ function InteractiveTrendChart({
                   : "left-1/2 -translate-x-1/2";
 
             return (
-              <div key={pair.current.date} className="group relative flex-1 cursor-crosshair">
+              <div key={pair.current.key} className="group relative flex-1 cursor-crosshair">
                 <div className="absolute inset-y-0 left-1/2 hidden w-px bg-indigo-300 group-hover:block" />
                 <div
                   className={`pointer-events-none absolute top-4 z-30 hidden w-40 rounded-xl border border-slate-200 bg-white px-2.5 py-2 text-left shadow-lg group-hover:block ${tooltipPosition}`}
                 >
                   <div className="text-[9px] font-black uppercase tracking-[0.06em] text-slate-400">
-                    {dateLabel} · {weekDayLabel}
+                    {dateLabel}
+                    {weekDayLabel ? ` · ${weekDayLabel}` : ""}
                   </div>
                   <div className="mt-1.5 space-y-1 text-[10px] font-black leading-4">
                     <div className="text-[9px] uppercase tracking-[0.08em] text-slate-400">
@@ -1599,22 +1636,34 @@ function InteractiveTrendChart({
                         {formatAxisValue(secondaryValue, preset.secondary.kind)}
                       </span>
                     </div>
-                    <div className="my-1 h-px bg-slate-100" />
-                    <div className="text-[9px] uppercase tracking-[0.08em] text-slate-400">
-                      Сравнение: {comparisonDateLabel} · {comparisonWeekDayLabel}
-                    </div>
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="truncate text-slate-500">{preset.primary.label}</span>
-                      <span className="text-slate-600">
-                        {formatAxisValue(previousPrimaryValue, preset.primary.kind)}
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="truncate text-slate-500">{preset.secondary.label}</span>
-                      <span className="text-slate-600">
-                        {formatAxisValue(previousSecondaryValue, preset.secondary.kind)}
-                      </span>
-                    </div>
+                    {comparisonAvailable ? (
+                      <>
+                        <div className="my-1 h-px bg-slate-100" />
+                        <div className="text-[9px] uppercase tracking-[0.08em] text-slate-400">
+                          Сравнение: {comparisonDateLabel}
+                          {comparisonWeekDayLabel ? ` · ${comparisonWeekDayLabel}` : ""}
+                        </div>
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="truncate text-slate-500">{preset.primary.label}</span>
+                          <span className="text-slate-600">
+                            {formatAxisValue(previousPrimaryValue, preset.primary.kind)}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="truncate text-slate-500">{preset.secondary.label}</span>
+                          <span className="text-slate-600">
+                            {formatAxisValue(previousSecondaryValue, preset.secondary.kind)}
+                          </span>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <div className="my-1 h-px bg-slate-100" />
+                        <div className="text-[9px] font-black uppercase tracking-[0.08em] text-slate-400">
+                          Сравнение: н/д
+                        </div>
+                      </>
+                    )}
                   </div>
                 </div>
               </div>
@@ -1630,17 +1679,37 @@ function DynamicInsights({
   preset,
   currentPoints,
   previousPoints,
+  dateFrom,
+  dateTo,
+  previousDateFrom,
+  previousDateTo,
+  comparisonAvailable,
 }: {
   preset: ChartPresetConfig;
   currentPoints: DashboardDailyPoint[];
   previousPoints: DashboardDailyPoint[];
+  dateFrom: string;
+  dateTo: string;
+  previousDateFrom?: string | null;
+  previousDateTo?: string | null;
+  comparisonAvailable: boolean;
 }) {
-  const dailyPairs = compactDailyPairs(currentPoints, previousPoints);
+  const grain = resolveDashboardChartGrain(dateFrom, dateTo);
+  const insightTitles = dashboardChartInsightTitles(grain);
+  const dailyPairs = buildChartBucketPairs({
+    currentPoints,
+    previousPoints,
+    dateFrom,
+    dateTo,
+    previousDateFrom,
+    previousDateTo,
+    comparisonAvailable,
+  });
   const primarySeries = dailyPairs.map((pair) =>
-    metricValueFromDailyPoint(pair.current, preset.primary)
+    metricValueFromDailyPoint(pair.current.point, preset.primary)
   );
   const secondarySeries = dailyPairs.map((pair) =>
-    metricValueFromDailyPoint(pair.current, preset.secondary)
+    metricValueFromDailyPoint(pair.current.point, preset.secondary)
   );
   const primaryStats = getSeriesStats(primarySeries);
   const secondaryStats = getSeriesStats(secondarySeries);
@@ -1648,30 +1717,42 @@ function DynamicInsights({
 
   const primaryTotal = metricTotalFromDailyPoints(currentPoints, preset.primary);
   const secondaryTotal = metricTotalFromDailyPoints(currentPoints, preset.secondary);
-  const previousPrimaryTotal = metricTotalFromDailyPoints(previousPoints, preset.primary);
-  const previousSecondaryTotal = metricTotalFromDailyPoints(previousPoints, preset.secondary);
+  const previousPrimaryTotal = comparisonAvailable
+    ? metricTotalFromDailyPoints(previousPoints, preset.primary)
+    : null;
+  const previousSecondaryTotal = comparisonAvailable
+    ? metricTotalFromDailyPoints(previousPoints, preset.secondary)
+    : null;
 
   const bestPrimaryIndex = primarySeries.indexOf(primaryStats.max);
   const weakPrimaryIndex = primarySeries.indexOf(primaryStats.min);
   const peakSecondaryIndex = secondarySeries.indexOf(secondaryStats.max);
-  const avgPrimary = averageMetricFromDailyPoints(currentPoints, preset.primary);
-  const avgSecondary = averageMetricFromDailyPoints(currentPoints, preset.secondary);
+  // Average of calendar buckets (month/week/day), not raw daily points.
+  const avgPrimary =
+    primarySeries.length > 0
+      ? primarySeries.reduce((sum, value) => sum + value, 0) / primarySeries.length
+      : 0;
+  const avgSecondary =
+    preset.secondary.kind === "percent"
+      ? metricTotalFromDailyPoints(currentPoints, preset.secondary)
+      : secondarySeries.length > 0
+        ? secondarySeries.reduce((sum, value) => sum + value, 0) /
+          secondarySeries.length
+        : 0;
 
   function row(index: number) {
     const pair = dailyPairs[index] ?? dailyPairs[0];
-    const currentPoint = pair?.current;
-    const date = currentPoint?.date ?? toIsoDate(new Date());
-    const { dateLabel, weekDayLabel } = formatChartDate(parseIsoDate(date));
-    const primaryValue = currentPoint
-      ? metricValueFromDailyPoint(currentPoint, preset.primary)
+    const currentBucket = pair?.current;
+    const primaryValue = currentBucket
+      ? metricValueFromDailyPoint(currentBucket.point, preset.primary)
       : 0;
-    const secondaryValue = currentPoint
-      ? metricValueFromDailyPoint(currentPoint, preset.secondary)
+    const secondaryValue = currentBucket
+      ? metricValueFromDailyPoint(currentBucket.point, preset.secondary)
       : 0;
 
     return {
-      dateLabel,
-      weekDayLabel,
+      dateLabel: currentBucket?.label ?? "—",
+      weekDayLabel: currentBucket?.subLabel || currentBucket?.dateTo || "",
       primaryValue,
       secondaryValue,
     };
@@ -1680,18 +1761,29 @@ function DynamicInsights({
   const best = row(bestPrimaryIndex >= 0 ? bestPrimaryIndex : 0);
   const weak = row(weakPrimaryIndex >= 0 ? weakPrimaryIndex : 0);
   const peak = row(peakSecondaryIndex >= 0 ? peakSecondaryIndex : 0);
-  const primaryDelta = percentDelta(primaryTotal, previousPrimaryTotal);
+  const primaryDelta =
+    previousPrimaryTotal == null
+      ? null
+      : percentDelta(primaryTotal, previousPrimaryTotal);
   const secondaryDelta =
-    preset.secondary.kind === "percent"
-      ? secondaryTotal - previousSecondaryTotal
-      : percentDelta(secondaryTotal, previousSecondaryTotal);
+    previousSecondaryTotal == null
+      ? null
+      : preset.secondary.kind === "percent"
+        ? secondaryTotal - previousSecondaryTotal
+        : percentDelta(secondaryTotal, previousSecondaryTotal);
 
   const rows = [
-    { icon: "↗", title: "Лучший день", data: best, tone: "bg-emerald-50 text-emerald-600" },
-    { icon: "↓", title: "Слабый день", data: weak, tone: "bg-red-50 text-red-600" },
-    { icon: preset.secondary.kind === "percent" ? "↟" : "◔", title: `Пик: ${preset.secondary.label}`, data: peak, tone: "bg-orange-50 text-orange-600" },
+    { icon: "↗", title: insightTitles.best, data: best, tone: "bg-emerald-50 text-emerald-600" },
+    { icon: "↓", title: insightTitles.weak, data: weak, tone: "bg-red-50 text-red-600" },
+    {
+      icon: preset.secondary.kind === "percent" ? "↟" : "◔",
+      title: `Пик ${preset.secondary.label === "ДРР" ? "ДРР" : preset.secondary.label}`,
+      data: peak,
+      tone: "bg-orange-50 text-orange-600",
+    },
   ];
 
+  const periodColumn = chartGrainColumnLabel(grain);
   const headerClassName = isDrrPreset
     ? "grid grid-cols-[30px_minmax(78px,1fr)_58px_76px_82px_44px] items-center gap-2 px-3 py-2"
     : "grid grid-cols-[30px_minmax(88px,1.15fr)_64px_1fr_1fr] items-center gap-2 px-3 py-2";
@@ -1765,7 +1857,7 @@ function DynamicInsights({
         <div className={`${headerClassName} border-b border-slate-100 text-[10px] font-black uppercase tracking-[0.08em] text-slate-400`}>
           <div />
           <div>Показатель</div>
-          <div>День</div>
+          <div>{periodColumn}</div>
           <div>{preset.primary.label}</div>
           {isDrrPreset ? (
             <>
@@ -1796,7 +1888,7 @@ function DynamicInsights({
         <div className={rowClassName}>
           <div className="flex h-8 w-8 items-center justify-center rounded-2xl bg-blue-50 text-xs font-black text-blue-600">≈</div>
           <div>
-            <div className="text-xs font-black text-slate-950">Средний день</div>
+            <div className="text-xs font-black text-slate-950">{insightTitles.average}</div>
           </div>
           <div className="text-xs font-bold leading-4 text-slate-600">
             <div>{averageRow.dateLabel}</div>
@@ -1807,18 +1899,24 @@ function DynamicInsights({
       </div>
 
       <div className="mt-4 rounded-2xl border border-orange-100 bg-orange-50/50 p-3 text-sm font-semibold leading-6 text-slate-700">
-        Выручка стабильна, но рекламную нагрузку стоит проверять в дни пиков.
+        Выручка стабильна, но рекламную нагрузку стоит проверять на пиках периода.
       </div>
 
       <div className="mt-3 rounded-2xl border border-slate-200 bg-white p-3 text-sm font-black text-slate-700">
         <span className="text-slate-500">Сравнение:</span>{" "}
-        <span className={primaryDelta !== null && primaryDelta >= 0 ? "text-emerald-600" : "text-red-600"}>
-          {preset.primary.label} {formatDelta(primaryDelta, preset.primary.kind)}
-        </span>
-        <span className="px-2 text-slate-300">·</span>
-        <span className={secondaryDelta !== null && secondaryDelta <= 0 ? "text-emerald-600" : "text-red-600"}>
-          {preset.secondary.label} {formatDelta(secondaryDelta, preset.secondary.kind)}
-        </span>
+        {comparisonAvailable && primaryDelta !== null && secondaryDelta !== null ? (
+          <>
+            <span className={primaryDelta >= 0 ? "text-emerald-600" : "text-red-600"}>
+              {preset.primary.label} {formatDelta(primaryDelta, preset.primary.kind)}
+            </span>
+            <span className="px-2 text-slate-300">·</span>
+            <span className={secondaryDelta <= 0 ? "text-emerald-600" : "text-red-600"}>
+              {preset.secondary.label} {formatDelta(secondaryDelta, preset.secondary.kind)}
+            </span>
+          </>
+        ) : (
+          <span className="text-slate-500">н/д</span>
+        )}
       </div>
     </section>
   );
@@ -1858,8 +1956,13 @@ function summarizeDailyForReconciliation(points: DashboardDailyPoint[]) {
   };
 }
 
-function makeMoneyReconciliationRow(label: string, periodValue: number, dailyValue: number): ReconciliationRow {
-  const diff = dailyValue - periodValue;
+function makeMoneyReconciliationRow(
+  label: string,
+  periodValue: number | null,
+  dailyValue: number | null
+): ReconciliationRow {
+  const diff =
+    periodValue == null || dailyValue == null ? null : dailyValue - periodValue;
 
   return {
     label,
@@ -1867,7 +1970,10 @@ function makeMoneyReconciliationRow(label: string, periodValue: number, dailyVal
     periodValue,
     dailyValue,
     diff,
-    isOk: isNearlySameMoney(periodValue, dailyValue),
+    isOk:
+      periodValue != null &&
+      dailyValue != null &&
+      isNearlySameMoney(periodValue, dailyValue),
   };
 }
 
@@ -1900,7 +2006,7 @@ function buildReconciliationRows(summary: DashboardSummary, points: DashboardDai
     makeMoneyReconciliationRow("Опер. прибыль", summary.operatingProfitAfterTax, daily.operatingProfitAfterTax),
     makeMoneyReconciliationRow("Чистая прибыль", summary.netProfit, daily.netProfit),
     makeMoneyReconciliationRow("Денежный поток", summary.cashFlowResult, daily.cashFlowResult),
-    makeMoneyReconciliationRow("Кредиты", summary.loanPayments, daily.loanPayments),
+    makeMoneyReconciliationRow("Платежи по кредитам", summary.loanPayments, daily.loanPayments),
   ];
 }
 
@@ -2142,6 +2248,115 @@ function DashboardDynamicsSkeleton({
   );
 }
 
+function toDashboardDailyPoints(
+  points: Array<{
+    businessDate?: string;
+    date?: string;
+    wbRevenue: number;
+    ozonRevenue: number;
+    revenue: number;
+    adsCost: number;
+    drr: number | null;
+    operatingProfitAfterTax: number;
+    netProfit: number;
+    cashFlowResult: number;
+    loanPayments: number;
+    creditPrincipal: number;
+    creditInterest: number;
+  }>
+): DashboardDailyPoint[] {
+  return points.map((point) => ({
+    date: point.date ?? point.businessDate ?? "",
+    wbRevenue: point.wbRevenue,
+    ozonRevenue: point.ozonRevenue,
+    revenue: point.revenue,
+    adsCost: point.adsCost,
+    drr: point.drr,
+    operatingProfitAfterTax: point.operatingProfitAfterTax,
+    netProfit: point.netProfit,
+    cashFlowResult: point.cashFlowResult,
+    loanPayments: point.loanPayments,
+    creditPrincipal: point.creditPrincipal,
+    creditInterest: point.creditInterest,
+  }));
+}
+
+function mapReadModelRowsToCompanyRows(
+  rows: PeriodCompanyMarketplaceMetricsPayload[]
+): CompanyDashboardRow[] {
+  return rows.map((row) => sanitizeLegacyCompanyFinancialRow({ ...row }));
+}
+
+function isDashboardWaitingSourceReason(reason: string) {
+  return (
+    reason === "WAITING_SOURCE" ||
+    reason.startsWith("WAITING_SOURCE:") ||
+    reason.startsWith("WAITING_FOR_WB") ||
+    reason === "D6_UNSAFE_WB_OWNERSHIP_MODE" ||
+    reason.startsWith("D6_UNSAFE_")
+  );
+}
+
+function DashboardReadModelPending({
+  reason,
+  dateFrom,
+  dateTo,
+  dataModeHint,
+  companyScope = "ALL",
+  initialStatus = "PENDING",
+}: {
+  reason: string;
+  dateFrom: string;
+  dateTo: string;
+  dataModeHint?: string;
+  companyScope?: string;
+  initialStatus?: "PENDING" | "ERROR";
+}) {
+  const waitingSource = isDashboardWaitingSourceReason(reason);
+  const fromLabel = `${dateFrom.slice(8, 10)}.${dateFrom.slice(5, 7)}`;
+  const toLabel = `${dateTo.slice(8, 10)}.${dateTo.slice(5, 7)}`;
+  return (
+    <main
+      className="page-shell"
+      data-dashboard-source="READ_MODEL_MISS"
+      data-dashboard-formula={FINANCIAL_CORE_V6_PERIOD_READMODEL_V2}
+      data-dashboard-reason={reason}
+      data-dashboard-data-mode={dataModeHint ?? ""}
+      data-dashboard-readiness={waitingSource ? "WAITING_SOURCE" : "BUILD_PENDING"}
+    >
+      <div className="page-container">
+        <section className="panel mt-6 p-6">
+          <div className="text-xs font-black uppercase tracking-[0.12em] text-amber-700">
+            Snapshot / read-model
+          </div>
+          <h1 className="mt-2 text-2xl font-black text-slate-950">
+            {waitingSource
+              ? `Ожидаем закрытый отчёт WB за ${fromLabel}–${toLabel}`
+              : "Дашборд готовит V6 read-model"}
+          </h1>
+          <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-600">
+            {waitingSource
+              ? `Источник WB для периода ${dateFrom} — ${dateTo} ещё не готов для финального V6 read-model (${reason}${
+                  dataModeHint ? `; ${dataModeHint}` : ""
+                }). Это не бесконечный пересчёт: как только закрытый отчёт появится, страница обновится автоматически.`
+              : `Обычный запрос не запускает тяжёлый Financial Core. Период ${dateFrom} — ${dateTo} сейчас в статусе BUILD_PENDING (${reason}${
+                  dataModeHint ? `; ${dataModeHint}` : ""
+                }).`}
+          </p>
+          <ReadModelPendingAutoRefresh
+            surface="dashboard_v6"
+            dateFrom={dateFrom}
+            dateTo={dateTo}
+            companyScope={companyScope}
+            initialStatus={initialStatus}
+            reason={reason}
+          />
+        </section>
+      </div>
+    </main>
+  );
+}
+
 async function DashboardDynamicsSection({
   selectedChartPreset,
   selectedPeriod,
@@ -2153,6 +2368,8 @@ async function DashboardDynamicsSection({
   marketplacePrevious,
   useLargePeriodStabilityMode,
   showDebug,
+  currentDailyPointsInput,
+  previousDailyPointsInput,
 }: {
   selectedChartPreset: ChartPresetConfig;
   selectedPeriod: PeriodOption;
@@ -2164,6 +2381,8 @@ async function DashboardDynamicsSection({
   marketplacePrevious: DashboardSummary;
   useLargePeriodStabilityMode: boolean;
   showDebug: boolean;
+  currentDailyPointsInput: DashboardDailyPoint[];
+  previousDailyPointsInput: DashboardDailyPoint[];
 }) {
   const logDashboardPerf = (label: string, startedAt: number) => {
     if (!showDebug) return;
@@ -2172,33 +2391,11 @@ async function DashboardDynamicsSection({
   };
 
   const dailyAnalyticsStartedAt = Date.now();
-  const currentDailyPoints = await getDashboardDailyAnalytics({
-    dateFrom: selectedPeriod.dateFrom,
-    dateTo: selectedPeriod.dateTo,
-    companyName: selectedCompanyName,
-    expectedTotals: createDailyExpectedTotals(marketplaceCurrent),
-  });
-  logDashboardPerf("getDashboardDailyAnalytics current", dailyAnalyticsStartedAt);
-
-  let previousDailyPoints: DashboardDailyPoint[] = [];
-
-  if (useLargePeriodStabilityMode) {
-    logDashboardPerf(
-      "getDashboardDailyAnalytics previous skipped for large period",
-      dailyAnalyticsStartedAt
-    );
-  } else {
-    const previousDailyAnalyticsStartedAt = Date.now();
-    previousDailyPoints = await getDashboardDailyAnalytics({
-      dateFrom: previousPeriod.dateFrom,
-      dateTo: previousPeriod.dateTo,
-      companyName: selectedCompanyName,
-      expectedTotals: createDailyExpectedTotals(marketplacePrevious),
-    });
-    logDashboardPerf("getDashboardDailyAnalytics previous", previousDailyAnalyticsStartedAt);
-  }
-
-  logDashboardPerf("getDashboardDailyAnalytics current+previous", dailyAnalyticsStartedAt);
+  const currentDailyPoints = currentDailyPointsInput;
+  const previousDailyPoints = useLargePeriodStabilityMode
+    ? []
+    : previousDailyPointsInput;
+  logDashboardPerf("read-model daily points bind", dailyAnalyticsStartedAt);
 
   return (
     <>
@@ -2242,19 +2439,45 @@ async function DashboardDynamicsSection({
             ))}
           </div>
 
-          <InteractiveTrendChart
-            preset={selectedChartPreset}
-            currentPoints={currentDailyPoints}
-            previousPoints={previousDailyPoints}
-          />
+          {!financialDynamicsMayShowNumericClaim({
+            marketplaceTotalIncomplete: marketplaceCurrent.marketplaceTotalIncomplete === true,
+            totalRevenue: marketplaceCurrent.totalRevenue,
+          }) ? (
+            <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm font-bold text-amber-800" data-testid="dashboard-financial-dynamics-unavailable">
+              Финансовая динамика недоступна: итог маркетплейса неполный и не показывается как ноль.
+            </div>
+          ) : (
+            <InteractiveTrendChart
+              preset={selectedChartPreset}
+              currentPoints={currentDailyPoints}
+              previousPoints={previousDailyPoints}
+              dateFrom={selectedPeriod.dateFrom}
+              dateTo={selectedPeriod.dateTo}
+              previousDateFrom={previousPeriod.dateFrom}
+              previousDateTo={previousPeriod.dateTo}
+              comparisonAvailable={!useLargePeriodStabilityMode && previousDailyPoints.length > 0}
+            />
+          )}
         </section>
 
         <div className="min-w-0 2xl:col-span-2">
+          {!financialDynamicsMayShowNumericClaim({
+            marketplaceTotalIncomplete: marketplaceCurrent.marketplaceTotalIncomplete === true,
+            totalRevenue: marketplaceCurrent.totalRevenue,
+          }) ? (
+            <div className="panel h-full p-4 text-sm font-bold text-slate-500">Сравнение динамики недоступно.</div>
+          ) : (
           <DynamicInsights
             preset={selectedChartPreset}
             currentPoints={currentDailyPoints}
             previousPoints={previousDailyPoints}
+            dateFrom={selectedPeriod.dateFrom}
+            dateTo={selectedPeriod.dateTo}
+            previousDateFrom={previousPeriod.dateFrom}
+            previousDateTo={previousPeriod.dateTo}
+            comparisonAvailable={!useLargePeriodStabilityMode && previousDailyPoints.length > 0}
           />
+          )}
         </div>
       </section>
 
@@ -2283,10 +2506,10 @@ function MarketplaceShare({
   marketplaceCompanyName,
   companies,
 }: {
-  wbRevenue: number;
-  ozonRevenue: number;
-  previousWbRevenue: number;
-  previousOzonRevenue: number;
+  wbRevenue: number | null;
+  ozonRevenue: number | null;
+  previousWbRevenue: number | null;
+  previousOzonRevenue: number | null;
   current: DashboardSummary;
   previous: DashboardSummary;
   selectedPreset: ChartPresetConfig;
@@ -2295,12 +2518,19 @@ function MarketplaceShare({
   marketplaceCompanyName: string;
   companies: { name: string }[];
 }) {
-  const total = wbRevenue + ozonRevenue;
-  const previousTotal = previousWbRevenue + previousOzonRevenue;
-  const wbPercent = total > 0 ? (wbRevenue / total) * 100 : 0;
-  const ozonPercent = total > 0 ? (ozonRevenue / total) * 100 : 0;
-  const previousWbPercent = previousTotal > 0 ? (previousWbRevenue / previousTotal) * 100 : 0;
-  const previousOzonPercent = previousTotal > 0 ? (previousOzonRevenue / previousTotal) * 100 : 0;
+  const shareReady =
+    wbRevenue != null &&
+    ozonRevenue != null &&
+    previousWbRevenue != null &&
+    previousOzonRevenue != null;
+  const total = shareReady ? wbRevenue + ozonRevenue : 0;
+  const previousTotal = shareReady ? previousWbRevenue + previousOzonRevenue : 0;
+  const wbPercent = shareReady && total > 0 ? (wbRevenue / total) * 100 : null;
+  const ozonPercent = shareReady && total > 0 ? (ozonRevenue / total) * 100 : null;
+  const previousWbPercent =
+    shareReady && previousTotal > 0 ? (previousWbRevenue / previousTotal) * 100 : null;
+  const previousOzonPercent =
+    shareReady && previousTotal > 0 ? (previousOzonRevenue / previousTotal) * 100 : null;
   const stockQty = current.wbStockQty + current.ozonStockQty + current.warehouseStockQty;
   const companyOptions = [
     { name: "ALL", label: "Все компании" },
@@ -2358,7 +2588,7 @@ function MarketplaceShare({
 
           <div className="space-y-2">
             <div className="h-3 overflow-hidden rounded-full bg-slate-100">
-              <div className="h-full rounded-full bg-violet-600" style={{ width: `${wbPercent}%` }} />
+              <div className="h-full rounded-full bg-violet-600" style={{ width: `${wbPercent ?? 0}%` }} />
             </div>
             <div className="h-3 overflow-hidden rounded-full bg-slate-50 ring-1 ring-violet-100">
               <div
@@ -2386,7 +2616,7 @@ function MarketplaceShare({
 
           <div className="space-y-2">
             <div className="h-3 overflow-hidden rounded-full bg-slate-100">
-              <div className="h-full rounded-full bg-sky-500" style={{ width: `${ozonPercent}%` }} />
+              <div className="h-full rounded-full bg-sky-500" style={{ width: `${ozonPercent ?? 0}%` }} />
             </div>
             <div className="h-3 overflow-hidden rounded-full bg-slate-50 ring-1 ring-sky-100">
               <div
@@ -2585,13 +2815,13 @@ function CompanyCard({
             <div>
               <div className="font-bold uppercase tracking-[0.08em] text-slate-400">WB</div>
               <div className="font-black text-slate-950">
-                {formatCurrency(row.wbRevenue)} ({formatPercent(getRevenuePercent(row.wbRevenue, row.totalRevenue) ?? 0)})
+                {formatCurrency(row.wbRevenue)} ({formatPercent(getRevenuePercent(row.wbRevenue, row.totalRevenue))})
               </div>
             </div>
             <div>
               <div className="font-bold uppercase tracking-[0.08em] text-slate-400">Ozon</div>
               <div className="font-black text-slate-950">
-                {formatCurrency(row.ozonRevenue)} ({formatPercent(getRevenuePercent(row.ozonRevenue, row.totalRevenue) ?? 0)})
+                {formatCurrency(row.ozonRevenue)} ({formatPercent(getRevenuePercent(row.ozonRevenue, row.totalRevenue))})
               </div>
             </div>
           </div>
@@ -2640,7 +2870,7 @@ function CompanyCard({
             </div>
             <div>
               <div className="font-bold uppercase tracking-[0.08em] text-slate-400">После собственника</div>
-              <div className={row.profitAfterOwnerWithdrawal < 0 ? "font-black text-red-600" : "font-black text-slate-950"}>
+              <div className={`font-black ${valueColor(row.profitAfterOwnerWithdrawal)}`}>
                 {formatCurrency(row.profitAfterOwnerWithdrawal)} · {ownerResultText}
               </div>
             </div>
@@ -2651,342 +2881,19 @@ function CompanyCard({
     </article>
   );
 }
-async function getFinanceCashResult(params: {
-  companyName: string;
-  dateFrom: string;
-  dateTo: string;
-}) {
-  const from = new Date(`${params.dateFrom}T00:00:00`);
-  const toExclusive = new Date(`${params.dateTo}T00:00:00`);
-  toExclusive.setDate(toExclusive.getDate() + 1);
-
-  const [rows, categories] = await Promise.all([
-    prisma.financeTransaction.findMany({
-      where: {
-        companyName: params.companyName,
-        operationDate: {
-          gte: from,
-          lt: toExclusive,
-        },
-      },
-    }),
-    prisma.financeCategory.findMany({
-      select: {
-        name: true,
-        categoryType: true,
-        parentName: true,
-        profitTreatment: true,
-      },
-    }),
-  ]);
-
-  const metrics = calculateFinanceMetricsForRows({
-    transactions: rows,
-    categories,
-  });
-
-  return {
-    cashFlowResult: metrics.netCashFlow,
-    loanPayments: metrics.creditPrincipal + metrics.creditInterest,
-    creditPrincipal: metrics.creditPrincipal,
-    creditInterest: metrics.creditInterest,
-    personalExpenses: metrics.ownerWithdrawals,
-    financialExpenses: Math.max(0, metrics.netProfitExpense - metrics.creditInterest),
-    cashOnlyExpenses: metrics.cashOnlyTotal,
-    netProfitIncludedIncome: metrics.netProfitIncome,
-    netProfitIncludedExpenses: metrics.netProfitExpense,
-  };
-}
-
-function getLatestSessionIdsByFileName(
-  sessions: Array<{ id: string; fileName: string | null }>
-) {
-  const latestSessionByFileName = new Map<string, string>();
-
-  for (const session of sessions) {
-    const key = String(session.fileName ?? session.id).trim() || session.id;
-
-    if (!latestSessionByFileName.has(key)) {
-      latestSessionByFileName.set(key, session.id);
-    }
+function sumNullable(
+  rows: CompanyDashboardRow[],
+  pick: (row: CompanyDashboardRow) => number | null
+): number | null {
+  let sum = 0;
+  for (const row of rows) {
+    const value = pick(row);
+    if (value == null || !Number.isFinite(value)) return null;
+    sum += value;
   }
-
-  return Array.from(latestSessionByFileName.values());
+  return sum;
 }
 
-async function getLatestWbStockQty(companyName: string) {
-  const stockImports = await prisma.importSession.findMany({
-    where: {
-      companyName,
-      reportType: "WB_STOCK",
-    },
-    orderBy: {
-      createdAt: "desc",
-    },
-    select: {
-      id: true,
-      fileName: true,
-    },
-  });
-
-  const latestImportSessionIds = getLatestSessionIdsByFileName(stockImports);
-
-  if (latestImportSessionIds.length === 0) return 0;
-
-  const rows = await prisma.wbStock.findMany({
-    where: {
-      companyName,
-      importSessionId: {
-        in: latestImportSessionIds,
-      },
-    },
-  });
-
-  const totalRows = rows.filter((row) => row.warehouseName === "__TOTAL__");
-  const stockRows = totalRows.length > 0 ? totalRows : rows;
-
-  return stockRows.reduce(
-    (sum, row) =>
-      sum +
-      safeNumber(row.inTransitToCustomer) +
-      safeNumber(row.inTransitReturns) +
-      safeNumber(row.totalStock),
-    0
-  );
-}
-
-async function getLatestOzonStockQty(companyName: string) {
-  const stockImports = await prisma.importSession.findMany({
-    where: {
-      companyName,
-      reportType: "OZON_STOCK",
-    },
-    orderBy: {
-      createdAt: "desc",
-    },
-    select: {
-      id: true,
-      fileName: true,
-    },
-  });
-
-  const latestImportSessionIds = getLatestSessionIdsByFileName(stockImports);
-
-  if (latestImportSessionIds.length === 0) return 0;
-
-  const rows = await prisma.ozonStock.findMany({
-    where: {
-      companyName,
-      importSessionId: {
-        in: latestImportSessionIds,
-      },
-    },
-  });
-
-  return rows.reduce((sum, row) => {
-    const raw = row as unknown as Record<string, unknown>;
-
-    return (
-      sum +
-      safeNumber(raw.availableStock) +
-      safeNumber(raw.availableQty) +
-      safeNumber(raw.stock) +
-      safeNumber(raw.quantity) +
-      safeNumber(raw.qty)
-    );
-  }, 0);
-}
-
-async function getLatestWarehouseStockQty(companyName: string) {
-  const warehouseImports = await prisma.importSession.findMany({
-    where: {
-      companyName,
-      reportType: "OZON_WAREHOUSE_STOCK",
-    },
-    orderBy: {
-      createdAt: "desc",
-    },
-    select: {
-      id: true,
-      fileName: true,
-    },
-  });
-
-  const latestImportSessionIds = getLatestSessionIdsByFileName(warehouseImports);
-
-  if (latestImportSessionIds.length === 0) return 0;
-
-  const rows = await prisma.ozonWarehouseStock.findMany({
-    where: {
-      companyName,
-      importSessionId: {
-        in: latestImportSessionIds,
-      },
-    },
-  });
-
-  return rows.reduce((sum, row) => sum + safeNumber(row.warehouseQty), 0);
-}
-
-async function mapSequential<T, R>(
-  items: T[],
-  mapper: (item: T) => Promise<R>
-): Promise<R[]> {
-  const result: R[] = [];
-
-  for (const item of items) {
-    result.push(await mapper(item));
-  }
-
-  return result;
-}
-async function buildCompanyDashboardRows(params: {
-  companies: CompanyForDashboard[];
-  dateFrom: string;
-  dateTo: string;
-  debug?: boolean;
-}) {
-  const rows: CompanyDashboardRow[] = [];
-  const rowsStartedAt = Date.now();
-  const logRowsPerf = (label: string, startedAt: number) => {
-    if (!params.debug) return;
-
-    console.log(
-      `[dashboard-perf] buildCompanyDashboardRows ${params.dateFrom}..${params.dateTo} ${label}: ${
-        Date.now() - startedAt
-      }ms`
-    );
-  };
-
-  // Важно: buildDailyReport уже использует финальные управленческие итоги WB/Ozon.
-  // Поэтому Dashboard не запускает getProfitAnalytics / getProfitAnalyticsOzon повторно.
-  // Это убирает двойной тяжёлый расчёт SKU/ABC на главной странице.
-  const ownerReportStartedAt = Date.now();
-  const ownerReport = await buildDailyReport({
-    from: params.dateFrom,
-    to: params.dateTo,
-    skipComparison: true,
-  });
-  logRowsPerf("buildDailyReport", ownerReportStartedAt);
-
-  const reportByCompanyName = new Map(
-    ownerReport.companies.map((companyReport) => [
-      companyReport.companyName,
-      companyReport,
-    ])
-  );
-
-  const companiesWithMetrics = params.companies.filter((company) =>
-    companyReportHasAnyDashboardMetric(reportByCompanyName.get(company.name))
-  );
-
-  logRowsPerf(
-    `non-zero companies filter ${companiesWithMetrics.length}/${params.companies.length}`,
-    rowsStartedAt
-  );
-
-  const companyRows = await mapSequential(companiesWithMetrics, async (company) => {
-      const companyReport = reportByCompanyName.get(company.name);
-
-      const companyStartedAt = Date.now();
-      const cashStartedAt = Date.now();
-      const cash = await getFinanceCashResult({
-        companyName: company.name,
-        dateFrom: params.dateFrom,
-        dateTo: params.dateTo,
-      });
-      logRowsPerf(`company ${company.name} cash`, cashStartedAt);
-      logRowsPerf(`company ${company.name} total`, companyStartedAt);
-
-      const ordersQty =
-        (companyReport?.wb.ordersQty ?? 0) + (companyReport?.ozon.ordersQty ?? 0);
-      const ordersAmount =
-        (companyReport?.wb.ordersAmount ?? 0) +
-        (companyReport?.ozon.ordersAmount ?? 0);
-      const orderDataLoadedDays =
-        (companyReport?.wb.orderDataLoadedDays ?? 0) +
-        (companyReport?.ozon.orderDataLoadedDays ?? 0);
-      const orderDataExpectedDays =
-        (companyReport?.wb.orderDataExpectedDays ?? 0) +
-        (companyReport?.ozon.orderDataExpectedDays ?? 0);
-
-      // buildDailyReport уже внутри берёт финальные управленческие итоги WB/Ozon.
-      // На главной странице используем эти готовые суммы и не пересчитываем SKU/ABC повторно.
-      const wbRevenue = companyReport?.wb.salesAmount ?? 0;
-      const wbNetProfitAfterTax = companyReport?.wb.netProfitAfterTax ?? 0;
-      const wbAdsCost = companyReport?.wb.adSpend ?? 0;
-
-      const ozonRevenue =
-        companyReport?.ozon.economicTurnover ?? companyReport?.ozon.salesAmount ?? 0;
-      const ozonNetProfitAfterTax = companyReport?.ozon.netProfitAfterTax ?? 0;
-      const ozonAdsCost = companyReport?.ozon.adSpend ?? 0;
-      const totalRevenue = wbRevenue + ozonRevenue;
-
-      const operatingProfitAfterTax = wbNetProfitAfterTax + ozonNetProfitAfterTax;
-
-      const netProfit =
-        companyReport?.finance.netProfitImpact ??
-        operatingProfitAfterTax +
-          cash.netProfitIncludedIncome -
-          cash.netProfitIncludedExpenses;
-
-      const personalExpenses =
-        companyReport?.finance.ownerWithdrawals ?? cash.personalExpenses;
-
-      const profitAfterOwnerWithdrawal = netProfit - personalExpenses;
-
-      const cashFlowResult = companyReport?.finance.netCashFlow ?? cash.cashFlowResult;
-
-      const adsCost = wbAdsCost + ozonAdsCost;
-
-      const drr = totalRevenue > 0 ? (adsCost / totalRevenue) * 100 : null;
-      const drrByOrders = ordersAmount > 0 ? (adsCost / ordersAmount) * 100 : null;
-
-      const wbStockQty = companyReport?.wb.stockQty ?? 0;
-      const ozonStockQty = companyReport?.ozon.stockQty ?? 0;
-
-      return {
-        companyName: company.name,
-        ordersQty,
-        ordersAmount,
-        orderDataLoadedDays,
-        orderDataExpectedDays,
-        wbRevenue,
-        ozonRevenue,
-        totalRevenue,
-        operatingProfitAfterTax,
-        netProfit,
-        profitAfterOwnerWithdrawal,
-        cashFlowResult,
-        adsCost,
-        wbAdsCost,
-        ozonAdsCost,
-        drr,
-        drrByOrders,
-        loanPayments: cash.loanPayments,
-        creditPrincipal: cash.creditPrincipal,
-        creditInterest: cash.creditInterest,
-        personalExpenses,
-        financialExpenses: cash.financialExpenses,
-        cashOnlyExpenses: cash.cashOnlyExpenses,
-        wbStockQty,
-        ozonStockQty,
-        warehouseStockQty: 0,
-        wbAbcA: 0,
-        wbAbcB: 0,
-        wbAbcC: 0,
-        ozonAbcA: 0,
-        ozonAbcB: 0,
-        ozonAbcC: 0,
-      };
-  });
-
-  rows.push(...companyRows);
-
-  logRowsPerf("total", rowsStartedAt);
-
-  return rows;
-}
 function summarizeDashboardRows(rows: CompanyDashboardRow[]): DashboardSummary {
   const companyRows = rows.filter(hasAnyCompanyMetric);
 
@@ -3001,21 +2908,35 @@ function summarizeDashboardRows(rows: CompanyDashboardRow[]): DashboardSummary {
     0
   );
 
-  const totalRevenue = companyRows.reduce((sum, row) => sum + row.totalRevenue, 0);
-  const wbRevenue = companyRows.reduce((sum, row) => sum + row.wbRevenue, 0);
-  const ozonRevenue = companyRows.reduce((sum, row) => sum + row.ozonRevenue, 0);
-
-  const operatingProfitAfterTax = companyRows.reduce(
-    (sum, row) => sum + row.operatingProfitAfterTax,
-    0
+  const marketplaceTotalIncomplete = companyRows.some(
+    (row) =>
+      row.ozonRevenue == null ||
+      row.wbRevenue == null ||
+      row.totalRevenue == null ||
+      (row.ozonCoverageComplete === false && row.ozonRevenue === 0)
   );
+  const wbRevenue = sumNullable(companyRows, (row) => row.wbRevenue);
+  const ozonRevenue = sumNullable(companyRows, (row) => row.ozonRevenue);
+  const totalRevenue =
+    marketplaceTotalIncomplete || wbRevenue == null || ozonRevenue == null
+      ? null
+      : sumNullable(companyRows, (row) => row.totalRevenue);
 
-  const netProfit = companyRows.reduce((sum, row) => sum + row.netProfit, 0);
+  const operatingProfitAfterTax = marketplaceTotalIncomplete
+    ? null
+    : sumNullable(companyRows, (row) => row.operatingProfitAfterTax);
 
-  const profitAfterOwnerWithdrawal = companyRows.reduce(
-    (sum, row) => sum + row.profitAfterOwnerWithdrawal,
-    0
-  );
+  const netProfit = marketplaceTotalIncomplete
+    ? null
+    : sumNullable(companyRows, (row) => row.netProfit);
+
+  const profitAfterOwnerWithdrawal = marketplaceTotalIncomplete
+    ? null
+    : sumNullable(companyRows, (row) => row.profitAfterOwnerWithdrawal);
+
+  const ozonCoverageNote =
+    companyRows.map((row) => row.ozonCoverageNote).find((note) => typeof note === "string" && note.trim()) ??
+    null;
 
   const cashFlowResult = companyRows.reduce(
     (sum, row) => sum + row.cashFlowResult,
@@ -3023,7 +2944,8 @@ function summarizeDashboardRows(rows: CompanyDashboardRow[]): DashboardSummary {
   );
 
   const adsCost = companyRows.reduce((sum, row) => sum + row.adsCost, 0);
-  const drr = totalRevenue > 0 ? (adsCost / totalRevenue) * 100 : null;
+  const drr =
+    totalRevenue != null && totalRevenue > 0 ? (adsCost / totalRevenue) * 100 : null;
   const drrByOrders = ordersAmount > 0 ? (adsCost / ordersAmount) * 100 : null;
 
   const loanPayments = companyRows.reduce((sum, row) => sum + row.loanPayments, 0);
@@ -3098,6 +3020,8 @@ function summarizeDashboardRows(rows: CompanyDashboardRow[]): DashboardSummary {
     wbAbc,
     ozonAbc,
     totalAbc,
+    marketplaceTotalIncomplete,
+    ozonCoverageNote,
   };
 }
 
@@ -3181,7 +3105,7 @@ function CostCoverageManualFixForm({
   );
 }
 
-export default async function HomePage({ searchParams }: Props) {
+async function HomePageInner({ searchParams }: Props) {
   const dashboardPerfStartedAt = Date.now();
   const params = searchParams ? await searchParams : {};
   const showDebug = params.debug === "1";
@@ -3229,34 +3153,68 @@ export default async function HomePage({ searchParams }: Props) {
   });
   logDashboardPerf("companies query", companiesStartedAt);
 
-  const dashboardRowsStartedAt = Date.now();
-  const allCurrentRows = await buildCompanyDashboardRows({
-    companies,
-    dateFrom: selectedPeriod.dateFrom,
-    dateTo: selectedPeriod.dateTo,
-    debug: showDebug,
-  });
-  logDashboardPerf("buildCompanyDashboardRows current", dashboardRowsStartedAt);
-
-  let allPreviousRows: CompanyDashboardRow[] = [];
-
-  if (useLargePeriodStabilityMode) {
-    logDashboardPerf(
-      "buildCompanyDashboardRows previous skipped for large period",
-      dashboardRowsStartedAt
+  if (!isDashboardV6ReadModelFirstEnabled()) {
+    return (
+      <DashboardReadModelPending
+        reason="DASHBOARD_V6_READMODEL_FIRST_DISABLED"
+        dateFrom={selectedPeriod.dateFrom}
+        dateTo={selectedPeriod.dateTo}
+        dataModeHint="rollback flag off; live FC path removed from ordinary Dashboard"
+        initialStatus="ERROR"
+      />
     );
-  } else {
-    const previousDashboardRowsStartedAt = Date.now();
-    allPreviousRows = await buildCompanyDashboardRows({
-      companies,
-      dateFrom: previousPeriod.dateFrom,
-      dateTo: previousPeriod.dateTo,
-      debug: showDebug,
-    });
-    logDashboardPerf("buildCompanyDashboardRows previous", previousDashboardRowsStartedAt);
   }
 
-  logDashboardPerf("buildCompanyDashboardRows current+previous", dashboardRowsStartedAt);
+  const repository = getDefaultV6PeriodReadModelRepository();
+  const dashboardRowsStartedAt = Date.now();
+  // Aggregate identity + company cards always load ALL period grain.
+  const currentRead = await loadDashboardV6PeriodReadModel({
+    repository,
+    dateFrom: selectedPeriod.dateFrom,
+    dateTo: selectedPeriod.dateTo,
+    companyScope: "ALL",
+  });
+  logDashboardPerf("loadDashboardV6PeriodReadModel current", dashboardRowsStartedAt);
+
+  if (currentRead.status !== "HIT") {
+    return (
+      <DashboardReadModelPending
+        reason={currentRead.reason}
+        dateFrom={selectedPeriod.dateFrom}
+        dateTo={selectedPeriod.dateTo}
+        companyScope="ALL"
+        dataModeHint={
+          currentRead.rejectedFormulaVersion
+            ? `rejected=${currentRead.rejectedFormulaVersion}`
+            : undefined
+        }
+      />
+    );
+  }
+
+  const allCurrentRows = mapReadModelRowsToCompanyRows(currentRead.bundle.companyRows);
+
+  let allPreviousRows: CompanyDashboardRow[] = [];
+  let previousReadHit = false;
+  let previousPeriodDateFrom = previousPeriod.dateFrom;
+  let previousPeriodDateTo = previousPeriod.dateTo;
+
+  if (!useLargePeriodStabilityMode) {
+    const previousDashboardRowsStartedAt = Date.now();
+    const previousRead = await loadDashboardV6PeriodReadModel({
+      repository,
+      dateFrom: previousPeriod.dateFrom,
+      dateTo: previousPeriod.dateTo,
+      companyScope: "ALL",
+    });
+    logDashboardPerf("loadDashboardV6PeriodReadModel previous", previousDashboardRowsStartedAt);
+    if (previousRead.status === "HIT") {
+      previousReadHit = true;
+      allPreviousRows = mapReadModelRowsToCompanyRows(previousRead.bundle.companyRows);
+      previousPeriodDateFrom = previousPeriod.dateFrom;
+      previousPeriodDateTo = previousPeriod.dateTo;
+    }
+  }
 
   const companyRowsWithMetrics = allCurrentRows.filter(hasAnyCompanyMetric);
   const companiesWithMetrics = companies.filter((company) =>
@@ -3278,6 +3236,73 @@ export default async function HomePage({ searchParams }: Props) {
   const selectedCompanyName =
     selectedCompanyValue === "ALL" ? null : selectedCompanyValue;
 
+  // Keep ALL `currentRead` for company list / aggregate rows.
+  // Page-level finality/readiness/meta must use the selected company's own scope.
+  let effectiveCurrentRead = currentRead;
+  let currentDailyPointsInput: DashboardDailyPoint[];
+
+  if (selectedCompanyValue === "ALL") {
+    // ALL: reuse aggregate HIT for daily — no duplicate selected-scope read.
+    currentDailyPointsInput = toDashboardDailyPoints(currentRead.bundle.dailyPoints);
+  } else {
+    const selectedScopeRead = await loadDashboardV6PeriodReadModel({
+      repository,
+      dateFrom: selectedPeriod.dateFrom,
+      dateTo: selectedPeriod.dateTo,
+      companyScope: selectedCompanyValue,
+    });
+    const identity = resolveSelectedScopeIdentity({
+      selectedCompanyValue,
+      selectedScopeStatus: selectedScopeRead.status,
+      selectedScopeReason:
+        selectedScopeRead.status === "HIT" ? null : selectedScopeRead.reason,
+    });
+    if (identity.kind === "FAIL_CLOSED" || selectedScopeRead.status !== "HIT") {
+      // Fail closed: never silently reuse ALL meta for a selected company.
+      return (
+        <DashboardReadModelPending
+          reason={
+            selectedScopeRead.status === "HIT"
+              ? identity.failClosedReason ?? "V6_PERIOD_READMODEL_COMPANY_MISSING"
+              : selectedScopeRead.reason
+          }
+          dateFrom={selectedPeriod.dateFrom}
+          dateTo={selectedPeriod.dateTo}
+          dataModeHint={
+            selectedScopeRead.status !== "HIT" &&
+            "rejectedFormulaVersion" in selectedScopeRead &&
+            selectedScopeRead.rejectedFormulaVersion
+              ? `rejected=${selectedScopeRead.rejectedFormulaVersion}`
+              : undefined
+          }
+          companyScope={selectedCompanyValue}
+        />
+      );
+    }
+    effectiveCurrentRead = selectedScopeRead;
+    // Same selected-scope HIT owns daily points — no duplicate identical DB read.
+    currentDailyPointsInput = toDashboardDailyPoints(
+      selectedScopeRead.bundle.dailyPoints
+    );
+  }
+
+  let previousDailyPointsInput: DashboardDailyPoint[] = [];
+  if (previousReadHit) {
+    const previousDailyRead = await loadDashboardV6PeriodReadModel({
+      repository,
+      dateFrom: previousPeriodDateFrom,
+      dateTo: previousPeriodDateTo,
+      companyScope: selectedCompanyValue,
+    });
+    if (previousDailyRead.status === "HIT") {
+      previousDailyPointsInput = toDashboardDailyPoints(
+        previousDailyRead.bundle.dailyPoints
+      );
+    }
+  }
+
+  logDashboardPerf("read-model current+previous", dashboardRowsStartedAt);
+
   const currentRows = selectedCompanyName
     ? companyRowsWithMetrics.filter((row) => row.companyName === selectedCompanyName)
     : companyRowsWithMetrics;
@@ -3291,13 +3316,58 @@ export default async function HomePage({ searchParams }: Props) {
   const current = summarizeDashboardRows(currentRows);
   const previous = summarizeDashboardRows(previousRows);
 
+  const effectiveMeta = effectiveCurrentRead.bundle.meta;
+
   const dataReadinessStartedAt = Date.now();
-  const dataReadiness = await getDataReadinessSummary({
+  // Prefer selected-scope readiness evidence on HIT so ordinary Dashboard stays snapshot-first.
+  const dataReadiness = {
+    isFinal: effectiveMeta.readinessIsFinal,
+    status: effectiveMeta.readinessStatus,
+    title: effectiveMeta.readinessStatus,
+    shortText: effectiveMeta.weekPresentationReason ?? "",
+    summaryText: effectiveMeta.weekPresentationReason ?? "",
+    issues: effectiveMeta.completeness.issues.map((kind) => ({
+      kind: kind as
+        | "CURRENT_PERIOD"
+        | "WB_WEEKLY_NOT_CLOSED"
+        | "ORDER_DATA_MISSING"
+        | "WB_FINANCE_MISSING"
+        | "OZON_FINANCE_MISSING"
+        | "OZON_REALIZATION_SUMMARY_INCOMPLETE"
+        | "OZON_DISCOUNT_POINTS_INCOMPLETE"
+        | "OZON_ADS_PENDING",
+      level:
+        kind === "CURRENT_PERIOD" ||
+        kind === "WB_WEEKLY_NOT_CLOSED" ||
+        kind === "OZON_ADS_PENDING"
+          ? ("warning" as const)
+          : ("danger" as const),
+      title: kind,
+      text: kind,
+    })),
+    counts: {
+      companies: 0,
+      days: 0,
+      expectedOrderRows: 0,
+      orderRows: 0,
+      wbFinanceRows: 0,
+      wbSaleRows: 0,
+      wbAdsRows: 0,
+      ozonFinanceRows: 0,
+      ozonFinanceAdRows: 0,
+      ozonAdsRows: 0,
+    },
+  };
+  logDashboardPerf("data readiness", dataReadinessStartedAt);
+  const weekPresentation = evaluateDashboardIncompleteWeek({
     dateFrom: selectedPeriod.dateFrom,
     dateTo: selectedPeriod.dateTo,
-    companyName: selectedCompanyName,
+    dataReadiness,
+    wbExactCoverComplete: !dataReadiness.issues.some((issue) => issue.kind === "WB_FINANCE_MISSING"),
+    canonicalDataMode: effectiveMeta.canonicalDataMode ?? effectiveMeta.dataMode,
+    ozonCoverageComplete: effectiveMeta.ozonCoverageComplete,
+    ozonQuarantineCount: effectiveMeta.ozonQuarantineCount,
   });
-  logDashboardPerf("data readiness", dataReadinessStartedAt);
 
   const costCoverageStartedAt = Date.now();
   const costCoverage = await getCostCoverageSummary({
@@ -3317,12 +3387,11 @@ export default async function HomePage({ searchParams }: Props) {
   const selectedChartPreset = getChartPreset(params.chartPreset);
   const hasOrderCoverageWarning = hasPartialOrderCoverage(current);
   const ordersCoverageText = formatOrderCoverage(current);
+  const skuMappingLabel = ozonSkuMappingWarningLabel(costCoverage.unmappedOzonItemsCount);
   const costCoverageIssueLabel =
     costCoverage.missingRealCostItemsCount > 0
       ? "Нет себестоимости"
-      : costCoverage.unmappedOzonItemsCount > 0
-        ? "Нет Ozon-связи"
-        : "Себестоимость OK";
+      : skuMappingLabel ?? "Себестоимость OK";
   const costCoverageIssueTitle =
     costCoverage.missingRealCostItemsCount > 0
       ? "Себестоимость загружена не по всем проданным артикулам"
@@ -3336,11 +3405,80 @@ export default async function HomePage({ searchParams }: Props) {
             ? ` · не сопоставлено Ozon SKU: ${formatNumber(costCoverage.unmappedOzonItemsCount)}`
             : ""
         }. Оборот риска: ${formatCurrency(costCoverage.missingAmount)}. Прибыль может быть завышена.`
-      : `Нет сопоставления Ozon SKU с артикулами по ${formatNumber(costCoverage.unmappedOzonItemsCount)} позициям. Оборот риска: ${formatCurrency(costCoverage.missingAmount)}. Себестоимость в файле может быть загружена, но без Ozon-связи система не может применить её к продажам.`
+      : `Не все Ozon SKU сопоставлены с артикулами по ${formatNumber(costCoverage.unmappedOzonItemsCount)} позициям. Оборот риска: ${formatCurrency(costCoverage.missingAmount)}. Это не отключает account-level Ozon финансы: товарная аналитика неполна.`
     : `Себестоимость найдена по всем товарам с оборотом: ${formatNumber(costCoverage.checkedItemsCount)}.`;
 
   const dataReadinessTone = getDataReadinessTone(dataReadiness.status);
-  const financialMetricSuffix = "";
+  const periodPreliminary = weekPresentation.mayPresentAsFinal !== true;
+  const financialMetricSuffix = periodPreliminary ? " · Предварительно" : "";
+  // Large custom ranges skip previous readmodel on purpose — never treat missing
+  // previous as zero (that yields fake +current / −current deltas).
+  const comparisonAvailable =
+    previousReadHit && !useLargePeriodStabilityMode;
+  const financeComparable =
+    comparisonAvailable &&
+    isCoverageComparableForDelta({
+      currentIncomplete: current.marketplaceTotalIncomplete === true,
+      previousIncomplete: previous.marketplaceTotalIncomplete === true,
+      currentMayPresentAsFinal: weekPresentation.mayPresentAsFinal,
+      previousMayPresentAsFinal: previous.marketplaceTotalIncomplete !== true,
+    });
+  const salesCard = salesCardPresentation(current, {
+    periodPreliminary,
+    ozonCoverageNote: current.ozonCoverageNote,
+  });
+  const operatingCard = combinedPnlCardPresentation({
+    amount: current.operatingProfitAfterTax,
+    periodPreliminary,
+    marketplaceIncomplete: current.marketplaceTotalIncomplete === true,
+    ozonRevenue: current.ozonRevenue,
+    // Marketplace after-tax profit (WB+Ozon) BEFORE Finance INCLUDE articles.
+    basisLabel: `Маркетплейсы после налога (до Finance INCLUDE) · ${formatRevenuePercent(current.operatingProfitAfterTax, current.totalRevenue)}`,
+  });
+  const netCard = combinedPnlCardPresentation({
+    amount: current.netProfit,
+    periodPreliminary,
+    marketplaceIncomplete: current.marketplaceTotalIncomplete === true,
+    ozonRevenue: current.ozonRevenue,
+    basisLabel: `Опер. прибыль (МП после налога) ± Finance INCLUDE · ${formatRevenuePercent(current.netProfit, current.totalRevenue)}`,
+  });
+  const afterOwnerCard = combinedPnlCardPresentation({
+    amount: current.profitAfterOwnerWithdrawal,
+    periodPreliminary,
+    marketplaceIncomplete: current.marketplaceTotalIncomplete === true,
+    ozonRevenue: current.ozonRevenue,
+    basisLabel: `Чистая прибыль минус личные расходы: ${formatCurrency(current.personalExpenses)} · ${formatRevenuePercent(current.profitAfterOwnerWithdrawal, current.totalRevenue)}`,
+  });
+  const adsCard = adsCardPresentation({
+    adsCost: current.adsCost,
+    drr: current.drr,
+    drrByOrders: current.drrByOrders,
+    periodPreliminary,
+    ordersCoverageIncomplete: hasOrderCoverageWarning,
+    formatPercent,
+  });
+  const ozonDayStatusesForBadge = await loadOzonAccrualDayStatuses({
+    companyName: selectedCompanyValue,
+    dateFrom: selectedPeriod.dateFrom,
+    dateTo: selectedPeriod.dateTo,
+  });
+  const unclassifiedAdjustmentAbs = ozonDayStatusesForBadge.reduce(
+    (sum, row) => sum + (parseUnclassifiedAdjustmentAmount(row.missingEvidence) ?? 0),
+    0,
+  );
+  const dashboardFinanceBadge = resolveOzonFinanceBadge({
+    ozonRevenue: current.ozonRevenue,
+    ozonCoverageComplete: effectiveMeta.ozonCoverageComplete,
+    weekReason: weekPresentation.reason,
+    weekBadgeText: weekPresentation.badgeText,
+    dataReadinessIssueKinds: dataReadiness.issues.map((issue) => issue.kind),
+    dataReadinessIsFinal: dataReadiness.isFinal,
+    dataReadinessShortText: dataReadiness.shortText || "Данные предварительные",
+    hasOrderCoverageWarning,
+    mayPresentAsFinal: weekPresentation.mayPresentAsFinal,
+    unclassifiedAdjustmentAbs:
+      unclassifiedAdjustmentAbs > 0.005 ? unclassifiedAdjustmentAbs : null,
+  });
 
   const costCoverageManualFixRedirect = buildCostCoverageManualFixRedirect({
     period: selectedPeriod.key,
@@ -3361,6 +3499,17 @@ export default async function HomePage({ searchParams }: Props) {
       href: "/import",
       icon: "₽",
     },
+    ...(unclassifiedAdjustmentAbs > 0.005
+      ? [
+          {
+            level: "warning" as const,
+            title: "Ozon без категории",
+            text: formatOzonUnclassifiedOwnerWarning(unclassifiedAdjustmentAbs),
+            href: "/profit-ozon",
+            icon: "⚠",
+          },
+        ]
+      : []),
     {
       level: hasOrderCoverageWarning ? "warning" : "ok",
       title: "Заказы",
@@ -3389,10 +3538,12 @@ export default async function HomePage({ searchParams }: Props) {
       icon: "↗",
     },
     {
-      level: current.netProfit < 0 ? "danger" : "ok",
+      level: current.netProfit != null && current.netProfit < 0 ? "danger" : current.netProfit == null ? "warning" : "ok",
       title: "Чистая прибыль",
       text:
-        current.netProfit < 0
+        current.netProfit == null
+          ? "Чистая прибыль недоступна: финансовый итог маркетплейса неполный."
+          : current.netProfit < 0
           ? `Чистая прибыль отрицательная: ${formatCurrency(current.netProfit)}.`
           : `Чистая прибыль: ${formatCurrency(current.netProfit)}.`,
       href: "/finance/operations",
@@ -3400,7 +3551,7 @@ export default async function HomePage({ searchParams }: Props) {
     },
     {
       level: current.loanPayments > 0 ? "warning" : "ok",
-      title: "Кредиты",
+      title: "Платежи по кредитам",
       text:
         current.loanPayments > 0
           ? `Платежи по кредитам: ${formatCurrency(current.loanPayments)}.`
@@ -3417,7 +3568,7 @@ export default async function HomePage({ searchParams }: Props) {
   logDashboardPerf("homepage total before render", dashboardPerfStartedAt);
 
   return (
-    <main className="page-shell">
+    <main className="page-shell" data-dashboard-source="READ_MODEL" data-dashboard-formula={effectiveMeta.formulaVersion} data-dashboard-data-mode={effectiveMeta.dataMode} data-dashboard-net-profit={String(current.netProfit)} data-dashboard-operating={String(current.operatingProfitAfterTax)} data-dashboard-cash-flow={String(current.cashFlowResult)} data-dashboard-company={selectedCompanyValue} data-dashboard-wb-revenue={String(current.wbRevenue)} data-dashboard-ozon-revenue={String(current.ozonRevenue)} data-dashboard-sales-state={current.totalRevenue != null ? (periodPreliminary ? "PRELIMINARY" : "FINAL") : current.wbRevenue != null || current.ozonRevenue != null ? "PRELIMINARY" : "NO_DATA"} data-dashboard-sku-mapping={skuMappingLabel ? "INCOMPLETE" : "OK"}>
       <div className="page-container">
         <section className="sticky top-0 z-40 -mx-4 border-b border-slate-200 bg-background/90 px-4 py-2.5 backdrop-blur-xl sm:-mx-6 sm:px-6 xl:-mx-8 xl:px-8">
           <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
@@ -3426,79 +3577,28 @@ export default async function HomePage({ searchParams }: Props) {
                 Дашборд собственника
               </span>
 
-              <details className="group/period relative">
-                <summary className="inline-flex cursor-pointer list-none items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 shadow-sm transition hover:border-indigo-200 hover:bg-indigo-50 hover:text-indigo-700">
-                  <span>Период: {selectedPeriod.description}</span>
-                  <span className="text-slate-400 transition group-open/period:rotate-180">↓</span>
-                </summary>
-
-                <div className="absolute left-0 top-full z-50 mt-2 w-[760px] max-w-[92vw] rounded-[28px] border border-slate-200 bg-white p-4 shadow-2xl shadow-slate-300/40">
-                  <div className="grid gap-2 sm:grid-cols-3">
-                    {presetPeriods.map((period) => {
-                      const isActive = selectedPeriodOption.key === period.key;
-
-                      return (
-                        <Link
-                          key={period.key}
-                          href={buildDashboardHref({
-                            period: period.key,
-                            companyName: selectedCompanyValue,
-                            marketplaceCompanyName: selectedMarketplaceCompanyValue,
-                            chartPreset: selectedChartPreset.key,
-                          })}
-                          className={`rounded-2xl border p-3 transition active:scale-[0.99] ${
-                            isActive
-                              ? "border-indigo-600 bg-indigo-600 text-white"
-                              : "border-slate-200 bg-slate-50 text-slate-800 hover:bg-white"
-                          }`}
-                        >
-                          <div className="text-sm font-black">{period.shortLabel}</div>
-                          <div
-                            className={`mt-1 text-xs leading-5 ${
-                              isActive ? "text-indigo-100" : "text-slate-500"
-                            }`}
-                          >
-                            {period.description}
-                          </div>
-                        </Link>
-                      );
-                    })}
-                  </div>
-
-                  <form action="/" className="mt-4 rounded-3xl bg-slate-50 p-4 ring-1 ring-slate-200">
-                    <input type="hidden" name="period" value="custom" />
-                    <input type="hidden" name="companyName" value={selectedCompanyValue} />
-                    <input type="hidden" name="marketplaceCompanyName" value={selectedMarketplaceCompanyValue} />
-                    <input type="hidden" name="chartPreset" value={selectedChartPreset.key} />
-
-                    <div className="grid gap-3 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
-                      <label className="text-sm font-medium text-slate-500">
-                        Дата от
-                        <input
-                          type="date"
-                          name="dateFrom"
-                          defaultValue={selectedPeriod.dateFrom}
-                          className="filter-control mt-1"
-                        />
-                      </label>
-
-                      <label className="text-sm font-medium text-slate-500">
-                        Дата до
-                        <input
-                          type="date"
-                          name="dateTo"
-                          defaultValue={selectedPeriod.dateTo}
-                          className="filter-control mt-1"
-                        />
-                      </label>
-
-                      <button type="submit" className="primary-button h-11">
-                        Применить
-                      </button>
-                    </div>
-                  </form>
-                </div>
-              </details>
+              <DashboardPeriodPopup
+                appliedLabel={selectedPeriod.description}
+                appliedPeriodKey={selectedPeriodOption.key}
+                presets={presetPeriods.map((period) => ({
+                  key: period.key,
+                  shortLabel: period.shortLabel,
+                  description: period.description,
+                  href: buildDashboardHref({
+                    period: period.key,
+                    companyName: selectedCompanyValue,
+                    marketplaceCompanyName: selectedMarketplaceCompanyValue,
+                    chartPreset: selectedChartPreset.key,
+                  }),
+                }))}
+                customForm={{
+                  companyName: selectedCompanyValue,
+                  marketplaceCompanyName: selectedMarketplaceCompanyValue,
+                  chartPreset: selectedChartPreset.key,
+                  dateFrom: selectedPeriod.dateFrom,
+                  dateTo: selectedPeriod.dateTo,
+                }}
+              />
 
               <span className="hidden rounded-2xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 shadow-sm md:inline-flex">
                 Сравнение: {previousPeriod.description}
@@ -3569,11 +3669,11 @@ export default async function HomePage({ searchParams }: Props) {
               ) : null}
 
               <span
-                className={`inline-flex items-center gap-1.5 rounded-2xl border px-3 py-2 text-xs font-black shadow-sm ${dataReadinessTone.badgeClassName}`}
-                title={dataReadiness.summaryText}
+                className={`inline-flex items-center gap-1.5 rounded-2xl border px-3 py-2 text-xs font-black shadow-sm ${weekPresentation.mayPresentAsFinal ? dataReadinessTone.badgeClassName : "border-amber-200 bg-amber-50 text-amber-800"}`}
+                title={weekPresentation.reason ? `${dataReadiness.summaryText} · ${weekPresentation.reason}` : dataReadiness.summaryText}
               >
                 <span>{dataReadinessTone.icon}</span>
-                <span>{dataReadiness.isFinal ? dataReadiness.shortText : hasOrderCoverageWarning ? `${dataReadiness.shortText} · загружены частично` : dataReadiness.shortText}</span>
+                <span>{dashboardFinanceBadge}</span>
               </span>
 
             </div>
@@ -3630,7 +3730,7 @@ export default async function HomePage({ searchParams }: Props) {
                       {item.productName}
                     </div>
                     <div className="mt-1 text-xs font-semibold leading-5 text-slate-500">
-                      Артикул: {item.vendorCode} · ID: {item.externalId}{item.issueType === "MISSING_OZON_MAPPING" ? " · нет сопоставления Ozon" : ""}
+                      Артикул: {item.vendorCode} · ID: {item.externalId}{item.issueType === "MISSING_OZON_MAPPING" ? " · не все Ozon SKU сопоставлены" : ""}
                     </div>
                     <div className="mt-2 text-xs font-black text-red-700">
                       Кол-во: {formatNumber(Math.round(item.quantity))} · Сумма: {formatCurrency(item.amount)}
@@ -3648,57 +3748,78 @@ export default async function HomePage({ searchParams }: Props) {
 
         <section className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-[repeat(7,minmax(0,1fr))]">
           <MetricCard
-            title="Заказы"
+            title={hasOrderCoverageWarning ? "Заказы · неполный период" : "Заказы"}
             value={current.ordersAmount > 0 ? formatCurrency(current.ordersAmount) : "Нет данных"}
             subtitle={formatOrdersSubtitle(current)}
             icon="▦"
             accent="bg-violet-50 text-violet-700"
             valueClassName={hasOrderCoverageWarning ? "text-amber-700" : "text-slate-950"}
             href="/analytics"
-            trend={buildMoneyTrend({ current: current.ordersAmount, previous: previous.ordersAmount, goodWhen: "up" })}
+            trend={buildMoneyTrend({
+              current: current.ordersAmount,
+              previous: comparisonAvailable ? previous.ordersAmount : null,
+              goodWhen: "up",
+            })}
           />
 
           <MetricCard
             title="Продажи/начисления"
-            value={current.totalRevenue > 0 ? formatCurrency(current.totalRevenue) : "Нет данных"}
-            subtitle={`WB: ${formatCurrency(current.wbRevenue)} · Ozon: ${formatCurrency(current.ozonRevenue)}`}
+            value={salesCard.value}
+            subtitle={salesCard.subtitle}
             icon="▣"
             accent="bg-indigo-50 text-indigo-700"
+            valueClassName={salesCard.valueClassName}
             href="/analytics"
-            trend={buildMoneyTrend({ current: current.totalRevenue, previous: previous.totalRevenue, goodWhen: "up" })}
+            trend={buildMoneyTrend({
+              current: comparableDeltaValue(current.totalRevenue, financeComparable),
+              previous: comparableDeltaValue(previous.totalRevenue, financeComparable),
+              goodWhen: "up",
+            })}
           />
 
           <MetricCard
             title="Операционная прибыль"
-            value={formatCurrency(current.operatingProfitAfterTax)}
-            subtitle={`После себестоимости, рекламы, логистики и налогов · ${formatRevenuePercent(current.operatingProfitAfterTax, current.totalRevenue)}${financialMetricSuffix}`}
+            value={operatingCard.value}
+            subtitle={operatingCard.subtitle}
             icon="↗"
             accent="bg-emerald-50 text-emerald-700"
-            valueClassName={valueColor(current.operatingProfitAfterTax)}
+            valueClassName={operatingCard.valueClassName}
             href="/analytics"
-            trend={buildMoneyTrend({ current: current.operatingProfitAfterTax, previous: previous.operatingProfitAfterTax, goodWhen: "up" })}
+            trend={buildMoneyTrend({
+              current: comparableDeltaValue(current.operatingProfitAfterTax, financeComparable),
+              previous: comparableDeltaValue(previous.operatingProfitAfterTax, financeComparable),
+              goodWhen: "up",
+            })}
           />
 
           <MetricCard
             title="Чистая прибыль"
-            value={formatCurrency(current.netProfit)}
-            subtitle={`Опер. прибыль ± финансовые статьи · ${formatRevenuePercent(current.netProfit, current.totalRevenue)}${financialMetricSuffix}`}
+            value={netCard.value}
+            subtitle={netCard.subtitle}
             icon="₽"
             accent="bg-red-50 text-red-700"
-            valueClassName={valueColor(current.netProfit)}
+            valueClassName={netCard.valueClassName}
             href={buildOperationsHref({ dateFrom: selectedPeriod.dateFrom, dateTo: selectedPeriod.dateTo })}
-            trend={buildMoneyTrend({ current: current.netProfit, previous: previous.netProfit, goodWhen: "up" })}
+            trend={buildMoneyTrend({
+              current: comparableDeltaValue(current.netProfit, financeComparable),
+              previous: comparableDeltaValue(previous.netProfit, financeComparable),
+              goodWhen: "up",
+            })}
           />
 
           <MetricCard
             title="После вывода собственника"
-            value={formatCurrency(current.profitAfterOwnerWithdrawal)}
-            subtitle={`Чистая прибыль минус личные расходы: ${formatCurrency(current.personalExpenses)} · ${formatRevenuePercent(current.profitAfterOwnerWithdrawal, current.totalRevenue)}${financialMetricSuffix}`}
+            value={afterOwnerCard.value}
+            subtitle={afterOwnerCard.subtitle}
             icon="●"
             accent="bg-blue-50 text-blue-700"
-            valueClassName={valueColor(current.profitAfterOwnerWithdrawal)}
+            valueClassName={afterOwnerCard.valueClassName}
             href={buildOperationsHref({ dateFrom: selectedPeriod.dateFrom, dateTo: selectedPeriod.dateTo, operationType: "PERSONAL" })}
-            trend={buildMoneyTrend({ current: current.profitAfterOwnerWithdrawal, previous: previous.profitAfterOwnerWithdrawal, goodWhen: "up" })}
+            trend={buildMoneyTrend({
+              current: comparableDeltaValue(current.profitAfterOwnerWithdrawal, financeComparable),
+              previous: comparableDeltaValue(previous.profitAfterOwnerWithdrawal, financeComparable),
+              goodWhen: "up",
+            })}
           />
 
           <MetricCard
@@ -3709,20 +3830,26 @@ export default async function HomePage({ searchParams }: Props) {
             accent="bg-cyan-50 text-cyan-700"
             valueClassName={valueColor(current.cashFlowResult)}
             href="/finance/cashflow"
-            trend={buildMoneyTrend({ current: current.cashFlowResult, previous: previous.cashFlowResult, goodWhen: "up" })}
+            trend={buildMoneyTrend({
+              current: current.cashFlowResult,
+              previous: comparisonAvailable ? previous.cashFlowResult : null,
+              goodWhen: "up",
+            })}
           />
 
           <MetricCard
             title="Реклама / ДРР от продаж"
-            value={current.drr !== null ? formatPercent(current.drr) : "Нет данных"}
-            subtitle={`Реклама всего: ${formatCurrency(current.adsCost)} · ДРР от заказов: ${
-              current.drrByOrders !== null ? formatPercent(current.drrByOrders) : "—"
-            }${financialMetricSuffix}`}
+            value={adsCard.value}
+            subtitle={adsCard.subtitle}
             icon="↗"
             accent="bg-orange-50 text-orange-700"
             valueClassName={dataReadiness.isFinal ? (current.drr !== null && current.drr > 12 ? "text-red-600" : "text-slate-950") : "text-amber-700"}
             href="/ads-mapping"
-            trend={buildPercentTrend({ current: current.drr, previous: previous.drr, goodWhen: "down" })}
+            trend={buildPercentTrend({
+              current: current.drr,
+              previous: comparisonAvailable ? previous.drr : null,
+              goodWhen: "down",
+            })}
           />
         </section>
 
@@ -3731,10 +3858,30 @@ export default async function HomePage({ searchParams }: Props) {
             <MarketplaceShare
               wbRevenue={marketplaceCurrent.wbRevenue}
               ozonRevenue={marketplaceCurrent.ozonRevenue}
-              previousWbRevenue={marketplacePrevious.wbRevenue}
-              previousOzonRevenue={marketplacePrevious.ozonRevenue}
+              previousWbRevenue={
+                comparisonAvailable ? marketplacePrevious.wbRevenue : null
+              }
+              previousOzonRevenue={
+                comparisonAvailable ? marketplacePrevious.ozonRevenue : null
+              }
               current={marketplaceCurrent}
-              previous={marketplacePrevious}
+              previous={
+                comparisonAvailable
+                  ? marketplacePrevious
+                  : {
+                      ...marketplacePrevious,
+                      totalRevenue: null,
+                      wbRevenue: null,
+                      ozonRevenue: null,
+                      operatingProfitAfterTax: null,
+                      netProfit: null,
+                      profitAfterOwnerWithdrawal: null,
+                      drr: null,
+                      drrByOrders: null,
+                      ordersAmount: 0,
+                      cashFlowResult: 0,
+                    }
+              }
               selectedPreset={selectedChartPreset}
               period={selectedPeriod}
               companyName={selectedCompanyValue}
@@ -3807,6 +3954,8 @@ export default async function HomePage({ searchParams }: Props) {
             marketplacePrevious={marketplacePrevious}
             useLargePeriodStabilityMode={useLargePeriodStabilityMode}
             showDebug={showDebug}
+            currentDailyPointsInput={currentDailyPointsInput}
+            previousDailyPointsInput={previousDailyPointsInput}
           />
         </Suspense>
 
@@ -3886,3 +4035,10 @@ export default async function HomePage({ searchParams }: Props) {
   );
 }
 
+
+export default async function HomePage(props: Props) {
+  return withAnalyticsPageFailSoft({
+    surface: "dashboard",
+    render: () => HomePageInner(props),
+  });
+}

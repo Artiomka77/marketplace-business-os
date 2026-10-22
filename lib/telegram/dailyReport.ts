@@ -58,6 +58,8 @@ type MarketplaceDailyMetrics = {
   adDataMissingReason: string | null;
   drrByOrders: number;
   drrBySales: number;
+  drrByEconomicTurnover: number;
+  drrByTaxableRevenue: number;
   stockQty: number;
   netProfitAfterTax: number;
   taxableRevenue?: number;
@@ -72,6 +74,14 @@ type MarketplaceDailyMetrics = {
   taxRevenueMissingDays?: string[];
   discountPointsMissingDays?: string[];
   ozonEconomicsWarning?: string | null;
+  marginProfit?: number;
+  taxesAmount?: number;
+  taxCalculationBase?: number;
+  taxCalculationMode?:
+    | "FINAL_TAXABLE_REVENUE"
+    | "ESTIMATED_ECONOMIC_TURNOVER";
+  taxesEstimated?: boolean;
+  netProfitStatus?: "FINAL" | "PRELIMINARY";
 };
 
 type CompanyDailyReport = {
@@ -93,14 +103,19 @@ type DailyReportComparison = {
   totals: {
     ordersAmountPercent: number | null;
     salesAmountPercent: number | null;
+    economicTurnoverPercent: number | null;
+    taxableRevenuePercent: number | null;
     adSpendPercent: number | null;
     netCashFlowPercent: number | null;
+    netCashFlowCurrent: number;
+    netCashFlowPrevious: number;
     netProfitImpactPercent: number | null;
     drrBySalesPointDiff: number | null;
+    drrByEconomicTurnoverPointDiff: number | null;
   };
 };
 
-type DailyReport = {
+export type DailyReport = {
   dateLabel: string;
   periodLabel: string;
   companies: CompanyDailyReport[];
@@ -111,9 +126,13 @@ type DailyReport = {
     orderDataExpectedDays: number;
     salesQty: number;
     salesAmount: number;
+    economicTurnover: number;
+    taxableRevenue: number;
     adSpend: number;
     drrByOrders: number;
     drrBySales: number;
+    drrByEconomicTurnover: number;
+    drrByTaxableRevenue: number;
     stockQty: number;
     cashIncome: number;
     cashOutflow: number;
@@ -1237,6 +1256,12 @@ function calculateDrr(adSpend: number, salesAmount: number) {
   return (adSpend / salesAmount) * 100;
 }
 
+function getDrrEconomicBase(metrics: MarketplaceDailyMetrics) {
+  return metrics.economicTurnover && metrics.economicTurnover > 0
+    ? metrics.economicTurnover
+    : metrics.salesAmount;
+}
+
 
 function getMoscowDateKey(date: Date | null | undefined) {
   if (!date) return "unknown";
@@ -1481,6 +1506,8 @@ async function getWbMetrics(companyName: string, range: DateRange) {
   const profitAnalyticsHasWbData =
     wbProfitAnalytics.rows.length > 0 ||
     profitTotals.revenue !== 0 ||
+    profitTotals.sellerRetailAmount !== 0 ||
+    profitTotals.taxableRevenue !== 0 ||
     profitTotals.sellerPayout !== 0 ||
     profitTotals.adsCost !== 0 ||
     profitTotals.netProfitAfterTax !== 0;
@@ -1489,14 +1516,20 @@ async function getWbMetrics(companyName: string, range: DateRange) {
     ? profitTotals.netSalesQty
     : salesQty;
 
-  // Для Telegram WB берём каноническую налоговую выручку из тех же WB Sale
-  // строк, что и /profit-wb. Это защищает отчёт от старого пути, где возвраты
-  // могли прибавляться к выручке.
-  const finalSalesAmount = salesAmount !== 0
-    ? salesAmount
-    : profitAnalyticsHasWbData
-      ? profitTotals.revenue
-      : 0;
+  // DTO-only mapping onto canonical V6 totals. Do not recompute formulas here.
+  // V6: revenue alias = economicTurnover = sellerRetailAmount.
+  // Taxable revenue is a separate field (buyerPaid + marketplaceTaxTopUp).
+  const finalEconomicTurnover = profitAnalyticsHasWbData
+    ? profitTotals.sellerRetailAmount !== 0
+      ? profitTotals.sellerRetailAmount
+      : profitTotals.revenue
+    : salesAmount;
+
+  const finalTaxableRevenue = profitAnalyticsHasWbData
+    ? profitTotals.taxableRevenue
+    : salesAmount;
+
+  const finalSalesAmount = finalTaxableRevenue;
 
   const finalAdSpend = profitAnalyticsHasWbData
     ? profitTotals.adsCost
@@ -1521,10 +1554,13 @@ async function getWbMetrics(companyName: string, range: DateRange) {
     finalAdSpend -
     canonicalTaxesAmount;
 
-  const finalNetProfitAfterTax = hasDailyFinance
-    ? canonicalNetProfitAfterTax
-    : profitAnalyticsHasWbData
-      ? profitTotals.netProfitAfterTax
+  // Единый источник истины: прибыль WB должна совпадать с /profit-wb.
+  // Самостоятельный расчёт DailyReport остаётся только fallback, когда
+  // каноническая аналитика ещё не вернула данные.
+  const finalNetProfitAfterTax = profitAnalyticsHasWbData
+    ? profitTotals.netProfitAfterTax
+    : hasDailyFinance
+      ? canonicalNetProfitAfterTax
       : fallbackNetProfitAfterTax;
 
   return {
@@ -1538,7 +1574,7 @@ async function getWbMetrics(companyName: string, range: DateRange) {
     ordersDataMissingReason,
     salesQty: finalSalesQty,
     salesAmount: finalSalesAmount,
-    salesLabel: "Продажи/выкупы",
+    salesLabel: "Экономический оборот",
     salesQtyIsReliable: !salesDataMissing,
     salesDataMissing,
     salesDataMissingReason,
@@ -1552,8 +1588,21 @@ async function getWbMetrics(companyName: string, range: DateRange) {
     drrBySales: salesDataMissing
       ? 0
       : calculateDrr(finalAdSpend, finalSalesAmount),
+    drrByEconomicTurnover: salesDataMissing
+      ? 0
+      : calculateDrr(finalAdSpend, finalEconomicTurnover),
+    drrByTaxableRevenue: salesDataMissing
+      ? 0
+      : calculateDrr(finalAdSpend, finalSalesAmount),
     stockQty,
     netProfitAfterTax: finalNetProfitAfterTax,
+    taxableRevenue: finalTaxableRevenue,
+    economicTurnover: finalEconomicTurnover,
+    netProfitStatus: profitAnalyticsHasWbData
+      ? profitTotals.dataMode === "PRELIMINARY"
+        ? ("PRELIMINARY" as const)
+        : ("FINAL" as const)
+      : undefined,
   };
 }
 
@@ -1730,7 +1779,7 @@ async function getOzonMetrics(companyName: string, range: DateRange) {
     profitAnalyticsHasOzonEconomicActivity(profitTotals) &&
     (!taxRevenueCoverageComplete || !discountPointsCoverageComplete);
   const ozonEconomicsWarning = ozonEconomicsIncomplete
-    ? "налоговая выручка / баллы Ozon неполные — загрузите отчёт начислений Ozon"
+    ? "налоговая выручка / баллы Ozon ещё не закрыты — прибыль до налогов рассчитана от экономического оборота, налог и чистая прибыль предварительные"
     : null;
   const profitAnalyticsHasOzonData =
     ozonProfitAnalytics.rows.length > 0 ||
@@ -1746,20 +1795,14 @@ async function getOzonMetrics(companyName: string, range: DateRange) {
       ? profitTotals.economicTurnover
       : profitTotals.revenue
     : salesAmount;
-  // Защита от ситуации, когда Ozon Finance уже содержит рекламные списания,
-  // но управленческая аналитика ещё не подтянула их в totals.adsCost.
-  // Для отчёта собственника реклама не должна занижаться: берём больший из двух
-  // проверенных источников и корректируем прибыль на разницу, чтобы не завысить результат.
-  const profitAnalyticsAdSpend = profitAnalyticsHasOzonData ? profitTotals.adsCost : 0;
+  // Единый источник истины: реклама и прибыль Ozon должны совпадать
+  // с /profit-ozon. Второй независимый пересчёт внутри DailyReport
+  // создавал расхождения между страницами и Telegram.
   const finalAdSpend = profitAnalyticsHasOzonData
-    ? Math.max(profitAnalyticsAdSpend, adSpend)
+    ? profitTotals.adsCost
     : adSpend;
-  const extraAdSpendNotInProfit =
-    profitAnalyticsHasOzonData && finalAdSpend > profitAnalyticsAdSpend
-      ? finalAdSpend - profitAnalyticsAdSpend
-      : 0;
   const finalNetProfitAfterTax = profitAnalyticsHasOzonData
-    ? profitTotals.netProfitAfterTax - extraAdSpendNotInProfit
+    ? profitTotals.netProfitAfterTax
     : fallbackNetProfitAfterTax;
 
   const ordersDataMissing = orderStats.rowsCount === 0;
@@ -1798,14 +1841,22 @@ async function getOzonMetrics(companyName: string, range: DateRange) {
     salesDataMissingReason: null,
     adSpend: finalAdSpend,
     adSpendSource: profitAnalyticsHasOzonData
-      ? extraAdSpendNotInProfit > 0
-        ? "Ozon Finance Ads / реализация"
-        : "Ozon Finance / реализация"
+      ? "Ozon Finance / реализация"
       : adSpendSource,
     adDataMissing,
     adDataMissingReason,
     drrByOrders: ordersDataMissing ? 0 : calculateDrr(finalAdSpend, orderStats.ordersAmount),
     drrBySales: calculateDrr(finalAdSpend, finalSalesAmount),
+    drrByEconomicTurnover: calculateDrr(
+      finalAdSpend,
+      profitTotals.economicTurnover || finalSalesAmount
+    ),
+    drrByTaxableRevenue: calculateDrr(
+      finalAdSpend,
+      profitAnalyticsHasOzonData && taxRevenueCoverageComplete
+        ? profitTotals.taxableRevenue
+        : 0
+    ),
     stockQty,
     netProfitAfterTax: finalNetProfitAfterTax,
     taxableRevenue: profitAnalyticsHasOzonData && taxRevenueCoverageComplete
@@ -1834,6 +1885,24 @@ async function getOzonMetrics(companyName: string, range: DateRange) {
     taxRevenueMissingDays: profitTotals.taxRevenueMissingDays ?? [],
     discountPointsMissingDays: profitTotals.discountPointsMissingDays ?? [],
     ozonEconomicsWarning,
+    marginProfit: profitAnalyticsHasOzonData
+      ? profitTotals.marginProfit
+      : undefined,
+    taxesAmount: profitAnalyticsHasOzonData
+      ? profitTotals.taxesAmount
+      : undefined,
+    taxCalculationBase: profitAnalyticsHasOzonData
+      ? profitTotals.taxCalculationBase
+      : undefined,
+    taxCalculationMode: profitAnalyticsHasOzonData
+      ? profitTotals.taxCalculationMode
+      : undefined,
+    taxesEstimated: profitAnalyticsHasOzonData
+      ? profitTotals.taxesEstimated
+      : undefined,
+    netProfitStatus: profitAnalyticsHasOzonData
+      ? profitTotals.netProfitStatus
+      : undefined,
   };
 }
 
@@ -1847,6 +1916,8 @@ function addMarketplaceTotals(
   target.orderDataExpectedDays += source.orderDataExpectedDays;
   target.salesQty += source.salesQty;
   target.salesAmount += source.salesAmount;
+  target.economicTurnover += source.economicTurnover ?? source.salesAmount;
+  target.taxableRevenue += source.taxableRevenue ?? 0;
   target.adSpend += source.adSpend;
   target.stockQty += source.stockQty;
 }
@@ -1892,6 +1963,18 @@ function createReportComparison(
         current.totals.salesAmount,
         previous.totals.salesAmount
       ),
+      economicTurnoverPercent: percentChange(
+        current.totals.economicTurnover,
+        previous.totals.economicTurnover
+      ),
+      taxableRevenuePercent:
+        !hasEstimatedOzonTaxes(current) &&
+        !hasEstimatedOzonTaxes(previous)
+          ? percentChange(
+              current.totals.taxableRevenue,
+              previous.totals.taxableRevenue
+            )
+          : null,
       adSpendPercent: percentChange(
         current.totals.adSpend,
         previous.totals.adSpend
@@ -1900,17 +1983,44 @@ function createReportComparison(
         current.totals.netCashFlow,
         previous.totals.netCashFlow
       ),
-      netProfitImpactPercent: percentChange(
-        current.totals.netProfitImpact,
-        previous.totals.netProfitImpact
-      ),
+      netCashFlowCurrent: current.totals.netCashFlow,
+      netCashFlowPrevious: previous.totals.netCashFlow,
+      netProfitImpactPercent:
+        !isPreliminaryFinancialResult(current) &&
+        !isPreliminaryFinancialResult(previous)
+          ? percentChange(
+              current.totals.netProfitImpact,
+              previous.totals.netProfitImpact
+            )
+          : null,
       drrBySalesPointDiff:
         Number.isFinite(current.totals.drrBySales) &&
         Number.isFinite(previous.totals.drrBySales)
           ? current.totals.drrBySales - previous.totals.drrBySales
           : null,
+      drrByEconomicTurnoverPointDiff:
+        Number.isFinite(current.totals.drrByEconomicTurnover) &&
+        Number.isFinite(previous.totals.drrByEconomicTurnover)
+          ? current.totals.drrByEconomicTurnover - previous.totals.drrByEconomicTurnover
+          : null,
     },
   };
+}
+
+function hasEstimatedOzonTaxes(report: DailyReport) {
+  return report.companies.some(
+    (company) =>
+      company.ozon.taxCalculationMode ===
+        "ESTIMATED_ECONOMIC_TURNOVER" ||
+      company.ozon.taxesEstimated === true
+  );
+}
+
+function isPreliminaryFinancialResult(report: DailyReport) {
+  return Boolean(
+    (report.dataReadiness && !report.dataReadiness.isFinal) ||
+      hasEstimatedOzonTaxes(report)
+  );
 }
 
 function buildWarnings(report: DailyReport) {
@@ -1930,13 +2040,13 @@ function buildWarnings(report: DailyReport) {
       );
     }
 
-    if (report.totals.salesQty <= 0 && report.totals.salesAmount <= 0) {
-      warnings.push("нет продаж/начислений за период");
+    if (report.totals.economicTurnover <= 0) {
+      warnings.push("нет экономического оборота за период");
     }
 
-    if (report.totals.drrByOrders > 20) {
+    if (report.totals.drrByEconomicTurnover > 20) {
       warnings.push(
-        `ДРР от заказов выше 20%: ${formatPercent(report.totals.drrByOrders)}`
+        `ДРР от экономического оборота выше 20%: ${formatPercent(report.totals.drrByEconomicTurnover)}`
       );
     }
   }
@@ -1947,7 +2057,7 @@ function buildWarnings(report: DailyReport) {
 
   if (report.totals.netProfitImpact < 0) {
     warnings.push(
-      `отрицательная чистая прибыль: ${formatMoney(
+      `${isPreliminaryFinancialResult(report) ? "отрицательная предварительная прибыль" : "отрицательная чистая прибыль"}: ${formatMoney(
         report.totals.netProfitImpact
       )}`
     );
@@ -2044,9 +2154,13 @@ export async function buildDailyReport(params?: {
       orderDataExpectedDays: 0,
       salesQty: 0,
       salesAmount: 0,
+      economicTurnover: 0,
+      taxableRevenue: 0,
       adSpend: 0,
       drrByOrders: 0,
       drrBySales: 0,
+      drrByEconomicTurnover: 0,
+      drrByTaxableRevenue: 0,
       stockQty: 0,
       cashIncome: 0,
       cashOutflow: 0,
@@ -2074,7 +2188,7 @@ export async function buildDailyReport(params?: {
 
     const financeForReport = {
       ...finance,
-      netProfitImpact: realNetProfit,
+      netProfitImpact: finance.netProfitImpact,
     };
 
     report.companies.push({
@@ -2098,9 +2212,20 @@ export async function buildDailyReport(params?: {
     report.totals.adSpend,
     report.totals.ordersAmount
   );
-  report.totals.drrBySales = calculateDrr(
+  const drrEconomicBase = report.companies.reduce(
+    (sum, company) =>
+      sum + getDrrEconomicBase(company.wb) + getDrrEconomicBase(company.ozon),
+    0
+  );
+
+  report.totals.drrBySales = calculateDrr(report.totals.adSpend, report.totals.salesAmount);
+  report.totals.drrByEconomicTurnover = calculateDrr(
     report.totals.adSpend,
-    report.totals.salesAmount
+    report.totals.economicTurnover || drrEconomicBase
+  );
+  report.totals.drrByTaxableRevenue = calculateDrr(
+    report.totals.adSpend,
+    report.totals.taxableRevenue
   );
 
   const dataReadiness = await getDataReadinessSummary({
@@ -2146,14 +2271,251 @@ export function formatPercent(value: number) {
   }).format(value)}%`;
 }
 
+export function formatRuDate(value: string | null | undefined) {
+  const match = String(value ?? "").match(/(\d{4})-(\d{2})-(\d{2})/);
+  if (!match) return String(value ?? "").trim();
+  return `${match[3]}.${match[2]}.${match[1]}`;
+}
+
+export function formatRuDateShort(value: string | null | undefined) {
+  const match = String(value ?? "").match(/(\d{4})-(\d{2})-(\d{2})/);
+  if (!match) return String(value ?? "").trim();
+  return `${match[3]}.${match[2]}`;
+}
+
+export function formatCompactMoney(value: number) {
+  const abs = Math.abs(value);
+  const sign = value < 0 ? "−" : "";
+
+  if (abs >= 1_000_000) {
+    const millions = abs / 1_000_000;
+    const formatted = new Intl.NumberFormat("ru-RU", {
+      minimumFractionDigits: 3,
+      maximumFractionDigits: 3,
+    }).format(millions);
+    return `${sign}${formatted} млн ₽`;
+  }
+
+  if (abs >= 1000) {
+    const thousands = abs / 1000;
+    const formatted = new Intl.NumberFormat("ru-RU", {
+      minimumFractionDigits: 1,
+      maximumFractionDigits: 1,
+    }).format(thousands);
+    return `${sign}${formatted} тыс. ₽`;
+  }
+
+  return `${sign}${formatNumber(abs)} ₽`;
+}
+
+export function formatSignedMoney(value: number) {
+  if (value > 0) return `+${formatMoney(value)}`;
+  if (value < 0) return formatMoney(value);
+  return formatMoney(0);
+}
+
+export function shouldShowCashFlowPercent(params: {
+  current: number;
+  previous: number;
+  percent: number | null;
+}) {
+  if (params.percent === null || !Number.isFinite(params.percent)) return false;
+  if (Math.abs(params.previous) < 10_000) return false;
+  if (params.current !== 0 && params.previous !== 0) {
+    const currentSign = Math.sign(params.current);
+    const previousSign = Math.sign(params.previous);
+    if (currentSign !== previousSign) return false;
+  }
+  if (Math.abs(params.percent) > 250) return false;
+  return true;
+}
+
+export type TelegramReadinessIssue = {
+  companyName: string;
+  marketplace: "WB" | "Ozon";
+  source: string;
+  dateLabel: string;
+  reason: string;
+};
+
+function marketplaceHasIncompleteTaxableRevenueSource(
+  metrics: MarketplaceDailyMetrics
+) {
+  if (metrics.marketplace === "OZON" && metrics.taxRevenueCoverageComplete === false) {
+    return true;
+  }
+  if (metrics.marketplace === "WB" && metrics.salesDataMissing) {
+    return true;
+  }
+  return false;
+}
+
+function marketplaceHasIncompleteProfitSource(metrics: MarketplaceDailyMetrics) {
+  if (marketplaceHasIncompleteTaxableRevenueSource(metrics)) return true;
+  if (metrics.marketplace === "OZON") {
+    if (metrics.discountPointsCoverageComplete === false) return true;
+    if (metrics.taxesEstimated === true) return true;
+  }
+  return false;
+}
+
+export function hasIncompleteTaxableRevenueSource(report: DailyReport) {
+  return report.companies.some(
+    (company) =>
+      marketplaceHasIncompleteTaxableRevenueSource(company.wb) ||
+      marketplaceHasIncompleteTaxableRevenueSource(company.ozon)
+  );
+}
+
+export function hasIncompleteProfitSource(report: DailyReport) {
+  return report.companies.some(
+    (company) =>
+      marketplaceHasIncompleteProfitSource(company.wb) ||
+      marketplaceHasIncompleteProfitSource(company.ozon)
+  );
+}
+
+function primaryReportDate(report: DailyReport) {
+  const match = String(report.dateLabel ?? "").match(/\d{4}-\d{2}-\d{2}/);
+  return match?.[0] ?? report.dateLabel;
+}
+
+export function collectTelegramReadinessIssues(
+  report: DailyReport
+): TelegramReadinessIssue[] {
+  const dateIso = primaryReportDate(report);
+  const dateShort = formatRuDateShort(dateIso);
+  const issues: TelegramReadinessIssue[] = [];
+
+  const push = (
+    companyName: string,
+    marketplace: "WB" | "Ozon",
+    source: string,
+    reason: string
+  ) => {
+    issues.push({
+      companyName,
+      marketplace,
+      source,
+      dateLabel: dateShort || dateIso,
+      reason,
+    });
+  };
+
+  for (const company of report.companies) {
+    if (company.wb.ordersDataMissing) {
+      push(
+        company.companyName,
+        "WB",
+        "заказы",
+        `не загружены заказы за ${dateShort}`
+      );
+    } else if (company.wb.ordersDataIncomplete) {
+      push(
+        company.companyName,
+        "WB",
+        "заказы",
+        `заказы загружены частично за ${dateShort}: ${company.wb.orderDataLoadedDays} из ${company.wb.orderDataExpectedDays} дн.`
+      );
+    }
+
+    if (company.wb.salesDataMissing) {
+      push(
+        company.companyName,
+        "WB",
+        "продажи",
+        `не загружены продажи/выкупы за ${dateShort}`
+      );
+    }
+
+    if (company.wb.adDataMissing) {
+      push(
+        company.companyName,
+        "WB",
+        "реклама",
+        `не загружена реклама за ${dateShort}`
+      );
+    }
+
+    // WB_WEEKLY_NOT_CLOSED / dataMode=PRELIMINARY is the normal daily-summary
+    // state while the official week is still open. Do not treat it as a missing
+    // daily source. Warn only when a concrete WB daily source is absent.
+
+    if (company.ozon.ordersDataMissing) {
+      push(
+        company.companyName,
+        "Ozon",
+        "заказы",
+        `не загружены заказы за ${dateShort}`
+      );
+    } else if (company.ozon.ordersDataIncomplete) {
+      push(
+        company.companyName,
+        "Ozon",
+        "заказы",
+        `заказы загружены частично за ${dateShort}: ${company.ozon.orderDataLoadedDays} из ${company.ozon.orderDataExpectedDays} дн.`
+      );
+    }
+
+    if (company.ozon.adDataMissing) {
+      push(
+        company.companyName,
+        "Ozon",
+        "реклама",
+        `не загружена реклама за ${dateShort}`
+      );
+    }
+
+    if (company.ozon.taxRevenueCoverageComplete === false) {
+      const missing = company.ozon.taxRevenueMissingDays?.length
+        ? company.ozon.taxRevenueMissingDays.map(formatRuDateShort).join(", ")
+        : dateShort;
+      push(
+        company.companyName,
+        "Ozon",
+        "отчёт начислений",
+        `нет отчёта начислений за ${missing}`
+      );
+    }
+
+    if (company.ozon.discountPointsCoverageComplete === false) {
+      const missing = company.ozon.discountPointsMissingDays?.length
+        ? company.ozon.discountPointsMissingDays.map(formatRuDateShort).join(", ")
+        : dateShort;
+      push(
+        company.companyName,
+        "Ozon",
+        "отчёт баллов",
+        `нет отчёта баллов за ${missing}`
+      );
+    }
+  }
+
+  return issues;
+}
+
+export function formatTelegramReadinessBlock(
+  issues: TelegramReadinessIssue[]
+) {
+  if (issues.length === 0) return [];
+
+  return [
+    "⚠️ Неполные данные:",
+    ...issues.map(
+      (issue) =>
+        `• ${issue.companyName} · ${issue.marketplace}: ${issue.reason}`
+    ),
+  ];
+}
+
 function marketplaceSalesLine(metrics: MarketplaceDailyMetrics) {
   if (metrics.salesDataMissing) {
     return `${metrics.salesLabel}: данные ещё не загружены`;
   }
 
-  if (metrics.marketplace === "OZON" && metrics.economicTurnover !== undefined) {
-    if (metrics.ozonEconomicsWarning) {
-      return `${metrics.salesLabel}: ${formatMoney(metrics.economicTurnover)} (${metrics.ozonEconomicsWarning})`;
+  if (metrics.economicTurnover !== undefined) {
+    if (metrics.marketplace === "OZON" && metrics.ozonEconomicsWarning) {
+      return `Экономический оборот: ${formatMoney(metrics.economicTurnover)} (${metrics.ozonEconomicsWarning})`;
     }
 
     const details: string[] = [];
@@ -2179,11 +2541,11 @@ function marketplaceSalesLine(metrics: MarketplaceDailyMetrics) {
       (metrics.partnerProgramsAmount !== undefined ? partnerProgramsAmount : 0);
     const unclassifiedEconomicPart = metrics.economicTurnover - knownEconomicParts;
 
-    if (details.length > 0 && Math.abs(unclassifiedEconomicPart) > 0.5) {
+    if (metrics.marketplace === "OZON" && details.length > 0 && Math.abs(unclassifiedEconomicPart) > 0.5) {
       details.push(`неразнесённая часть ${formatMoney(unclassifiedEconomicPart)}`);
     }
 
-    return `${metrics.salesLabel}: ${formatMoney(metrics.economicTurnover)}${
+    return `Экономический оборот: ${formatMoney(metrics.economicTurnover)}${
       details.length > 0 ? ` (${details.join(" + ")})` : ""
     }`;
   }
@@ -2225,8 +2587,10 @@ type MarketplaceConclusionItem = {
   label: string;
   drrByOrders: number;
   drrBySales: number;
+  drrByEconomicTurnover: number;
   ordersAmount: number;
   salesAmount: number;
+  economicTurnover: number;
   adSpend: number;
   ordersDataIncomplete: boolean;
 };
@@ -2239,8 +2603,10 @@ function getMarketplaceConclusionItems(report: DailyReport) {
       label: `${company.companyName} WB`,
       drrByOrders: company.wb.drrByOrders,
       drrBySales: company.wb.drrBySales,
+      drrByEconomicTurnover: company.wb.drrByEconomicTurnover,
       ordersAmount: company.wb.ordersAmount,
       salesAmount: company.wb.salesAmount,
+      economicTurnover: company.wb.economicTurnover ?? company.wb.salesAmount,
       adSpend: company.wb.adSpend,
       ordersDataIncomplete: company.wb.ordersDataIncomplete,
     });
@@ -2249,8 +2615,10 @@ function getMarketplaceConclusionItems(report: DailyReport) {
       label: `${company.companyName} Ozon`,
       drrByOrders: company.ozon.drrByOrders,
       drrBySales: company.ozon.drrBySales,
+      drrByEconomicTurnover: company.ozon.drrByEconomicTurnover,
       ordersAmount: company.ozon.ordersAmount,
       salesAmount: company.ozon.salesAmount,
+      economicTurnover: company.ozon.economicTurnover ?? company.ozon.salesAmount,
       adSpend: company.ozon.adSpend,
       ordersDataIncomplete: company.ozon.ordersDataIncomplete,
     });
@@ -2261,43 +2629,36 @@ function getMarketplaceConclusionItems(report: DailyReport) {
 
 function getHighestDrrItem(report: DailyReport) {
   const items = getMarketplaceConclusionItems(report).filter(
-    (item) =>
-      item.ordersAmount > 0 && item.adSpend > 0 && !item.ordersDataIncomplete
+    (item) => item.economicTurnover > 0 && item.adSpend > 0
   );
 
   if (items.length === 0) return null;
 
-  return items.sort((a, b) => b.drrByOrders - a.drrByOrders)[0];
+  return items.sort((a, b) => b.drrByEconomicTurnover - a.drrByEconomicTurnover)[0];
 }
 
 function getDrrConclusion(report: DailyReport) {
-  const totalDrr = report.totals.drrByOrders;
+  const totalDrr = report.totals.drrByEconomicTurnover;
 
-  if (report.totals.ordersAmount <= 0 || report.totals.adSpend <= 0) {
+  if (report.totals.adSpend <= 0 || report.totals.economicTurnover <= 0) {
     return "Реклама: нет достаточно данных для оценки ДРР.";
-  }
-
-  if (hasIncompleteOrderData(report)) {
-    return `Заказы загружены частично, поэтому ДРР от заказов сейчас ориентировочный. Основной контроль пока по ДРР от продаж/начислений: ${formatPercent(
-      report.totals.drrBySales
-    )}.`;
   }
 
   if (totalDrr <= 7) {
     return `Реклама в рабочей зоне: ДРР ${formatPercent(
       totalDrr
-    )} от заказов.`;
+    )} от экономического оборота.`;
   }
 
   if (totalDrr <= 10) {
     return `Реклама требует контроля: ДРР ${formatPercent(
       totalDrr
-    )} от заказов.`;
+    )} от экономического оборота.`;
   }
 
   return `Реклама перегрета: ДРР ${formatPercent(
     totalDrr
-  )} от заказов, нужно проверить кампании.`;
+  )} от экономического оборота, нужно проверить кампании.`;
 }
 
 function getCashFlowConclusion(report: DailyReport) {
@@ -2317,19 +2678,24 @@ function getCashFlowConclusion(report: DailyReport) {
 }
 
 function getProfitConclusion(report: DailyReport) {
+  const preliminary = isPreliminaryFinancialResult(report);
+  const label = preliminary
+    ? "Предварительная прибыль"
+    : "Чистая прибыль";
+
   if (report.totals.netProfitImpact < 0) {
-    return `Прибыль под давлением: ${formatMoney(
+    return `${label} под давлением: ${formatMoney(
       report.totals.netProfitImpact
-    )}. Нужно смотреть расходы и выводы.`;
+    )}. ${preliminary ? "Итог уточнится после закрытия налоговой выручки Ozon и финансового периода WB." : "Нужно смотреть расходы и выводы."}`;
   }
 
   if (report.totals.netProfitImpact > 0) {
-    return `Чистая прибыль за период положительная: ${formatMoney(
+    return `${label} за период положительная: ${formatMoney(
       report.totals.netProfitImpact
-    )}.`;
+    )}.${preliminary ? " Итог уточнится после закрытия налоговой выручки Ozon и финансового периода WB." : ""}`;
   }
 
-  return "Чистая прибыль около нуля.";
+  return `${label} около нуля.${preliminary ? " Итог пока предварительный." : ""}`;
 }
 
 function buildOwnerConclusion(report: DailyReport) {
@@ -2355,11 +2721,11 @@ function buildOwnerConclusion(report: DailyReport) {
 
   const highestDrrItem = getHighestDrrItem(report);
 
-  if (highestDrrItem && highestDrrItem.drrByOrders >= 10) {
+  if (highestDrrItem && highestDrrItem.drrByEconomicTurnover >= 10) {
     lines.push(
       `Самая дорогая связка по рекламе: ${
         highestDrrItem.label
-      } — ДРР ${formatPercent(highestDrrItem.drrByOrders)} от заказов.`
+      } — ДРР ${formatPercent(highestDrrItem.drrByEconomicTurnover)} от экономического оборота.`
     );
   }
 
@@ -2369,17 +2735,17 @@ function buildOwnerConclusion(report: DailyReport) {
 function getHighDrrAction(report: DailyReport) {
   const highestDrrItem = getHighestDrrItem(report);
 
-  if (!highestDrrItem || highestDrrItem.drrByOrders < 10) {
+  if (!highestDrrItem || highestDrrItem.drrByEconomicTurnover < 10) {
     return null;
   }
 
-  if (highestDrrItem.ordersAmount < 50000) {
-    return `Проверить ${highestDrrItem.label}: ДРР высокий, но объём заказов маленький — не масштабировать рекламу без проверки товаров и ставок.`;
+  if (highestDrrItem.economicTurnover < 50000) {
+    return `Проверить ${highestDrrItem.label}: ДРР высокий, но объём экономического оборота маленький — не масштабировать рекламу без проверки товаров и ставок.`;
   }
 
   return `Проверить ${highestDrrItem.label}: ДРР ${formatPercent(
-    highestDrrItem.drrByOrders
-  )} от заказов — найти кампании/товары, которые съедают бюджет.`;
+    highestDrrItem.drrByEconomicTurnover
+  )} от экономического оборота — найти кампании/товары, которые съедают бюджет.`;
 }
 
 function getSalesGapAction(report: DailyReport) {
@@ -2402,7 +2768,7 @@ function buildOwnerActions(report: DailyReport) {
 
   if (hasIncompleteOrderData(report) && (!report.dataReadiness || report.dataReadiness.isFinal)) {
     actions.push(
-      "Не делать окончательные выводы по ДРР от заказов, пока заказы не накопятся за весь период. Сейчас главный ориентир — ДРР от продаж/начислений."
+      "Не делать окончательные выводы по ДРР от заказов, пока заказы не накопятся за весь период. Главный ориентир — ДРР от экономического оборота."
     );
   }
 
@@ -2449,8 +2815,38 @@ function marketplaceLine(label: string, metrics: MarketplaceDailyMetrics) {
 
   if (metrics.marketplace === "OZON" && metrics.netOzonExpenses !== undefined) {
     lines.push(
-      `Чистые расходы Ozon после баллов: ${formatMoney(metrics.netOzonExpenses)}`
+      metrics.discountPointsCoverageComplete === false
+        ? `Расходы Ozon по загруженным данным: ${formatMoney(metrics.netOzonExpenses)}`
+        : `Чистые расходы Ozon после баллов: ${formatMoney(metrics.netOzonExpenses)}`
     );
+  }
+
+  if (
+    metrics.marketplace === "OZON" &&
+    metrics.taxCalculationBase !== undefined &&
+    metrics.taxesAmount !== undefined
+  ) {
+    if (metrics.taxesEstimated) {
+      lines.push(
+        "Налоговая выручка: ожидается отчёт начислений",
+        `Налоговый резерв: ${formatMoney(
+          metrics.taxesAmount
+        )} — предварительно от экономического оборота ${formatMoney(
+          metrics.taxCalculationBase
+        )}`,
+        `Прибыль до налогов: ${formatMoney(metrics.marginProfit ?? 0)}`,
+        `Предварительная чистая прибыль Ozon: ${formatMoney(
+          metrics.netProfitAfterTax
+        )}`
+      );
+    } else {
+      lines.push(
+        `Налоговая выручка: ${formatMoney(metrics.taxableRevenue ?? 0)}`,
+        `Налоги: ${formatMoney(metrics.taxesAmount)}`,
+        `Прибыль до налогов: ${formatMoney(metrics.marginProfit ?? 0)}`,
+        `Чистая прибыль Ozon: ${formatMoney(metrics.netProfitAfterTax)}`
+      );
+    }
   }
 
   if (
@@ -2465,10 +2861,14 @@ function marketplaceLine(label: string, metrics: MarketplaceDailyMetrics) {
     );
   }
 
+  const taxDrrText =
+    metrics.marketplace === "OZON" &&
+    metrics.taxRevenueCoverageComplete === false
+      ? "ожидается отчёт начислений"
+      : formatPercent(metrics.drrByTaxableRevenue);
+
   lines.push(
-    `ДРР: от заказов ${formatPercent(metrics.drrByOrders)} (от продаж/начислений ${formatPercent(
-      metrics.drrBySales
-    )})`,
+    `ДРР: от экон. оборота ${formatPercent(metrics.drrByEconomicTurnover)} (от налоговой выручки ${taxDrrText}, от заказов ${formatPercent(metrics.drrByOrders)})`,
     `Остатки: ${formatNumber(metrics.stockQty)} шт`
   );
 
@@ -2513,16 +2913,36 @@ function formatPointDiff(value: number | null, inverse = true) {
 function buildComparisonLines(report: DailyReport) {
   if (!report.comparison) return [];
 
-  return [
+  const lines = [
     "",
     `Динамика к аналогичному периоду (${report.comparison.dateLabel}):`,
     `• Заказы ₽: ${formatPercentChange(report.comparison.totals.ordersAmountPercent)}`,
-    `• Продажи/начисления: ${formatPercentChange(report.comparison.totals.salesAmountPercent)}`,
-    `• Реклама: ${formatPercentChange(report.comparison.totals.adSpendPercent, true)}`,
-    `• ДРР от продаж: ${formatPointDiff(report.comparison.totals.drrBySalesPointDiff, true)}`,
-    `• ДДС: ${formatPercentChange(report.comparison.totals.netCashFlowPercent)}`,
-    `• Чистая прибыль: ${formatPercentChange(report.comparison.totals.netProfitImpactPercent)}`,
+    `• Экономический оборот: ${formatPercentChange(report.comparison.totals.economicTurnoverPercent)}`,
   ];
+
+  if (report.comparison.totals.taxableRevenuePercent !== null) {
+    lines.push(
+      `• Налоговая выручка: ${formatPercentChange(
+        report.comparison.totals.taxableRevenuePercent
+      )}`
+    );
+  }
+
+  lines.push(
+    `• Реклама: ${formatPercentChange(report.comparison.totals.adSpendPercent, true)}`,
+    `• ДРР от экон. оборота: ${formatPointDiff(report.comparison.totals.drrByEconomicTurnoverPointDiff, true)}`,
+    `• ДДС: ${formatPercentChange(report.comparison.totals.netCashFlowPercent)}`
+  );
+
+  if (report.comparison.totals.netProfitImpactPercent !== null) {
+    lines.push(
+      `• Чистая прибыль: ${formatPercentChange(
+        report.comparison.totals.netProfitImpactPercent
+      )}`
+    );
+  }
+
+  return lines;
 }
 
 function inlinePercentChange(value: number | null, inverse = false) {
@@ -2535,83 +2955,220 @@ function inlinePointDiff(value: number | null, inverse = true) {
   return formatted === "нет базы" ? "" : ` (${formatted})`;
 }
 
+function compactChangeSuffix(
+  percent: number | null,
+  inverse = false
+) {
+  if (percent === null || !Number.isFinite(percent)) return "";
+  const formatted = formatPercentChange(percent, inverse);
+  if (formatted === "нет базы") return "";
+  return ` ${formatted}`;
+}
+
+function compactPointSuffix(value: number | null) {
+  if (value === null || !Number.isFinite(value)) return "";
+  const formatted = formatPointDiff(value, true);
+  if (formatted === "нет базы") return "";
+  return ` ${formatted}`;
+}
+
+function taxableRevenueLine(metrics: MarketplaceDailyMetrics, dateLabel: string) {
+  if (
+    metrics.marketplace === "OZON" &&
+    metrics.taxRevenueCoverageComplete === false
+  ) {
+    const missing = metrics.taxRevenueMissingDays?.length
+      ? metrics.taxRevenueMissingDays.map(formatRuDateShort).join(", ")
+      : formatRuDateShort(dateLabel);
+    return `Налоговая выручка: нет отчёта начислений за ${missing}`;
+  }
+
+  if (metrics.taxableRevenue === undefined) {
+    return null;
+  }
+
+  return `Налоговая выручка: ${formatMoney(metrics.taxableRevenue)}`;
+}
+
+function compactMarketplaceBlock(
+  emoji: string,
+  label: string,
+  metrics: MarketplaceDailyMetrics,
+  dateLabel: string
+) {
+  const profitLabel =
+    metrics.marketplace === "WB"
+      ? "Прибыль после налогов WB"
+      : "Прибыль после налогов Ozon";
+  const lines = [
+    `${emoji} ${label}`,
+    marketplaceOrdersLine(metrics),
+    `Экономический оборот: ${formatMoney(metrics.economicTurnover ?? metrics.salesAmount)}`,
+  ];
+
+  const taxableLine = taxableRevenueLine(metrics, dateLabel);
+  if (taxableLine) lines.push(taxableLine);
+
+  lines.push(marketplaceAdLine(metrics));
+  lines.push(`${profitLabel}: ${formatSignedMoney(metrics.netProfitAfterTax)}`);
+  lines.push(
+    `ДРР: от экон. оборота ${formatPercent(metrics.drrByEconomicTurnover)}`
+  );
+  lines.push(`Остатки: ${formatNumber(metrics.stockQty)} шт`);
+  return lines.join("\n");
+}
+
+function buildAttentionLines(report: DailyReport) {
+  const lines: string[] = [];
+
+  if (report.totals.netCashFlow < 0) {
+    lines.push(`🔴 ДДС: ${formatCompactMoney(report.totals.netCashFlow)}`);
+  }
+
+  for (const company of report.companies) {
+    for (const item of [
+      { marketplace: "WB" as const, metrics: company.wb },
+      { marketplace: "Ozon" as const, metrics: company.ozon },
+    ]) {
+      if (
+        item.metrics.adSpend > 0 &&
+        (item.metrics.economicTurnover ?? 0) > 0 &&
+        item.metrics.drrByEconomicTurnover >= 10
+      ) {
+        const tone = item.metrics.drrByEconomicTurnover >= 12 ? "🟠" : "🟡";
+        lines.push(
+          `${tone} ${company.companyName} · ${item.marketplace}: ДРР ${formatPercent(
+            item.metrics.drrByEconomicTurnover
+          )}`
+        );
+      }
+    }
+  }
+
+  if (lines.length === 0) return [];
+  return ["⚠️ ВНИМАНИЕ", ...lines];
+}
+
 export function formatDailyReportForTelegram(report: DailyReport) {
   const comparison = report.comparison?.totals ?? null;
   const profitAfterOwnerWithdrawal =
     report.totals.netProfitImpact - report.totals.ownerWithdrawals;
-
-  const dataReadinessText = report.dataReadiness && !report.dataReadiness.isFinal
-    ? `⚠️ ${report.dataReadiness.shortText}: финансовый результат предварительный.`
+  const readinessIssues = collectTelegramReadinessIssues(report);
+  const dateIso = primaryReportDate(report);
+  const periodDate = formatRuDate(dateIso);
+  const comparisonDate = report.comparison
+    ? formatRuDate(report.comparison.dateLabel)
     : "";
+  const marginPercent =
+    report.totals.economicTurnover > 0
+      ? (report.totals.netProfitImpact / report.totals.economicTurnover) * 100
+      : 0;
+  const showCashFlowPercent = shouldShowCashFlowPercent({
+    current: comparison?.netCashFlowCurrent ?? report.totals.netCashFlow,
+    previous: comparison?.netCashFlowPrevious ?? 0,
+    percent: comparison?.netCashFlowPercent ?? null,
+  });
+  const taxIncomplete = hasIncompleteTaxableRevenueSource(report);
+  const profitIncomplete = hasIncompleteProfitSource(report);
 
-  const lines: string[] = [
+  const header = [
     `📊 AvoroFin — сводка собственника`,
-    `Период: ${report.periodLabel}`,
-    `Даты: ${report.dateLabel}`,
-    report.comparison
-      ? `Сравнение: ${report.comparison.dateLabel}`
-      : "",
-    dataReadinessText,
-    "",
-    "ИТОГО ПО БИЗНЕСУ",
-    `Заказы: ${formatNumber(report.totals.ordersQty)} шт / ${formatMoney(
-      report.totals.ordersAmount
-    )}${inlinePercentChange(comparison?.ordersAmountPercent ?? null)}`,
-    `Продажи/начисления: ${formatMoney(report.totals.salesAmount)}${inlinePercentChange(
-      comparison?.salesAmountPercent ?? null
-    )}`,
-    `Реклама: ${formatMoney(report.totals.adSpend)}${inlinePercentChange(
-      comparison?.adSpendPercent ?? null,
-      true
-    )}`,
-    `ДРР: от заказов ${formatPercent(
-      report.totals.drrByOrders
-    )} / от продаж ${formatPercent(report.totals.drrBySales)}${inlinePointDiff(
-      comparison?.drrBySalesPointDiff ?? null,
-      true
-    )}`,
-    `ДДС: ${formatMoney(report.totals.netCashFlow)}${inlinePercentChange(
-      comparison?.netCashFlowPercent ?? null
-    )}`,
-    `Чистая прибыль: ${formatMoney(report.totals.netProfitImpact)}${inlinePercentChange(
-      comparison?.netProfitImpactPercent ?? null
-    )}`,
-    `Вывод собственника: ${formatMoney(report.totals.ownerWithdrawals)}`,
-    `Прибыль после вывода собственника: ${formatMoney(
-      profitAfterOwnerWithdrawal
-    )}`,
-    `Остатки: ${formatNumber(report.totals.stockQty)} шт`,
+    `Период: ${report.periodLabel}${periodDate ? ` (${periodDate})` : ""}`,
+    comparisonDate ? `Сравнение: ${comparisonDate}` : "",
+    ...formatTelegramReadinessBlock(readinessIssues),
   ].filter(Boolean);
 
-  if (report.warnings.length > 0) {
-    lines.push("", "Что требует внимания:");
-    lines.push(...report.warnings.map((warning) => `⚠️ ${warning}`));
+  const topBlock = [
+    "ИТОГО ПО БИЗНЕСУ",
+    `🛒 Заказы: ${formatNumber(report.totals.ordersQty)} шт · ${formatCompactMoney(
+      report.totals.ordersAmount
+    )}${compactChangeSuffix(comparison?.ordersAmountPercent ?? null)}`,
+    `📈 Экон. оборот: ${formatCompactMoney(
+      report.totals.economicTurnover
+    )}${compactChangeSuffix(comparison?.economicTurnoverPercent ?? null)}`,
+    `🧾 Налоговая выручка: ${formatCompactMoney(report.totals.taxableRevenue)}${
+      taxIncomplete
+        ? " · по загруженным данным"
+        : compactChangeSuffix(comparison?.taxableRevenuePercent ?? null)
+    }`,
+    `💰 ${
+      profitIncomplete
+        ? "Предварительная чистая прибыль после налогов"
+        : "Чистая прибыль после налогов"
+    }: ${formatCompactMoney(
+      report.totals.netProfitImpact
+    )} · маржа ${formatPercent(marginPercent)}`,
+    `📣 Реклама: ${formatCompactMoney(report.totals.adSpend)} · ДРР ${formatPercent(
+      report.totals.drrByEconomicTurnover
+    )}${compactPointSuffix(comparison?.drrByEconomicTurnoverPointDiff ?? null)}`,
+    `💸 ДДС: ${formatCompactMoney(report.totals.netCashFlow)}${
+      showCashFlowPercent
+        ? compactChangeSuffix(comparison?.netCashFlowPercent ?? null)
+        : comparison && report.totals.netCashFlow < 0
+          ? " 🔴"
+          : comparison && report.totals.netCashFlow > 0
+            ? " 🟢"
+            : ""
+    }`,
+    `💳 Вывод собственника: ${formatMoney(report.totals.ownerWithdrawals)}`,
+    `💵 ${
+      profitIncomplete
+        ? "Предварительная чистая прибыль после вывода собственника"
+        : "Чистая прибыль после вывода собственника"
+    }: ${formatCompactMoney(
+      profitAfterOwnerWithdrawal
+    )}`,
+    `📦 Остатки: ${formatNumber(report.totals.stockQty)} шт`,
+  ];
+
+  const lines: string[] = [...header, "", ...topBlock];
+
+  const attention = buildAttentionLines(report);
+  if (attention.length > 0) {
+    lines.push("", ...attention);
   }
 
-  lines.push("", ...buildOwnerConclusion(report));
-  lines.push("", ...buildOwnerActions(report));
-
   for (const company of report.companies) {
+    const companyNetProfit =
+      company.wb.netProfitAfterTax +
+      company.ozon.netProfitAfterTax +
+      company.finance.netProfitImpact;
+    const companyStock = company.wb.stockQty + company.ozon.stockQty;
     const companyProfitAfterOwnerWithdrawal =
-      company.finance.netProfitImpact - company.finance.ownerWithdrawals;
+      companyNetProfit - company.finance.ownerWithdrawals;
 
     lines.push(
       "",
-      `━━━━━━━━━━━━━━`,
-      `${company.companyName}`,
+      "━━━━━━━━━━━━━━",
+      `👤 ${company.companyName}`,
       "",
-      marketplaceLine("WB", company.wb),
-      "",
-      marketplaceLine("Ozon", company.ozon),
-      "",
-      `Финансы:`,
+      `Итого: ${companyNetProfit >= 0 ? "🟢" : "🔴"} ${formatSignedMoney(
+        companyNetProfit
+      )}`,
+      `Остатки: ${formatNumber(companyStock)} шт`,
       `ДДС: ${formatMoney(company.finance.netCashFlow)}`,
-      `Чистая прибыль: ${formatMoney(company.finance.netProfitImpact)}`,
-      `Вывод собственника: ${formatMoney(company.finance.ownerWithdrawals)}`,
-      `Прибыль после вывода собственника: ${formatMoney(
-        companyProfitAfterOwnerWithdrawal
-      )}`
+      "",
+      compactMarketplaceBlock("🟣", "WB", company.wb, dateIso),
+      "",
+      compactMarketplaceBlock("🔵", "Ozon", company.ozon, dateIso)
     );
+
+    if (Math.abs(company.finance.netProfitImpact) > 0.5) {
+      lines.push(
+        `🧾 Прочие P&L операции: ${formatSignedMoney(
+          company.finance.netProfitImpact
+        )}`
+      );
+    }
+
+    if (company.finance.ownerWithdrawals !== 0) {
+      lines.push(
+        `💳 Вывод собственника: ${formatMoney(company.finance.ownerWithdrawals)}`,
+        `💵 Чистая прибыль после вывода: ${formatSignedMoney(
+          companyProfitAfterOwnerWithdrawal
+        )}`
+      );
+    }
   }
 
   return lines.join("\n");

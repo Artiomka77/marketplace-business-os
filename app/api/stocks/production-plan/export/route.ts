@@ -4,6 +4,12 @@ import ExcelJS from "exceljs";
 import { prisma } from "@/lib/prisma";
 import { getProfitAnalytics } from "@/lib/analytics/profitAnalytics";
 import { getProfitAnalyticsOzon } from "@/lib/analytics/profitAnalyticsOzon";
+import {
+  assertWbFinancialDataFinal,
+  isWbPreliminaryFinancialDataError,
+  requiresFinalWbFinancialDataForMarketplace,
+  WB_PRELIMINARY_FINANCIAL_DATA,
+} from "@/lib/analytics/wbFinality";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -566,6 +572,9 @@ async function buildSupplyPlanRows(url: URL) {
     selectedCompanyName && selectedCompanyName !== "ALL" ? selectedCompanyName : null;
 
   const companyWhere = companyName ? companyName : undefined;
+  const requestedSupplyMarketplace = getMarketplaceFilter(
+    getQueryValue(url, "supplyMarketplace")
+  );
 
   const [wbProfitAnalytics, ozonProfitAnalytics] = await Promise.all([
     getProfitAnalytics({
@@ -581,6 +590,16 @@ async function buildSupplyPlanRows(url: URL) {
       companyName: companyName ?? "ALL",
     }),
   ]);
+  if (
+    requiresFinalWbFinancialDataForMarketplace({
+      supplyMarketplace: requestedSupplyMarketplace,
+    })
+  ) {
+    assertWbFinancialDataFinal(
+      wbProfitAnalytics.totals,
+      "PRODUCTION_PLAN_EXPORT"
+    );
+  }
 
   const wbAbcByRevenue = calculateAbcByPositiveValue(
     wbProfitAnalytics.rows,
@@ -1998,6 +2017,17 @@ export async function GET(req: Request) {
     });
   } catch (error) {
     console.error("PRODUCTION_PLAN_EXPORT_ERROR", error);
+    if (isWbPreliminaryFinancialDataError(error)) {
+      return NextResponse.json(
+        {
+          success: false,
+          code: WB_PRELIMINARY_FINANCIAL_DATA,
+          dataMode: "PRELIMINARY",
+          error: error.message,
+        },
+        { status: 409 }
+      );
+    }
 
     return NextResponse.json(
       {

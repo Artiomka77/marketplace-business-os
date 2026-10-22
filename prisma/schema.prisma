@@ -479,7 +479,28 @@ model OzonProduct {
   @@index([size])
 }
 
+/// Exact Ozon SKU → seller offer / base nmId mapping (no fuzzy).
+model OzonSpecialSkuAlias {
+  id String @id @default(cuid())
 
+  companyName         String
+  ozonSku             String
+  canonicalVendorCode String
+  baseNmId            String?
+  offerId             String?
+  productName         String?
+  barcode             String?
+  mappingEvidence     String
+  source              String   @default("OZON_PRODUCT_INFO_API")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([companyName, ozonSku])
+  @@index([ozonSku])
+  @@index([canonicalVendorCode])
+  @@index([baseNmId])
+}
 
 model OzonRealizationSummary {
   id String @id @default(cuid())
@@ -574,6 +595,43 @@ model OzonDiscountPointsSummary {
   @@index([companyName])
   @@index([dateFrom])
   @@index([dateTo])
+}
+
+/// Company-bound exact SKU accrual facts from official Ozon «Отчёт по начислениям».
+/// Never treat as global/cross-company. Populated via durable import (upload) or future API sync.
+model OzonAccrualSkuFact {
+  id String @id @default(cuid())
+
+  companyName           String
+  marketplaceAccountId  String?
+  operationDate         DateTime @db.Date
+  vendorCode            String   @default("")
+  sku                   String   @default("")
+
+  taxableRevenue     Decimal @default(0) @db.Decimal(18, 2)
+  discountPoints     Decimal @default(0) @db.Decimal(18, 2)
+  partnerPrograms    Decimal @default(0) @db.Decimal(18, 2)
+  commissionExpense  Decimal @default(0) @db.Decimal(18, 2)
+  logisticsExpense   Decimal @default(0) @db.Decimal(18, 2)
+  otherSkuExpense    Decimal @default(0) @db.Decimal(18, 2)
+  fboExpense         Decimal @default(0) @db.Decimal(18, 2)
+  adsExpense         Decimal @default(0) @db.Decimal(18, 2)
+  rowsCount          Int     @default(0)
+
+  sourceType       String  @default("OWNER_XLSX_IMPORT")
+  sourceFileName   String?
+  sourceFileHash   String?
+  sourcePeriodFrom DateTime? @db.Date
+  sourcePeriodTo   DateTime? @db.Date
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([companyName, operationDate, vendorCode, sku])
+  @@index([companyName, operationDate])
+  @@index([marketplaceAccountId])
+  @@index([vendorCode])
+  @@index([sku])
 }
 
 model OzonDiscountPointsRow {

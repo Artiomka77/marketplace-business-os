@@ -595,6 +595,7 @@ export async function getDashboardDailyAnalytics(params: {
       }),
       prisma.financeTransaction.findMany({
         where: {
+          transactionStatus: "FACT",
           operationDate: {
             gte: from,
             lt: toExclusive,

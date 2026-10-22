@@ -2,8 +2,24 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 
 import { prisma } from "@/lib/prisma";
-import { getProfitAnalyticsOzon } from "@/lib/analytics/profitAnalyticsOzon";
+import { getProfitAnalyticsOzon, calculateOzonSkuExpenseMagnitude } from "@/lib/analytics/profitAnalyticsOzon";
+import { applyOzonCanonicalIngestFinality, resolveOzonPeriodFinality } from "@/lib/finance/canonicalPeriodFinality";
+import { loadOzonAccrualDayStatuses } from "@/lib/ozon/accrualDayStatusStore";
+import { listExpectedOzonCompanyNames } from "@/lib/ozon/expectedOzonCompanies";
+import { loadOzonOrderBuyoutCoverage } from "@/lib/ozon/ozonOrderBuyoutCoverage";
+import { loadOzonRealizationCoveredDates } from "@/lib/ozon/ozonRealizationCoverage";
 import { getDefaultLastCompletedWeekRange } from "@/lib/date/defaultPeriod";
+import { withAnalyticsPageFailSoft } from "@/lib/analytics/withAnalyticsPageFailSoft";
+import { ProductThumb } from "@/app/profit-ozon/ProductThumb";
+import { ReadModelPendingAutoRefresh } from "@/components/readModel/ReadModelPendingAutoRefresh";
+import {
+  FINANCIAL_CORE_V6_PROFIT_OZON_READMODEL_V1,
+  createPrismaProfitReadModelRepository,
+  createWaveBProfitTargetPrismaClient,
+  isWaveBHeavyLiveFallbackEnabled,
+  isWaveBProfitReadModelFirstEnabled,
+  loadProfitReadModel,
+} from "@/lib/profitReadModel";
 
 type SortKey =
   | "revenue"
@@ -39,7 +55,24 @@ type ProductMeta = {
   subject: string;
   sku: string;
   vendorCode: string;
+  /** Human business / supplier article when proven (e.g. Ади-вчерный). */
+  supplierArticle?: string;
+  /** Parent Ozon offer / base family (e.g. 1217252162), never a child SKU. */
+  ozonArticle?: string;
+  mappingPath?: string;
+  mappingExact?: boolean;
+  mappingConflict?: boolean;
   imageUrl?: string | null;
+  imageCandidates?: string[];
+  imageSource?: string;
+};
+
+type HumanArticleMapping = {
+  humanArticle: string;
+  mappingPath: string;
+  mappingExact: boolean;
+  mappingConflict: boolean;
+  companies: string[];
 };
 
 type SkuBreakdownRow = {
@@ -71,6 +104,8 @@ type EnrichedOzonRow = OzonRow & {
   abcByRevenue: "A" | "B" | "C";
   productMeta: ProductMeta;
   skuRows: SkuBreakdownRow[];
+  /** Null when order denominator / SKU grain is not proven (н/д). */
+  buyoutPercent: number | null;
 };
 
 type OzonProductRecord = {
@@ -79,6 +114,7 @@ type OzonProductRecord = {
   productName: string | null;
   imageUrl: string | null;
   imageSmallUrl: string | null;
+  companyName?: string | null;
 };
 
 type OzonFinanceBreakdownRecord = {
@@ -191,6 +227,12 @@ function formatPercent(value: number | null | undefined) {
   return `${value.toFixed(1)}%`;
 }
 
+/** Buyout uses н/д (not a dash) when denominator is incomplete / unproven. */
+function formatBuyoutPercent(value: number | null | undefined) {
+  if (value === null || value === undefined || !Number.isFinite(value)) return "н/д";
+  return `${value.toFixed(1)}%`;
+}
+
 function formatDateRu(value: string) {
   const date = new Date(`${value}T00:00:00`);
   return new Intl.DateTimeFormat("ru-RU", {
@@ -259,11 +301,181 @@ function metricBarColor(value: number) {
   return "bg-emerald-500";
 }
 
-function rowExpenses(row: OzonRow) {
-  return row.revenue - row.netProfitAfterTax;
+function rowEconomicTurnover(row: {
+  revenue?: number;
+  economicTurnover?: number;
+  discountPointsAmount?: number;
+  partnerProgramsAmount?: number;
+  expenses?: number;
+  netProfitAfterTax?: number;
+}) {
+  const et = Number(row.economicTurnover ?? 0);
+  if (Number.isFinite(et) && Math.abs(et) > 0.005) return et;
+  const points = Number(row.discountPointsAmount ?? 0);
+  const partner = Number(row.partnerProgramsAmount ?? 0);
+  const fromParts = Number(row.revenue ?? 0) + points + partner;
+  if (Math.abs(fromParts) > 0.005) return fromParts;
+  // SkuBreakdownRow fallback: ET ≈ expenses + profit (invariant)
+  const exp = Number(row.expenses ?? 0);
+  const net = Number(row.netProfitAfterTax ?? 0);
+  if (Math.abs(exp) + Math.abs(net) > 0.005) return exp + net;
+  return Number(row.revenue ?? 0);
 }
 
-function rowBuyoutPercent(row: OzonRow) {
+function rowExpenses(row: OzonRow) {
+  // Explicit magnitude: COGS + marketplace fees + tax. Never revenue - profit residual
+  // (that residual goes negative when SKU profit was inflated by missing fee allocation).
+  return calculateOzonSkuExpenseMagnitude(row);
+}
+
+function rowProfitLabel(row: OzonRow) {
+  const status = (row as { profitAttributionStatus?: string })
+    .profitAttributionStatus;
+  if (status === "EXACT") return "Прибыль";
+  if (status === "MIXED_ALLOCATED") return "Прибыль (есть распределённые суммы)";
+  if (status === "ALLOCATED_SOURCE_GAP") return "Прибыль (источник SKU неполный)";
+  return "Распределённая прибыль";
+}
+
+const ATTRIBUTION_AMOUNT_KEYS = [
+  "allocatedCommissionAmount",
+  "allocatedLogisticsAmount",
+  "allocatedAdsAmount",
+  "allocatedDiscountPointsAmount",
+  "allocatedPartnerProgramsAmount",
+  "allocatedOtherAmount",
+  "allocatedTaxAmount",
+  "exactCommissionAmount",
+  "exactLogisticsAmount",
+  "exactAdsAmount",
+  "exactDiscountPointsAmount",
+  "exactPartnerProgramsAmount",
+  "exactOtherSkuExpenseAmount",
+] as const;
+
+function asAmount(row: object, key: string) {
+  return Number((row as Record<string, unknown>)[key] ?? 0);
+}
+
+function addAttributionAmounts(target: EnrichedOzonRow, source: EnrichedOzonRow) {
+  for (const key of ATTRIBUTION_AMOUNT_KEYS) {
+    (target as unknown as Record<string, number>)[key] =
+      asAmount(target, key) + asAmount(source, key);
+  }
+}
+
+function mergeProfitAttributionStatus(
+  current?: string,
+  next?: string
+): "EXACT" | "MIXED_ALLOCATED" | "ALLOCATED" | "ALLOCATED_SOURCE_GAP" {
+  const rank: Record<string, number> = {
+    EXACT: 0,
+    ALLOCATED: 1,
+    MIXED_ALLOCATED: 2,
+    ALLOCATED_SOURCE_GAP: 3,
+  };
+  const left = current || "EXACT";
+  const right = next || "EXACT";
+  const picked = (rank[right] ?? 0) > (rank[left] ?? 0) ? right : left;
+  if (
+    picked === "MIXED_ALLOCATED" ||
+    picked === "ALLOCATED" ||
+    picked === "ALLOCATED_SOURCE_GAP" ||
+    picked === "EXACT"
+  ) {
+    return picked;
+  }
+  return "EXACT";
+}
+
+function uniqueImageUrls(urls: Array<string | null | undefined>) {
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const url of urls) {
+    const clean = cleanText(url);
+    if (!clean || seen.has(clean)) continue;
+    seen.add(clean);
+    result.push(clean);
+  }
+  return result;
+}
+
+function getAttributionBreakdown(row: EnrichedOzonRow) {
+  const incomeComponents = [
+    {
+      label: "баллы (остаток кабинета)",
+      amount: asAmount(row, "allocatedDiscountPointsAmount"),
+    },
+    {
+      label: "партнёрские (остаток кабинета)",
+      amount: asAmount(row, "allocatedPartnerProgramsAmount"),
+    },
+  ].filter((item) => Math.abs(item.amount) > 0.05);
+
+  const expenseComponents = [
+    {
+      label: "комиссия",
+      amount: asAmount(row, "allocatedCommissionAmount"),
+    },
+    {
+      label: "логистика / FBO",
+      amount: asAmount(row, "allocatedLogisticsAmount"),
+    },
+    {
+      label: "реклама",
+      amount: asAmount(row, "allocatedAdsAmount"),
+    },
+    {
+      label: "account-level услуги / прочее",
+      amount: asAmount(row, "allocatedOtherAmount"),
+    },
+    {
+      label: "налог (остаток)",
+      amount: asAmount(row, "allocatedTaxAmount"),
+    },
+  ].filter((item) => Math.abs(item.amount) > 0.05);
+
+  const allocatedIncomeAmount = incomeComponents.reduce(
+    (sum, item) => sum + Math.abs(item.amount),
+    0
+  );
+  const allocatedExpenseAmount = expenseComponents.reduce(
+    (sum, item) => sum + Math.abs(item.amount),
+    0
+  );
+  const exactIncomeAmount =
+    Number(row.revenue ?? 0) +
+    asAmount(row, "exactDiscountPointsAmount") +
+    asAmount(row, "exactPartnerProgramsAmount");
+  const exactExpenseAmount =
+    Number(row.totalCost ?? 0) +
+    asAmount(row, "exactCommissionAmount") +
+    asAmount(row, "exactLogisticsAmount") +
+    asAmount(row, "exactAdsAmount") +
+    asAmount(row, "exactOtherSkuExpenseAmount");
+  const totalAllocatedAbsolute = allocatedIncomeAmount + allocatedExpenseAmount;
+  const et = rowEconomicTurnover(row);
+  const expenses = rowExpenses(row);
+
+  return {
+    exactIncomeAmount,
+    allocatedIncomeAmount,
+    exactExpenseAmount,
+    allocatedExpenseAmount,
+    totalAllocatedAbsolute,
+    allocatedShareOfTurnover: et > 0 ? (totalAllocatedAbsolute / et) * 100 : 0,
+    allocatedShareOfExpenses: expenses > 0 ? (allocatedExpenseAmount / expenses) * 100 : 0,
+    incomeComponents,
+    expenseComponents,
+    status: (row as { profitAttributionStatus?: string }).profitAttributionStatus,
+  };
+}
+
+function rowBuyoutPercent(
+  row: Pick<OzonRow, "salesQty" | "returnsQty" | "netSalesQty">,
+  preciseBuyoutAllowed = true,
+) {
+  if (!preciseBuyoutAllowed) return null;
   const denominator = row.salesQty + row.returnsQty;
   if (denominator <= 0) return null;
   return (Math.max(0, row.netSalesQty) / denominator) * 100;
@@ -313,7 +525,13 @@ function calculateAbcByPositiveValue<T>(
 
 function getSortValue(row: EnrichedOzonRow, sortKey: SortKey) {
   if (sortKey === "expenses") return rowExpenses(row);
-  if (sortKey === "buyoutPercent") return rowBuyoutPercent(row) ?? -1;
+  if (sortKey === "buyoutPercent") {
+    const buyout =
+      "buyoutPercent" in row && row.buyoutPercent !== undefined
+        ? row.buyoutPercent
+        : rowBuyoutPercent(row);
+    return buyout ?? -1;
+  }
 
   return Number(row[sortKey] ?? 0);
 }
@@ -403,6 +621,773 @@ function getOzonSizeLabel(vendorCode: string) {
   return parseOzonVendorCode(vendorCode).sizeLabel;
 }
 
+function looksLikeSizedOzonOffer(value: string) {
+  return /^.+-\d{2,4}(?:-\d{2,4})?$/.test(cleanText(value));
+}
+
+function looksLikeRawOzonSkuKey(value: string) {
+  return /^\d{8,}$/.test(cleanText(value));
+}
+
+function looksLikeTechnicalParentKey(value: string) {
+  const text = cleanText(value);
+  return /^\d{1,7}$/.test(text);
+}
+
+type CanonicalGroupResolution = {
+  groupKey: string;
+  mappingPath: string;
+  mappingExact: boolean;
+  mappingConflict: boolean;
+};
+
+function collectRowIdentityTokens(row: EnrichedOzonRow) {
+  const values = [
+    row.nmId,
+    row.productMeta.sku,
+    row.vendorCode,
+    row.productMeta.vendorCode,
+    row.productMeta.ozonArticle,
+    ...row.skuRows.map((skuRow) => skuRow.sku),
+    ...row.skuRows.map((skuRow) => skuRow.vendorCode),
+  ];
+  return Array.from(
+    new Set(values.map((value) => normalizeText(value)).filter(Boolean))
+  );
+}
+
+/**
+ * Exact canonical family for Profit Ozon parent grouping.
+ * Priority: AccrualSkuFact → OzonProduct → SpecialSkuAlias → sized offer → nmId card.
+ * Ambiguous identity stays unmerged (MAPPING_UNRESOLVED). Never fuzzy.
+ */
+async function buildCanonicalGroupResolver(params: {
+  rows: EnrichedOzonRow[];
+  companyName?: string | null;
+}): Promise<(row: EnrichedOzonRow) => CanonicalGroupResolution> {
+  const identityFallback = (row: EnrichedOzonRow): CanonicalGroupResolution => {
+    const groupKey =
+      getOzonGroupKey(row.vendorCode) ||
+      cleanText(row.productMeta.ozonArticle) ||
+      cleanText(row.vendorCode);
+    return {
+      groupKey,
+      mappingPath: "vendorCode.parseOzonVendorCode",
+      mappingExact: looksLikeSizedOzonOffer(row.vendorCode),
+      mappingConflict: false,
+    };
+  };
+
+  if (params.rows.length === 0) return identityFallback;
+
+  const companyFilter =
+    params.companyName &&
+    params.companyName !== "ALL" &&
+    cleanText(params.companyName)
+      ? cleanText(params.companyName)
+      : null;
+
+  const tokens = Array.from(
+    new Set(params.rows.flatMap((row) => collectRowIdentityTokens(row)))
+  );
+  if (tokens.length === 0) return identityFallback;
+
+  const [accrualFacts, ozonProducts] = await Promise.all([
+    prisma.ozonAccrualSkuFact.findMany({
+      where: {
+        ...(companyFilter ? { companyName: companyFilter } : {}),
+        sku: { in: tokens },
+      },
+      select: { sku: true, vendorCode: true, companyName: true },
+    }),
+    prisma.ozonProduct.findMany({
+      where: {
+        ...(companyFilter ? { companyName: companyFilter } : {}),
+        OR: [{ sku: { in: tokens } }, { vendorCode: { in: tokens } }],
+      },
+      select: { sku: true, vendorCode: true, companyName: true },
+    }),
+  ]);
+
+  type FamilyHit = { family: string; source: string; company: string };
+  const hitsByToken = new Map<string, FamilyHit[]>();
+  const pushHit = (token: string, hit: FamilyHit) => {
+    const key = normalizeText(token);
+    const family = normalizeText(hit.family);
+    if (!key || !family) return;
+    const list = hitsByToken.get(key) ?? [];
+    if (
+      list.some(
+        (existing) =>
+          existing.family === family &&
+          existing.source === hit.source &&
+          existing.company === hit.company
+      )
+    ) {
+      return;
+    }
+    list.push({ ...hit, family });
+    hitsByToken.set(key, list);
+  };
+
+  for (const fact of accrualFacts) {
+    pushHit(fact.sku, {
+      family: getOzonGroupKey(fact.vendorCode),
+      source: "OzonAccrualSkuFact.sku->vendorCode",
+      company: cleanText(fact.companyName),
+    });
+  }
+
+  for (const product of ozonProducts) {
+    const family = getOzonGroupKey(product.vendorCode);
+    const company = cleanText(product.companyName);
+    const vendorIsCanonicalFamily =
+      looksLikeSizedOzonOffer(product.vendorCode) ||
+      (/^\d{8,}$/.test(family) &&
+        family !== normalizeText(product.sku) &&
+        !looksLikeTechnicalParentKey(family));
+    if (vendorIsCanonicalFamily) {
+      pushHit(product.sku, {
+        family,
+        source: "OzonProduct.sku->vendorCode",
+        company,
+      });
+      pushHit(product.vendorCode, {
+        family,
+        source: "OzonProduct.vendorCode.base",
+        company,
+      });
+    }
+  }
+
+  try {
+    const aliasDelegate = (
+      prisma as unknown as {
+        ozonSpecialSkuAlias?: {
+          findMany: (args: unknown) => Promise<
+            Array<{
+              ozonSku: string;
+              canonicalVendorCode: string;
+              companyName?: string | null;
+              baseNmId?: string | null;
+            }>
+          >;
+        };
+      }
+    ).ozonSpecialSkuAlias;
+    if (aliasDelegate?.findMany) {
+      const aliases = await aliasDelegate.findMany({
+        where: {
+          ...(companyFilter ? { companyName: companyFilter } : {}),
+          ozonSku: { in: tokens },
+        },
+      });
+      for (const alias of aliases) {
+        const family =
+          normalizeText(alias.baseNmId) ||
+          getOzonGroupKey(alias.canonicalVendorCode);
+        pushHit(alias.ozonSku, {
+          family,
+          source: "OzonSpecialSkuAlias",
+          company: cleanText(alias.companyName),
+        });
+      }
+    }
+  } catch {
+    // optional table
+  }
+
+  const nmIdTokens = tokens.filter((token) => /^\d{8,}$/.test(token));
+  if (nmIdTokens.length > 0) {
+    const [productCosts, wbCards] = await Promise.all([
+      prisma.productCost.findMany({
+        where: { nmId: { in: nmIdTokens } },
+        select: { nmId: true },
+      }),
+      prisma.wbProductCard.findMany({
+        where: {
+          ...(companyFilter ? { companyName: companyFilter } : {}),
+          nmId: { in: nmIdTokens },
+        },
+        select: { nmId: true, companyName: true },
+      }),
+    ]);
+    for (const cost of productCosts) {
+      const nmId = normalizeText(cost.nmId);
+      if (!nmId) continue;
+      pushHit(nmId, {
+        family: nmId,
+        source: "ProductCost.nmId",
+        company: "",
+      });
+    }
+    for (const card of wbCards) {
+      const nmId = normalizeText(card.nmId);
+      if (!nmId) continue;
+      pushHit(nmId, {
+        family: nmId,
+        source: "WbProductCard.nmId",
+        company: cleanText(card.companyName),
+      });
+    }
+  }
+
+  const sourceRank = (source: string) => {
+    if (source.startsWith("OzonAccrualSkuFact")) return 1;
+    if (source.startsWith("OzonProduct")) return 2;
+    if (source.startsWith("OzonSpecialSkuAlias")) return 3;
+    if (source.startsWith("ProductCost")) return 5;
+    if (source.startsWith("WbProductCard")) return 6;
+    return 9;
+  };
+
+  return (row: EnrichedOzonRow): CanonicalGroupResolution => {
+    const parsed = identityFallback(row);
+    const vendor = cleanText(row.vendorCode);
+    if (looksLikeSizedOzonOffer(vendor) && !looksLikeRawOzonSkuKey(parsed.groupKey)) {
+      return {
+        ...parsed,
+        mappingPath: "base-size->base",
+        mappingExact: true,
+      };
+    }
+
+    const hits: FamilyHit[] = [];
+    for (const token of collectRowIdentityTokens(row)) {
+      for (const hit of hitsByToken.get(token) ?? []) {
+        hits.push(hit);
+      }
+    }
+
+    if (hits.length === 0) {
+      return {
+        ...parsed,
+        mappingPath:
+          looksLikeRawOzonSkuKey(parsed.groupKey) ||
+          looksLikeTechnicalParentKey(parsed.groupKey)
+            ? "MAPPING_UNRESOLVED"
+            : parsed.mappingPath,
+        mappingExact: false,
+        mappingConflict: false,
+      };
+    }
+
+    const bestRank = Math.min(...hits.map((hit) => sourceRank(hit.source)));
+    const topHits = hits.filter((hit) => sourceRank(hit.source) === bestRank);
+    const uniqueFamilies = Array.from(
+      new Set(topHits.map((hit) => hit.family).filter(Boolean))
+    );
+
+    if (uniqueFamilies.length > 1) {
+      return {
+        ...parsed,
+        mappingPath: `MAPPING_UNRESOLVED|${uniqueFamilies.join("|")}`,
+        mappingExact: false,
+        mappingConflict: true,
+      };
+    }
+
+    const family = uniqueFamilies[0];
+    const best = topHits.find((hit) => hit.family === family);
+    return {
+      groupKey: family,
+      mappingPath: best?.source || "exact-family",
+      mappingExact: true,
+      mappingConflict: false,
+    };
+  };
+}
+
+/** True when vendorCode is a human business article, not a pure numeric Ozon offer/SKU. */
+function looksLikeHumanArticle(value: unknown) {
+  const text = cleanText(value);
+  if (!text) return false;
+  if (/^\d+(?:-\d+)*$/.test(text)) return false;
+  return /[A-Za-zА-Яа-яЁё]/.test(text);
+}
+
+/**
+ * Exact human-article resolver for Ozon Profit UI (Telegram/costCoverage contract).
+ * Priority: OzonSpecialSkuAlias → ProductCost(nmId) → WbProductCard(nmId).
+ * Never fuzzy by productName. Company-safe for Petrov/Lebedeva/ALL.
+ */
+async function buildOzonHumanArticleMap(params: {
+  baseOffers: string[];
+  companyName?: string | null;
+}): Promise<Map<string, HumanArticleMapping>> {
+  const bases = Array.from(
+    new Set(
+      params.baseOffers
+        .map((value) => normalizeText(value))
+        .filter(Boolean)
+    )
+  );
+  const result = new Map<string, HumanArticleMapping>();
+  if (bases.length === 0) return result;
+
+  const companyFilter =
+    params.companyName &&
+    params.companyName !== "ALL" &&
+    cleanText(params.companyName)
+      ? cleanText(params.companyName)
+      : null;
+
+  type Candidate = {
+    article: string;
+    path: string;
+    company: string;
+    priority: number;
+  };
+
+  const candidatesByBase = new Map<string, Candidate[]>();
+
+  const pushCandidate = (base: string, candidate: Candidate) => {
+    const key = normalizeText(base);
+    if (!key || !looksLikeHumanArticle(candidate.article)) return;
+    const list = candidatesByBase.get(key) ?? [];
+    list.push(candidate);
+    candidatesByBase.set(key, list);
+  };
+
+  // 1) OzonSpecialSkuAlias (optional table; may be absent until migration).
+  try {
+    const aliasDelegate = (
+      prisma as unknown as {
+        ozonSpecialSkuAlias?: {
+          findMany: (args: unknown) => Promise<
+            Array<{
+              ozonSku: string;
+              canonicalVendorCode: string;
+              companyName?: string | null;
+              baseNmId?: string | null;
+            }>
+          >;
+        };
+      }
+    ).ozonSpecialSkuAlias;
+
+    if (aliasDelegate?.findMany) {
+      const aliases = await aliasDelegate.findMany({
+        where: {
+          ...(companyFilter ? { companyName: companyFilter } : {}),
+          OR: [
+            { baseNmId: { in: bases } },
+            { canonicalVendorCode: { in: bases } },
+          ],
+        },
+        select: {
+          ozonSku: true,
+          canonicalVendorCode: true,
+          companyName: true,
+          baseNmId: true,
+        },
+      });
+
+      for (const alias of aliases) {
+        const base =
+          normalizeText(alias.baseNmId) ||
+          getOzonGroupKey(alias.canonicalVendorCode);
+        const article = cleanText(alias.canonicalVendorCode);
+        if (!base || !looksLikeHumanArticle(article)) continue;
+        if (
+          companyFilter &&
+          alias.companyName &&
+          cleanText(alias.companyName) !== companyFilter
+        ) {
+          continue;
+        }
+        pushCandidate(base, {
+          article,
+          path: "OzonSpecialSkuAlias.canonicalVendorCode",
+          company: cleanText(alias.companyName) || "",
+          priority: 1,
+        });
+      }
+    }
+  } catch {
+    // Table may not exist — skip aliases.
+  }
+
+  // 2) ProductCost: same base nmId → human vendorCode (preferred when proven).
+  const productCosts = await prisma.productCost.findMany({
+    where: { nmId: { in: bases } },
+    select: { vendorCode: true, nmId: true },
+  });
+  for (const cost of productCosts) {
+    const base = normalizeText(cost.nmId);
+    const article = cleanText(cost.vendorCode);
+    if (!base || !looksLikeHumanArticle(article)) continue;
+    pushCandidate(base, {
+      article,
+      path: "ProductCost.nmId->vendorCode",
+      company: "",
+      priority: 2,
+    });
+  }
+
+  // 3) WbProductCard: same nmId → vendorCode (Telegram contract).
+  const wbCards = await prisma.wbProductCard.findMany({
+    where: {
+      nmId: { in: bases },
+      ...(companyFilter ? { companyName: companyFilter } : {}),
+    },
+    select: { nmId: true, vendorCode: true, companyName: true },
+  });
+  for (const card of wbCards) {
+    const base = normalizeText(card.nmId);
+    const article = cleanText(card.vendorCode);
+    if (!base || !looksLikeHumanArticle(article)) continue;
+    pushCandidate(base, {
+      article,
+      path: "WbProductCard.nmId->vendorCode",
+      company: cleanText(card.companyName) || "",
+      priority: 3,
+    });
+  }
+
+  for (const base of bases) {
+    const candidates = candidatesByBase.get(base) ?? [];
+    if (candidates.length === 0) continue;
+
+    const bestPriority = Math.min(...candidates.map((c) => c.priority));
+    const top = candidates.filter((c) => c.priority === bestPriority);
+    const uniqueArticles = Array.from(
+      new Set(top.map((c) => cleanText(c.article)).filter(Boolean))
+    );
+
+    if (uniqueArticles.length === 0) continue;
+
+    // ALL scope: same human across companies → OK; different → conflict (no silent pick).
+    if (uniqueArticles.length > 1) {
+      result.set(base, {
+        humanArticle: "",
+        mappingPath: top.map((c) => c.path).join("|"),
+        mappingExact: false,
+        mappingConflict: true,
+        companies: Array.from(
+          new Set(top.map((c) => c.company).filter(Boolean))
+        ),
+      });
+      continue;
+    }
+
+    const chosen = top[0];
+    result.set(base, {
+      humanArticle: uniqueArticles[0],
+      mappingPath: chosen.path,
+      mappingExact: true,
+      mappingConflict: false,
+      companies: Array.from(
+        new Set(top.map((c) => c.company).filter(Boolean))
+      ),
+    });
+  }
+
+  return result;
+}
+
+function applyHumanArticleLabels(
+  rows: EnrichedOzonRow[],
+  humanMap: Map<string, HumanArticleMapping>
+) {
+  for (const row of rows) {
+    const baseOffer =
+      getOzonGroupKey(row.vendorCode) ||
+      cleanText(row.productMeta.ozonArticle) ||
+      cleanText(row.vendorCode);
+    const mapping = humanMap.get(normalizeText(baseOffer));
+
+    row.productMeta = {
+      ...row.productMeta,
+      // Parent Ozon offer is always the base family — never a child SKU.
+      ozonArticle: baseOffer,
+      vendorCode: baseOffer || row.productMeta.vendorCode,
+      supplierArticle: mapping?.humanArticle || "",
+      mappingPath: [row.productMeta.mappingPath, mapping?.mappingPath]
+        .filter(Boolean)
+        .join("|"),
+      mappingExact:
+        row.productMeta.mappingExact === true || mapping?.mappingExact === true,
+      mappingConflict:
+        row.productMeta.mappingConflict === true ||
+        mapping?.mappingConflict === true,
+    };
+  }
+}
+
+async function applyExactParentPhotos(params: {
+  rows: EnrichedOzonRow[];
+  companyName?: string | null;
+}) {
+  const rows = params.rows;
+  if (rows.length === 0) return;
+
+  const companyFilter =
+    params.companyName &&
+    params.companyName !== "ALL" &&
+    cleanText(params.companyName)
+      ? cleanText(params.companyName)
+      : null;
+
+  const rowVendorKeys = Array.from(
+    new Set(
+      rows.flatMap((row) =>
+        [row.vendorCode, row.productMeta.vendorCode, ...row.skuRows.map((skuRow) => skuRow.vendorCode)]
+          .map((value) => normalizeText(value))
+          .filter(Boolean)
+      )
+    )
+  );
+  const rowSkus = Array.from(
+    new Set(
+      rows.flatMap((row) => {
+        const values = [
+          row.nmId,
+          row.productMeta.sku,
+          ...row.skuRows.map((skuRow) => skuRow.sku),
+        ];
+        const vendor = cleanText(row.vendorCode);
+        if (/^\d{5,}$/.test(vendor)) values.push(vendor);
+        return values.map((value) => normalizeText(value)).filter(Boolean);
+      })
+    )
+  );
+
+  const [ozonProducts, wbCards] = await Promise.all([
+    prisma.ozonProduct.findMany({
+      where: {
+        ...(companyFilter ? { companyName: companyFilter } : {}),
+      },
+      select: {
+        vendorCode: true,
+        sku: true,
+        imageUrl: true,
+        imageSmallUrl: true,
+        companyName: true,
+      },
+    }),
+    prisma.wbProductCard.findMany({
+      where: {
+        ...(companyFilter ? { companyName: companyFilter } : {}),
+      },
+      select: {
+        nmId: true,
+        photoSmallUrl: true,
+        photoBigUrl: true,
+        companyName: true,
+      },
+    }),
+  ]);
+
+  const catalogSkus = ozonProducts
+    .filter((product) => {
+      const skuKey = normalizeText(product.sku);
+      const vendorKey = normalizeText(product.vendorCode);
+      return (
+        rowSkus.includes(skuKey) ||
+        rowSkus.includes(vendorKey) ||
+        rowVendorKeys.includes(vendorKey) ||
+        rowVendorKeys.includes(skuKey)
+      );
+    })
+    .map((product) => normalizeText(product.sku))
+    .filter(Boolean);
+  const factSkus = Array.from(new Set([...rowSkus, ...catalogSkus]));
+  const accrualFacts = factSkus.length
+    ? await prisma.ozonAccrualSkuFact.findMany({
+        where: {
+          ...(companyFilter ? { companyName: companyFilter } : {}),
+          sku: { in: factSkus },
+        },
+        select: {
+          sku: true,
+          vendorCode: true,
+          companyName: true,
+        },
+      })
+    : [];
+
+  type PhotoProduct = (typeof ozonProducts)[number];
+  const ozonBySku = new Map<string, PhotoProduct[]>();
+  const ozonByVendor = new Map<string, PhotoProduct[]>();
+  const ozonByBase = new Map<string, PhotoProduct[]>();
+
+  for (const product of ozonProducts) {
+    const skuKey = normalizeText(product.sku);
+    const vendorKey = normalizeText(product.vendorCode);
+    const baseKey = normalizeText(getOzonGroupKey(product.vendorCode));
+    if (skuKey) {
+      const list = ozonBySku.get(skuKey) ?? [];
+      list.push(product);
+      ozonBySku.set(skuKey, list);
+    }
+    if (vendorKey) {
+      const list = ozonByVendor.get(vendorKey) ?? [];
+      list.push(product);
+      ozonByVendor.set(vendorKey, list);
+    }
+    if (baseKey) {
+      const list = ozonByBase.get(baseKey) ?? [];
+      list.push(product);
+      ozonByBase.set(baseKey, list);
+    }
+  }
+
+  const factsBySku = new Map<string, string[]>();
+  for (const fact of accrualFacts) {
+    const skuKey = normalizeText(fact.sku);
+    const family = normalizeText(getOzonGroupKey(fact.vendorCode));
+    if (!skuKey || !family) continue;
+    const list = factsBySku.get(skuKey) ?? [];
+    if (!list.includes(family)) list.push(family);
+    factsBySku.set(skuKey, list);
+  }
+
+  const wbByNmId = new Map<
+    string,
+    Array<{ photoSmallUrl: string | null; photoBigUrl: string | null; companyName: string }>
+  >();
+  for (const card of wbCards) {
+    const nmId = normalizeText(card.nmId);
+    if (!nmId) continue;
+    const list = wbByNmId.get(nmId) ?? [];
+    list.push({
+      photoSmallUrl: card.photoSmallUrl,
+      photoBigUrl: card.photoBigUrl,
+      companyName: card.companyName,
+    });
+    wbByNmId.set(nmId, list);
+  }
+
+  const productImageUrls = (product: PhotoProduct) =>
+    uniqueImageUrls([product.imageSmallUrl, product.imageUrl]);
+
+  const collectRowSkus = (row: EnrichedOzonRow) => {
+    const values = [
+      row.nmId,
+      row.productMeta.sku,
+      ...row.skuRows.map((skuRow) => skuRow.sku),
+    ];
+    const vendor = cleanText(row.vendorCode);
+    if (/^\d{5,}$/.test(vendor)) values.push(vendor);
+    return Array.from(
+      new Set(values.map((value) => normalizeText(value)).filter(Boolean))
+    );
+  };
+
+  for (const row of rows) {
+    const baseOffer =
+      getOzonGroupKey(row.vendorCode) ||
+      cleanText(row.productMeta.ozonArticle) ||
+      cleanText(row.vendorCode);
+    const baseKey = normalizeText(baseOffer);
+    const urls: string[] = [];
+    let source = "";
+
+    const derivedFamilies = new Set<string>();
+    if (baseKey) derivedFamilies.add(baseKey);
+    for (const skuKey of collectRowSkus(row)) {
+      for (const family of factsBySku.get(skuKey) ?? []) {
+        derivedFamilies.add(family);
+      }
+      for (const product of ozonBySku.get(skuKey) ?? []) {
+        const productSku = normalizeText(product.sku);
+        for (const family of factsBySku.get(productSku) ?? []) {
+          derivedFamilies.add(family);
+        }
+      }
+    }
+    for (const product of ozonByVendor.get(normalizeText(row.vendorCode)) ?? []) {
+      for (const family of factsBySku.get(normalizeText(product.sku)) ?? []) {
+        derivedFamilies.add(family);
+      }
+    }
+
+    const takeOzon = (product: PhotoProduct, reason: string) => {
+      const next = productImageUrls(product);
+      if (next.length === 0) return false;
+      urls.push(...next);
+      if (!source) source = reason;
+      return true;
+    };
+
+    const takeWb = (family: string, reason: string) => {
+      for (const card of wbByNmId.get(family) ?? []) {
+        const wbUrls = uniqueImageUrls([card.photoSmallUrl, card.photoBigUrl]);
+        if (wbUrls.length === 0) continue;
+        urls.push(...wbUrls);
+        if (!source) source = reason;
+        return true;
+      }
+      return false;
+    };
+
+    for (const skuRow of row.skuRows) {
+      const skuProducts = ozonBySku.get(normalizeText(skuRow.sku)) ?? [];
+      const vendorProducts =
+        ozonByVendor.get(normalizeText(skuRow.vendorCode)) ?? [];
+      let found = false;
+      for (const product of skuProducts) {
+        if (takeOzon(product, "OzonProduct.imageSmallUrl|imageUrl by child SKU")) {
+          found = true;
+          break;
+        }
+      }
+      if (!found) {
+        for (const product of vendorProducts) {
+          if (
+            takeOzon(
+              product,
+              "OzonProduct.imageSmallUrl|imageUrl by sized vendorCode"
+            )
+          ) {
+            found = true;
+            break;
+          }
+        }
+      }
+      if (found) break;
+    }
+
+    if (urls.length === 0) {
+      for (const family of derivedFamilies) {
+        for (const product of ozonByBase.get(family) ?? []) {
+          if (
+            takeOzon(
+              product,
+              "OzonProduct by exact accrual/base family of this SKU"
+            )
+          ) {
+            break;
+          }
+        }
+        if (urls.length > 0) break;
+      }
+    }
+
+    if (urls.length === 0) {
+      for (const family of derivedFamilies) {
+        if (
+          takeWb(
+            family,
+            "WbProductCard.photoSmallUrl by exact nmId of accrual/base family"
+          )
+        ) {
+          break;
+        }
+      }
+    }
+
+    const candidates = uniqueImageUrls(urls);
+    row.productMeta = {
+      ...row.productMeta,
+      imageUrl: candidates[0] || null,
+      imageCandidates: candidates,
+      imageSource: candidates.length > 0 ? source : "UNAVAILABLE",
+    };
+  }
+}
+
 function stripOzonSizeSuffix(value: string) {
   return cleanText(value)
     .replace(/(?:[-_\s]+\d{2,4}){1,2}$/g, "")
@@ -448,6 +1433,66 @@ async function findLatestOzonFinanceRowsForBreakdown(params: {
   dateTo?: string | null;
   companyName?: string | null;
 }) {
+  // Prefer by-day product-grain realization rows when present (COGS qty authority).
+  if (params.dateFrom && params.dateTo) {
+    const dateFrom = new Date(`${params.dateFrom}T00:00:00.000Z`);
+    const dateTo = new Date(`${params.dateTo}T00:00:00.000Z`);
+    const productRows = await prisma.ozonRealizationRow.findMany({
+      where: {
+        sku: { not: null },
+        dateFrom: { gte: dateFrom },
+        dateTo: { lte: dateTo },
+        ...(params.companyName ? { companyName: params.companyName } : {}),
+      },
+      select: {
+        dateFrom: true,
+        sku: true,
+        vendorCode: true,
+        realizedQty: true,
+        returnedQty: true,
+        realizedAmount: true,
+        returnedAmount: true,
+        importSessionId: true,
+        createdAt: true,
+      },
+      orderBy: { dateFrom: "desc" },
+    });
+    if (productRows.length > 0) {
+      const mapped: OzonFinanceBreakdownRecord[] = [];
+      for (const row of productRows) {
+        const realizedQty = Math.abs(Number(row.realizedQty) || 0);
+        const returnedQty = Math.abs(Number(row.returnedQty) || 0);
+        const realizedAmount = Math.abs(Number(row.realizedAmount) || 0);
+        const returnedAmount = Math.abs(Number(row.returnedAmount) || 0);
+        if (realizedQty > 0 || realizedAmount > 0) {
+          mapped.push({
+            accrualDate: row.dateFrom,
+            sku: row.sku,
+            vendorCode: row.vendorCode,
+            quantity: realizedQty > 0 ? realizedQty : 1,
+            salesAmount: realizedAmount,
+            totalAmount: realizedAmount,
+            importSessionId: row.importSessionId,
+            createdAt: row.createdAt,
+          });
+        }
+        if (returnedQty > 0 || returnedAmount > 0) {
+          mapped.push({
+            accrualDate: row.dateFrom,
+            sku: row.sku,
+            vendorCode: row.vendorCode,
+            quantity: returnedQty > 0 ? returnedQty : 1,
+            salesAmount: -returnedAmount,
+            totalAmount: -returnedAmount,
+            importSessionId: row.importSessionId,
+            createdAt: row.createdAt,
+          });
+        }
+      }
+      return mapped;
+    }
+  }
+
   const accrualDateWhere = createDateWhere(params.dateFrom, params.dateTo);
 
   const latestRow = await prisma.ozonFinance.findFirst({
@@ -534,6 +1579,7 @@ async function buildProductMetaAndSkuRows(params: {
         productName: true,
         imageUrl: true,
         imageSmallUrl: true,
+        companyName: true,
       },
       orderBy: {
         createdAt: "desc",
@@ -582,6 +1628,10 @@ async function buildProductMetaAndSkuRows(params: {
       subject: "Ozon",
       sku: product.sku || current?.sku || "",
       vendorCode: product.vendorCode || current?.vendorCode || vendorKey,
+      supplierArticle: current?.supplierArticle || "",
+      ozonArticle:
+        current?.ozonArticle ||
+        getOzonGroupKey(product.vendorCode || vendorKey),
       imageUrl: product.imageSmallUrl ?? product.imageUrl ?? current?.imageUrl ?? null,
     });
   }
@@ -614,6 +1664,10 @@ async function buildProductMetaAndSkuRows(params: {
       subject: currentMeta?.subject || "Ozon",
       sku: currentMeta?.sku || cleanText(financeRow.sku),
       vendorCode: currentMeta?.vendorCode || displayVendorCode,
+      supplierArticle: currentMeta?.supplierArticle || "",
+      ozonArticle:
+        currentMeta?.ozonArticle ||
+        getOzonGroupKey(displayVendorCode || vendorKey),
       imageUrl: currentMeta?.imageUrl ?? null,
     });
 
@@ -728,7 +1782,12 @@ async function buildProductMetaAndSkuRows(params: {
         netProfitAfterTax: allocatedProfit,
         buyoutPercent,
         marginAfterTaxPercent:
-          allocatedRevenue > 0 ? (allocatedProfit / allocatedRevenue) * 100 : 0,
+          // Child share uses parent economics; denominator must match profit basis (ET share ≈ expenses+profit).
+          allocatedExpenses + allocatedProfit > 0.005
+            ? (allocatedProfit / (allocatedExpenses + allocatedProfit)) * 100
+            : allocatedRevenue > 0
+              ? (allocatedProfit / allocatedRevenue) * 100
+              : 0,
         abcByRevenue: abcByRevenue.get(skuRow) ?? "C",
         abcByProfit: abcByProfit.get(item) ?? "C",
       };
@@ -744,37 +1803,54 @@ async function buildProductMetaAndSkuRows(params: {
 }
 
 function createSkuRowFromProductRow(row: EnrichedOzonRow): SkuBreakdownRow {
+  const et = rowEconomicTurnover(row);
+  const expenses = rowExpenses(row);
   return {
     sku: row.nmId || row.productMeta.sku || row.vendorCode,
     vendorCode: row.vendorCode,
     sizeLabel: getOzonSizeLabel(row.vendorCode),
-    revenue: row.revenue,
+    revenue: et,
     netSalesQty: row.netSalesQty,
     salesQty: row.salesQty,
     returnsQty: row.returnsQty,
-    expenses: rowExpenses(row),
+    expenses,
     netProfitAfterTax: row.netProfitAfterTax,
     buyoutPercent: rowBuyoutPercent(row),
-    marginAfterTaxPercent: row.marginAfterTaxPercent,
+    marginAfterTaxPercent:
+      et > 0 ? (row.netProfitAfterTax / et) * 100 : row.marginAfterTaxPercent,
     abcByRevenue: row.abcByRevenue,
     abcByProfit: row.abcByProfit,
   };
 }
 
 function recalculateGroupedOzonRow(row: EnrichedOzonRow) {
-  row.drrPercent = row.revenue > 0 ? (row.adsCost / row.revenue) * 100 : 0;
+  const et = rowEconomicTurnover(row);
+  row.economicTurnover = et;
+  row.drrPercent = et > 0 ? (row.adsCost / et) * 100 : 0;
   row.marginProfitPercent =
-    row.revenue > 0 ? (row.marginProfit / row.revenue) * 100 : 0;
+    et > 0 ? (row.marginProfit / et) * 100 : 0;
   row.marginAfterTaxPercent =
-    row.revenue > 0 ? (row.netProfitAfterTax / row.revenue) * 100 : 0;
+    et > 0 ? (row.netProfitAfterTax / et) * 100 : 0;
   row.costPrice = row.netSalesQty > 0 ? row.totalCost / row.netSalesQty : 0;
 }
 
-function groupOzonRowsByBaseArticle(rows: EnrichedOzonRow[]) {
+function groupOzonRowsByBaseArticle(
+  rows: EnrichedOzonRow[],
+  resolveGroup: (row: EnrichedOzonRow) => CanonicalGroupResolution = (row) => ({
+    groupKey: getOzonGroupKey(row.vendorCode) || cleanText(row.vendorCode),
+    mappingPath: "vendorCode.parseOzonVendorCode",
+    mappingExact: looksLikeSizedOzonOffer(row.vendorCode),
+    mappingConflict: false,
+  })
+) {
   const groups = new Map<string, EnrichedOzonRow>();
 
   for (const row of rows) {
-    const groupKey = getOzonGroupKey(row.vendorCode);
+    const resolved = resolveGroup(row);
+    const groupKey =
+      resolved.groupKey ||
+      getOzonGroupKey(row.vendorCode) ||
+      cleanText(row.vendorCode);
     const existing = groups.get(groupKey);
 
     if (!existing) {
@@ -790,6 +1866,13 @@ function groupOzonRowsByBaseArticle(rows: EnrichedOzonRow[]) {
           ...row.productMeta,
           productName,
           vendorCode: groupKey,
+          // Human article filled later by applyHumanArticleLabels (exact resolver).
+          supplierArticle: "",
+          // Parent Ozon offer = canonical family, never a raw child SKU.
+          ozonArticle: groupKey,
+          mappingPath: resolved.mappingPath,
+          mappingExact: resolved.mappingExact,
+          mappingConflict: resolved.mappingConflict,
         },
         skuRows: [createSkuRowFromProductRow(row)],
       });
@@ -815,9 +1898,47 @@ function groupOzonRowsByBaseArticle(rows: EnrichedOzonRow[]) {
     existing.marginProfit += row.marginProfit;
     existing.taxesAmount += row.taxesAmount;
     existing.netProfitAfterTax += row.netProfitAfterTax;
+    existing.economicTurnover =
+      Number(existing.economicTurnover ?? 0) +
+      Number(row.economicTurnover ?? rowEconomicTurnover(row));
+    existing.partnerProgramsAmount =
+      Number(existing.partnerProgramsAmount ?? 0) +
+      Number(row.partnerProgramsAmount ?? 0);
+    existing.discountPointsAmount =
+      Number(existing.discountPointsAmount ?? 0) +
+      Number(row.discountPointsAmount ?? 0);
+
+    addAttributionAmounts(existing, row);
+    existing.profitAttributionStatus = mergeProfitAttributionStatus(
+      (existing as { profitAttributionStatus?: string }).profitAttributionStatus,
+      (row as { profitAttributionStatus?: string }).profitAttributionStatus
+    );
 
     if (!existing.productMeta.imageUrl && row.productMeta.imageUrl) {
       existing.productMeta.imageUrl = row.productMeta.imageUrl;
+    }
+    // Keep parent ozonArticle as canonical family; never overwrite with child SKU.
+    if (!existing.productMeta.ozonArticle) {
+      existing.productMeta.ozonArticle = groupKey;
+    }
+    existing.productMeta.mappingConflict =
+      existing.productMeta.mappingConflict === true || resolved.mappingConflict;
+    existing.productMeta.mappingExact =
+      existing.productMeta.mappingExact === true &&
+      resolved.mappingExact &&
+      !existing.productMeta.mappingConflict;
+    if (
+      resolved.mappingPath &&
+      !String(existing.productMeta.mappingPath || "").includes(
+        resolved.mappingPath
+      )
+    ) {
+      existing.productMeta.mappingPath = [
+        existing.productMeta.mappingPath,
+        resolved.mappingPath,
+      ]
+        .filter(Boolean)
+        .join("|");
     }
 
     existing.skuRows.push(createSkuRowFromProductRow(row));
@@ -1054,27 +2175,11 @@ function AbcBadge({ value }: { value: "A" | "B" | "C" }) {
 }
 
 function ProductImagePlaceholder({ meta }: { meta: ProductMeta }) {
-  const initials =
-    meta.productName
-      .split(/\s+/)
-      .filter(Boolean)
-      .slice(0, 2)
-      .map((part) => part[0]?.toUpperCase())
-      .join("") || "OZ";
-
   return (
-    <div className="flex h-16 w-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-slate-200 bg-gradient-to-br from-sky-50 to-slate-100 text-xs font-black text-sky-400">
-      {meta.imageUrl ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={meta.imageUrl}
-          alt={meta.productName}
-          className="h-full w-full object-cover"
-        />
-      ) : (
-        initials
-      )}
-    </div>
+    <ProductThumb
+      urls={meta.imageCandidates?.length ? meta.imageCandidates : meta.imageUrl ? [meta.imageUrl] : []}
+      alt={meta.productName || "Товар Ozon"}
+    />
   );
 }
 
@@ -1142,21 +2247,28 @@ function ExpenseDonut({
   const positiveRows = rows.filter((row) => row.value > 0);
   const positiveTotal = positiveRows.reduce((sum, row) => sum + row.value, 0);
 
+  const segments: Array<{
+    label: string;
+    value: number;
+    colorHex: string;
+    startAngle: number;
+    endAngle: number;
+    path: string;
+  }> = [];
   let cursor = 0;
-
-  const segments = positiveRows.map((row) => {
+  for (const row of positiveRows) {
     const size = positiveTotal > 0 ? (row.value / positiveTotal) * 360 : 0;
     const startAngle = cursor;
-    const endAngle = cursor + Math.max(size, positiveRows.length === 1 ? 359.99 : 0);
+    const endAngle =
+      cursor + Math.max(size, positiveRows.length === 1 ? 359.99 : 0);
     cursor += size;
-
-    return {
+    segments.push({
       ...row,
       startAngle,
       endAngle,
       path: describeDonutArc(startAngle, endAngle, 112, 68),
-    };
-  });
+    });
+  }
 
   return (
     <div className="relative flex h-64 w-64 items-center justify-center">
@@ -1300,25 +2412,25 @@ function TableHeader() {
   return (
     <div className="grid min-w-[1180px] grid-cols-[minmax(330px,1.7fr)_minmax(140px,0.8fr)_minmax(150px,0.85fr)_minmax(150px,0.85fr)_minmax(130px,0.7fr)_minmax(150px,0.8fr)] items-center border-b border-slate-200 bg-white px-5 py-4 text-sm font-black text-slate-500">
       <div>Товар</div>
-      <div className="flex items-center gap-1">
-        Выкупы
-        <InfoTooltip text="Выкупы — сумма и количество фактически реализованных продаж по Ozon за выбранный период. Доля показывает вклад артикула в общую выручку Ozon. Бейдж A/B/C — ABC по выручке/выкупам." />
+      <div className="text-xs font-black uppercase tracking-[0.08em] text-slate-400">
+        Экон. оборот
+        <InfoTooltip text="Экономический оборот = налоговая выручка (выкупы) + баллы за скидки + партнёрские программы. Прибыль считается от экон. оборота: Экон. оборот − Расходы = Прибыль. Выкупы остаются налоговой базой. Если часть баллов/комиссии/логистики распределена с уровня счёта — прибыль помечена как распределённая/оценочная." />
       </div>
       <div className="flex items-center gap-1">
         Расходы
-        <InfoTooltip text="Расходы — все затраты по артикулу за выбранный период: себестоимость, комиссия Ozon, логистика, удержания/сторно, реклама и налоги." />
+        <InfoTooltip text="Расходы — величина ≥ 0: себестоимость + комиссия Ozon + логистика/FBO + реклама + партнёрские/прочие услуги − компенсации + налоги. Не остаток «выручка − прибыль»." />
       </div>
       <div className="flex items-center gap-1">
         Прибыль
-        <InfoTooltip text="Прибыль — прибыль после налогов: выручка минус все расходы. Процент под суммой показывает долю прибыли в выручке артикула. Бейдж A/B/C — ABC по прибыли." />
+        <InfoTooltip text="Инвариант: Экон. оборот − Расходы = Прибыль. Если баллы/часть комиссии/логистики нет на SKU-exact источнике в БД, они распределяются с уровня счёта и прибыль помечается как распределённая/оценочная — не exact." />
       </div>
       <div className="flex items-center gap-1">
         Процент выкупа
-        <InfoTooltip text="Процент выкупа считается за выбранный период как чистые продажи / (продажи + возвраты) по данным Ozon Finance. Если данных для расчёта нет, показывается прочерк." />
+        <InfoTooltip text="Процент выкупа показывается только при полном order-denominator за период и доказанном SKU-grain знаменателе. При пробелах MarketplaceDailyOrderStat (или без SKU-grain) — н/д, без ложной точности. Иначе: чистые продажи / (продажи + возвраты) по Ozon Finance." />
       </div>
       <div className="flex items-center gap-1">
         Маржинальность
-        <InfoTooltip text="Маржинальность — прибыль после налогов / выручка артикула × 100% за выбранный период. Шкала помогает быстро увидеть качество маржи." />
+        <InfoTooltip text="Маржинальность = прибыль после налогов / экономический оборот × 100%. Не делим на налоговую выручку (выкупы), если в числителе уже есть баллы/партнёрские." />
       </div>
     </div>
   );
@@ -1327,21 +2439,38 @@ function TableHeader() {
 function SkuRow({
   row,
   parentRevenue,
+  parentBaseOffer,
 }: {
   row: SkuBreakdownRow;
   parentRevenue: number;
+  parentBaseOffer?: string;
 }) {
+  const sizedOffer = cleanText(row.vendorCode);
+  const sizeLabel = cleanText(row.sizeLabel);
+  const sizeIsMeaningful =
+    !!sizeLabel &&
+    normalizeText(sizeLabel) !== normalizeText(sizedOffer) &&
+    normalizeText(sizeLabel) !== normalizeText(parentBaseOffer || "");
+  const showSizedOffer =
+    !!sizedOffer &&
+    normalizeText(sizedOffer) !== normalizeText(parentBaseOffer || "") &&
+    normalizeText(sizedOffer) !== normalizeText(row.sku);
+
   return (
     <div className="grid min-w-[1180px] grid-cols-[minmax(330px,1.7fr)_minmax(140px,0.8fr)_minmax(150px,0.85fr)_minmax(150px,0.85fr)_minmax(130px,0.7fr)_minmax(150px,0.8fr)] items-center border-t border-slate-100 bg-slate-50/50 px-5 py-4 text-sm">
       <div className="flex items-center gap-3 pl-9">
         <div className="h-8 border-l border-dashed border-slate-300" />
         <div>
           <div className="font-black text-slate-800">
-            Размер / SKU: {row.sizeLabel}
+            {sizeIsMeaningful ? `Размер ${sizeLabel}` : "SKU"}
+            {" · "}
+            Ozon SKU: {row.sku || "—"}
           </div>
-          <div className="mt-1 text-xs font-semibold text-slate-400">
-            {row.vendorCode} · {row.sku || "SKU не указан"}
-          </div>
+          {showSizedOffer ? (
+            <div className="mt-1 text-xs font-semibold text-slate-400">
+              {sizedOffer}
+            </div>
+          ) : null}
         </div>
       </div>
 
@@ -1362,19 +2491,29 @@ function SkuRow({
       <div className="flex items-start gap-2">
         <MoneyWithShare
           value={row.netProfitAfterTax}
-          share={formatShare(row.netProfitAfterTax, row.revenue)}
+          share={formatShare(row.netProfitAfterTax, rowEconomicTurnover(row))}
           valueClassName={profitTextColor(row.netProfitAfterTax)}
         />
         <AbcBadge value={row.abcByProfit} />
       </div>
 
       <div className="text-base font-black text-slate-800">
-        {formatPercent(row.buyoutPercent)}
+        {formatBuyoutPercent(row.buyoutPercent)}
       </div>
 
       <MarginBar value={row.marginAfterTaxPercent} />
     </div>
   );
+}
+
+function getHumanArticleLabel(row: EnrichedOzonRow) {
+  return cleanText(row.productMeta.supplierArticle || "");
+}
+
+function getOzonBaseOfferLabel(row: EnrichedOzonRow) {
+  const fromMeta = cleanText(row.productMeta.ozonArticle || "");
+  if (fromMeta) return fromMeta;
+  return getOzonGroupKey(row.vendorCode) || cleanText(row.vendorCode) || "";
 }
 
 function ProductRow({
@@ -1387,9 +2526,23 @@ function ProductRow({
   totalRevenue: number;
 }) {
   const expenses = rowExpenses(row);
-  const buyoutPercent = rowBuyoutPercent(row);
+  const buyoutPercent = row.buyoutPercent;
   const hasSkuDetails = row.skuRows.length > 1;
   const defaultOpen = index === 0 && hasSkuDetails;
+  const humanArticle = getHumanArticleLabel(row);
+  const baseOffer = getOzonBaseOfferLabel(row) || "—";
+  const mappingConflict = row.productMeta.mappingConflict === true;
+
+  const primaryLabel = humanArticle
+    ? `Артикул: ${humanArticle}`
+    : `Ozon offer: ${baseOffer}`;
+  const secondaryLabel = humanArticle
+    ? `Ozon offer: ${baseOffer}${
+        hasSkuDetails ? ` · ${row.skuRows.length} SKU / размеров` : ""
+      }`
+    : hasSkuDetails
+      ? `${row.skuRows.length} SKU / размеров`
+      : "";
 
   return (
     <details className="group border-t border-slate-100 first:border-t-0" open={defaultOpen}>
@@ -1403,26 +2556,33 @@ function ProductRow({
 
           <div className="min-w-0">
             <div className="max-w-[360px] truncate text-sm font-black text-slate-950">
-              {row.productMeta.productName || row.vendorCode || "Товар Ozon"}
+              {primaryLabel}
             </div>
 
-            <div className="mt-1 flex flex-wrap gap-x-2 gap-y-1 text-xs font-semibold text-slate-500">
-              <span>Артикул: {row.vendorCode || "—"}</span>
-              <span>·</span>
-              <span>{hasSkuDetails ? `${row.skuRows.length} SKU / размеров` : `SKU Ozon: ${row.nmId || row.productMeta.sku || "—"}`}</span>
-            </div>
+            {secondaryLabel ? (
+              <div className="mt-1 flex flex-wrap gap-x-2 gap-y-1 text-xs font-semibold text-slate-500">
+                <span>{secondaryLabel}</span>
+              </div>
+            ) : null}
 
-            <div className="mt-1 text-xs font-semibold text-slate-400">
-              {row.productMeta.subject || row.subject || "Ozon"}
+            <div className="mt-1 flex flex-wrap items-center gap-2">
+              {mappingConflict ? (
+                <span className="inline-flex rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-black ring-1 ring-amber-100 text-amber-800">
+                  конфликт mapping
+                </span>
+              ) : null}
+              <span className="text-xs font-semibold text-slate-400">
+                {row.productMeta.subject || row.subject || "Ozon"}
+              </span>
             </div>
           </div>
         </div>
 
         <div className="flex items-start gap-2">
           <MoneyWithShare
-            value={row.revenue}
-            share={`${formatNumber(row.netSalesQty)} шт. · ${formatShare(
-              row.revenue,
+            value={rowEconomicTurnover(row)}
+            share={`${formatNumber(row.netSalesQty)} шт. · выкупы ${formatMoney(row.revenue)} · ${formatShare(
+              rowEconomicTurnover(row),
               totalRevenue,
               "от итога"
             )}`}
@@ -1430,19 +2590,19 @@ function ProductRow({
           <AbcBadge value={row.abcByRevenue} />
         </div>
 
-        <MoneyWithShare value={expenses} share={formatShare(expenses, row.revenue)} />
+        <MoneyWithShare value={expenses} share={formatShare(expenses, rowEconomicTurnover(row))} />
 
         <div className="flex items-start gap-2">
           <MoneyWithShare
             value={row.netProfitAfterTax}
-            share={formatShare(row.netProfitAfterTax, row.revenue)}
+            share={formatShare(row.netProfitAfterTax, rowEconomicTurnover(row))}
             valueClassName={profitTextColor(row.netProfitAfterTax)}
           />
           <AbcBadge value={row.abcByProfit} />
         </div>
 
         <div className="text-base font-black text-slate-800">
-          {formatPercent(buyoutPercent)}
+          {formatBuyoutPercent(buyoutPercent)}
         </div>
 
         <div className="flex items-center justify-between gap-3">
@@ -1458,6 +2618,7 @@ function ProductRow({
               key={`${row.vendorCode}-${skuRow.sku}`}
               row={skuRow}
               parentRevenue={row.revenue}
+              parentBaseOffer={baseOffer}
             />
           ))}
         </div>
@@ -1466,7 +2627,63 @@ function ProductRow({
   );
 }
 
+function ProfitOzonReadModelPending({
+  reason,
+  dateFrom,
+  dateTo,
+  companyScope,
+}: {
+  reason: string;
+  dateFrom: string;
+  dateTo: string;
+  companyScope: string;
+}) {
+  return (
+    <main
+      className="page-shell"
+      data-profit-source="PROFIT_READ_MODEL_MISS"
+      data-profit-marketplace="OZON"
+      data-profit-formula={FINANCIAL_CORE_V6_PROFIT_OZON_READMODEL_V1}
+      data-profit-reason={reason}
+      data-profit-heavy-fc-calls="0"
+    >
+      <div className="page-container">
+        <section className="panel mt-6 p-6">
+          <div className="text-xs font-black uppercase tracking-[0.12em] text-amber-700">
+            Profit Ozon / read-model
+          </div>
+          <h1 className="mt-2 text-2xl font-black text-slate-950">
+            Прибыль Ozon готовит read-model
+          </h1>
+          <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-600">
+            Обычный запрос не запускает тяжёлый Financial Core. Период {dateFrom} —{" "}
+            {dateTo} сейчас в статусе PENDING/UNAVAILABLE ({reason}).
+          </p>
+          <ReadModelPendingAutoRefresh
+            surface="profit_ozon"
+            dateFrom={dateFrom}
+            dateTo={dateTo}
+            companyScope={companyScope}
+            marketplace="OZON"
+          />
+        </section>
+      </div>
+    </main>
+  );
+}
+
 export default async function ProfitOzonPage({
+  searchParams,
+}: {
+  searchParams?: Promise<SearchParams>;
+}) {
+  return withAnalyticsPageFailSoft({
+    surface: "profit-ozon",
+    render: () => renderProfitOzonPage({ searchParams }),
+  });
+}
+
+async function renderProfitOzonPage({
   searchParams,
 }: {
   searchParams?: Promise<SearchParams>;
@@ -1487,13 +2704,107 @@ export default async function ProfitOzonPage({
     ? requestedPageSize
     : DEFAULT_PAGE_SIZE;
 
-  const { rows, totals, comparison } = await getProfitAnalyticsOzon({
+  let analytics: OzonAnalyticsResult;
+  let profitSourceMarker: "PROFIT_READ_MODEL_HIT" | "PROFIT_LIVE_FC" =
+    "PROFIT_LIVE_FC";
+  let profitHeavyFcCalls = 0;
+  let profitDataMode: "FINAL" | "PRELIMINARY" | "LIVE" = "LIVE";
+
+  if (isWaveBProfitReadModelFirstEnabled()) {
+    const repository = createPrismaProfitReadModelRepository(
+      createWaveBProfitTargetPrismaClient()
+    );
+    const { computeCheapProfitSourceVersion } = await import(
+      "@/lib/profitReadModel/sourceVersion"
+    );
+    const loaded = await loadProfitReadModel({
+      repository,
+      marketplace: "OZON",
+      companyScope: companyName,
+      dateFrom,
+      dateTo,
+      enqueueOnMiss: true,
+      resolveCurrentSourceVersion: () =>
+        computeCheapProfitSourceVersion({
+          prisma,
+          marketplace: "OZON",
+          companyScope: companyName,
+          dateFrom,
+          dateTo,
+        }),
+    });
+    if (loaded.status === "HIT") {
+      analytics = loaded.analytics as OzonAnalyticsResult;
+      profitSourceMarker = "PROFIT_READ_MODEL_HIT";
+      profitHeavyFcCalls = 0;
+      profitDataMode = loaded.dataMode;
+    } else if (isWaveBHeavyLiveFallbackEnabled()) {
+      analytics = await getProfitAnalyticsOzon({
+        dateFrom,
+        dateTo,
+        usnRate,
+        vatRate,
+        companyName,
+      });
+      profitSourceMarker = "PROFIT_LIVE_FC";
+      profitHeavyFcCalls = 1;
+    } else {
+      return (
+        <ProfitOzonReadModelPending
+          reason={loaded.reason}
+          dateFrom={dateFrom}
+          dateTo={dateTo}
+          companyScope={companyName}
+        />
+      );
+    }
+  } else {
+    analytics = await getProfitAnalyticsOzon({
+      dateFrom,
+      dateTo,
+      usnRate,
+      vatRate,
+      companyName,
+    });
+    profitSourceMarker = "PROFIT_LIVE_FC";
+    profitHeavyFcCalls = 1;
+  }
+  const ozonDayStatuses = await loadOzonAccrualDayStatuses({
+    companyName,
     dateFrom,
     dateTo,
-    usnRate,
-    vatRate,
-    companyName,
   });
+  const expectedOzonCompanies =
+    companyName === "ALL"
+      ? await listExpectedOzonCompanyNames(prisma)
+      : undefined;
+  const finalityCompanyNames =
+    companyName === "ALL"
+      ? expectedOzonCompanies ?? []
+      : [companyName];
+  const realizationCoveredDates = await loadOzonRealizationCoveredDates({
+    client: prisma,
+    dateFrom,
+    dateTo,
+    companyNames: finalityCompanyNames,
+  });
+  const ozonFinality = resolveOzonPeriodFinality({
+    companyName,
+    dateFrom,
+    dateTo,
+    days: ozonDayStatuses,
+    expectedCompanyNames: expectedOzonCompanies,
+    realizationCoveredDates,
+  });
+  applyOzonCanonicalIngestFinality(analytics.totals, ozonFinality);
+  const buyoutCoverage = await loadOzonOrderBuyoutCoverage({
+    client: prisma,
+    dateFrom,
+    dateTo,
+    companyNames: finalityCompanyNames,
+  });
+  const preciseBuyoutAllowed = buyoutCoverage.preciseBuyoutAllowed;
+  const { rows, totals, comparison } = analytics;
 
   const abcByRevenue = calculateAbcByPositiveValue(rows, (row) => row.revenue);
 
@@ -1520,10 +2831,41 @@ export default async function ProfitOzonPage({
       abcByRevenue: abcByRevenue.get(row) ?? "C",
       productMeta: metaByVendorCode.get(vendorKey) ?? fallbackMeta,
       skuRows: skuRowsByVendorCode.get(vendorKey) ?? [],
+      buyoutPercent: null,
     };
   });
 
-  const groupedRows = groupOzonRowsByBaseArticle(enrichedRows);
+  const resolveCanonicalGroup = await buildCanonicalGroupResolver({
+    rows: enrichedRows,
+    companyName,
+  });
+  const groupedRows = groupOzonRowsByBaseArticle(
+    enrichedRows,
+    resolveCanonicalGroup
+  );
+
+  const humanArticleMap = await buildOzonHumanArticleMap({
+    baseOffers: groupedRows.map((row) => getOzonGroupKey(row.vendorCode)),
+    companyName,
+  });
+  applyHumanArticleLabels(groupedRows, humanArticleMap);
+  await applyExactParentPhotos({
+    rows: groupedRows,
+    companyName,
+  });
+
+  // Buyout safety: no false precision when order denominator incomplete
+  // (e.g. Lebedeva 171d gap) or SKU-grain order facts are not proven.
+  for (const row of groupedRows) {
+    row.buyoutPercent = preciseBuyoutAllowed
+      ? rowBuyoutPercent(row, true)
+      : null;
+    for (const skuRow of row.skuRows ?? []) {
+      skuRow.buyoutPercent = preciseBuyoutAllowed
+        ? skuRow.buyoutPercent
+        : null;
+    }
+  }
 
   const filteredRows = groupedRows.filter((row) => {
     const query = normalizeText(q);
@@ -1534,7 +2876,11 @@ export default async function ProfitOzonPage({
         row.subject,
         row.productMeta.productName,
         row.productMeta.subject,
-        row.skuRows.map((skuRow) => `${skuRow.vendorCode} ${skuRow.sku}`).join(" "),
+        row.productMeta.supplierArticle,
+        row.productMeta.ozonArticle,
+        row.skuRows
+          .map((skuRow) => `${skuRow.vendorCode} ${skuRow.sku} ${skuRow.sizeLabel}`)
+          .join(" "),
       ].join(" ")
     );
 
@@ -1595,6 +2941,33 @@ export default async function ProfitOzonPage({
   const missingDiscountPointsDays = totals.discountPointsMissingDays ?? [];
   const hasOzonEconomicSourceWarning =
     !taxRevenueCoverageComplete || !discountPointsCoverageComplete;
+  const isPreliminaryOzonProfit =
+    totals.netProfitStatus === "PRELIMINARY" ||
+    totals.costCoverageIncomplete === true;
+
+  const accountPartnerResidual = Number(
+    (totals as { unallocatedPartnerResidual?: number }).unallocatedPartnerResidual ?? 0,
+  );
+  const skuEconomicTurnoverSum = groupedRows.reduce(
+    (sum, row) => sum + rowEconomicTurnover(row),
+    0,
+  );
+  const skuProfitSum = groupedRows.reduce(
+    (sum, row) => sum + Number(row.netProfitAfterTax ?? 0),
+    0,
+  );
+  const topLevelEconomicResidual =
+    Number(economicTurnover) - skuEconomicTurnoverSum;
+  const topLevelProfitResidual =
+    Number(totals.netProfitAfterTax ?? 0) - skuProfitSum;
+  const hasExplicitAccountResidual =
+    Math.abs(accountPartnerResidual) > 0.5 ||
+    Math.abs(topLevelEconomicResidual) > 0.5 ||
+    Math.abs(topLevelProfitResidual) > 0.5;
+  const explicitResidualAmount =
+    Math.abs(accountPartnerResidual) > 0.5
+      ? accountPartnerResidual
+      : topLevelEconomicResidual;
 
   const lossRows = rows.filter((row) => row.netProfitAfterTax < 0);
   const highDrrRows = rows.filter((row) => row.drrPercent > 20);
@@ -1654,7 +3027,15 @@ export default async function ProfitOzonPage({
   const currentSortDirLabel = dir === "desc" ? "сначала высокая" : "сначала низкая";
 
   return (
-    <main className="page-shell">
+    <main
+      className="page-shell"
+      data-profit-source={profitSourceMarker}
+      data-profit-marketplace="OZON"
+      data-profit-formula={FINANCIAL_CORE_V6_PROFIT_OZON_READMODEL_V1}
+      data-profit-heavy-fc-calls={String(profitHeavyFcCalls)}
+      data-profit-data-mode={profitDataMode}
+      data-profit-company-scope={companyName}
+    >
       <div className="page-container">
         <section className="panel p-5 sm:p-6">
           <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
@@ -1763,7 +3144,24 @@ export default async function ProfitOzonPage({
           </section>
         ) : null}
 
-        <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-7">
+        {isPreliminaryOzonProfit ? (
+          <section className="rounded-[28px] border border-amber-200 bg-amber-50 px-5 py-4 text-sm font-bold leading-6 text-amber-900 shadow-sm">
+            <div className="font-black">Ozon прибыль PRELIMINARY</div>
+            <div className="mt-1 text-amber-800">
+              {totals.costCoverageIncomplete
+                ? "Себестоимость неполная: неизвестный COGS не считается нулём. Прибыль предварительная и не должна использоваться как FINAL."
+                : "Нет полного покрытия официальной realization и/или канонического AccrualDayStatus без quarantine. Исторические месяцы могут быть FINAL через official realization без daily AccrualDayStatus; если баннер виден — денежный источник периода ещё не закрыт."}
+            </div>
+          </section>
+        ) : null}
+
+        <section
+          className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-7"
+          data-ozon-pnl-kind={isPreliminaryOzonProfit ? "PRELIMINARY" : "FINAL"}
+          data-ozon-cost-coverage={
+            totals.costCoverageIncomplete ? "incomplete" : "complete"
+          }
+        >
           <KpiCard
             title={taxRevenueCoverageComplete ? "Налоговая выручка" : "Выручка Ozon"}
             value={formatMoney(totals.revenue)}
@@ -2015,6 +3413,31 @@ export default async function ProfitOzonPage({
                 <p className="mt-2 text-sm leading-6 text-slate-500">
                   Рабочий список товаров Ozon: размеры объединены в одну группу по базовому артикулу, внутри видны отдельные SKU.
                 </p>
+                <p className="mt-1.5 flex items-center gap-1 text-xs font-semibold text-slate-400">
+                  Некоторые суммы распределены между товарами
+                  <InfoTooltip text="Часть доходов или расходов Ozon не имеет прямой привязки к конкретному SKU и распределяется внутри соответствующего кабинета по утверждённому правилу. Точные SKU-суммы используются везде, где источник позволяет прямую привязку. Exact SKU: комиссия/логистика/реклама с прямой привязкой. Allocated: account-level остатки, распределённые внутри кабинета." />
+                </p>
+                {hasExplicitAccountResidual ? (
+                  <p
+                    className="mt-2 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold leading-5 text-slate-600"
+                    data-ozon-sku-residual="partner-programs"
+                    data-ozon-sku-residual-amount={explicitResidualAmount.toFixed(2)}
+                  >
+                    Итог кабинета = сумма SKU + явный остаток партнёрских программ{" "}
+                    {formatMoney(explicitResidualAmount)}. Остаток не разнесён по
+                    артикулам и не спрятан в крупнейший SKU.
+                    {!preciseBuyoutAllowed ? (
+                      <>
+                        {" "}
+                        Процент выкупа: н/д ({buyoutCoverage.reason}).
+                      </>
+                    ) : null}
+                  </p>
+                ) : !preciseBuyoutAllowed ? (
+                  <p className="mt-2 text-xs font-semibold leading-5 text-slate-500">
+                    Процент выкупа: н/д — {buyoutCoverage.reason}.
+                  </p>
+                ) : null}
               </div>
 
               <div className="flex flex-wrap gap-2">

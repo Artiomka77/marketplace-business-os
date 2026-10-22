@@ -57,6 +57,20 @@ function toDate(value: unknown) {
 
   if (!raw) return null;
 
+  const excelSerial = Number(raw.replace(",", "."));
+
+  // Excel хранит даты как количество дней от 30.12.1899.
+  // Без этой проверки значение 46023 превращается в год 46023,
+  // хотя фактически это 01.01.2026.
+  if (
+    Number.isFinite(excelSerial) &&
+    excelSerial >= 1 &&
+    excelSerial <= 100000
+  ) {
+    const excelEpoch = Date.UTC(1899, 11, 30);
+    return new Date(excelEpoch + excelSerial * 86_400_000);
+  }
+
   const parsed = new Date(raw);
 
   if (!Number.isNaN(parsed.getTime())) {

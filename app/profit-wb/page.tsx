@@ -3,7 +3,13 @@ import type { ReactNode } from "react";
 
 import { prisma } from "@/lib/prisma";
 import { getProfitAnalytics } from "@/lib/analytics/profitAnalytics";
+import { selectWbOfficialCashDisplay } from "@/lib/analytics/wbFinancialCoreV6";
+import {
+  allocateCanonicalWbSizeMetrics,
+  applyCanonicalWbSizeOperation,
+} from "@/lib/analytics/wbSizeAllocation";
 import { getDefaultLastCompletedWeekRange } from "@/lib/date/defaultPeriod";
+import { selectCanonicalWbSaleSource } from "@/lib/wb/sourceOwnership";
 
 type SortKey =
   | "revenue"
@@ -43,8 +49,7 @@ type ProductMeta = {
 type SizeBreakdownRow = {
   size: string;
   barcode: string;
-  revenue: number;
-  sellerRetailAmount: number;
+  economicTurnover: number;
   netSalesQty: number;
   salesQty: number;
   returnsQty: number;
@@ -59,7 +64,7 @@ type SizeBreakdownRow = {
 type RawSizeMetric = {
   size: string;
   barcode: string;
-  revenue: number;
+  economicTurnover: number;
   salesQty: number;
   returnsQty: number;
   netSalesQty: number;
@@ -112,44 +117,6 @@ function normalizeText(value: unknown) {
     .trim();
 }
 
-function startOfDay(value: string) {
-  const date = new Date(value);
-  date.setHours(0, 0, 0, 0);
-  return date;
-}
-
-function nextDayStart(value: string) {
-  const date = startOfDay(value);
-  date.setDate(date.getDate() + 1);
-  return date;
-}
-
-function createDateFilterFromStrings(dateFrom?: string | null, dateTo?: string | null) {
-  return dateFrom || dateTo
-    ? {
-        OR: [
-          {
-            dateFrom: {
-              ...(dateFrom ? { gte: startOfDay(dateFrom) } : {}),
-              ...(dateTo ? { lt: nextDayStart(dateTo) } : {}),
-            },
-          },
-          {
-            dateTo: {
-              ...(dateFrom ? { gte: startOfDay(dateFrom) } : {}),
-              ...(dateTo ? { lt: nextDayStart(dateTo) } : {}),
-            },
-          },
-        ],
-      }
-    : {};
-}
-
-function isSaleOperation(reason: string) {
-  const value = normalizeText(reason);
-  return value === "продажа" || value === "сторно возвратов";
-}
-
 function formatMoney(value: number) {
   return new Intl.NumberFormat("ru-RU", {
     style: "currency",
@@ -192,6 +159,73 @@ function formatDateRu(value: string) {
   }).format(date);
 }
 
+function toIsoDate(date: Date) {
+  return date.toISOString().slice(0, 10);
+}
+
+function getPreviousPeriodRange(dateFrom: string, dateTo: string) {
+  const start = new Date(`${dateFrom}T00:00:00`);
+  const end = new Date(`${dateTo}T00:00:00`);
+  const dayMs = 24 * 60 * 60 * 1000;
+  const periodDays = Math.max(1, Math.round((end.getTime() - start.getTime()) / dayMs) + 1);
+  const previousTo = new Date(start);
+  previousTo.setDate(previousTo.getDate() - 1);
+  const previousFrom = new Date(previousTo);
+  previousFrom.setDate(previousFrom.getDate() - periodDays + 1);
+
+  return {
+    dateFrom: toIsoDate(previousFrom),
+    dateTo: toIsoDate(previousTo),
+  };
+}
+
+
+const tooltipTexts = {
+  economicTurnover:
+    "Цена продавца до СПП WB. Это база 100% для всех долей и процентов на странице.",
+  taxableRevenue:
+    "Оплачено покупателями после скидки WB плюс положительная доплата площадки до выплаты продавцу. С этой суммы считаем налоги.",
+  wbSettlement:
+    "Фактическая сумма к оплате WB — cash settlement для сверки. Она не является базой прибыли, если содержит кредитные или неизвестные удержания.",
+  pnlExpenses:
+    "Все управленческие расходы P&L без скидки WB / СПП: себестоимость, комиссии и корректировки WB, логистика, реклама, налоги и прочие списания.",
+  netProfit:
+    "Итоговая прибыль после себестоимости, расходов WB, рекламы и налогов.",
+  adsDrr:
+    "Расходы на рекламу WB и ДРР: доля рекламы от экономического оборота.",
+  structure:
+    "Из чего складывается экономика за выбранный период: скидка WB / СПП как не расход продавца, затем расходы, налоги и прибыль относительно экономического оборота.",
+  wbTake:
+    "Сколько денег забирает площадка: комиссии и корректировки WB, логистика, хранение, штрафы и реклама. Скидка WB / СПП не входит в суммы «Без рекламы» и «С рекламой».",
+  funnel:
+    "Цена продавца, скидка WB / СПП, оплата покупателей, комиссия WB после СПП и официальная выплата после услуг площадки.",
+  totalWbCommission:
+    "Общая разница между ценой продавца и суммой к перечислению продавцу до отдельных списаний за услуги. Состоит из скидки WB / СПП и комиссии/расчётных корректировок WB.",
+  sppCovered:
+    "Скидка площадки для покупателя относительно цены продавца. Оплачивается WB, не является расходом продавца и не уменьшает прибыль повторно.",
+  sellerHeldByWb:
+    "Комиссия и расчётные корректировки WB, удержанные из оплаты покупателей. Логистика, хранение, штрафы и реклама показаны отдельно.",
+  sppDiscount:
+    "Скидка площадки для покупателя относительно цены продавца. Не является расходом продавца и не уменьшает прибыль повторно.",
+  wbCommissionsAdjustments:
+    "Чистая разница между оплатой покупателей и суммой к перечислению продавцу. Включает комиссии и расчётные корректировки WB. Логистика, хранение, штрафы и реклама показаны отдельно. Значение может быть отрицательным, если компенсации WB превышают удержания.",
+  attention:
+    "Автоматические сигналы по SKU, которые требуют управленческого внимания.",
+  skuTable:
+    "Сводная таблица по артикулам: выкупы, расходы, прибыль, процент выкупа и маржинальность.",
+  buyouts:
+    "Количество выкупленных товаров за выбранный период.",
+  productExpenses:
+    "Расходы по товару: себестоимость, удержания WB, логистика, реклама и налоги.",
+  productProfit:
+    "Прибыль товара после всех управленческих расходов.",
+  buyoutPercent:
+    "Доля выкупленных заказов. Низкий процент выкупа ухудшает экономику товара.",
+  margin:
+    "Маржинальность после расходов и налогов относительно экономического оборота.",
+} as const;
+
+
 function formatDeltaPercent(value: number, inverse = false) {
   if (!Number.isFinite(value) || value === 0) {
     return {
@@ -230,8 +264,17 @@ function metricBarColor(value: number) {
   return "bg-emerald-500";
 }
 
+function getWbEconomicTurnover(row: {
+  sellerRetailAmount: number;
+  revenue: number;
+}) {
+  return row.sellerRetailAmount > 0
+    ? row.sellerRetailAmount
+    : row.revenue;
+}
+
 function rowExpenses(row: ProfitRow) {
-  return row.revenue - row.netProfitAfterTax;
+  return getWbEconomicTurnover(row) - row.netProfitAfterTax;
 }
 
 function rowBuyoutPercent(row: ProfitRow) {
@@ -283,6 +326,7 @@ function calculateAbcByPositiveValue<T>(
 }
 
 function getSortValue(row: EnrichedProfitRow, sortKey: SortKey) {
+  if (sortKey === "revenue") return getWbEconomicTurnover(row);
   if (sortKey === "expenses") return rowExpenses(row);
   if (sortKey === "buyoutPercent") return rowBuyoutPercent(row) ?? -1;
 
@@ -322,7 +366,7 @@ function buildQueryHref(
 
 function getSortLabel(sort: SortKey) {
   const labels: Record<SortKey, string> = {
-    revenue: "выручке",
+    revenue: "экономическому обороту",
     netSalesQty: "количеству",
     expenses: "расходам",
     netProfitAfterTax: "прибыли",
@@ -338,114 +382,6 @@ function getSortLabel(sort: SortKey) {
 function getCompanyLabel(companyName: string) {
   if (companyName === "ALL") return "Все компании";
   return companyName;
-}
-
-async function findWbSaleRowsForBreakdown(params: {
-  dateFrom?: string | null;
-  dateTo?: string | null;
-  companyName?: string | null;
-}) {
-  const dateFilter = createDateFilterFromStrings(params.dateFrom, params.dateTo);
-
-  const financeRows = await prisma.wbFinance.findMany({
-    where: {
-      ...dateFilter,
-      ...(params.companyName ? { companyName: params.companyName } : {}),
-    },
-    select: {
-      reportNumber: true,
-    },
-  });
-
-  const reportNumbers = Array.from(
-    new Set(
-      financeRows
-        .map((row) => String(row.reportNumber ?? "").trim())
-        .filter(Boolean)
-    )
-  );
-
-  if (reportNumbers.length > 0) {
-    const importSessions = await prisma.importSession.findMany({
-      where: {
-        ...(params.companyName ? { companyName: params.companyName } : {}),
-        reportType: "WB_SALES",
-        OR: reportNumbers.map((reportNumber) => ({
-          fileName: {
-            contains: reportNumber,
-          },
-        })),
-      },
-      orderBy: {
-        createdAt: "desc",
-      },
-    });
-
-    const latestSessionByFileName = new Map<string, string>();
-
-    for (const session of importSessions) {
-      if (!latestSessionByFileName.has(session.fileName)) {
-        latestSessionByFileName.set(session.fileName, session.id);
-      }
-    }
-
-    const latestImportSessionIds = Array.from(latestSessionByFileName.values());
-
-    if (latestImportSessionIds.length > 0) {
-      return prisma.wbSale.findMany({
-        where: {
-          ...(params.companyName ? { companyName: params.companyName } : {}),
-          importSessionId: {
-            in: latestImportSessionIds,
-          },
-        },
-        select: {
-          productName: true,
-          subject: true,
-          size: true,
-          nmId: true,
-          vendorCode: true,
-          barcode: true,
-          paymentReason: true,
-          quantity: true,
-          wbRealizedAmount: true,
-          saleDate: true,
-        },
-        orderBy: {
-          saleDate: "desc",
-        },
-      });
-    }
-  }
-
-  return prisma.wbSale.findMany({
-    where: {
-      ...(params.companyName ? { companyName: params.companyName } : {}),
-      ...(params.dateFrom || params.dateTo
-        ? {
-            saleDate: {
-              ...(params.dateFrom ? { gte: startOfDay(params.dateFrom) } : {}),
-              ...(params.dateTo ? { lt: nextDayStart(params.dateTo) } : {}),
-            },
-          }
-        : {}),
-    },
-    select: {
-      productName: true,
-      subject: true,
-      size: true,
-      nmId: true,
-      vendorCode: true,
-      barcode: true,
-      paymentReason: true,
-      quantity: true,
-      wbRealizedAmount: true,
-      saleDate: true,
-    },
-    orderBy: {
-      saleDate: "desc",
-    },
-  });
 }
 
 async function buildProductMetaAndSizeRows(params: {
@@ -487,8 +423,8 @@ async function buildProductMetaAndSizeRows(params: {
           ...(companyName ? { companyName } : {}),
         };
 
-  const [salesRows, productCosts, productCards] = await Promise.all([
-    findWbSaleRowsForBreakdown({
+  const [canonicalSource, productCosts, productCards] = await Promise.all([
+    selectCanonicalWbSaleSource({
       dateFrom: params.dateFrom,
       dateTo: params.dateTo,
       companyName,
@@ -510,6 +446,7 @@ async function buildProductMetaAndSizeRows(params: {
       },
     }),
   ]);
+  const salesRows = canonicalSource.rows;
 
   const metaByVendorCode = new Map<string, ProductMeta>();
   const rawSizesByVendorCode = new Map<string, Map<string, RawSizeMetric>>();
@@ -573,27 +510,13 @@ async function buildProductMetaAndSizeRows(params: {
       {
         size,
         barcode,
-        revenue: 0,
+        economicTurnover: 0,
         salesQty: 0,
         returnsQty: 0,
         netSalesQty: 0,
       };
 
-    const paymentReason = normalizeText(sale.paymentReason);
-    const quantity = Math.abs(Number(sale.quantity ?? 0));
-    const revenue = toNumber(sale.wbRealizedAmount);
-
-    if (isSaleOperation(paymentReason)) {
-      current.salesQty += quantity;
-      current.netSalesQty += quantity;
-      current.revenue += revenue;
-    }
-
-    if (paymentReason === "возврат") {
-      current.returnsQty += quantity;
-      current.netSalesQty -= quantity;
-      current.revenue -= revenue;
-    }
+    applyCanonicalWbSizeOperation(current, sale);
 
     sizeMap.set(sizeKey, current);
     rawSizesByVendorCode.set(vendorKey, sizeMap);
@@ -610,34 +533,30 @@ async function buildProductMetaAndSizeRows(params: {
     }
 
     const rawSizes = Array.from(sizeMap.values())
-      .filter((size) => size.salesQty > 0 || size.revenue > 0 || size.netSalesQty > 0)
-      .sort((a, b) => b.revenue - a.revenue);
-
-    const rawRevenueTotal = rawSizes.reduce(
-      (sum, size) => sum + Math.max(0, size.revenue),
-      0
-    );
-
-    const rawQtyTotal = rawSizes.reduce(
-      (sum, size) => sum + Math.max(0, size.netSalesQty),
-      0
-    );
+      .filter(
+        (size) =>
+          size.salesQty !== 0 ||
+          size.returnsQty !== 0 ||
+          size.economicTurnover !== 0 ||
+          size.netSalesQty !== 0
+      )
+      .sort((a, b) => b.economicTurnover - a.economicTurnover);
 
     const expenses = rowExpenses(row);
-    const abcByRevenue = calculateAbcByPositiveValue(rawSizes, (size) => size.revenue);
-    const provisionalProfitRows = rawSizes.map((size) => {
-      const share =
-        rawRevenueTotal > 0
-          ? Math.max(0, size.revenue) / rawRevenueTotal
-          : rawQtyTotal > 0
-            ? Math.max(0, size.netSalesQty) / rawQtyTotal
-            : 1 / Math.max(1, rawSizes.length);
-
-      return {
-        size,
-        value: row.netProfitAfterTax * share,
-      };
+    const allocations = allocateCanonicalWbSizeMetrics({
+      sizes: rawSizes,
+      productEconomicTurnover: getWbEconomicTurnover(row),
+      productExpenses: expenses,
+      productNetProfitAfterTax: row.netProfitAfterTax,
     });
+    const abcByRevenue = calculateAbcByPositiveValue(
+      allocations,
+      (size) => size.economicTurnover
+    );
+    const provisionalProfitRows = allocations.map((allocation) => ({
+      size: allocation,
+      value: allocation.allocatedNetProfitAfterTax,
+    }));
 
     const abcByProfit = calculateAbcByPositiveValue(
       provisionalProfitRows,
@@ -646,17 +565,9 @@ async function buildProductMetaAndSizeRows(params: {
 
     const enrichedSizeRows = provisionalProfitRows.map((item) => {
       const size = item.size;
-      const share =
-        rawRevenueTotal > 0
-          ? Math.max(0, size.revenue) / rawRevenueTotal
-          : rawQtyTotal > 0
-            ? Math.max(0, size.netSalesQty) / rawQtyTotal
-            : 1 / Math.max(1, rawSizes.length);
-
-      const allocatedRevenue = row.revenue * share;
-      const allocatedSellerRetailAmount = row.sellerRetailAmount * share;
-      const allocatedExpenses = expenses * share;
-      const allocatedProfit = row.netProfitAfterTax * share;
+      const allocatedEconomicTurnover = size.allocatedEconomicTurnover;
+      const allocatedExpenses = size.allocatedExpenses;
+      const allocatedProfit = size.allocatedNetProfitAfterTax;
       const denominator = size.salesQty + size.returnsQty;
       const buyoutPercent =
         denominator > 0 ? (Math.max(0, size.netSalesQty) / denominator) * 100 : null;
@@ -664,8 +575,7 @@ async function buildProductMetaAndSizeRows(params: {
       return {
         size: size.size,
         barcode: size.barcode,
-        revenue: allocatedRevenue,
-        sellerRetailAmount: allocatedSellerRetailAmount,
+        economicTurnover: allocatedEconomicTurnover,
         netSalesQty: size.netSalesQty,
         salesQty: size.salesQty,
         returnsQty: size.returnsQty,
@@ -673,11 +583,9 @@ async function buildProductMetaAndSizeRows(params: {
         netProfitAfterTax: allocatedProfit,
         buyoutPercent,
         marginAfterTaxPercent:
-          allocatedSellerRetailAmount > 0
-            ? (allocatedProfit / allocatedSellerRetailAmount) * 100
-            : allocatedRevenue > 0
-              ? (allocatedProfit / allocatedRevenue) * 100
-              : 0,
+          allocatedEconomicTurnover > 0
+            ? (allocatedProfit / allocatedEconomicTurnover) * 100
+            : 0,
         abcByRevenue: abcByRevenue.get(size) ?? "C",
         abcByProfit: abcByProfit.get(item) ?? "C",
       };
@@ -757,6 +665,8 @@ function KpiCard({
   inverseDelta = false,
   sparkTone = "indigo",
   sparkPoints,
+  icon = "●",
+  tooltip,
 }: {
   title: string;
   value: ReactNode;
@@ -765,32 +675,51 @@ function KpiCard({
   inverseDelta?: boolean;
   sparkTone?: "indigo" | "emerald" | "red" | "orange";
   sparkPoints?: number[];
+  icon?: ReactNode;
+  tooltip?: string;
 }) {
   const formattedDelta =
     typeof delta === "number" ? formatDeltaPercent(delta, inverseDelta) : null;
 
-  return (
-    <div className="rounded-[26px] border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/40">
-      <div className="flex items-center gap-1 text-sm font-black text-slate-700">
-        <span>{title}</span>
-        <span className="text-slate-300">ⓘ</span>
-      </div>
+  const toneClassName =
+    sparkTone === "emerald"
+      ? "bg-emerald-600 text-white shadow-emerald-100"
+      : sparkTone === "red"
+        ? "bg-red-500 text-white shadow-red-100"
+        : sparkTone === "orange"
+          ? "bg-orange-500 text-white shadow-orange-100"
+          : "bg-violet-600 text-white shadow-violet-100";
 
-      <div className="mt-2 text-[1.9rem] font-black leading-none tracking-tight text-slate-950">
-        {value}
+  return (
+    <div className="rounded-[22px] border border-slate-200 bg-white p-3.5 shadow-sm shadow-slate-200/40">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex items-center gap-1 text-[13px] font-black leading-4 text-slate-700">
+            <span className="truncate">{title}</span>
+            {tooltip ? <InfoTooltip text={tooltip} /> : null}
+          </div>
+
+          <div className="mt-2 text-[1.65rem] font-black leading-none tracking-tight text-slate-950">
+            {value}
+          </div>
+        </div>
+
+        <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl text-sm font-black shadow-lg ${toneClassName}`}>
+          {icon}
+        </span>
       </div>
 
       <div className="mt-3 flex items-end justify-between gap-3">
-        <div>
+        <div className="min-w-0">
           {formattedDelta ? (
-            <div className={`text-sm font-black ${formattedDelta.className}`}>
+            <div className={`text-xs font-black ${formattedDelta.className}`}>
               {formattedDelta.text}
             </div>
           ) : (
-            <div className="text-sm font-black text-slate-400">&nbsp;</div>
+            <div className="text-xs font-black text-slate-400">&nbsp;</div>
           )}
 
-          <div className="mt-1 text-xs font-semibold text-slate-500">{helper}</div>
+          <div className="mt-1 text-[11px] font-bold leading-4 text-slate-500">{helper}</div>
         </div>
 
         <MiniTrendLine points={sparkPoints} tone={sparkTone} />
@@ -799,6 +728,46 @@ function KpiCard({
   );
 }
 
+function FunnelKpiCard({
+  title,
+  value,
+  helper,
+  secondaryHelper,
+  badge,
+  tooltip,
+}: {
+  title: string;
+  value: ReactNode;
+  helper: ReactNode;
+  secondaryHelper?: ReactNode;
+  badge?: string;
+  tooltip: string;
+}) {
+  return (
+    <div className="rounded-[20px] border border-slate-200 bg-white p-3 shadow-sm shadow-slate-200/40">
+      <div className="flex min-w-0 items-start justify-between gap-2">
+        <div className="min-w-0">
+          <div className="flex items-center gap-1 text-[12px] font-black leading-4 text-slate-700">
+            <span className="truncate">{title}</span>
+            <InfoTooltip text={tooltip} />
+          </div>
+          {badge ? (
+            <span className="mt-1 inline-flex rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.08em] text-slate-500 ring-1 ring-slate-200">
+              {badge}
+            </span>
+          ) : null}
+          <div className="mt-2 text-xl font-black leading-none tracking-tight text-slate-950">
+            {value}
+          </div>
+        </div>
+      </div>
+      <div className="mt-2 text-[11px] font-bold leading-4 text-slate-500">{helper}</div>
+      {secondaryHelper ? (
+        <div className="mt-0.5 text-[11px] font-bold leading-4 text-slate-400">{secondaryHelper}</div>
+      ) : null}
+    </div>
+  );
+}
 
 function PriceBridgeCard({
   title,
@@ -915,17 +884,23 @@ function MarginBar({ value }: { value: number }) {
 }
 
 
-function InfoTooltip({ text }: { text: string }) {
+function InfoTooltip({
+  text,
+  className = "",
+}: {
+  text: string;
+  className?: string;
+}) {
   return (
-    <span className="group relative inline-flex">
+    <span className={`group relative inline-flex shrink-0 align-middle ${className}`}>
       <span
         tabIndex={0}
-        title={text}
-        className="inline-flex h-5 w-5 cursor-help items-center justify-center rounded-full bg-slate-100 text-[11px] font-black text-slate-400 ring-1 ring-slate-200 transition hover:bg-indigo-50 hover:text-indigo-700 hover:ring-indigo-100"
+        className="inline-flex h-4 w-4 cursor-help items-center justify-center rounded-full border border-slate-300 bg-white text-[10px] font-black leading-none text-slate-400 transition hover:border-indigo-300 hover:text-indigo-600 focus:border-indigo-300 focus:text-indigo-600 focus:outline-none"
       >
         ?
+        <span className="sr-only">{text}</span>
       </span>
-      <span className="pointer-events-none absolute left-1/2 top-7 z-50 hidden w-80 -translate-x-1/2 rounded-2xl border border-slate-200 bg-white p-3 text-left text-xs font-semibold leading-5 text-slate-600 shadow-xl shadow-slate-200/70 group-hover:block group-focus-within:block">
+      <span className="pointer-events-none absolute left-1/2 top-6 z-[100] w-64 -translate-x-1/2 whitespace-normal rounded-2xl border border-slate-200 bg-white px-3 py-2 text-left text-xs font-semibold leading-5 text-slate-600 opacity-0 shadow-2xl shadow-slate-200/80 transition duration-150 group-hover:opacity-100 group-focus-within:opacity-100">
         {text}
       </span>
     </span>
@@ -1022,7 +997,7 @@ function ExpenseDonut({
         viewBox="0 0 260 260"
         className="h-64 w-64 drop-shadow-sm"
         role="img"
-        aria-label="Структура расходов WB"
+        aria-label="Структура экономики WB"
       >
         <circle cx="130" cy="130" r="112" fill="#f1f5f9" />
 
@@ -1063,12 +1038,12 @@ function TableHeader() {
     <div className="grid min-w-[1180px] grid-cols-[minmax(330px,1.7fr)_minmax(140px,0.8fr)_minmax(150px,0.85fr)_minmax(150px,0.85fr)_minmax(130px,0.7fr)_minmax(150px,0.8fr)] items-center border-b border-slate-200 bg-white px-5 py-4 text-sm font-black text-slate-500">
       <div>Товар</div>
       <div className="flex items-center gap-1">
-        Выкупы
-        <InfoTooltip text="Выкупы — сумма и количество фактически реализованных продаж по WB Sales за выбранный период. Доля показывает вклад артикула в общую выручку WB. Бейдж A/B/C — ABC по выручке/выкупам." />
+        Экономический оборот
+        <InfoTooltip text="Экономический оборот — цена продавца до платформенной скидки WB, нетто с возвратами. Доля и бейдж A/B/C показывают вклад артикула в экономический оборот." />
       </div>
       <div className="flex items-center gap-1">
         Расходы
-        <InfoTooltip text="Расходы — структура экономики WB. Доли считаются от экономического оборота: цены продавца до СПП WB. Комиссия/разница до перечисления показывается как мост и не задваивается в прибыли." />
+        <InfoTooltip text="Расходы — структура экономики WB. Доли считаются от экономического оборота: цены продавца до СПП WB. Скидка WB / СПП не является расходом продавца и не задваивается в прибыли." />
       </div>
       <div className="flex items-center gap-1">
         Прибыль
@@ -1088,10 +1063,10 @@ function TableHeader() {
 
 function SizeRow({
   row,
-  parentRevenue,
+  parentEconomicTurnover,
 }: {
   row: SizeBreakdownRow;
-  parentRevenue: number;
+  parentEconomicTurnover: number;
 }) {
   return (
     <div className="grid min-w-[1180px] grid-cols-[minmax(330px,1.7fr)_minmax(140px,0.8fr)_minmax(150px,0.85fr)_minmax(150px,0.85fr)_minmax(130px,0.7fr)_minmax(150px,0.8fr)] items-center border-t border-slate-100 bg-slate-50/50 px-5 py-4 text-sm">
@@ -1108,8 +1083,8 @@ function SizeRow({
       <div>
         <div className="flex items-start gap-2">
           <MoneyWithShare
-            value={row.revenue}
-            share={`${formatNumber(row.netSalesQty)} шт. · ${formatShare(row.revenue, parentRevenue, "от товара")}`}
+            value={row.economicTurnover}
+            share={`${formatNumber(row.netSalesQty)} шт. · ${formatShare(row.economicTurnover, parentEconomicTurnover, "от товара")}`}
           />
           <AbcBadge value={row.abcByRevenue} />
         </div>
@@ -1117,13 +1092,13 @@ function SizeRow({
 
       <MoneyWithShare
         value={row.expenses}
-        share={formatShare(row.expenses, row.sellerRetailAmount || row.revenue, "от экон. оборота")}
+        share={formatShare(row.expenses, row.economicTurnover, "от экон. оборота")}
       />
 
       <div className="flex items-start gap-2">
         <MoneyWithShare
           value={row.netProfitAfterTax}
-          share={formatShare(row.netProfitAfterTax, row.sellerRetailAmount || row.revenue, "от экон. оборота")}
+          share={formatShare(row.netProfitAfterTax, row.economicTurnover, "от экон. оборота")}
           valueClassName={profitTextColor(row.netProfitAfterTax)}
         />
         <AbcBadge value={row.abcByProfit} />
@@ -1141,13 +1116,14 @@ function SizeRow({
 function ProductRow({
   row,
   index,
-  totalRevenue,
+  totalEconomicTurnover,
 }: {
   row: EnrichedProfitRow;
   index: number;
-  totalRevenue: number;
+  totalEconomicTurnover: number;
 }) {
   const expenses = rowExpenses(row);
+  const rowEconomicTurnover = getWbEconomicTurnover(row);
   const buyoutPercent = rowBuyoutPercent(row);
   const defaultOpen = index === 0 && row.sizeRows.length > 0;
 
@@ -1184,8 +1160,8 @@ function ProductRow({
         <div>
           <div className="flex items-start gap-2">
             <MoneyWithShare
-              value={row.revenue}
-              share={`${formatNumber(row.netSalesQty)} шт. · ${formatShare(row.revenue, totalRevenue, "от итога")}`}
+              value={rowEconomicTurnover}
+              share={`${formatNumber(row.netSalesQty)} шт. · ${formatShare(rowEconomicTurnover, totalEconomicTurnover, "от итога")}`}
             />
             <AbcBadge value={row.abcByRevenue} />
           </div>
@@ -1193,13 +1169,13 @@ function ProductRow({
 
         <MoneyWithShare
           value={expenses}
-          share={formatShare(expenses, row.sellerRetailAmount || row.revenue, "от экон. оборота")}
+          share={formatShare(expenses, rowEconomicTurnover, "от экон. оборота")}
         />
 
         <div className="flex items-start gap-2">
           <MoneyWithShare
             value={row.netProfitAfterTax}
-            share={formatShare(row.netProfitAfterTax, row.sellerRetailAmount || row.revenue, "от экон. оборота")}
+            share={formatShare(row.netProfitAfterTax, rowEconomicTurnover, "от экон. оборота")}
             valueClassName={profitTextColor(row.netProfitAfterTax)}
           />
           <AbcBadge value={row.abcByProfit} />
@@ -1221,7 +1197,7 @@ function ProductRow({
             <SizeRow
               key={`${row.vendorCode}-${sizeRow.size}-${sizeRow.barcode}`}
               row={sizeRow}
-              parentRevenue={row.revenue}
+              parentEconomicTurnover={rowEconomicTurnover}
             />
           ))}
         </div>
@@ -1300,19 +1276,42 @@ function StructureLegendRow({
   value,
   share,
   colorHex,
+  tooltip,
+  badge,
+  tone = "expense",
 }: {
   label: string;
   value: number;
   share: number;
   colorHex: string;
+  tooltip?: string;
+  badge?: string;
+  tone?: "expense" | "info";
 }) {
+  const isInfo = tone === "info";
+
   return (
     <div className="grid grid-cols-[minmax(0,1fr)_105px_62px] items-center gap-3 text-sm">
       <div className="flex min-w-0 items-center gap-3">
-        <span className="h-3 w-3 shrink-0 rounded-full" style={{ backgroundColor: colorHex }} />
-        <span className="truncate font-bold text-slate-600">{label}</span>
+        <span
+          className={`h-3 w-3 shrink-0 rounded-full ${isInfo ? "ring-2 ring-slate-200 ring-offset-1" : ""}`}
+          style={{ backgroundColor: colorHex }}
+        />
+        <span className={`min-w-0 ${isInfo ? "font-bold text-slate-500" : "font-bold text-slate-600"}`}>
+          <span className="inline-flex min-w-0 flex-wrap items-center gap-1.5">
+            <span className="truncate">{label}</span>
+            {tooltip ? <InfoTooltip text={tooltip} /> : null}
+            {badge ? (
+              <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.08em] text-slate-500 ring-1 ring-slate-200">
+                {badge}
+              </span>
+            ) : null}
+          </span>
+        </span>
       </div>
-      <div className="text-right font-black text-slate-900">{formatMoney(value)}</div>
+      <div className={`text-right font-black ${isInfo ? "text-slate-500" : "text-slate-900"}`}>
+        {formatMoney(value)}
+      </div>
       <div className="text-right font-bold text-slate-500">{formatPercent(share)}</div>
     </div>
   );
@@ -1345,7 +1344,10 @@ export default async function ProfitPage({
 
   const isPreliminaryWbProfit = totals.dataMode === "PRELIMINARY";
 
-  const abcByRevenue = calculateAbcByPositiveValue(rows, (row) => row.revenue);
+  const abcByRevenue = calculateAbcByPositiveValue(
+    rows,
+    (row) => getWbEconomicTurnover(row)
+  );
 
   const { metaByVendorCode, sizeRowsByVendorCode } =
     await buildProductMetaAndSizeRows({
@@ -1407,16 +1409,29 @@ export default async function ProfitPage({
 
   const storageAndAcceptance = totals.storageCost + totals.acceptanceCost;
   const penaltiesAndDeductions = totals.penaltiesAmount + totals.deductions;
-  const economicTurnover = totals.sellerRetailAmount > 0 ? totals.sellerRetailAmount : totals.revenue;
-  const taxableRevenueShare =
-    economicTurnover > 0 ? (totals.revenue / economicTurnover) * 100 : 0;
+  const economicTurnover = totals.sellerRetailAmount;
   const wbOperatingDeductions = totals.logisticsCost + storageAndAcceptance + penaltiesAndDeductions;
-  const wbSettlementAmount = totals.sellerPayout - wbOperatingDeductions;
-  const wbExpensesWithoutAds = totals.wbCommission + wbOperatingDeductions;
+  const canonicalPnlSettlement =
+    totals.canonicalPnlSettlement !== 0
+      ? totals.canonicalPnlSettlement
+      : totals.sellerPayout - wbOperatingDeductions - totals.adsCost;
+  const wbSettlementAmount = selectWbOfficialCashDisplay({
+    officialCashSettlement: totals.officialCashSettlement,
+    officialCashSettlementAvailable:
+      totals.officialCashSettlementAvailable,
+    canonicalPnlSettlement,
+  });
+  const sppPlatformDiscount = totals.sppDiscountAmount;
+  const prePayoutBridge = economicTurnover - totals.sellerPayout;
+  const wbCommissionsAndAdjustments = totals.buyerPaid - totals.sellerPayout;
+  const wbServicesAndOtherDeductions = wbOperatingDeductions + totals.adsCost;
+  const wbExpensesWithoutAds =
+    wbCommissionsAndAdjustments + wbOperatingDeductions;
   const wbExpensesWithAds = wbExpensesWithoutAds + totals.adsCost;
-  const totalExpensesAfterTax = totals.revenue - totals.netProfitAfterTax;
+  const totalExpensesAfterTax =
+    economicTurnover - totals.netProfitAfterTax - sppPlatformDiscount;
   const excludedWbDeductions =
-    totals.wbCreditDeduction + totals.wbUnknownDeduction;
+    totals.classifiedCreditDeduction + totals.classifiedUnknownDeduction;
   const wbInternalServices =
     totals.paymentServiceCost +
     totals.pvzCompensation +
@@ -1435,143 +1450,182 @@ export default async function ProfitPage({
   const lossRows = rows.filter((row) => row.netProfitAfterTax < 0);
   const highDrrRows = rows.filter((row) => row.drrPercent > 20);
   const lowMarginRows = rows.filter(
-    (row) => row.revenue > 0 && row.marginAfterTaxPercent < 10
+    (row) =>
+      getWbEconomicTurnover(row) > 0 &&
+      row.marginAfterTaxPercent < 10
   );
   const cRows = rows.filter((row) => row.abcByProfit === "C");
 
   const structureRows = [
     {
+      label: "Скидка WB / СПП",
+      value: sppPlatformDiscount,
+      colorClassName: "bg-slate-400",
+      colorHex: "#94a3b8",
+      tooltip: tooltipTexts.sppDiscount,
+      badge: "Не расход продавца",
+      tone: "info" as const,
+    },
+    {
+      label: "Комиссии и корректировки WB",
+      value: wbCommissionsAndAdjustments,
+      colorClassName: "bg-violet-500",
+      colorHex: "#8b5cf6",
+      tooltip: tooltipTexts.wbCommissionsAdjustments,
+      badge: undefined,
+      tone: "expense" as const,
+    },
+    {
       label: "Себестоимость товаров",
       value: totals.totalCost,
       colorClassName: "bg-indigo-500",
       colorHex: "#6366f1",
+      tooltip: undefined,
+      badge: undefined,
+      tone: "expense" as const,
     },
     {
-      label: "Удержано WB до выплат",
-      value: totals.wbCommission,
-      colorClassName: "bg-violet-500",
-      colorHex: "#8b5cf6",
-    },
-    {
-      label: "Логистика",
+      label: "Логистика WB",
       value: totals.logisticsCost,
       colorClassName: "bg-sky-500",
       colorHex: "#0ea5e9",
+      tooltip: undefined,
+      badge: undefined,
+      tone: "expense" as const,
     },
     {
       label: "Реклама WB",
       value: totals.adsCost,
       colorClassName: "bg-pink-500",
       colorHex: "#ec4899",
+      tooltip: undefined,
+      badge: undefined,
+      tone: "expense" as const,
     },
     {
       label: "Хранение и приёмка",
       value: storageAndAcceptance,
       colorClassName: "bg-orange-400",
       colorHex: "#fb923c",
+      tooltip: undefined,
+      badge: undefined,
+      tone: "expense" as const,
     },
     {
       label: "Штрафы и прочие удержания",
       value: penaltiesAndDeductions,
       colorClassName: "bg-red-400",
       colorHex: "#f87171",
+      tooltip: undefined,
+      badge: undefined,
+      tone: "expense" as const,
     },
     {
       label: "Налоги",
       value: totals.taxesAmount,
       colorClassName: "bg-amber-500",
       colorHex: "#f59e0b",
+      tooltip: undefined,
+      badge: undefined,
+      tone: "expense" as const,
     },
   ];
 
   const currentSortDirLabel = dir === "desc" ? "сначала высокая" : "сначала низкая";
+  const previousPeriodRange = getPreviousPeriodRange(dateFrom, dateTo);
 
   return (
     <main className="page-shell">
       <div className="page-container">
-        <section className="panel p-5 sm:p-6">
-          <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
-            <div>
-              <div className="inline-flex rounded-full bg-violet-50 px-3 py-1 text-xs font-black uppercase tracking-[0.12em] text-violet-700 ring-1 ring-violet-100">
-                WB аналитика
+        <section className="panel p-4 sm:p-5">
+          <div className="grid gap-4 xl:grid-cols-[minmax(320px,1fr)_minmax(620px,auto)] xl:items-start">
+            <div className="flex items-start gap-4">
+              <div className="hidden h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-violet-600 text-sm font-black text-white shadow-lg shadow-violet-200 sm:flex">
+                WB
               </div>
 
-              <h1 className="mt-3 text-3xl font-black tracking-tight text-slate-950 sm:text-4xl">
-                Прибыль по SKU WB
-              </h1>
+              <div className="min-w-0">
+                <div className="inline-flex rounded-full bg-violet-50 px-3 py-1 text-[11px] font-black uppercase tracking-[0.12em] text-violet-700 ring-1 ring-violet-100">
+                  WB аналитика
+                </div>
 
-              <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-500">
-                Управленческая экономика WB: экономический оборот, СПП WB,
-                налоговая выручка, выплаты WB, расходы площадки, реклама,
-                налоги и прибыль без задвоения списаний.
-              </p>
+                <h1 className="mt-2 text-2xl font-black tracking-tight text-slate-950 sm:text-3xl">
+                  Прибыль по SKU WB
+                </h1>
+
+                <p className="mt-2 max-w-3xl text-sm leading-5 text-slate-500">
+                  Управленческая экономика WB: оборот, выплаты, расходы, налоги и прибыль без задвоения списаний.
+                </p>
+              </div>
             </div>
 
-            <form className="grid gap-3 rounded-[28px] border border-slate-200 bg-white p-3 shadow-sm md:grid-cols-[160px_160px_190px_140px]">
-              <input type="hidden" name="sort" value={sort} />
-              <input type="hidden" name="dir" value={dir} />
-              <input type="hidden" name="abc" value={abc} />
-              <input type="hidden" name="q" value={q} />
-              <input type="hidden" name="pageSize" value={pageSize} />
+            <div className="space-y-3">
+              <form className="grid gap-3 rounded-[24px] border border-slate-200 bg-white p-3 shadow-sm md:grid-cols-[150px_150px_190px_130px]">
+                <input type="hidden" name="sort" value={sort} />
+                <input type="hidden" name="dir" value={dir} />
+                <input type="hidden" name="abc" value={abc} />
+                <input type="hidden" name="q" value={q} />
+                <input type="hidden" name="pageSize" value={pageSize} />
 
-              <label className="block">
-                <span className="text-xs font-black uppercase tracking-[0.12em] text-slate-400">
-                  Дата от
-                </span>
-                <input
-                  type="date"
-                  name="dateFrom"
-                  defaultValue={dateFrom}
-                  className="mt-1 w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-bold text-slate-700 outline-none transition focus:border-indigo-200 focus:bg-white"
-                />
-              </label>
+                <label className="block">
+                  <span className="text-[11px] font-black uppercase tracking-[0.12em] text-slate-400">
+                    Дата от
+                  </span>
+                  <input
+                    type="date"
+                    name="dateFrom"
+                    defaultValue={dateFrom}
+                    className="mt-1 w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-bold text-slate-700 outline-none transition focus:border-indigo-200 focus:bg-white"
+                  />
+                </label>
 
-              <label className="block">
-                <span className="text-xs font-black uppercase tracking-[0.12em] text-slate-400">
-                  Дата до
-                </span>
-                <input
-                  type="date"
-                  name="dateTo"
-                  defaultValue={dateTo}
-                  className="mt-1 w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-bold text-slate-700 outline-none transition focus:border-indigo-200 focus:bg-white"
-                />
-              </label>
+                <label className="block">
+                  <span className="text-[11px] font-black uppercase tracking-[0.12em] text-slate-400">
+                    Дата до
+                  </span>
+                  <input
+                    type="date"
+                    name="dateTo"
+                    defaultValue={dateTo}
+                    className="mt-1 w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-bold text-slate-700 outline-none transition focus:border-indigo-200 focus:bg-white"
+                  />
+                </label>
 
-              <label className="block">
-                <span className="text-xs font-black uppercase tracking-[0.12em] text-slate-400">
-                  Компания
+                <label className="block">
+                  <span className="text-[11px] font-black uppercase tracking-[0.12em] text-slate-400">
+                    Компания
+                  </span>
+                  <select
+                    name="companyName"
+                    defaultValue={companyName}
+                    className="mt-1 w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-bold text-slate-700 outline-none transition focus:border-indigo-200 focus:bg-white"
+                  >
+                    <option value="ALL">Все компании</option>
+                    <option value="ИП Петров">ИП Петров</option>
+                    <option value="ИП Лебедева">ИП Лебедева</option>
+                  </select>
+                </label>
+
+                <div className="flex items-end">
+                  <button className="w-full rounded-2xl bg-indigo-600 px-4 py-2.5 text-sm font-black text-white shadow-lg shadow-indigo-200 transition hover:bg-indigo-700">
+                    Применить
+                  </button>
+                </div>
+              </form>
+
+              <div className="flex flex-wrap items-center justify-end gap-2 text-xs sm:text-sm">
+                <span className="text-slate-500">Сравнение с предыдущим периодом</span>
+                <span className="rounded-2xl bg-emerald-50 px-3 py-1 font-black text-emerald-700 ring-1 ring-emerald-100">
+                  {formatDateRu(previousPeriodRange.dateFrom)} — {formatDateRu(previousPeriodRange.dateTo)}
                 </span>
-                <select
-                  name="companyName"
-                  defaultValue={companyName}
-                  className="mt-1 w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-bold text-slate-700 outline-none transition focus:border-indigo-200 focus:bg-white"
+                <Link
+                  href="/import"
+                  className="rounded-2xl border border-slate-200 bg-white px-4 py-2 font-black text-slate-700 shadow-sm transition hover:bg-slate-50"
                 >
-                  <option value="ALL">Все компании</option>
-                  <option value="ИП Петров">ИП Петров</option>
-                  <option value="ИП Лебедева">ИП Лебедева</option>
-                </select>
-              </label>
-
-              <div className="flex items-end">
-                <button className="w-full rounded-2xl bg-indigo-600 px-4 py-2.5 text-sm font-black text-white shadow-lg shadow-indigo-200 transition hover:bg-indigo-700">
-                  Применить
-                </button>
+                  Импорт данных
+                </Link>
               </div>
-            </form>
-          </div>
-
-          <div className="mt-4 flex flex-wrap items-center justify-end gap-2 text-sm">
-            <span className="text-slate-500">Сравнение с предыдущим периодом</span>
-            <span className="rounded-2xl bg-emerald-50 px-3 py-1 font-black text-emerald-700 ring-1 ring-emerald-100">
-              {formatDateRu(dateFrom)} — {formatDateRu(dateTo)}
-            </span>
-            <Link
-              href="/import"
-              className="rounded-2xl border border-slate-200 bg-white px-4 py-2 font-black text-slate-700 shadow-sm transition hover:bg-slate-50"
-            >
-              Импорт данных
-            </Link>
+            </div>
           </div>
         </section>
 
@@ -1590,238 +1644,83 @@ export default async function ProfitPage({
         <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-6">
           <KpiCard
             title="Экономический оборот"
+            tooltip={tooltipTexts.economicTurnover}
             value={formatMoney(economicTurnover)}
             helper="100% база для всех долей"
-            delta={comparison.revenue.diffPercent}
+            delta={comparison.sellerRetailAmount.diffPercent}
             sparkTone="indigo"
+            icon="◔"
             sparkPoints={[10, 12, 18, 14, 14, 21, 19, 28]}
           />
 
           <KpiCard
             title="Налоговая выручка"
-            value={formatMoney(totals.revenue)}
-            helper={`${formatPercent(taxableRevenueShare)} от экон. оборота`}
-            delta={comparison.revenue.diffPercent}
+            tooltip={tooltipTexts.taxableRevenue}
+            value={formatMoney(totals.taxableRevenue)}
+            helper={`Покупатели ${formatMoney(totals.buyerPaid)} · доплата WB ${formatMoney(totals.marketplaceTaxTopUp)}`}
+            delta={comparison.taxableRevenue.diffPercent}
             sparkTone="emerald"
+            icon="▥"
             sparkPoints={[8, 12, 10, 13, 21, 19, 28, 22]}
           />
 
           <KpiCard
             title="Итого к оплате WB"
+            tooltip={tooltipTexts.wbSettlement}
             value={formatMoney(wbSettlementAmount)}
             helper={`${formatShare(wbSettlementAmount, economicTurnover, "от экон. оборота")}`}
             delta={comparison.sellerPayout.diffPercent}
-            sparkTone="emerald"
+            sparkTone="indigo"
+            icon="▣"
             sparkPoints={[8, 10, 9, 15, 14, 18, 23, 21]}
           />
 
           <KpiCard
             title="Все расходы P&L"
+            tooltip={tooltipTexts.pnlExpenses}
             value={formatMoney(totalExpensesAfterTax)}
             helper={`${formatShare(totalExpensesAfterTax, economicTurnover, "от экон. оборота")}`}
             delta={comparison.totalCost.diffPercent}
             inverseDelta
             sparkTone="red"
+            icon="−"
             sparkPoints={[9, 10, 12, 14, 13, 18, 20, 22]}
           />
 
           <KpiCard
             title="Прибыль после налогов"
+            tooltip={tooltipTexts.netProfit}
             value={formatMoney(totals.netProfitAfterTax)}
             helper={`${formatPercent(totals.marginAfterTaxPercent)} от экон. оборота`}
             delta={comparison.netProfitAfterTax.diffPercent}
             sparkTone="emerald"
+            icon="↗"
             sparkPoints={[7, 9, 15, 13, 18, 17, 24, 16]}
           />
 
           <KpiCard
             title="Реклама / ДРР"
+            tooltip={tooltipTexts.adsDrr}
             value={formatMoney(totals.adsCost)}
             helper={`${formatPercent(totals.drrPercent)} от экон. оборота`}
             delta={comparison.adsCost.diffPercent}
             inverseDelta
             sparkTone="orange"
+            icon="◉"
             sparkPoints={[18, 17, 22, 16, 14, 13, 15, 23]}
           />
         </section>
 
-        <section className="grid gap-5 xl:grid-cols-[minmax(0,4fr)_minmax(360px,2fr)]">
-          <section className="panel p-5 sm:p-6">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <div className="section-eyebrow">Движение денег</div>
-                <h2 className="mt-1 text-2xl font-black tracking-tight text-slate-950">
-                  Воронка WB: от цены продавца до выплаты
-                </h2>
-                <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">
-                  Все проценты считаются от экономического оборота. СПП WB показываем отдельно:
-                  это скидка площадки за счёт WB, а не расход продавца.
-                </p>
-              </div>
-              <span className="hidden rounded-2xl bg-violet-50 px-3 py-1 text-xs font-black uppercase tracking-[0.12em] text-violet-700 ring-1 ring-violet-100 sm:inline-flex">
-                100% = экон. оборот
-              </span>
-            </div>
-
-            <div className="mt-5 overflow-hidden rounded-[24px] border border-slate-200 bg-white">
-              <div className="grid grid-cols-[34px_minmax(0,1fr)_150px_90px] items-center gap-3 bg-slate-50 px-4 py-3 text-xs font-black uppercase tracking-[0.12em] text-slate-400">
-                <div />
-                <div>Показатель</div>
-                <div className="text-right">Сумма</div>
-                <div className="text-right">Доля</div>
-              </div>
-
-              <div className="divide-y divide-slate-100">
-                <div className="grid grid-cols-[34px_minmax(0,1fr)_150px_90px] items-center gap-3 px-4 py-3">
-                  <div className="flex h-7 w-7 items-center justify-center rounded-full bg-violet-100 text-sm font-black text-violet-700">1</div>
-                  <div>
-                    <div className="font-black text-slate-900">Экономический оборот</div>
-                    <div className="mt-0.5 text-xs font-semibold text-slate-500">Цена продавца до СПП WB.</div>
-                  </div>
-                  <div className="text-right text-lg font-black text-violet-700">{formatMoney(economicTurnover)}</div>
-                  <div className="text-right text-sm font-black text-violet-700">100%</div>
-                </div>
-
-                <div className="grid grid-cols-[34px_minmax(0,1fr)_150px_90px] items-center gap-3 px-4 py-3">
-                  <div className="flex h-7 w-7 items-center justify-center rounded-full bg-orange-100 text-sm font-black text-orange-700">−</div>
-                  <div>
-                    <div className="font-black text-slate-900">СПП WB</div>
-                    <div className="mt-0.5 text-xs font-semibold text-slate-500">Скидка покупателю за счёт WB.</div>
-                  </div>
-                  <div className="text-right text-lg font-black text-orange-600">{formatMoney(totals.sppDiscountAmount)}</div>
-                  <div className="text-right text-sm font-black text-orange-600">
-                    {formatPercent(economicTurnover > 0 ? (totals.sppDiscountAmount / economicTurnover) * 100 : 0)}
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-[34px_minmax(0,1fr)_150px_90px] items-center gap-3 bg-emerald-50/60 px-4 py-3">
-                  <div className="flex h-7 w-7 items-center justify-center rounded-full bg-emerald-100 text-sm font-black text-emerald-700">=</div>
-                  <div>
-                    <div className="font-black text-emerald-800">Налоговая выручка</div>
-                    <div className="mt-0.5 text-xs font-semibold text-emerald-700/75">Цена после СПП WB; с этой суммы считаем налог.</div>
-                  </div>
-                  <div className="text-right text-lg font-black text-emerald-700">{formatMoney(totals.revenue)}</div>
-                  <div className="text-right text-sm font-black text-emerald-700">{formatPercent(taxableRevenueShare)}</div>
-                </div>
-
-                <div className="grid grid-cols-[34px_minmax(0,1fr)_150px_90px] items-center gap-3 px-4 py-3">
-                  <div className="flex h-7 w-7 items-center justify-center rounded-full bg-red-100 text-sm font-black text-red-700">−</div>
-                  <div>
-                    <div className="font-black text-slate-900">Удержано WB до выплат</div>
-                    <div className="mt-0.5 text-xs font-semibold text-slate-500">Разница между налоговой выручкой и суммой к перечислению WB.</div>
-                  </div>
-                  <div className="text-right text-lg font-black text-red-600">{formatMoney(totals.wbCommission)}</div>
-                  <div className="text-right text-sm font-black text-red-600">
-                    {formatShare(totals.wbCommission, economicTurnover, "")}
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-[34px_minmax(0,1fr)_150px_90px] items-center gap-3 bg-emerald-50/60 px-4 py-3">
-                  <div className="flex h-7 w-7 items-center justify-center rounded-full bg-emerald-100 text-sm font-black text-emerald-700">=</div>
-                  <div>
-                    <div className="font-black text-emerald-800">К перечислению WB</div>
-                    <div className="mt-0.5 text-xs font-semibold text-emerald-700/75">Сумма до списания логистики, хранения, штрафов и удержаний.</div>
-                  </div>
-                  <div className="text-right text-lg font-black text-emerald-700">{formatMoney(totals.sellerPayout)}</div>
-                  <div className="text-right text-sm font-black text-emerald-700">
-                    {formatShare(totals.sellerPayout, economicTurnover, "")}
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-[34px_minmax(0,1fr)_150px_90px] items-center gap-3 px-4 py-3">
-                  <div className="flex h-7 w-7 items-center justify-center rounded-full bg-red-100 text-sm font-black text-red-700">−</div>
-                  <div>
-                    <div className="font-black text-slate-900">Логистика / хранение / штрафы</div>
-                    <div className="mt-0.5 text-xs font-semibold text-slate-500">Операционные списания WB после суммы к перечислению.</div>
-                  </div>
-                  <div className="text-right text-lg font-black text-red-600">{formatMoney(wbOperatingDeductions)}</div>
-                  <div className="text-right text-sm font-black text-red-600">
-                    {formatShare(wbOperatingDeductions, economicTurnover, "")}
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-[34px_minmax(0,1fr)_150px_90px] items-center gap-3 bg-slate-50 px-4 py-4">
-                  <div className="flex h-7 w-7 items-center justify-center rounded-full bg-slate-200 text-sm font-black text-slate-700">=</div>
-                  <div>
-                    <div className="font-black text-slate-950">Итого к оплате WB</div>
-                    <div className="mt-0.5 text-xs font-semibold text-slate-500">Фактическая выплата WB до себестоимости, рекламы и налогов.</div>
-                  </div>
-                  <div className="text-right text-xl font-black text-slate-950">{formatMoney(wbSettlementAmount)}</div>
-                  <div className="text-right text-sm font-black text-slate-700">
-                    {formatShare(wbSettlementAmount, economicTurnover, "")}
-                  </div>
-                </div>
-              </div>
-            </div>
-          </section>
-
-          <aside className="panel p-5 sm:p-6">
-            <div className="section-eyebrow">Контроль площадки</div>
-            <h2 className="mt-1 text-2xl font-black tracking-tight text-slate-950">
-              Сколько забирает WB
-            </h2>
-            <p className="mt-2 text-sm leading-6 text-slate-500">
-              СПП WB сюда не включаем как расход продавца. Это нетто-расходы площадки
-              после СПП, отдельно без рекламы и вместе с рекламой.
-            </p>
-
-            <div className="mt-5 grid gap-3">
-              <div className="rounded-[24px] border border-red-100 bg-red-50 p-4">
-                <div className="text-xs font-black uppercase tracking-[0.12em] text-red-500">Без рекламы</div>
-                <div className="mt-2 text-3xl font-black text-red-700">{formatMoney(wbExpensesWithoutAds)}</div>
-                <div className="mt-1 text-sm font-black text-red-600">{formatShare(wbExpensesWithoutAds, economicTurnover, "от экон. оборота")}</div>
-              </div>
-
-              <div className="rounded-[24px] border border-orange-100 bg-orange-50 p-4">
-                <div className="text-xs font-black uppercase tracking-[0.12em] text-orange-500">С рекламой</div>
-                <div className="mt-2 text-3xl font-black text-orange-700">{formatMoney(wbExpensesWithAds)}</div>
-                <div className="mt-1 text-sm font-black text-orange-600">{formatShare(wbExpensesWithAds, economicTurnover, "от экон. оборота")}</div>
-              </div>
-            </div>
-
-            <div className="mt-5 space-y-3 rounded-[24px] border border-slate-200 bg-slate-50 p-4">
-              <div className="flex items-center justify-between gap-3 text-sm">
-                <span className="font-bold text-slate-600">Удержано WB до выплат</span>
-                <span className="font-black text-slate-950">{formatMoney(totals.wbCommission)}</span>
-              </div>
-              <div className="flex items-center justify-between gap-3 text-sm">
-                <span className="font-bold text-slate-600">Логистика WB</span>
-                <span className="font-black text-slate-950">{formatMoney(totals.logisticsCost)}</span>
-              </div>
-              <div className="flex items-center justify-between gap-3 text-sm">
-                <span className="font-bold text-slate-600">Хранение и приёмка</span>
-                <span className="font-black text-slate-950">{formatMoney(storageAndAcceptance)}</span>
-              </div>
-              <div className="flex items-center justify-between gap-3 text-sm">
-                <span className="font-bold text-slate-600">Штрафы и прочие удержания</span>
-                <span className="font-black text-slate-950">{formatMoney(penaltiesAndDeductions)}</span>
-              </div>
-              <div className="flex items-center justify-between gap-3 border-t border-slate-200 pt-3 text-sm">
-                <span className="font-bold text-slate-600">Реклама WB</span>
-                <span className="font-black text-slate-950">{formatMoney(totals.adsCost)}</span>
-              </div>
-            </div>
-          </aside>
-        </section>
-
-        {excludedWbDeductions > 0 ? (
-          <section className="rounded-[26px] border border-amber-200 bg-amber-50/70 p-4 text-sm font-semibold leading-6 text-amber-900">
-            Из удержаний WB не включено в unit-экономику: {formatMoney(excludedWbDeductions)}.
-            Кредит WB и нераспознанные удержания не списываются повторно как товарный расход,
-            чтобы не задваивать рекламу/кредит. Реклама WB учитывается отдельной строкой.
-          </section>
-        ) : null}
-
-        <section className="grid gap-5 xl:grid-cols-[minmax(0,4fr)_minmax(340px,2fr)]">
-          <section className="panel min-w-0 p-5 sm:p-6">
+        <section className="grid gap-4 xl:grid-cols-6 xl:items-stretch">
+          <section className="panel flex h-full min-w-0 flex-col p-4 sm:p-5 xl:col-span-4">
             <div className="flex items-center gap-2">
-              <h2 className="text-[1.7rem] font-black tracking-tight text-slate-950">
+              <h2 className="text-xl font-black sm:text-2xl tracking-tight text-slate-950">
                 Структура экономики WB
               </h2>
-              <span className="text-slate-300">ⓘ</span>
+              <InfoTooltip text={tooltipTexts.structure} />
             </div>
 
-            <div className="mt-5 grid gap-6 lg:grid-cols-[300px_minmax(0,1fr)] lg:items-center">
+            <div className="mt-4 grid flex-1 gap-5 lg:grid-cols-[270px_minmax(0,1fr)] lg:items-center">
               <div className="flex justify-center">
                 <ExpenseDonut rows={structureRows} shareBase={economicTurnover} />
               </div>
@@ -1834,6 +1733,9 @@ export default async function ProfitPage({
                     value={row.value}
                     share={economicTurnover > 0 ? (row.value / economicTurnover) * 100 : 0}
                     colorHex={row.colorHex}
+                    tooltip={row.tooltip}
+                    badge={row.badge}
+                    tone={row.tone}
                   />
                 ))}
 
@@ -1860,10 +1762,214 @@ export default async function ProfitPage({
             </div>
           </section>
 
-          <aside className="panel min-w-0 p-5 sm:p-6">
+
+
+          <aside className="panel flex h-full min-w-0 flex-col p-4 sm:p-5 xl:col-span-2">
+            <div className="section-eyebrow">Контроль площадки</div>
+            <h2 className="mt-1 flex items-center gap-2 text-xl font-black tracking-tight text-slate-950 sm:text-2xl">
+              <span>Сколько забирает WB</span>
+              <InfoTooltip text={tooltipTexts.wbTake} />
+            </h2>
+            <p className="mt-2 text-sm leading-5 text-slate-500">
+              СПП WB сюда не включаем как расход продавца. Это нетто-расходы площадки
+              после СПП, отдельно без рекламы и вместе с рекламой.
+            </p>
+
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              <div className="rounded-[22px] border border-red-100 bg-red-50 p-3.5">
+                <div className="text-xs font-black uppercase tracking-[0.12em] text-red-500">Без рекламы</div>
+                <div className="mt-2 text-2xl font-black text-red-700">{formatMoney(wbExpensesWithoutAds)}</div>
+                <div className="mt-1 text-sm font-black text-red-600">{formatShare(wbExpensesWithoutAds, economicTurnover, "от экон. оборота")}</div>
+              </div>
+
+              <div className="rounded-[22px] border border-orange-100 bg-orange-50 p-3.5">
+                <div className="text-xs font-black uppercase tracking-[0.12em] text-orange-500">С рекламой</div>
+                <div className="mt-2 text-2xl font-black text-orange-700">{formatMoney(wbExpensesWithAds)}</div>
+                <div className="mt-1 text-sm font-black text-orange-600">{formatShare(wbExpensesWithAds, economicTurnover, "от экон. оборота")}</div>
+              </div>
+            </div>
+
+            <div className="mt-3 rounded-[22px] border border-dashed border-slate-200 bg-white px-4 py-3 text-sm">
+              <div className="flex items-start justify-between gap-3">
+                <span className="font-bold text-slate-500">
+                  Скидка WB / СПП
+                  <span className="ml-2 text-[10px] font-black uppercase tracking-[0.08em] text-slate-400">
+                    не расход продавца
+                  </span>
+                </span>
+                <span className="font-black text-slate-500">{formatMoney(sppPlatformDiscount)}</span>
+              </div>
+            </div>
+
+            <div className="mt-4 flex flex-1 flex-col justify-end space-y-2 rounded-[24px] border border-slate-200 bg-slate-50 p-4">
+              <div className="flex items-center justify-between gap-3 text-sm">
+                <span className="inline-flex items-center gap-1 font-bold text-slate-600">
+                  Комиссии и корректировки WB
+                  <InfoTooltip text={tooltipTexts.wbCommissionsAdjustments} />
+                </span>
+                <span className="font-black text-slate-950">{formatMoney(wbCommissionsAndAdjustments)}</span>
+              </div>
+              <div className="flex items-center justify-between gap-3 text-sm">
+                <span className="font-bold text-slate-600">Логистика WB</span>
+                <span className="font-black text-slate-950">{formatMoney(totals.logisticsCost)}</span>
+              </div>
+              <div className="flex items-center justify-between gap-3 text-sm">
+                <span className="font-bold text-slate-600">Хранение и приёмка</span>
+                <span className="font-black text-slate-950">{formatMoney(storageAndAcceptance)}</span>
+              </div>
+              <div className="flex items-center justify-between gap-3 text-sm">
+                <span className="font-bold text-slate-600">Штрафы и прочие удержания</span>
+                <span className="font-black text-slate-950">{formatMoney(penaltiesAndDeductions)}</span>
+              </div>
+              <div className="flex items-center justify-between gap-3 border-t border-slate-200 pt-3 text-sm">
+                <span className="font-bold text-slate-600">Реклама WB</span>
+                <span className="font-black text-slate-950">{formatMoney(totals.adsCost)}</span>
+              </div>
+            </div>
+          </aside>
+        </section>
+
+        <section className="grid gap-4 xl:grid-cols-6 xl:items-stretch">
+          <section className="panel flex h-full min-w-0 flex-col p-4 sm:p-5 xl:col-span-4">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h2 className="flex items-center gap-2 text-xl font-black tracking-tight text-slate-950 sm:text-2xl">
+                  <span>Воронка WB: от цены продавца до выплаты</span>
+                  <InfoTooltip text={tooltipTexts.funnel} />
+                </h2>
+                <p className="mt-1 max-w-3xl text-sm leading-5 text-slate-500">
+                  Все проценты считаются от экономического оборота. СПП WB показываем отдельно:
+                  это скидка площадки за счёт WB, а не расход продавца.
+                </p>
+              </div>
+              <span className="hidden rounded-2xl bg-violet-50 px-3 py-1 text-xs font-black uppercase tracking-[0.12em] text-violet-700 ring-1 ring-violet-100 sm:inline-flex">
+                100% = экон. оборот
+              </span>
+            </div>
+
+            <div className="mt-4 grid gap-3 sm:grid-cols-3">
+              <FunnelKpiCard
+                title="Общая комиссия WB"
+                value={formatMoney(prePayoutBridge)}
+                helper={formatShare(prePayoutBridge, economicTurnover, "от экон. оборота")}
+                tooltip={tooltipTexts.totalWbCommission}
+              />
+              <FunnelKpiCard
+                title="Покрыто скидкой WB / СПП"
+                value={formatMoney(sppPlatformDiscount)}
+                helper={formatShare(sppPlatformDiscount, economicTurnover, "от экон. оборота")}
+                badge="НЕ РАСХОД ПРОДАВЦА"
+                tooltip={tooltipTexts.sppCovered}
+              />
+              <FunnelKpiCard
+                title="Удержано WB с продавца"
+                value={formatMoney(wbCommissionsAndAdjustments)}
+                helper={formatShare(wbCommissionsAndAdjustments, economicTurnover, "от экон. оборота")}
+                secondaryHelper={formatShare(wbCommissionsAndAdjustments, totals.buyerPaid, "от оплачено покупателями")}
+                tooltip={tooltipTexts.sellerHeldByWb}
+              />
+            </div>
+
+            <div className="mt-4 overflow-hidden rounded-[24px] border border-slate-200 bg-white">
+              <div className="grid grid-cols-[34px_minmax(0,1fr)_150px_90px] items-center gap-3 bg-slate-50 px-4 py-3 text-xs font-black uppercase tracking-[0.12em] text-slate-400">
+                <div />
+                <div>Показатель</div>
+                <div className="text-right">Сумма</div>
+                <div className="text-right">Доля</div>
+              </div>
+
+              <div className="divide-y divide-slate-100">
+                <div className="grid grid-cols-[34px_minmax(0,1fr)_150px_90px] items-center gap-3 px-4 py-3">
+                  <div className="flex h-7 w-7 items-center justify-center rounded-full bg-violet-100 text-sm font-black text-violet-700">1</div>
+                  <div>
+                    <div className="font-black text-slate-900">Экономический оборот</div>
+                    <div className="mt-0.5 text-xs font-semibold text-slate-500">Цена продавца до скидки WB / СПП.</div>
+                  </div>
+                  <div className="text-right text-lg font-black text-violet-700">{formatMoney(economicTurnover)}</div>
+                  <div className="text-right text-sm font-black text-violet-700">100%</div>
+                </div>
+
+                <div className="grid grid-cols-[34px_minmax(0,1fr)_150px_90px] items-center gap-3 px-4 py-3">
+                  <div className="flex h-7 w-7 items-center justify-center rounded-full bg-orange-100 text-sm font-black text-orange-700">−</div>
+                  <div>
+                    <div className="font-black text-slate-900">Скидка WB / СПП</div>
+                    <div className="mt-0.5 text-xs font-semibold text-slate-500">Скидка площадки для покупателя. Не расход продавца.</div>
+                  </div>
+                  <div className="text-right text-lg font-black text-orange-600">{formatMoney(sppPlatformDiscount)}</div>
+                  <div className="text-right text-sm font-black text-orange-600">
+                    {formatShare(sppPlatformDiscount, economicTurnover, "")}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-[34px_minmax(0,1fr)_150px_90px] items-center gap-3 bg-emerald-50/60 px-4 py-3">
+                  <div className="flex h-7 w-7 items-center justify-center rounded-full bg-emerald-100 text-sm font-black text-emerald-700">=</div>
+                  <div>
+                    <div className="font-black text-emerald-800">Оплачено покупателями</div>
+                    <div className="mt-0.5 text-xs font-semibold text-emerald-700/75">Фактическая сумма после платформенной скидки WB.</div>
+                  </div>
+                  <div className="text-right text-lg font-black text-emerald-700">{formatMoney(totals.buyerPaid)}</div>
+                  <div className="text-right text-sm font-black text-emerald-700">
+                    {formatShare(totals.buyerPaid, economicTurnover, "")}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-[34px_minmax(0,1fr)_150px_90px] items-center gap-3 px-4 py-3">
+                  <div className="flex h-7 w-7 items-center justify-center rounded-full bg-red-100 text-sm font-black text-red-700">−</div>
+                  <div>
+                    <div className="font-black text-slate-900">Комиссия WB после СПП</div>
+                    <div className="mt-0.5 text-xs font-semibold text-slate-500">Чистое удержание WB из оплаты покупателей.</div>
+                  </div>
+                  <div className="text-right text-lg font-black text-red-600">{formatMoney(wbCommissionsAndAdjustments)}</div>
+                  <div className="text-right text-sm font-black text-red-600">
+                    {formatShare(wbCommissionsAndAdjustments, economicTurnover, "")}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-[34px_minmax(0,1fr)_150px_90px] items-center gap-3 bg-emerald-50/60 px-4 py-3">
+                  <div className="flex h-7 w-7 items-center justify-center rounded-full bg-emerald-100 text-sm font-black text-emerald-700">=</div>
+                  <div>
+                    <div className="font-black text-emerald-800">К перечислению продавцу</div>
+                    <div className="mt-0.5 text-xs font-semibold text-emerald-700/75">Сумма до логистики, хранения, штрафов и рекламы.</div>
+                  </div>
+                  <div className="text-right text-lg font-black text-emerald-700">{formatMoney(totals.sellerPayout)}</div>
+                  <div className="text-right text-sm font-black text-emerald-700">
+                    {formatShare(totals.sellerPayout, economicTurnover, "")}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-[34px_minmax(0,1fr)_150px_90px] items-center gap-3 px-4 py-3">
+                  <div className="flex h-7 w-7 items-center justify-center rounded-full bg-red-100 text-sm font-black text-red-700">−</div>
+                  <div>
+                    <div className="font-black text-slate-900">Услуги и прочие списания WB</div>
+                    <div className="mt-0.5 text-xs font-semibold text-slate-500">Логистика, реклама, хранение/приёмка и штрафы.</div>
+                  </div>
+                  <div className="text-right text-lg font-black text-red-600">{formatMoney(wbServicesAndOtherDeductions)}</div>
+                  <div className="text-right text-sm font-black text-red-600">
+                    {formatShare(wbServicesAndOtherDeductions, economicTurnover, "")}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-[34px_minmax(0,1fr)_150px_90px] items-center gap-3 bg-slate-50 px-4 py-4">
+                  <div className="flex h-7 w-7 items-center justify-center rounded-full bg-slate-200 text-sm font-black text-slate-700">=</div>
+                  <div>
+                    <div className="font-black text-slate-950">Итого к оплате WB</div>
+                    <div className="mt-0.5 text-xs font-semibold text-slate-500">Финальная сумма после удержаний WB.</div>
+                  </div>
+                  <div className="text-right text-xl font-black text-slate-950">{formatMoney(wbSettlementAmount)}</div>
+                  <div className="text-right text-sm font-black text-slate-700">
+                    {formatShare(wbSettlementAmount, economicTurnover, "")}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+
+
+          <aside className="panel flex h-full min-w-0 flex-col p-4 sm:p-5 xl:col-span-2">
             <div className="flex items-center justify-between gap-3">
               <div className="flex items-center gap-2">
-                <h2 className="text-[1.7rem] font-black tracking-tight text-slate-950">
+                <h2 className="text-xl font-black sm:text-2xl tracking-tight text-slate-950">
                   Что требует внимания
                 </h2>
                 <span className="text-slate-300">ⓘ</span>
@@ -1877,7 +1983,7 @@ export default async function ProfitPage({
               </button>
             </div>
 
-            <div className="mt-5 space-y-3">
+            <div className="mt-4 flex flex-1 flex-col justify-between gap-3">
               <AttentionItem
                 title="Убыточные товары"
                 text={`${formatNumber(lossRows.length)} SKU с отрицательной прибылью`}
@@ -1895,19 +2001,34 @@ export default async function ProfitPage({
               <AttentionItem
                 title="Низкая маржинальность (<10%)"
                 text={`${formatNumber(lowMarginRows.length)} SKU с маржинальностью ниже 10%`}
-                value={formatMoney(lowMarginRows.reduce((sum, row) => sum + row.revenue, 0))}
+                value={formatMoney(lowMarginRows.reduce((sum, row) => sum + getWbEconomicTurnover(row), 0))}
                 tone="blue"
               />
 
               <AttentionItem
                 title="Товары C-класса"
                 text={`${formatNumber(cRows.length)} SKU с низким вкладом в прибыль`}
-                value={formatMoney(cRows.reduce((sum, row) => sum + row.revenue, 0))}
+                value={formatMoney(cRows.reduce((sum, row) => sum + getWbEconomicTurnover(row), 0))}
                 tone="violet"
               />
             </div>
           </aside>
         </section>
+
+        {excludedWbDeductions > 0 ? (
+          <section className="rounded-[26px] border border-amber-200 bg-amber-50/70 p-4 text-sm font-semibold leading-6 text-amber-900">
+            Из P&amp;L исключены классифицированные кредитные и неизвестные удержания WB: {formatMoney(excludedWbDeductions)}.
+            Кредит не является расходом маркетплейса, а UNKNOWN не включается без доказательства.
+          </section>
+        ) : null}
+
+        {!totals.deductionCoverageComplete ? (
+          <section className="rounded-[26px] border border-amber-300 bg-amber-50 p-4 text-sm font-semibold leading-6 text-amber-950">
+            Период PRELIMINARY: официальные прочие удержания не покрыты подтверждённой классификацией.
+            Неразнесённая разница: {formatMoney(totals.unreconciledOfficialDeduction)}.
+            Итог к оплате WB показан только для cash-сверки и не подменяет P&amp;L.
+          </section>
+        ) : null}
 
         <section className="panel overflow-hidden">
           <div className="border-b border-slate-200 p-5 sm:p-6">
@@ -1997,7 +2118,7 @@ export default async function ProfitPage({
                     defaultValue={sort}
                     className="rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm font-black text-indigo-700 outline-none"
                   >
-                    <option value="revenue">выручке</option>
+                    <option value="revenue">экономическому обороту</option>
                     <option value="netSalesQty">количеству</option>
                     <option value="expenses">расходам</option>
                     <option value="netProfitAfterTax">прибыли</option>
@@ -2058,7 +2179,7 @@ export default async function ProfitPage({
                   key={`${row.nmId}-${row.vendorCode}-${index}`}
                   row={row}
                   index={index}
-                  totalRevenue={totals.revenue}
+                  totalEconomicTurnover={economicTurnover}
                 />
               ))}
 

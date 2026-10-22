@@ -1,9 +1,13 @@
 import { prisma } from "@/lib/prisma";
+import { buildCanonicalPositiveCostLookups } from "@/lib/analytics/productCostResolver";
 
 type CostRecord = {
+  id: string;
   vendorCode: string;
   nmId: string | null;
   costPrice: unknown;
+  costDate: Date | null;
+  createdAt: Date;
 };
 
 type WbProductCardRecord = {
@@ -77,29 +81,7 @@ function endOfDayUtc(value: string) {
 }
 
 function buildCostLookups(costs: CostRecord[]) {
-  const costByVendorCode = new Map<string, number>();
-  const costByNmId = new Map<string, number>();
-
-  for (const cost of costs) {
-    const vendorCode = normalizeText(cost.vendorCode);
-    const nmId = normalizeText(cost.nmId);
-    const costPrice = toNumber(cost.costPrice);
-
-    if (costPrice <= 0) continue;
-
-    if (vendorCode && !costByVendorCode.has(vendorCode)) {
-      costByVendorCode.set(vendorCode, costPrice);
-    }
-
-    if (nmId && !costByNmId.has(nmId)) {
-      costByNmId.set(nmId, costPrice);
-    }
-  }
-
-  return {
-    costByVendorCode,
-    costByNmId,
-  };
+  return buildCanonicalPositiveCostLookups(costs);
 }
 
 function buildWbSupplierArticleByNmId(cards: WbProductCardRecord[]) {
@@ -262,9 +244,12 @@ export async function getCostCoverageSummary(params: {
   const [costs, wbProductCards, ozonProducts, ozonStockMappings, wbRows, ozonRows] = await Promise.all([
     prisma.productCost.findMany({
       select: {
+        id: true,
         vendorCode: true,
         nmId: true,
         costPrice: true,
+        costDate: true,
+        createdAt: true,
       },
       orderBy: [
         {
@@ -272,6 +257,9 @@ export async function getCostCoverageSummary(params: {
         },
         {
           createdAt: "desc",
+        },
+        {
+          id: "desc",
         },
       ],
     }),
