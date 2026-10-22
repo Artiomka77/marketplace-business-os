@@ -113,6 +113,21 @@ if (
   failures.push("Ozon financial logic differs from Financial Core V5");
 }
 
+// Prisma client must exist before V6 TS guards import lib/prisma.
+const prismaGen = spawnSync(
+  process.execPath,
+  [
+    path.join(root, "node_modules/prisma/build/index.js"),
+    "generate",
+  ],
+  { cwd: root, encoding: "utf8" }
+);
+if (prismaGen.status !== 0) {
+  failures.push(
+    `prisma generate: ${(prismaGen.stderr || prismaGen.stdout || "failed").trim()}`
+  );
+}
+
 const checks = [
   {
     command: process.execPath,
