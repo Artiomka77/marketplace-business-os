@@ -36,6 +36,7 @@ import {
   sendTelegramMessage,
 } from "@/lib/telegram/sendTelegramMessage";
 import type { DailyReport } from "@/lib/telegram/dailyReport";
+import { asMarketplaceMetricsView } from "@/lib/telegram/dailyReportDisplay";
 import {
   evaluateOwnerReportCogsCoverage,
   OWNER_REPORT_FINANCIAL_FORMULA_VERSION,
@@ -134,15 +135,16 @@ export function buildOwnerReportFinalSnapshot(params: {
   const companies: OwnerReportFinalSnapshot["companies"] = [];
   for (const company of params.report.companies) {
     for (const marketplace of ["wb", "ozon"] as const) {
-      const m = company[marketplace];
-      if (!m) continue;
+      const m = asMarketplaceMetricsView(company[marketplace]);
       companies.push({
         companyName: company.companyName,
         marketplace: marketplace === "wb" ? "WB" : "OZON",
         ordersQty: Number(m.ordersQty ?? 0),
         ordersAmount: Number(m.ordersAmount ?? 0),
         economicTurnover:
-          m.economicTurnover != null ? Number(m.economicTurnover) : Number(m.salesAmount ?? 0),
+          m.economicTurnover != null
+            ? Number(m.economicTurnover)
+            : Number(m.salesAmount ?? 0),
         totalCost: m.totalCost != null ? Number(m.totalCost) : null,
         netProfitImpact:
           m.netProfitAfterTax != null ? Number(m.netProfitAfterTax) : null,
