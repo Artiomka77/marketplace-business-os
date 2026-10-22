@@ -107,6 +107,8 @@ type EnrichedOzonRow = OzonRow & {
   skuRows: SkuBreakdownRow[];
   /** Null when order denominator / SKU grain is not proven (н/д). */
   buyoutPercent: number | null;
+  /** Display ET; may be derived when sealed analytics row omits the field. */
+  economicTurnover?: number;
 };
 
 type OzonProductRecord = {
