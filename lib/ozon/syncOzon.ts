@@ -3,6 +3,15 @@ import { prisma } from "@/lib/prisma";
 import { normalizeOzonFinance } from "@/lib/import/normalizers/ozonFinanceNormalizer";
 import { syncOzonDailyEconomicTotalsRange } from "@/lib/ozon/syncOzonDailyEconomicTotals";
 import { syncOzonAccrualByDayOverlay } from "@/lib/ozon/syncOzonAccrualByDay";
+import {
+  classifyOzonLegacyFinanceError,
+  isExplicitByDayEligible,
+  legacyFinanceAllowsByDayContinue,
+  shouldSkipLegacyFinanceForByDay,
+  type ByDayCanonicalStepOutcome,
+  type LegacyFinanceStepOutcome,
+} from "@/lib/ozon/legacyFinanceStep";
+import { classifyOzonByDayRouteOutcome } from "@/lib/ozon/ozonAccrualSyncWindow";
 
 type CompanyRow = { id: string; name: string };
 
@@ -905,15 +914,59 @@ export async function syncOzonFinance(
   }
 
   const { dateFrom, dateTo, dateFromText, dateToText } = getSyncPeriod(options);
+  const explicitByDayEligible = isExplicitByDayEligible({
+    dateFromOption: options.dateFrom ?? null,
+    dateToOption: options.dateTo ?? null,
+    dateFrom: startOfUtcDay(dateFrom),
+    dateTo: startOfUtcDay(dateTo),
+  });
 
-  const operations = await fetchOzonFinanceOperations(
-    connection.ozonClientId,
-    connection.ozonApiKey,
-    dateFromText,
-    dateToText
-  );
+  let legacyFinanceStep: LegacyFinanceStepOutcome = {
+    status: "OK",
+    code: null,
+    message: null,
+    retryable: false,
+    endpoint: "POST /v3/finance/transaction/list",
+  };
+  let operations: OzonFinanceOperation[] = [];
+
+  // Exact-date / rolling <=7d cron: skip dead /v3/finance/transaction/list and
+  // use authoritative /v1/finance/accrual/by-day via syncOzonAccrualByDayOverlay.
+  if (shouldSkipLegacyFinanceForByDay(explicitByDayEligible)) {
+    legacyFinanceStep = {
+      status: "OBSOLETE_METHOD",
+      code: 404,
+      message:
+        "Skipped deprecated POST /v3/finance/transaction/list; using /v1/finance/accrual/by-day",
+      retryable: false,
+      endpoint: "POST /v3/finance/transaction/list",
+    };
+    operations = [];
+  } else {
+    try {
+      operations = await fetchOzonFinanceOperations(
+        connection.ozonClientId,
+        connection.ozonApiKey,
+        dateFromText,
+        dateToText
+      );
+    } catch (error) {
+      legacyFinanceStep = classifyOzonLegacyFinanceError(error);
+      if (
+        !legacyFinanceAllowsByDayContinue(
+          legacyFinanceStep,
+          explicitByDayEligible,
+        )
+      ) {
+        throw error;
+      }
+      operations = [];
+    }
+  }
 
   const rows = mapOzonFinanceRows(operations);
+  const skipLegacyFinancePersist =
+    legacyFinanceStep.status === "OBSOLETE_METHOD" && explicitByDayEligible;
 
   const importSession = await prisma.importSession.create({
     data: {
@@ -922,7 +975,10 @@ export async function syncOzonFinance(
       marketplace: "OZON",
       companyName: company.name,
       rowsCount: rows.length,
-      previewJson: rows.slice(0, 10) as any,
+      previewJson: {
+        legacyFinanceStep,
+        financeRows: rows.slice(0, 10),
+      } as Prisma.InputJsonValue,
       sheetName: "Ozon Finance API",
       headerRow: 1,
       status: "RUNNING",
@@ -930,18 +986,24 @@ export async function syncOzonFinance(
   });
 
   try {
-    const normalizeResult = await normalizeOzonFinance(
-      rows,
-      importSession.id,
-      company.name,
-      {
-        dateFrom,
-        dateTo,
-      }
-    );
+    let normalizeResult = { savedRows: 0 };
+    let financialCategoryFactsCount = 0;
+    let dailyEconomicTotals: Awaited<
+      ReturnType<typeof syncOzonDailyEconomicTotalsRange>
+    > | null = null;
 
-    const financialCategoryFactsCount =
-      await replaceOzonFinancialCategoryFacts({
+    if (!skipLegacyFinancePersist) {
+      normalizeResult = await normalizeOzonFinance(
+        rows,
+        importSession.id,
+        company.name,
+        {
+          dateFrom,
+          dateTo,
+        }
+      );
+
+      financialCategoryFactsCount = await replaceOzonFinancialCategoryFacts({
         operations,
         importSessionId: importSession.id,
         companyName: company.name,
@@ -949,53 +1011,130 @@ export async function syncOzonFinance(
         dateTo,
       });
 
-    const dailyEconomicTotals =
-      await syncOzonDailyEconomicTotalsRange(company.id, {
+      dailyEconomicTotals = await syncOzonDailyEconomicTotalsRange(company.id, {
         dateFrom,
         dateTo: startOfUtcDay(dateTo),
       });
+    }
 
     const inclusiveDays =
       Math.round(
         (startOfUtcDay(dateTo).getTime() - startOfUtcDay(dateFrom).getTime()) /
           86_400_000
       ) + 1;
-    const shouldSyncAccrualByDay =
-      Boolean(options.dateFrom && options.dateTo) && inclusiveDays <= 7;
+    const shouldSyncAccrualByDay = explicitByDayEligible;
 
-    const accrualByDay = shouldSyncAccrualByDay
-      ? await syncOzonAccrualByDayOverlay({
+    let byDayCanonicalStep: ByDayCanonicalStepOutcome;
+    let accrualByDay:
+      | Awaited<ReturnType<typeof syncOzonAccrualByDayOverlay>>
+      | {
+          name: string;
+          skipped: true;
+          reason: string;
+          dateFrom: string;
+          dateTo: string;
+        };
+
+    if (shouldSyncAccrualByDay) {
+      try {
+        accrualByDay = await syncOzonAccrualByDayOverlay({
           companyId: company.id,
           companyName: company.name,
           clientId: connection.ozonClientId,
           apiKey: connection.ozonApiKey,
           dateFrom,
           dateTo: startOfUtcDay(dateTo),
-        })
-      : {
-          name: "Ozon Accrual /by-day",
-          skipped: true,
-          reason:
-            inclusiveDays > 7
-              ? "PERIOD_OVER_7_DAYS"
-              : "EXPLICIT_PERIOD_REQUIRED",
-          dateFrom: dateFromText,
-          dateTo: dateToText,
+        });
+        const byDayResult = accrualByDay as Awaited<
+          ReturnType<typeof syncOzonAccrualByDayOverlay>
+        >;
+        const classified = classifyOzonByDayRouteOutcome({
+          executionOk: true,
+          ingestStatus: byDayResult.ingestStatus,
+          coverageComplete: byDayResult.coverageComplete,
+          windowPartial: byDayResult.windowPartial,
+          pendingDays: byDayResult.pendingDays,
+          failFinality: byDayResult.failFinality,
+        });
+        byDayCanonicalStep = {
+          status: "EXECUTION_SUCCESS",
+          reason: null,
+          ingestStatus: String(byDayResult.ingestStatus ?? null),
+          coverageComplete: Boolean(byDayResult.coverageComplete),
+          sourceReadiness: classified.sourceReadiness,
         };
+      } catch (error) {
+        byDayCanonicalStep = {
+          status: "FAILED",
+          reason: String(error instanceof Error ? error.message : error).slice(
+            0,
+            1000,
+          ),
+        };
+        throw error;
+      }
+    } else {
+      const reason =
+        inclusiveDays > 7 ? "PERIOD_OVER_7_DAYS" : "EXPLICIT_PERIOD_REQUIRED";
+      accrualByDay = {
+        name: "Ozon Accrual /by-day",
+        skipped: true,
+        reason,
+        dateFrom: dateFromText,
+        dateTo: dateToText,
+      };
+      byDayCanonicalStep = { status: "SKIPPED", reason };
+    }
+
+    // Obsolete legacy Finance must NOT look like a successful Finance data import.
+    // status is a free-form String; SKIPPED keeps SUCCESS consumers from treating it as data.
+    const sessionStatus = skipLegacyFinancePersist
+      ? byDayCanonicalStep.status === "EXECUTION_SUCCESS"
+        ? "SKIPPED"
+        : "ERROR"
+      : "SUCCESS";
 
     await prisma.importSession.update({
       where: { id: importSession.id },
       data: {
-        status: "SUCCESS",
+        status: sessionStatus,
         rowsCount: normalizeResult.savedRows,
         previewJson: {
+          legacyFinanceStep,
+          byDayCanonicalStep,
           financeRows: rows.slice(0, 10),
           financialCategoryFactsCount,
           dailyEconomicTotals,
           accrualByDay,
-        } as any,
+          skippedLegacyFinancePersist: skipLegacyFinancePersist,
+          orchestrationAudit: skipLegacyFinancePersist
+            ? {
+                kind: "LEGACY_FINANCE_OBSOLETE_SKIPPED",
+                code: 9,
+                message: "obsolete method cannot be used",
+                byDayContinued: byDayCanonicalStep.status === "EXECUTION_SUCCESS",
+              }
+            : null,
+        } as Prisma.InputJsonValue,
       },
     });
+
+    // Wave B: invalidate only when legacy Finance canonical rows were actually persisted.
+    // skipLegacyFinancePersist / SKIPPED / ERROR / rate-limited obsolete-broad paths do not invalidate here
+    // (by-day overlay invalidates itself when it commits).
+    if (!skipLegacyFinancePersist && sessionStatus === "SUCCESS") {
+      // Accrual overlay may already invalidate; still required when overlay is skipped.
+      const { safeInvalidateWaveBProfitReadModel } = await import(
+        "@/lib/profitReadModel/invalidation"
+      );
+      await safeInvalidateWaveBProfitReadModel({
+        prisma,
+        marketplace: "OZON",
+        companyScope: company.name,
+        dateFrom: dateFromText,
+        dateTo: dateToText,
+      });
+    }
 
     return {
       name: "Ozon Finance",
@@ -1004,11 +1143,22 @@ export async function syncOzonFinance(
       dateTo: dateToText,
       dailyEconomicTotals,
       accrualByDay,
+      legacyFinanceStep,
+      byDayCanonicalStep,
     };
   } catch (error) {
     await prisma.importSession.update({
       where: { id: importSession.id },
-      data: { status: "ERROR" },
+      data: {
+        status: "ERROR",
+        previewJson: {
+          legacyFinanceStep,
+          error: String(error instanceof Error ? error.message : error).slice(
+            0,
+            1000,
+          ),
+        } as Prisma.InputJsonValue,
+      },
     }).catch(() => undefined);
 
     throw error;
