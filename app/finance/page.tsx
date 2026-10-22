@@ -8,6 +8,7 @@ import {
   getFinanceTransactionCashEffect,
   getFinanceTransactionTreatment,
 } from "@/lib/finance/financeMetrics";
+import { getEffectiveFinanceTransactions } from "@/lib/finance/effectiveFinanceTransactions";
 
 type MetricTone =
   | "green"
@@ -857,34 +858,34 @@ export default async function FinancePage({
     ],
   });
 
-  const periodTransactions = await prisma.financeTransaction.findMany({
-    where: {
-      operationDate: {
-        gte: periodStart,
-        lte: periodEnd,
-      },
-      ...(companyName ? { companyName } : {}),
-    },
+  // Canonical path = getEffectiveFinanceTransactions (FACT + due loan-schedule
+  // synthetic interest/principal). FORECAST_ONLY Google Sheets interest excluded.
+  const periodToExclusive = addDays(startOfDay(periodEnd), 1);
+  const previousToExclusive = addDays(startOfDay(previousPeriodEnd), 1);
+  const trendToExclusive = addDays(startOfDay(trendEnd), 1);
+
+  const periodTransactions = await getEffectiveFinanceTransactions({
+    prisma,
+    companyName,
+    dateFrom: startOfDay(periodStart),
+    dateToExclusive: periodToExclusive,
+    asOfDate: today,
   });
 
-  const previousPeriodTransactions = await prisma.financeTransaction.findMany({
-    where: {
-      operationDate: {
-        gte: previousPeriodStart,
-        lte: previousPeriodEnd,
-      },
-      ...(companyName ? { companyName } : {}),
-    },
+  const previousPeriodTransactions = await getEffectiveFinanceTransactions({
+    prisma,
+    companyName,
+    dateFrom: startOfDay(previousPeriodStart),
+    dateToExclusive: previousToExclusive,
+    asOfDate: today,
   });
 
-  const trendTransactions = await prisma.financeTransaction.findMany({
-    where: {
-      operationDate: {
-        gte: trendStart,
-        lte: trendEnd,
-      },
-      ...(companyName ? { companyName } : {}),
-    },
+  const trendTransactions = await getEffectiveFinanceTransactions({
+    prisma,
+    companyName,
+    dateFrom: startOfDay(trendStart),
+    dateToExclusive: trendToExclusive,
+    asOfDate: today,
   });
 
   const currentMetrics = calculateFinanceMetricsForRows({

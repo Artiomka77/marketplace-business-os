@@ -8,6 +8,7 @@ import {
   calculateFinanceMetricsForRows,
   getFinanceTransactionTreatment,
 } from "@/lib/finance/financeMetrics";
+import { getEffectiveFinanceTransactions } from "@/lib/finance/effectiveFinanceTransactions";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -351,16 +352,21 @@ async function getFinanceTransactions(params: {
   month: number;
   company: string;
 }) {
-  return prisma.financeTransaction.findMany({
-    where: {
-      operationDate: {
-        gte: startOfMonth(params.year, params.month),
-        lte: endOfMonth(params.year, params.month),
-      },
-      isInternalTransfer: false,
-      ...(params.company !== "ALL" ? { companyName: params.company } : {}),
-    },
+  const dateFrom = startOfMonth(params.year, params.month);
+  const dateToExclusive = startOfMonth(
+    params.month === 12 ? params.year + 1 : params.year,
+    params.month === 12 ? 1 : params.month + 1
+  );
+  const asOfDate = new Date();
+  const rows = await getEffectiveFinanceTransactions({
+    prisma,
+    companyName: params.company !== "ALL" ? params.company : null,
+    dateFrom,
+    dateToExclusive,
+    asOfDate,
   });
+  // Plan/Fact finance side: canonical effective FACT; no internal transfers.
+  return rows.filter((row) => !row.isInternalTransfer);
 }
 
 type WbSaleRow = Awaited<ReturnType<typeof prisma.wbSale.findMany>>[number];

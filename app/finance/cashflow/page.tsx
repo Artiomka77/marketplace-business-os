@@ -9,6 +9,7 @@ import {
   getFinanceTransactionCashEffect,
   getFinanceTransactionTreatment,
 } from "@/lib/finance/financeMetrics";
+import { getEffectiveFinanceTransactions } from "@/lib/finance/effectiveFinanceTransactions";
 
 function formatMoney(value: number) {
   return new Intl.NumberFormat("ru-RU", {
@@ -228,29 +229,50 @@ export default async function CashFlowPage({
     categories.map((category) => [category.name, category])
   );
 
-  const where: any = {
-    ...(company !== "ALL" ? { companyName: company } : {}),
-    ...(selectedCategory !== "ALL" ? { category: selectedCategory } : {}),
-    ...(bankAccount !== "ALL" ? { bankAccount } : {}),
-    ...(operationType !== "ALL" ? { operationType } : {}),
-    ...(startDate || endDate
-      ? {
-          operationDate: {
-            ...(startDate ? { gte: startDate } : {}),
-            ...(endDate ? { lte: endDate } : {}),
-          },
-        }
-      : {}),
-  };
-
-  const transactions = await prisma.financeTransaction.findMany({
-    where,
-    orderBy: {
-      operationDate: "asc",
-    },
+  // ODDS metrics/list: same canonical path as Finance Dashboard / V6 —
+  // FACT + due loan-schedule synthetics; FORECAST_ONLY excluded.
+  const periodFrom = startDate ?? startOfYear(today);
+  const periodToExclusive = endDate
+    ? addDays(startOfDay(endDate), 1)
+    : addDays(startOfDay(today), 1);
+  const effectivePeriod = await getEffectiveFinanceTransactions({
+    prisma,
+    companyName: company !== "ALL" ? company : null,
+    dateFrom: startOfDay(periodFrom),
+    dateToExclusive: periodToExclusive,
+    asOfDate: today,
   });
 
+  const matchesFilters = (row: {
+    category: string;
+    bankAccount: string | null;
+    operationType: string;
+  }) => {
+    if (selectedCategory !== "ALL" && row.category !== selectedCategory) {
+      return false;
+    }
+    if (
+      bankAccount !== "ALL" &&
+      (row.bankAccount || "") !== bankAccount
+    ) {
+      return false;
+    }
+    if (operationType !== "ALL" && row.operationType !== operationType) {
+      return false;
+    }
+    return true;
+  };
+
+  const transactions = effectivePeriod
+    .filter(matchesFilters)
+    .slice()
+    .sort(
+      (a, b) => a.operationDate.getTime() - b.operationDate.getTime()
+    );
+
+  // Opening cash on accounts: persisted FACT only (synthetics are not bank cash).
   const beforeWhere: any = {
+    transactionStatus: "FACT",
     ...(company !== "ALL" ? { companyName: company } : {}),
     ...(selectedCategory !== "ALL" ? { category: selectedCategory } : {}),
     ...(bankAccount !== "ALL" ? { bankAccount } : {}),
