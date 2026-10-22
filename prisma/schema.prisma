@@ -833,6 +833,7 @@ model MarketplaceDailyOrderStat {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  lastSuccessfulSyncAt DateTime? @db.Timestamptz(6)
 
   @@unique([companyName, marketplace, orderDate])
   @@index([companyName])
