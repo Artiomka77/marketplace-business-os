@@ -178,10 +178,11 @@ export function buildOwnerReportFinalSnapshot(params: {
       ordersQty: Number(params.report.totals.ordersQty ?? 0),
       ordersAmount: Number(params.report.totals.ordersAmount ?? 0),
       economicTurnover: Number(params.report.totals.economicTurnover ?? 0),
-      totalCost:
-        params.report.totals.totalCost != null
-          ? Number(params.report.totals.totalCost)
-          : null,
+      totalCost: (() => {
+        const raw = (params.report.totals as { totalCost?: number | null })
+          .totalCost;
+        return raw != null ? Number(raw) : null;
+      })(),
       netProfitImpact: Number(params.report.totals.netProfitImpact ?? 0),
       adSpend: Number(params.report.totals.adSpend ?? 0),
     },

@@ -13,7 +13,10 @@ import {
   missingCogsInlineKeyboard,
 } from "@/lib/telegram/ownerReportMissingCogs";
 import { morningReportInlineKeyboard } from "@/lib/telegram/ownerTopProductsFlow";
-import { buildDailyReport } from "@/lib/telegram/dailyReport";
+import {
+  buildDailyReport,
+  type DailyReport,
+} from "@/lib/telegram/dailyReport";
 import { formatOwnerReportV3 } from "@/lib/telegram/ownerReportV3";
 import { loadOwnerReportV3Extras } from "@/lib/telegram/ownerReportV3Loaders";
 import {
@@ -93,7 +96,11 @@ export async function executeOwnerMorningGateSend(params: {
       listUnresolvedCogsItems(cogs),
     );
   }
-  const v3 = formatOwnerReportV3(report, extras, report.previousReport ?? null);
+  const v3 = formatOwnerReportV3(
+    report,
+    extras,
+    (report as { previousReport?: DailyReport | null }).previousReport ?? null
+  );
   const header =
     gate.action === "SEND_FINAL" && gate.recoveryHeader
       ? `${gate.recoveryHeader}\n\n`

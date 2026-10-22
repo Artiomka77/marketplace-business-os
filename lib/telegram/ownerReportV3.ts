@@ -313,8 +313,8 @@ function buildAttentionItems(report: DailyReport): string[] {
   let unclassifiedAbs = 0;
   for (const c of report.companies) {
     const amount = parseUnclassifiedAdjustmentAmount(
-      (c.ozon as { ozonMissingEvidence?: string | null }).ozonMissingEvidence ??
-        null,
+      (c.ozon as { ozonMissingEvidence?: string[] | string | null })
+        .ozonMissingEvidence ?? null,
     );
     if (amount != null) unclassifiedAbs += amount;
   }
@@ -382,7 +382,9 @@ export function formatOwnerReportV3Message1(
     : "";
 
   const prev =
-    previousReport ?? report.previousReport ?? null;
+    previousReport ??
+    (report as { previousReport?: DailyReport | null }).previousReport ??
+    null;
   const levelMaps = buildLevelComparisonMaps(report, prev);
 
   const combinedUnavailable = Boolean(

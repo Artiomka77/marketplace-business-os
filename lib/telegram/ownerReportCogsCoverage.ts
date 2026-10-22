@@ -174,9 +174,14 @@ async function evaluateOzonCompanyCoverage(params: {
     const netQty = Number(row.netSalesQty ?? 0);
     if (Math.abs(netQty) <= 0.000001) continue;
     // Ads-only / non-product rows without sales qty basis are already filtered.
-    const incomplete = row.costCoverageIncomplete === true || row.costResolved === false;
+    const rowView = row as typeof row & {
+      costCoverageIncomplete?: boolean;
+      costResolved?: boolean;
+    };
+    const incomplete =
+      rowView.costCoverageIncomplete === true || rowView.costResolved === false;
     const unit =
-      row.costResolved === false ? null : Number(row.costPrice ?? 0) || null;
+      rowView.costResolved === false ? null : Number(row.costPrice ?? 0) || null;
     rows.push({
       companyName: params.companyName,
       marketplace: "OZON",
@@ -203,10 +208,17 @@ async function evaluateOzonCompanyCoverage(params: {
     }
   }
 
+  const totalsView = analytics.totals as
+    | (typeof analytics.totals & {
+        costCoverageIncomplete?: boolean;
+        cogsCoverageComplete?: boolean;
+        productCostCoverageComplete?: boolean;
+      })
+    | undefined;
   const totalsIncomplete =
-    analytics.totals?.costCoverageIncomplete === true ||
-    analytics.totals?.cogsCoverageComplete === false ||
-    analytics.totals?.productCostCoverageComplete === false;
+    totalsView?.costCoverageIncomplete === true ||
+    totalsView?.cogsCoverageComplete === false ||
+    totalsView?.productCostCoverageComplete === false;
 
   const coverageComplete = unresolvedSkuCount === 0 && !totalsIncomplete;
 

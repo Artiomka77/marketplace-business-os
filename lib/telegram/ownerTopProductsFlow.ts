@@ -456,10 +456,18 @@ async function loadProfitRanks(params: {
         dateTo: params.to,
       });
       for (const row of analytics.rows ?? []) {
+        const rowView = row as typeof row & {
+          costCoverageIncomplete?: boolean;
+          costResolved?: boolean;
+          economicTurnover?: number;
+          allocatedAdsAmount?: number;
+          allocatedOtherAmount?: number;
+        };
         const incomplete =
-          row.costCoverageIncomplete === true || row.costResolved === false;
+          rowView.costCoverageIncomplete === true ||
+          rowView.costResolved === false;
         const profit = Number(row.netProfitAfterTax ?? 0);
-        const turnover = Number(row.economicTurnover ?? row.revenue ?? 0);
+        const turnover = Number(rowView.economicTurnover ?? row.revenue ?? 0);
         const vendor = String(row.vendorCode ?? "").trim();
         const nmId = String(row.nmId ?? "").trim();
         const id = await resolveOzonHumanIdentity(cab.companyName, nmId, vendor);
@@ -485,12 +493,12 @@ async function loadProfitRanks(params: {
           imageUrl: id.imageUrl,
           cogsComplete: !incomplete,
           hasAllocated:
-            Number(row.allocatedAdsAmount ?? 0) !== 0 ||
-            Number(row.allocatedOtherAmount ?? 0) !== 0,
+            Number(rowView.allocatedAdsAmount ?? 0) !== 0 ||
+            Number(rowView.allocatedOtherAmount ?? 0) !== 0,
         });
         if (
-          Number(row.allocatedAdsAmount ?? 0) !== 0 ||
-          Number(row.allocatedOtherAmount ?? 0) !== 0
+          Number(rowView.allocatedAdsAmount ?? 0) !== 0 ||
+          Number(rowView.allocatedOtherAmount ?? 0) !== 0
         ) {
           allocatedFooter = true;
         }
