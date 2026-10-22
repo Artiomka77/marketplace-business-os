@@ -111,6 +111,7 @@ type EnrichedOzonRow = OzonRow & {
   economicTurnover?: number;
   partnerProgramsAmount?: number;
   discountPointsAmount?: number;
+  profitAttributionStatus?: string;
 };
 
 type OzonProductRecord = {
