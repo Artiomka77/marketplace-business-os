@@ -2,7 +2,8 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 
 import { prisma } from "@/lib/prisma";
-import { getProfitAnalyticsOzon, calculateOzonSkuExpenseMagnitude } from "@/lib/analytics/profitAnalyticsOzon";
+import { getProfitAnalyticsOzon } from "@/lib/analytics/profitAnalyticsOzon";
+import { calculateOzonSkuExpenseMagnitude } from "@/lib/analytics/ozonSkuExpenseMagnitude";
 import { applyOzonCanonicalIngestFinality, resolveOzonPeriodFinality } from "@/lib/finance/canonicalPeriodFinality";
 import { loadOzonAccrualDayStatuses } from "@/lib/ozon/accrualDayStatusStore";
 import { listExpectedOzonCompanyNames } from "@/lib/ozon/expectedOzonCompanies";
