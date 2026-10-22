@@ -312,9 +312,15 @@ function buildAttentionItems(report: DailyReport): string[] {
   // Compact classification warning only — no typeId in owner message.
   let unclassifiedAbs = 0;
   for (const c of report.companies) {
+    const rawEvidence = (
+      c.ozon as { ozonMissingEvidence?: string[] | string | null }
+    ).ozonMissingEvidence;
     const amount = parseUnclassifiedAdjustmentAmount(
-      (c.ozon as { ozonMissingEvidence?: string[] | string | null })
-        .ozonMissingEvidence ?? null,
+      Array.isArray(rawEvidence)
+        ? rawEvidence
+        : rawEvidence
+          ? [rawEvidence]
+          : null,
     );
     if (amount != null) unclassifiedAbs += amount;
   }
