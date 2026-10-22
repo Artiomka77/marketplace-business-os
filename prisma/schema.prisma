@@ -1048,3 +1048,245 @@ model HistoricalSyncJob {
   @@index([createdAt])
 }
 
+model OzonAccrualDayStatus {
+  id String @id @default(cuid())
+
+  companyName     String
+  date            String
+  importSessionId String
+  dataMode        String
+  coverageComplete Boolean @default(false)
+  quarantineCount Int     @default(0)
+  missingEvidence Json
+  payloadSha256   String?
+  phase           String  @default("RAW")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([companyName, date])
+  @@index([companyName, date])
+  @@index([importSessionId])
+}
+
+model StockAbcSnapshot {
+  id String @id @default(cuid())
+
+  companyScope String
+  marketplace  String
+
+  dateFrom DateTime
+  dateTo   DateTime
+
+  payload   Json
+  rowsCount Int  @default(0)
+
+  generatedAt DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([companyScope, marketplace, dateFrom, dateTo])
+  @@index([companyScope, marketplace])
+  @@index([dateFrom, dateTo])
+  @@index([generatedAt])
+}
+
+model OzonFinancialCategoryFact {
+  id                  String    @id
+  importSessionId     String?
+  companyName         String?
+  operationDate       DateTime? @db.Timestamptz(6)
+  dateFrom            DateTime? @db.Timestamptz(6)
+  dateTo              DateTime? @db.Timestamptz(6)
+  source              String
+  sourceOperationType String?
+  sourceOperationCode String?
+  sourceServiceName   String?
+  category            String
+  amount              Decimal
+  includeInProfit     Boolean
+  isCashFlowOnly      Boolean
+  isCompensation      Boolean
+  createdAt           DateTime  @db.Timestamptz(6)
+
+  @@index([category])
+  @@index([companyName, operationDate])
+  @@index([importSessionId])
+}
+
+model DashboardPeriodSnapshot {
+  id                String   @id
+  companyScope      String
+  dateFrom          DateTime @db.Timestamp(6)
+  dateTo            DateTime @db.Timestamp(6)
+  formulaVersion    String
+  payload           Json
+  payloadChecksum   String
+  sourceFingerprint String
+  coverageStatus    String
+  rowsCount         Int
+  calculationMs     Int
+  generatedAt       DateTime @db.Timestamp(6)
+  updatedAt         DateTime @db.Timestamp(6)
+
+  @@unique([companyScope, dateFrom, dateTo, formulaVersion])
+  @@index([companyScope, dateFrom, dateTo])
+  @@index([coverageStatus])
+  @@index([formulaVersion])
+  @@index([generatedAt])
+}
+
+model DashboardPeriodSnapshotJob {
+  id             String    @id
+  companyScope   String
+  dateFrom       DateTime  @db.Timestamp(6)
+  dateTo         DateTime  @db.Timestamp(6)
+  formulaVersion String
+  status         String
+  priority       Int
+  attempts       Int
+  maxAttempts    Int
+  lockedAt       DateTime? @db.Timestamp(6)
+  lockedBy       String?
+  nextAttemptAt  DateTime? @db.Timestamp(6)
+  startedAt      DateTime? @db.Timestamp(6)
+  finishedAt     DateTime? @db.Timestamp(6)
+  lastError      String?
+  createdAt      DateTime  @db.Timestamp(6)
+  updatedAt      DateTime  @db.Timestamp(6)
+
+  @@unique([companyScope, dateFrom, dateTo, formulaVersion])
+  @@index([formulaVersion])
+  @@index([lockedAt])
+  @@index([nextAttemptAt])
+  @@index([status, priority, createdAt])
+}
+
+model JobRun {
+  id String @id @default(cuid())
+
+  jobType String
+  // OZON_ACCRUAL_BY_DAY | DAILY_COMPLETENESS
+
+  scope String
+  // canonical company|marketplace|date scope
+
+  idempotencyKey String
+  fingerprint    String
+  lockKey        String
+
+  status String @default("PENDING")
+  // PENDING | RUNNING | SUCCEEDED | FAILED | RATE_LIMITED | FAIL_CLOSED | DUPLICATE | SKIPPED
+
+  attempts Int @default(0)
+
+  errorClass   String?
+  // RETRYABLE | RATE_LIMIT | FAIL_CLOSED | FATAL
+
+  errorCode    String?
+  errorMessage String?
+
+  provenance Json?
+
+  queuedAt      DateTime @default(now())
+  startedAt     DateTime?
+  finishedAt    DateTime?
+  nextAttemptAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([idempotencyKey])
+  @@index([jobType, scope])
+  @@index([fingerprint])
+  @@index([lockKey])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model DailyCompanyMarketplaceMetric {
+  id                String   @id @default(cuid())
+  companyScope      String
+  marketplace       String
+  businessDate      DateTime @db.Date
+  formulaVersion    String
+  dataMode          String
+  coverageStatus    String
+  sourceFingerprint String
+  payloadChecksum   String
+  payload           Json
+  generatedAt       DateTime @db.Timestamptz(6)
+  updatedAt         DateTime @updatedAt
+
+  @@unique([companyScope, marketplace, businessDate, formulaVersion])
+  @@index([companyScope, businessDate])
+  @@index([formulaVersion])
+  @@index([coverageStatus])
+}
+
+model PeriodCompanyMarketplaceMetric {
+  id                String   @id @default(cuid())
+  companyScope      String
+  marketplace       String
+  dateFrom          DateTime @db.Date
+  dateTo            DateTime @db.Date
+  formulaVersion    String
+  dataMode          String
+  coverageStatus    String
+  sourceFingerprint String
+  payloadChecksum   String
+  payload           Json
+  meta              Json
+  generatedAt       DateTime @db.Timestamptz(6)
+  updatedAt         DateTime @updatedAt
+
+  @@unique([companyScope, marketplace, dateFrom, dateTo, formulaVersion])
+  @@index([companyScope, dateFrom, dateTo])
+  @@index([formulaVersion])
+  @@index([coverageStatus])
+  @@index([dataMode])
+}
+
+model ProfitPeriodMetric {
+  id                String   @id @default(cuid())
+  companyScope      String
+  marketplace       String
+  dateFrom          DateTime @db.Date
+  dateTo            DateTime @db.Date
+  formulaVersion    String
+  dataMode          String
+  coverageStatus    String
+  sourceFingerprint String
+  payloadChecksum   String
+  totals            Json
+  comparison        Json?
+  meta              Json
+  analyticsPayload  Json
+  generatedAt       DateTime @db.Timestamptz(6)
+  staleAfterMs      Int?
+  updatedAt         DateTime @updatedAt
+
+  @@unique([companyScope, marketplace, dateFrom, dateTo, formulaVersion])
+  @@index([companyScope, dateFrom, dateTo])
+  @@index([formulaVersion])
+  @@index([coverageStatus])
+  @@index([dataMode])
+  @@index([marketplace])
+}
+
+model ProfitSkuPeriodMetric {
+  id             String   @id @default(cuid())
+  companyScope   String
+  marketplace    String
+  dateFrom       DateTime @db.Date
+  dateTo         DateTime @db.Date
+  formulaVersion String
+  productKey     String
+  payload        Json
+  generatedAt    DateTime @db.Timestamptz(6)
+  updatedAt      DateTime @updatedAt
+
+  @@unique([companyScope, marketplace, dateFrom, dateTo, formulaVersion, productKey])
+  @@index([companyScope, marketplace, dateFrom, dateTo, formulaVersion])
+  @@index([productKey])
+  @@index([formulaVersion])
+}
