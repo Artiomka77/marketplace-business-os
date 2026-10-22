@@ -24,7 +24,7 @@ export async function GET(request: NextRequest) {
   return NextResponse.json({
     ok: true,
     watchdog,
-    dueScopes: due.map((d) => d.scope),
+    dueScopes: due.map((d: { scope: string }) => d.scope),
     dueCount: due.length,
   });
 }
