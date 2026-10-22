@@ -2947,9 +2947,11 @@ async function renderProfitOzonPage({
   const missingDiscountPointsDays = totals.discountPointsMissingDays ?? [];
   const hasOzonEconomicSourceWarning =
     !taxRevenueCoverageComplete || !discountPointsCoverageComplete;
+  const costCoverageIncomplete = Boolean(
+    (totals as { costCoverageIncomplete?: boolean }).costCoverageIncomplete,
+  );
   const isPreliminaryOzonProfit =
-    totals.netProfitStatus === "PRELIMINARY" ||
-    totals.costCoverageIncomplete === true;
+    totals.netProfitStatus === "PRELIMINARY" || costCoverageIncomplete;
 
   const accountPartnerResidual = Number(
     (totals as { unallocatedPartnerResidual?: number }).unallocatedPartnerResidual ?? 0,
@@ -3154,7 +3156,7 @@ async function renderProfitOzonPage({
           <section className="rounded-[28px] border border-amber-200 bg-amber-50 px-5 py-4 text-sm font-bold leading-6 text-amber-900 shadow-sm">
             <div className="font-black">Ozon прибыль PRELIMINARY</div>
             <div className="mt-1 text-amber-800">
-              {totals.costCoverageIncomplete
+              {costCoverageIncomplete
                 ? "Себестоимость неполная: неизвестный COGS не считается нулём. Прибыль предварительная и не должна использоваться как FINAL."
                 : "Нет полного покрытия официальной realization и/или канонического AccrualDayStatus без quarantine. Исторические месяцы могут быть FINAL через official realization без daily AccrualDayStatus; если баннер виден — денежный источник периода ещё не закрыт."}
             </div>
@@ -3165,7 +3167,7 @@ async function renderProfitOzonPage({
           className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-7"
           data-ozon-pnl-kind={isPreliminaryOzonProfit ? "PRELIMINARY" : "FINAL"}
           data-ozon-cost-coverage={
-            totals.costCoverageIncomplete ? "incomplete" : "complete"
+            costCoverageIncomplete ? "incomplete" : "complete"
           }
         >
           <KpiCard
