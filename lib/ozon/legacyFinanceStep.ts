@@ -1,7 +1,7 @@
 /**
  * Classify legacy Ozon Finance (/v3/finance/transaction/list) failures.
- * Obsolete method (code 9) may continue ONLY when an explicit <=7-day /by-day
- * canonical ingest is planned for the same call.
+ * Obsolete method (code 9) OR hard-removed endpoint (404) may continue ONLY when
+ * an explicit <=7-day /by-day canonical ingest is planned for the same call.
  */
 
 export type LegacyFinanceStepStatus =
@@ -41,15 +41,19 @@ export function classifyOzonLegacyFinanceError(
   );
   const codeMatch = message.match(/"code"\s*:\s*(\d+)/);
   const code = codeMatch ? Number(codeMatch[1]) : null;
-  const isObsolete =
+  const isObsoleteCode9 =
     /Ozon Finance API:\s*400/i.test(message) &&
     (code === OBSOLETE_CODE || /"code"\s*:\s*9\b/.test(message)) &&
     /obsolete method/i.test(message);
+  // Live seller API now returns 404 HTML for the removed transaction/list path.
+  // Treat as the same durability class as obsolete method so exact-day /by-day
+  // cron can continue on the authoritative accrual endpoint.
+  const isRemovedEndpoint404 = /Ozon Finance API:\s*404\b/i.test(message);
 
-  if (isObsolete) {
+  if (isObsoleteCode9 || isRemovedEndpoint404) {
     return {
       status: "OBSOLETE_METHOD",
-      code: OBSOLETE_CODE,
+      code: isObsoleteCode9 ? OBSOLETE_CODE : 404,
       message,
       retryable: false,
       endpoint: "POST /v3/finance/transaction/list",
@@ -96,8 +100,8 @@ export function isExplicitByDayEligible(params: {
 }
 
 /**
- * Obsolete code9 may continue only when an explicit by-day ingest is planned.
- * Broad syncOzonAll (no dates) must remain a visible Finance failure.
+ * Obsolete/removed legacy finance may continue only when an explicit by-day
+ * ingest is planned. Broad syncOzonAll (no dates) must remain a visible Finance failure.
  */
 export function legacyFinanceAllowsByDayContinue(
   step: LegacyFinanceStepOutcome,
@@ -106,4 +110,14 @@ export function legacyFinanceAllowsByDayContinue(
   if (step.status === "OK") return true;
   if (step.status === "OBSOLETE_METHOD") return explicitByDayEligible;
   return false;
+}
+
+/**
+ * Cron / exact-date accrual sync must use /v1/finance/accrual/by-day as authority.
+ * Skip the stale transaction/list call entirely when by-day is eligible.
+ */
+export function shouldSkipLegacyFinanceForByDay(
+  explicitByDayEligible: boolean,
+): boolean {
+  return explicitByDayEligible === true;
 }
