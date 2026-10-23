@@ -6,6 +6,11 @@ import { getDefaultLastCompletedWeekRange } from "@/lib/date/defaultPeriod";
 import { calculateFinanceMetricsForRows } from "@/lib/finance/financeMetrics";
 import { snapshotCombinedProfit } from "@/lib/dashboard/managementRevenue";
 import {
+  getDefaultV6PeriodReadModelRepository,
+  isDashboardV6ReadModelFirstEnabled,
+  loadDashboardV6PeriodReadModel,
+} from "@/lib/dashboard/v6PeriodReadModel";
+import {
   createPrismaProfitReadModelRepository,
   createWaveBProfitTargetPrismaClient,
   isWaveBHeavyLiveFallbackEnabled,
@@ -310,49 +315,130 @@ export default async function InsightsPage({
     ],
   );
 
-  // Canonical management totals (same formulas as Profit WB/Ozon → Dashboard).
+  // Canonical management KPIs: Dashboard V6 HIT first (identical to /), else live/Wave B.
   let economicTurnoverWb = 0;
   let economicTurnoverOzon = 0;
   let wbMpNet = 0;
   let ozonMpNet = 0;
   let ozonTotalCost = 0;
   let wbTotalCost = 0;
+  let businessNetProfit = 0;
+  let marketplaceNetProfit = 0;
+  let financeImpactForKpi = financeNetProfitImpact;
+  let kpiSource:
+    | "DASHBOARD_V6_HIT"
+    | "OZON_WAVE_B_PLUS_WB_LIVE"
+    | "LIVE_SUM_COMPANIES" = "LIVE_SUM_COMPANIES";
 
-  for (const { wb, ozon } of analyticsByCompany) {
-    economicTurnoverWb += getAmount(
-      (wb.totals as { sellerRetailAmount?: number }).sellerRetailAmount,
-    );
-    wbMpNet += getAmount(
-      (wb.totals as { netProfitAfterTax?: number }).netProfitAfterTax,
-    );
-    wbTotalCost += getAmount((wb.totals as { totalCost?: number }).totalCost);
-    if (!ozonTotalsOverride) {
-      economicTurnoverOzon += getAmount(
-        (ozon.totals as { economicTurnover?: number }).economicTurnover,
-      );
-      ozonMpNet += getAmount(
-        (ozon.totals as { netProfitAfterTax?: number }).netProfitAfterTax,
-      );
-      ozonTotalCost += getAmount(
-        (ozon.totals as { totalCost?: number }).totalCost,
-      );
+  let v6Applied = false;
+  if (isDashboardV6ReadModelFirstEnabled()) {
+    try {
+      const v6 = await loadDashboardV6PeriodReadModel({
+        repository: getDefaultV6PeriodReadModelRepository(),
+        dateFrom,
+        dateTo,
+        companyScope: "ALL",
+      });
+      if (v6.status === "HIT") {
+        const rowsV6 =
+          selectedCompany === "ALL"
+            ? v6.bundle.companyRows
+            : v6.bundle.companyRows.filter(
+                (r) => r.companyName === selectedCompany,
+              );
+        economicTurnoverWb = rowsV6.reduce(
+          (s, r) => s + getAmount(r.wbRevenue),
+          0,
+        );
+        economicTurnoverOzon = rowsV6.reduce(
+          (s, r) => s + getAmount(r.ozonRevenue),
+          0,
+        );
+        marketplaceNetProfit = rowsV6.reduce(
+          (s, r) => s + getAmount(r.operatingProfitAfterTax),
+          0,
+        );
+        businessNetProfit = rowsV6.reduce(
+          (s, r) => s + getAmount(r.netProfit),
+          0,
+        );
+        financeImpactForKpi = businessNetProfit - marketplaceNetProfit;
+        const v6Wb = rowsV6.reduce(
+          (s, r) => s + getAmount(r.wbOperatingProfitAfterTax),
+          0,
+        );
+        const v6Oz = rowsV6.reduce(
+          (s, r) => s + getAmount(r.ozonOperatingProfitAfterTax),
+          0,
+        );
+        if (v6Wb !== 0 || v6Oz !== 0) {
+          wbMpNet = v6Wb;
+          ozonMpNet = v6Oz;
+        } else if (ozonTotalsOverride) {
+          ozonMpNet = getAmount(ozonTotalsOverride.netProfitAfterTax);
+          wbMpNet = marketplaceNetProfit - ozonMpNet;
+        } else {
+          wbMpNet = marketplaceNetProfit;
+          ozonMpNet = 0;
+        }
+        v6Applied = true;
+        kpiSource = "DASHBOARD_V6_HIT";
+      }
+    } catch {
+      v6Applied = false;
     }
   }
+
+  if (!v6Applied) {
+    for (const { wb, ozon } of analyticsByCompany) {
+      economicTurnoverWb += getAmount(
+        (wb.totals as { sellerRetailAmount?: number }).sellerRetailAmount,
+      );
+      wbMpNet += getAmount(
+        (wb.totals as { netProfitAfterTax?: number }).netProfitAfterTax,
+      );
+      wbTotalCost += getAmount((wb.totals as { totalCost?: number }).totalCost);
+      if (!ozonTotalsOverride) {
+        economicTurnoverOzon += getAmount(
+          (ozon.totals as { economicTurnover?: number }).economicTurnover,
+        );
+        ozonMpNet += getAmount(
+          (ozon.totals as { netProfitAfterTax?: number }).netProfitAfterTax,
+        );
+        ozonTotalCost += getAmount(
+          (ozon.totals as { totalCost?: number }).totalCost,
+        );
+      }
+    }
+    if (ozonTotalsOverride) {
+      economicTurnoverOzon = getAmount(ozonTotalsOverride.economicTurnover);
+      ozonMpNet = getAmount(ozonTotalsOverride.netProfitAfterTax);
+      ozonTotalCost = getAmount(
+        (ozonTotalsOverride as { totalCost?: number }).totalCost,
+      );
+      kpiSource = "OZON_WAVE_B_PLUS_WB_LIVE";
+    }
+    const combined = snapshotCombinedProfit({
+      wbNet: wbMpNet,
+      ozonNet: ozonMpNet,
+      financeImpact: financeNetProfitImpact,
+      ownerWithdrawals,
+    });
+    marketplaceNetProfit = combined.operatingProfitAfterTax;
+    businessNetProfit = combined.netProfit;
+    financeImpactForKpi = financeNetProfitImpact;
+  }
+
   if (ozonTotalsOverride) {
-    economicTurnoverOzon = getAmount(ozonTotalsOverride.economicTurnover);
-    ozonMpNet = getAmount(ozonTotalsOverride.netProfitAfterTax);
     ozonTotalCost = getAmount(
       (ozonTotalsOverride as { totalCost?: number }).totalCost,
     );
   }
+  for (const { wb } of analyticsByCompany) {
+    wbTotalCost += getAmount((wb.totals as { totalCost?: number }).totalCost);
+  }
 
   const economicTurnover = economicTurnoverWb + economicTurnoverOzon;
-  const combined = snapshotCombinedProfit({
-    wbNet: wbMpNet,
-    ozonNet: ozonMpNet,
-    financeImpact: financeNetProfitImpact,
-    ownerWithdrawals,
-  });
 
   const rows: InsightSkuRow[] = analyticsByCompany.flatMap(
     ({ companyName, wb, ozon }) => [
@@ -414,14 +500,24 @@ export default async function InsightsPage({
   );
 
   // WB size qty: ONLY canonical owned sales + SALE/RETURN classification (netSalesQty).
-  const wbRankVendorCodes = Array.from(
-    new Set(
-      rows
-        .filter((r) => r.marketplace === "WB" && r.vendorCode)
-        .map((r) => r.vendorCode.trim())
-        .filter(Boolean),
-    ),
-  ).slice(0, 80);
+  // Skip heavy YTD/month-long scans — statement timeout under DATABASE_POOL_MAX=1.
+  const periodDays =
+    Math.round(
+      (Date.parse(`${dateTo}T00:00:00Z`) - Date.parse(`${dateFrom}T00:00:00Z`)) /
+        86400000,
+    ) + 1;
+  const enableWbSizeDrilldown = periodDays > 0 && periodDays <= 45;
+
+  const wbRankVendorCodes = enableWbSizeDrilldown
+    ? Array.from(
+        new Set(
+          rows
+            .filter((r) => r.marketplace === "WB" && r.vendorCode)
+            .map((r) => r.vendorCode.trim())
+            .filter(Boolean),
+        ),
+      ).slice(0, 80)
+    : [];
 
   if (wbRankVendorCodes.length > 0) {
     const partsByKey = new Map<string, InsightSizePart[]>();
@@ -920,13 +1016,10 @@ export default async function InsightsPage({
       economicTurnover,
       economicTurnoverWb,
       economicTurnoverOzon,
-      businessNetProfit: combined.netProfit,
-      marketplaceNetProfit: combined.operatingProfitAfterTax,
-      financeNetProfitImpact,
-      businessMarginPercent: marginOrNull(
-        economicTurnover,
-        combined.netProfit,
-      ),
+      businessNetProfit,
+      marketplaceNetProfit,
+      financeNetProfitImpact: financeImpactForKpi,
+      businessMarginPercent: marginOrNull(economicTurnover, businessNetProfit),
       lossSkuCount,
       lossCountIsUniqueIdentity: true,
       stockAtCost: stockWithCost.length > 0 ? stockAtCost : null,
@@ -939,7 +1032,7 @@ export default async function InsightsPage({
         skuProfitTotal,
         salesMarginPercent: marginOrNull(skuRevenue, soldProfitTotal),
       },
-      ozonProfitSource: `${ozonTotalsSource}; ${ozonSources.join("|")}`,
+      ozonProfitSource: `${kpiSource}; ozon=${ozonTotalsSource}; ${ozonSources.join("|")}`,
       ozonTotalCost,
       wbTotalCost,
     },
