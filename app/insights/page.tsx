@@ -91,27 +91,26 @@ export default async function InsightsPage({
       ? companies.map((company) => company.name)
       : [selectedCompany];
 
-  const [analyticsByCompany, productCosts, wbStocks, ozonStocks] =
-    await Promise.all([
-      Promise.all(
-        companyNames.map(async (companyName) => {
-          const [wb, ozon] = await Promise.all([
-            getProfitAnalytics({ dateFrom, dateTo, companyName }),
-            getProfitAnalyticsOzon({ dateFrom, dateTo, companyName }),
-          ]);
-          return { companyName, wb, ozon };
-        }),
-      ),
-      prisma.productCost.findMany({
-        orderBy: [{ costDate: "desc" }, { createdAt: "desc" }],
-      }),
-      prisma.wbStock.findMany({
-        where: selectedCompany !== "ALL" ? { companyName: selectedCompany } : {},
-      }),
-      prisma.ozonStock.findMany({
-        where: selectedCompany !== "ALL" ? { companyName: selectedCompany } : {},
-      }),
-    ]);
+  // Sequential loads: DATABASE_POOL_MAX=1 — parallel Promise.all causes connect timeouts on ALL+YTD.
+  const analyticsByCompany: Array<{
+    companyName: string;
+    wb: Awaited<ReturnType<typeof getProfitAnalytics>>;
+    ozon: Awaited<ReturnType<typeof getProfitAnalyticsOzon>>;
+  }> = [];
+  for (const companyName of companyNames) {
+    const wb = await getProfitAnalytics({ dateFrom, dateTo, companyName });
+    const ozon = await getProfitAnalyticsOzon({ dateFrom, dateTo, companyName });
+    analyticsByCompany.push({ companyName, wb, ozon });
+  }
+  const productCosts = await prisma.productCost.findMany({
+    orderBy: [{ costDate: "desc" }, { createdAt: "desc" }],
+  });
+  const wbStocks = await prisma.wbStock.findMany({
+    where: selectedCompany !== "ALL" ? { companyName: selectedCompany } : {},
+  });
+  const ozonStocks = await prisma.ozonStock.findMany({
+    where: selectedCompany !== "ALL" ? { companyName: selectedCompany } : {},
+  });
 
   const costByVendorCode = new Map<string, number>();
   for (const cost of productCosts) {
