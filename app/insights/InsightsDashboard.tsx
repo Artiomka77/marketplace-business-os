@@ -433,7 +433,7 @@ function ProblemsPanel({
             className="absolute inset-0 rounded-full"
             style={{
               background: `conic-gradient(#6366f1 0 ${
-                problems.uniqueProblemSkuCount > 0 ? 70 : 10
+                (problems.uniqueProblemSkuCount ?? 0) > 0 ? 70 : 10
               }%, #e2e8f0 0)`,
             }}
             aria-hidden
@@ -972,7 +972,10 @@ export default function InsightsDashboard({ data }: { data: InsightsPayload }) {
       href: "#risk-margin",
       icon: "%",
       tone: "amber" as const,
-      title: `${formatNumber(data.attention.lowMarginSkuCount)} товаров с маржой 0–5%`,
+      title:
+        data.attention.lowMarginSkuCount == null
+          ? "Маржа 0–5%: н/д"
+          : `${formatNumber(data.attention.lowMarginSkuCount)} товаров с маржой 0–5%`,
       body: "Зона риска — анализ",
       detail:
         "Товары в зоне тонкой маржи: проверить комиссию, логистику и себестоимость.",
