@@ -82,11 +82,20 @@ const consumerContracts = [
   },
   {
     path: "app/insights/page.tsx",
-    role: "Центр прибыли",
+    role: "Центр прибыли SNAPSHOT / read-model-first",
     requiredPatterns: [
-      "buildDailyReport",
-      "getProfitAnalytics",
-      "getProfitAnalyticsOzon",
+      "loadInsightsFinanceSnapshot",
+      "@/lib/insights/loadFinanceSnapshot",
+      "detailAsync",
+    ],
+  },
+  {
+    path: "lib/insights/loadFinanceSnapshot.ts",
+    role: "Insights Level A finance snapshot (no live FC)",
+    requiredPatterns: [
+      "isDashboardV6ReadModelFirstEnabled",
+      "loadProfitReadModel",
+      "financeCoverage",
     ],
   },
   {

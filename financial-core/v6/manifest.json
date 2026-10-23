@@ -223,13 +223,28 @@
     {
       "path": "app/insights/page.tsx",
       "requiredPatterns": [
-        "getProfitAnalytics",
-        "@/lib/analytics/profitAnalytics",
-        "getProfitAnalyticsOzon",
-        "@/lib/analytics/profitAnalyticsOzon"
+        "loadInsightsFinanceSnapshot",
+        "@/lib/insights/loadFinanceSnapshot",
+        "detailAsync"
       ],
       "forbiddenPatterns": [
-        "buildDailyReport"
+        "buildDailyReport",
+        "getProfitAnalytics(",
+        "getProfitAnalyticsOzon(",
+        "useLiveSkuFc"
+      ]
+    },
+    {
+      "path": "lib/insights/loadFinanceSnapshot.ts",
+      "requiredPatterns": [
+        "isDashboardV6ReadModelFirstEnabled",
+        "loadProfitReadModel",
+        "financeCoverage"
+      ],
+      "forbiddenPatterns": [
+        "getProfitAnalytics(",
+        "getProfitAnalyticsOzon(",
+        "calculateFinanceMetricsForRows"
       ]
     },
     {
