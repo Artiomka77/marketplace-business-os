@@ -163,7 +163,7 @@ export async function loadInsightsDetailSnapshot(params: {
       if (wbEnq.enqueued || ozEnq.enqueued) rebuildPending = true;
     } else if (skuTotalInDb <= SKU_FULL_LOAD_CAP) {
       skuRows = await prisma.profitSkuPeriodMetric.findMany({ where: skuWhere });
-      skuStatus = "PRELIMINARY";
+      skuStatus = "READY";
       skuStatusReason = `PROFIT_SKU_PERIOD_HIT:rows=${skuRows.length}`;
     } else {
       skuTruncated = true;
