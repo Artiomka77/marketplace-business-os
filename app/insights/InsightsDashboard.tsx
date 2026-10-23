@@ -233,14 +233,21 @@ function DriversPanel({ drivers }: { drivers: MarketplaceSlice[] }) {
     ),
   );
 
-  const totalPositiveRevenue = drivers.reduce(
-    (s, d) => s + Math.max(0, d.economicTurnover ?? 0),
-    0,
-  );
-  const totalPositiveSoldProfit = drivers.reduce(
-    (s, d) => s + Math.max(0, d.marketplaceNetProfit ?? 0),
-    0,
-  );
+  const totalPositiveRevenue = drivers.reduce((s, d) => {
+    if (d.economicTurnover == null || !Number.isFinite(d.economicTurnover)) {
+      return s;
+    }
+    return s + Math.max(0, d.economicTurnover);
+  }, 0);
+  const totalPositiveSoldProfit = drivers.reduce((s, d) => {
+    if (
+      d.marketplaceNetProfit == null ||
+      !Number.isFinite(d.marketplaceNetProfit)
+    ) {
+      return s;
+    }
+    return s + Math.max(0, d.marketplaceNetProfit);
+  }, 0);
   const skuLayerKnown = drivers.every((d) => d.skuRevenue != null);
 
   return (
@@ -288,8 +295,15 @@ function DriversPanel({ drivers }: { drivers: MarketplaceSlice[] }) {
 
       <div className="mt-3 space-y-2.5">
         {drivers.map((row) => {
-          const numeric = Number(primaryValue(row) ?? 0);
-          const widthPct = Math.min(100, (Math.abs(numeric) / maxAbs) * 100);
+          const rawPrimary = primaryValue(row);
+          const numeric =
+            rawPrimary == null || !Number.isFinite(Number(rawPrimary))
+              ? null
+              : Number(rawPrimary);
+          const widthPct =
+            numeric == null
+              ? 0
+              : Math.min(100, (Math.abs(numeric) / maxAbs) * 100);
           const adjWidth =
             mode === "profit"
               ? Math.min(
@@ -304,11 +318,14 @@ function DriversPanel({ drivers }: { drivers: MarketplaceSlice[] }) {
                 ? totalPositiveSoldProfit
                 : null;
           const share =
-            shareBase != null && shareBase > 0 && numeric > 0
+            shareBase != null &&
+            shareBase > 0 &&
+            numeric != null &&
+            numeric > 0
               ? (numeric / shareBase) * 100
               : null;
           const barColor =
-            numeric < 0
+            numeric != null && numeric < 0
               ? "bg-rose-400"
               : row.marketplace === "WB"
                 ? "bg-violet-500"
@@ -995,13 +1012,124 @@ function FrozenTable({
   );
 }
 
-export default function InsightsDashboard({ data }: { data: InsightsPayload }) {
+type InsightsDetailPayload = {
+  skuStatus: InsightsPayload["skuStatus"];
+  skuStatusReason: string;
+  rebuildPending: boolean;
+  rebuildDetail: string;
+  detailGeneratedAtLabel: string;
+  lossSkuCount: number | null;
+  lossCountIsUniqueIdentity: boolean;
+  stockAtCost: number | null;
+  stockAtCostWb: number | null;
+  stockAtCostOzon: number | null;
+  stockAtCostOwn: number | null;
+  stockMissingCostQty: number;
+  frozenCoveragePartial: boolean;
+  frozenAsOfLabel: string;
+  skuDetail: InsightsPayload["kpi"]["skuDetail"];
+  attention: InsightsPayload["attention"];
+  driverSkuPatches: Array<{
+    marketplace: "WB" | "Ozon";
+    skuRevenue: number | null;
+    skuProfit: number | null;
+    soldProfit: number | null;
+    adjustmentProfit: number | null;
+    adjustmentSkuCount: number | null;
+  }>;
+  problems: InsightsPayload["problems"];
+  profitablePreview: InsightsPayload["profitablePreview"];
+  profitableAll: InsightsPayload["profitableAll"];
+  lossPreview: InsightsPayload["lossPreview"];
+  lossAll: InsightsPayload["lossAll"];
+  adjustments: InsightsPayload["adjustments"];
+  adjustmentSummary: InsightsPayload["adjustmentSummary"];
+  lowMarginPreview: InsightsPayload["lowMarginPreview"];
+  lowMarginAll: InsightsPayload["lowMarginAll"];
+  frozenPreview: InsightsPayload["frozenPreview"];
+  frozenAll: InsightsPayload["frozenAll"];
+};
+
+function mergeDetailIntoPayload(
+  prev: InsightsPayload,
+  detail: InsightsDetailPayload,
+): InsightsPayload {
+  const drivers = prev.drivers.map((d) => {
+    const patch = detail.driverSkuPatches.find(
+      (p) => p.marketplace === d.marketplace,
+    );
+    if (!patch) return d;
+    return {
+      ...d,
+      skuRevenue: patch.skuRevenue,
+      skuProfit: patch.skuProfit,
+      soldProfit: patch.soldProfit,
+      adjustmentProfit: patch.adjustmentProfit,
+      adjustmentSkuCount: patch.adjustmentSkuCount,
+    };
+  });
+  return {
+    ...prev,
+    detailAsync: false,
+    detailGeneratedAtLabel: detail.detailGeneratedAtLabel || null,
+    skuStatus: detail.skuStatus,
+    skuStatusReason: detail.skuStatusReason,
+    rebuildPending: prev.rebuildPending || detail.rebuildPending,
+    rebuildDetail: [prev.rebuildDetail, detail.rebuildDetail]
+      .filter(Boolean)
+      .join("|"),
+    attention: detail.attention,
+    problems: detail.problems,
+    profitablePreview: detail.profitablePreview,
+    profitableAll: detail.profitableAll,
+    lossPreview: detail.lossPreview,
+    lossAll: detail.lossAll,
+    adjustments: detail.adjustments,
+    adjustmentSummary: detail.adjustmentSummary,
+    lowMarginPreview: detail.lowMarginPreview,
+    lowMarginAll: detail.lowMarginAll,
+    frozenPreview: detail.frozenPreview,
+    frozenAll: detail.frozenAll,
+    drivers,
+    kpi: {
+      ...prev.kpi,
+      lossSkuCount: detail.lossSkuCount,
+      lossCountIsUniqueIdentity: detail.lossCountIsUniqueIdentity,
+      stockAtCost: detail.stockAtCost,
+      stockAtCostWb: detail.stockAtCostWb,
+      stockAtCostOzon: detail.stockAtCostOzon,
+      stockAtCostOwn: detail.stockAtCostOwn,
+      stockMissingCostQty: detail.stockMissingCostQty,
+      frozenCoveragePartial: detail.frozenCoveragePartial,
+      frozenAsOfLabel: detail.frozenAsOfLabel,
+      skuDetail: detail.skuDetail,
+    },
+    dataModes: Array.from(
+      new Set([
+        ...prev.dataModes.filter(
+          (m) => !m.startsWith("sku:") && !m.startsWith("skuReason:"),
+        ),
+        `sku:${detail.skuStatus}`,
+        detail.skuStatusReason ? `skuReason:${detail.skuStatusReason}` : "",
+        "path:SNAPSHOT_DETAIL_MERGED",
+      ].filter(Boolean)),
+    ),
+  };
+}
+
+export default function InsightsDashboard({ data: initialData }: { data: InsightsPayload }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [showAllRecommendations, setShowAllRecommendations] = useState(false);
   const [showSkuDetail, setShowSkuDetail] = useState(false);
-  const sku = data.kpi.skuDetail;
+  const [view, setView] = useState(initialData);
+  const [detailLoading, setDetailLoading] = useState(
+    Boolean(initialData.detailAsync),
+  );
   const softRefreshAttempts = useRef(0);
+  const detailRequestKey = useRef("");
+  const data = view;
+  const sku = data.kpi.skuDetail;
   const skuLayerReady =
     data.skuStatus === "READY" || data.skuStatus === "PRELIMINARY";
   const needsSoftRefresh =
@@ -1010,15 +1138,83 @@ export default function InsightsDashboard({ data }: { data: InsightsPayload }) {
     data.skuStatus === "PENDING";
 
   useEffect(() => {
+    setView(initialData);
+    setDetailLoading(Boolean(initialData.detailAsync));
+    softRefreshAttempts.current = 0;
+    detailRequestKey.current = "";
+  }, [initialData]);
+
+  useEffect(() => {
+    if (!initialData.detailAsync) return;
+    const key = `${initialData.company}|${initialData.dateFrom}|${initialData.dateTo}`;
+    if (detailRequestKey.current === key) return;
+    detailRequestKey.current = key;
+    let cancelled = false;
+    const q = new URLSearchParams({
+      dateFrom: initialData.dateFrom,
+      dateTo: initialData.dateTo,
+      company: initialData.company,
+    });
+    setDetailLoading(true);
+    void fetch(`/api/insights/detail?${q.toString()}`, { cache: "no-store" })
+      .then(async (res) => {
+        if (!res.ok) throw new Error(`detail HTTP ${res.status}`);
+        return res.json() as Promise<{
+          ok: boolean;
+          detail?: InsightsDetailPayload;
+        }>;
+      })
+      .then((payload) => {
+        if (cancelled || !payload.ok || !payload.detail) return;
+        setView((prev) => {
+          if (
+            prev.company !== initialData.company ||
+            prev.dateFrom !== initialData.dateFrom ||
+            prev.dateTo !== initialData.dateTo
+          ) {
+            return prev;
+          }
+          return mergeDetailIntoPayload(prev, payload.detail!);
+        });
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setView((prev) => ({
+          ...prev,
+          detailAsync: false,
+          skuStatus: "UNAVAILABLE",
+          skuStatusReason: "DETAIL_FETCH_FAILED",
+          dataModes: Array.from(
+            new Set([...prev.dataModes, "sku:DETAIL_FETCH_FAILED"]),
+          ),
+        }));
+      })
+      .finally(() => {
+        if (!cancelled) setDetailLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    initialData.detailAsync,
+    initialData.dateFrom,
+    initialData.dateTo,
+    initialData.company,
+  ]);
+
+  useEffect(() => {
     if (!needsSoftRefresh) {
       softRefreshAttempts.current = 0;
       return;
     }
-    if (softRefreshAttempts.current >= 12) return;
+    // Keep polling for long queues (>144s) with backoff; stop after ~8 min.
+    if (softRefreshAttempts.current >= 30) return;
+    const attempt = softRefreshAttempts.current;
+    const delayMs = Math.min(45000, 4000 + attempt * 2500);
     const timer = window.setTimeout(() => {
       softRefreshAttempts.current += 1;
       startTransition(() => router.refresh());
-    }, 12000);
+    }, delayMs);
     return () => window.clearTimeout(timer);
   }, [
     needsSoftRefresh,
@@ -1110,6 +1306,25 @@ export default function InsightsDashboard({ data }: { data: InsightsPayload }) {
                 FINAL. {data.financeStatusReason}
               </p>
             ) : null}
+            {data.financeCoverage === "PARTIAL_WB" ? (
+              <p className="mt-1 text-[10px] font-semibold text-amber-800">
+                Частичные данные: доступен WB; Ozon формируется. Итоговый оборот
+                WB+Ozon не показывается.
+              </p>
+            ) : null}
+            {data.financeCoverage === "PARTIAL_OZON" ? (
+              <p className="mt-1 text-[10px] font-semibold text-amber-800">
+                Частичные данные: доступен Ozon; WB формируется. Итоговый оборот
+                WB+Ozon не показывается.
+              </p>
+            ) : null}
+            {data.financeCoverage === "NONE" &&
+            data.financeStatus !== "PENDING_BUILD" ? (
+              <p className="mt-1 text-[10px] font-semibold text-rose-700">
+                Финансовые компоненты WB/Ozon не подтверждены — оборот и
+                прибыль не подменяются нулями.
+              </p>
+            ) : null}
             {data.financeStatus === "PENDING_BUILD" ||
             data.financeStatus === "SOURCE_MISSING" ||
             data.financeStatus === "ERROR" ? (
@@ -1121,14 +1336,24 @@ export default function InsightsDashboard({ data }: { data: InsightsPayload }) {
                 — KPI не подменяются нулями. {data.financeStatusReason}
               </p>
             ) : null}
-            {data.skuStatus === "UNAVAILABLE" || data.skuStatus === "PENDING" ? (
+            {detailLoading ||
+            data.skuStatus === "UNAVAILABLE" ||
+            data.skuStatus === "PENDING" ? (
               <p className="mt-1 text-[10px] font-semibold text-slate-600">
                 Товарная детализация{" "}
-                {data.skuStatus === "PENDING"
-                  ? "формируется"
+                {detailLoading || data.skuStatus === "PENDING"
+                  ? "загружается отдельно"
                   : "недоступна"}{" "}
                 — рейтинги SKU не выдаются за «0 товаров» / «не найдено».{" "}
                 {data.skuStatusReason}
+              </p>
+            ) : null}
+            {data.detailGeneratedAtLabel ? (
+              <p className="mt-1 text-[10px] text-slate-500">
+                Товарный слой: {data.detailGeneratedAtLabel}
+                {data.sourceGeneratedAtLabel
+                  ? ` · финансы: ${data.sourceGeneratedAtLabel}`
+                  : ""}
               </p>
             ) : null}
             {data.rebuildPending ? (
@@ -1230,8 +1455,16 @@ export default function InsightsDashboard({ data }: { data: InsightsPayload }) {
             value={formatMoney(data.kpi.economicTurnover)}
             accent="blue"
             icon="₽"
-            subtitle="WB + Ozon · управленческий оборот"
-            tip={`WB ${formatMoney(data.kpi.economicTurnoverWb)} + Ozon ${formatMoney(data.kpi.economicTurnoverOzon)}. Канон Dashboard: WB до СПП, Ozon taxable+баллы+партнёры.`}
+            subtitle={
+              data.financeCoverage === "FULL"
+                ? "WB + Ozon · управленческий оборот"
+                : data.financeCoverage === "PARTIAL_WB"
+                  ? "Частично: только WB"
+                  : data.financeCoverage === "PARTIAL_OZON"
+                    ? "Частично: только Ozon"
+                    : "Оборот формируется"
+            }
+            tip={`Покрытие ${data.financeCoverage}. WB ${formatMoney(data.kpi.economicTurnoverWb)} · Ozon ${formatMoney(data.kpi.economicTurnoverOzon)}. Итого WB+Ozon только при FULL. Канон Dashboard: WB до СПП, Ozon taxable+баллы+партнёры.`}
           />
           <KpiCard
             title="Чистая прибыль бизнеса"

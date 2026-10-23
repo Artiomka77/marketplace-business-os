@@ -82,6 +82,12 @@ export type InsightsSkuStatus =
   | "PENDING"
   | "UNAVAILABLE";
 
+export type InsightsFinanceCoverage =
+  | "FULL"
+  | "PARTIAL_WB"
+  | "PARTIAL_OZON"
+  | "NONE";
+
 export type InsightsPayload = {
   company: string;
   dateFrom: string;
@@ -92,12 +98,17 @@ export type InsightsPayload = {
   /** Readiness of management KPIs (never invent 0 ₽ on miss). */
   financeStatus: InsightsFinanceStatus;
   financeStatusReason: string;
+  /** FULL only when both WB+Ozon components trusted; else PARTIAL_*. */
+  financeCoverage: InsightsFinanceCoverage;
   /** Readiness of SKU rankings / adjustments strip. */
   skuStatus: InsightsSkuStatus;
   skuStatusReason: string;
   /** True when a cheap read-model rebuild was requested this render. */
   rebuildPending: boolean;
   rebuildDetail: string;
+  /** Client should fetch /api/insights/detail for Level B. */
+  detailAsync: boolean;
+  detailGeneratedAtLabel: string | null;
   sourceGeneratedAtLabel: string | null;
   kpi: {
     /** Canonical WB+Ozon economic turnover (management). Null if incomplete. */
