@@ -1097,7 +1097,7 @@ export default function InsightsDashboard({ data }: { data: InsightsPayload }) {
             accent="green"
             icon="↑"
             subtitle={`МП ${formatMoney(data.kpi.marketplaceNetProfit)} · финансы ${formatMoney(data.kpi.financeNetProfitImpact)}`}
-            tip="Прибыль маркетплейсов после налога + операции INCLUDE, до личных выводов. Не сумма SKU-корректировок."
+            tip={`Прибыль МП после налога (Ozon COGS ${formatMoney(data.kpi.ozonTotalCost)}, источник ${data.kpi.ozonProfitSource}) + Finance INCLUDE, до личных выводов. Не сумма SKU-корректировок.`}
           />
           <KpiCard
             title="Рентабельность бизнеса"

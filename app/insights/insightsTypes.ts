@@ -99,6 +99,10 @@ export type InsightsPayload = {
       skuProfitTotal: number;
       salesMarginPercent: number | null;
     };
+    /** Provenance for Ozon MP net (Wave B vs live) */
+    ozonProfitSource: string;
+    ozonTotalCost: number;
+    wbTotalCost: number;
   };
   attention: {
     lossSkuCount: number;

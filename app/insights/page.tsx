@@ -1,9 +1,18 @@
 import { prisma } from "@/lib/prisma";
 import { getProfitAnalytics } from "@/lib/analytics/profitAnalytics";
 import { getProfitAnalyticsOzon } from "@/lib/analytics/profitAnalyticsOzon";
+import { applyCanonicalWbSizeOperation } from "@/lib/analytics/wbSizeAllocation";
 import { getDefaultLastCompletedWeekRange } from "@/lib/date/defaultPeriod";
 import { calculateFinanceMetricsForRows } from "@/lib/finance/financeMetrics";
 import { snapshotCombinedProfit } from "@/lib/dashboard/managementRevenue";
+import {
+  createPrismaProfitReadModelRepository,
+  createWaveBProfitTargetPrismaClient,
+  isWaveBHeavyLiveFallbackEnabled,
+  isWaveBProfitReadModelFirstEnabled,
+  loadProfitReadModel,
+} from "@/lib/profitReadModel";
+import { selectCanonicalWbSaleSource } from "@/lib/wb/sourceOwnership";
 
 import InsightsDashboard from "./InsightsDashboard";
 import type {
@@ -13,6 +22,66 @@ import type {
   InsightsPayload,
   MarketplaceSlice,
 } from "./insightsTypes";
+
+type OzonAnalytics = Awaited<ReturnType<typeof getProfitAnalyticsOzon>>;
+type WbAnalytics = Awaited<ReturnType<typeof getProfitAnalytics>>;
+
+async function loadOzonAnalyticsForInsights(params: {
+  companyName: string;
+  dateFrom: string;
+  dateTo: string;
+}): Promise<{
+  analytics: OzonAnalytics;
+  source: "PROFIT_READ_MODEL_HIT" | "PROFIT_LIVE_FC";
+}> {
+  const scope =
+    !params.companyName || params.companyName === "ALL"
+      ? "ALL"
+      : params.companyName;
+
+  if (isWaveBProfitReadModelFirstEnabled()) {
+    const repository = createPrismaProfitReadModelRepository(
+      createWaveBProfitTargetPrismaClient(),
+    );
+    const { computeCheapProfitSourceVersion } = await import(
+      "@/lib/profitReadModel/sourceVersion"
+    );
+    const loaded = await loadProfitReadModel({
+      repository,
+      marketplace: "OZON",
+      companyScope: scope,
+      dateFrom: params.dateFrom,
+      dateTo: params.dateTo,
+      enqueueOnMiss: false,
+      resolveCurrentSourceVersion: () =>
+        computeCheapProfitSourceVersion({
+          prisma,
+          marketplace: "OZON",
+          companyScope: scope,
+          dateFrom: params.dateFrom,
+          dateTo: params.dateTo,
+        }),
+    });
+    if (loaded.status === "HIT") {
+      return {
+        analytics: loaded.analytics as OzonAnalytics,
+        source: "PROFIT_READ_MODEL_HIT",
+      };
+    }
+    if (!isWaveBHeavyLiveFallbackEnabled()) {
+      // Prefer live over empty pending — Insights must stay available.
+    }
+  }
+
+  return {
+    analytics: await getProfitAnalyticsOzon({
+      dateFrom: params.dateFrom,
+      dateTo: params.dateTo,
+      companyName: scope === "ALL" ? null : scope,
+    }),
+    source: "PROFIT_LIVE_FC",
+  };
+}
 
 function getAmount(value: unknown) {
   const number = Number(value ?? 0);
@@ -118,15 +187,42 @@ export default async function InsightsPage({
       : [selectedCompany];
 
   // Sequential loads: DATABASE_POOL_MAX=1 — parallel Promise.all causes connect timeouts on ALL+YTD.
+  // Ozon KPIs: same Wave B profit read-model path as /profit-ozon when HIT (includes COGS).
   const analyticsByCompany: Array<{
     companyName: string;
-    wb: Awaited<ReturnType<typeof getProfitAnalytics>>;
-    ozon: Awaited<ReturnType<typeof getProfitAnalyticsOzon>>;
+    wb: WbAnalytics;
+    ozon: OzonAnalytics;
+    ozonSource: "PROFIT_READ_MODEL_HIT" | "PROFIT_LIVE_FC";
   }> = [];
+  const ozonSources: string[] = [];
   for (const companyName of companyNames) {
     const wb = await getProfitAnalytics({ dateFrom, dateTo, companyName });
-    const ozon = await getProfitAnalyticsOzon({ dateFrom, dateTo, companyName });
-    analyticsByCompany.push({ companyName, wb, ozon });
+    const ozonLoaded = await loadOzonAnalyticsForInsights({
+      companyName,
+      dateFrom,
+      dateTo,
+    });
+    ozonSources.push(`${companyName}:${ozonLoaded.source}`);
+    analyticsByCompany.push({
+      companyName,
+      wb,
+      ozon: ozonLoaded.analytics,
+      ozonSource: ozonLoaded.source,
+    });
+  }
+
+  // Prefer single ALL-scope Ozon Wave B totals when viewing ALL (matches Profit Ozon ALL).
+  let ozonTotalsOverride: OzonAnalytics["totals"] | null = null;
+  let ozonTotalsSource: "PROFIT_READ_MODEL_HIT" | "PROFIT_LIVE_FC" | "SUM_COMPANIES" =
+    "SUM_COMPANIES";
+  if (selectedCompany === "ALL") {
+    const allOzon = await loadOzonAnalyticsForInsights({
+      companyName: "ALL",
+      dateFrom,
+      dateTo,
+    });
+    ozonTotalsOverride = allOzon.analytics.totals;
+    ozonTotalsSource = allOzon.source;
   }
 
   // Finance INCLUDE for the same company scope / period (Dashboard netProfit contract).
@@ -169,11 +265,19 @@ export default async function InsightsPage({
   const productCosts = await prisma.productCost.findMany({
     orderBy: [{ costDate: "desc" }, { createdAt: "desc" }],
   });
+  const stockCompanyWhere =
+    selectedCompany !== "ALL" ? { companyName: selectedCompany } : {};
   const wbStocks = await prisma.wbStock.findMany({
-    where: selectedCompany !== "ALL" ? { companyName: selectedCompany } : {},
+    where: stockCompanyWhere,
   });
   const ozonStocks = await prisma.ozonStock.findMany({
-    where: selectedCompany !== "ALL" ? { companyName: selectedCompany } : {},
+    where: stockCompanyWhere,
+  });
+  const ownWarehouseStocks = await prisma.ozonWarehouseStock.findMany({
+    where:
+      selectedCompany !== "ALL"
+        ? { companyName: selectedCompany }
+        : undefined,
   });
 
   const costByVendorCode = new Map<string, number>();
@@ -189,31 +293,35 @@ export default async function InsightsPage({
   let economicTurnoverOzon = 0;
   let wbMpNet = 0;
   let ozonMpNet = 0;
-  let wbUnavailable = false;
-  let ozonUnavailable = false;
+  let ozonTotalCost = 0;
+  let wbTotalCost = 0;
 
   for (const { wb, ozon } of analyticsByCompany) {
-    const wbEt = getAmount(
+    economicTurnoverWb += getAmount(
       (wb.totals as { sellerRetailAmount?: number }).sellerRetailAmount,
     );
-    const ozonEt = getAmount(
-      (ozon.totals as { economicTurnover?: number }).economicTurnover,
-    );
-    economicTurnoverWb += wbEt;
-    economicTurnoverOzon += ozonEt;
     wbMpNet += getAmount(
       (wb.totals as { netProfitAfterTax?: number }).netProfitAfterTax,
     );
-    ozonMpNet += getAmount(
-      (ozon.totals as { netProfitAfterTax?: number }).netProfitAfterTax,
+    wbTotalCost += getAmount((wb.totals as { totalCost?: number }).totalCost);
+    if (!ozonTotalsOverride) {
+      economicTurnoverOzon += getAmount(
+        (ozon.totals as { economicTurnover?: number }).economicTurnover,
+      );
+      ozonMpNet += getAmount(
+        (ozon.totals as { netProfitAfterTax?: number }).netProfitAfterTax,
+      );
+      ozonTotalCost += getAmount(
+        (ozon.totals as { totalCost?: number }).totalCost,
+      );
+    }
+  }
+  if (ozonTotalsOverride) {
+    economicTurnoverOzon = getAmount(ozonTotalsOverride.economicTurnover);
+    ozonMpNet = getAmount(ozonTotalsOverride.netProfitAfterTax);
+    ozonTotalCost = getAmount(
+      (ozonTotalsOverride as { totalCost?: number }).totalCost,
     );
-    const wbMode = (wb.totals as { dataMode?: string }).dataMode;
-    const ozonStatus = (ozon.totals as { netProfitStatus?: string })
-      .netProfitStatus;
-    if (wbMode === "PRELIMINARY") wbUnavailable = false; // still show numbers with PRELIMINARY label
-    if (ozonStatus === "PRELIMINARY") ozonUnavailable = false;
-    void wbUnavailable;
-    void ozonUnavailable;
   }
 
   const economicTurnover = economicTurnoverWb + economicTurnoverOzon;
@@ -248,8 +356,11 @@ export default async function InsightsPage({
       ...ozon.rows.map((row) => {
         const revenue = getAmount(row.revenue);
         const profit = getAmount(row.netProfitAfterTax);
+        const netQty = getAmount(row.netSalesQty);
         const vendorCode = String(row.vendorCode ?? "");
         const size = parseOzonSizeLabel(vendorCode);
+        // Sales if taxable revenue or net qty; adjustments only if both zero.
+        const hasSales = revenue > 0 || netQty !== 0;
         return {
           companyName,
           marketplace: "Ozon" as const,
@@ -263,24 +374,24 @@ export default async function InsightsPage({
               ? [
                   {
                     sizeLabel: size.sizeLabel,
-                    salesQty: getAmount(row.netSalesQty),
+                    salesQty: netQty,
                     revenue,
                     profit: null,
-                    note: "Строка offer; прибыль по размеру не доказана отдельно от семьи",
+                    note: "Offer size exact; P&L размера не доказан отдельно",
                   },
                 ]
               : [],
-          salesQty: getAmount(row.netSalesQty),
+          salesQty: netQty,
           revenue,
           profit,
           marginPercent: marginOrNull(revenue, profit),
-          anomaly: anomalyFor(revenue, profit),
+          anomaly: hasSales ? "NONE" : anomalyFor(0, profit),
         };
       }),
     ],
   );
 
-  // WB size qty drilldown for ranked families (qty facts only — profit stays н/д).
+  // WB size qty: ONLY canonical owned sales + SALE/RETURN classification (netSalesQty).
   const wbRankVendorCodes = Array.from(
     new Set(
       rows
@@ -291,45 +402,112 @@ export default async function InsightsPage({
   ).slice(0, 80);
 
   if (wbRankVendorCodes.length > 0) {
-    const sizeSales = await prisma.wbSale.groupBy({
-      by: ["companyName", "vendorCode", "size"],
-      where: {
-        vendorCode: { in: wbRankVendorCodes },
-        saleDate: {
-          gte: dayStartUtc(dateFrom),
-          lt: dayEndExclusiveUtc(dateTo),
-        },
-        ...(selectedCompany !== "ALL"
-          ? { companyName: selectedCompany }
-          : {}),
-      },
-      _sum: { quantity: true },
-    });
     const partsByKey = new Map<string, InsightSizePart[]>();
-    for (const s of sizeSales) {
-      const vc = String(s.vendorCode ?? "").trim();
-      const company = String(s.companyName ?? "").trim();
-      const sizeLabel = String(s.size ?? "").trim() || "н/д";
-      const qty = getAmount(s._sum.quantity);
-      const key = `${company}|${normalizeVendorCode(vc)}`;
-      const list = partsByKey.get(key) ?? [];
-      list.push({
-        sizeLabel,
-        salesQty: qty,
-        revenue: null,
-        profit: null,
-        note: "Количество продаж по размеру; P&L по размеру н/д (канон — семья артикула)",
+    const companiesForSizes =
+      selectedCompany === "ALL" ? companyNames : [selectedCompany];
+    for (const companyName of companiesForSizes) {
+      const canonical = await selectCanonicalWbSaleSource({
+        dateFrom,
+        dateTo,
+        companyName,
       });
-      partsByKey.set(key, list);
+      const sizeMapByVendor = new Map<
+        string,
+        Map<
+          string,
+          {
+            size: string;
+            barcode: string;
+            economicTurnover: number;
+            salesQty: number;
+            returnsQty: number;
+            netSalesQty: number;
+          }
+        >
+      >();
+      for (const sale of canonical.rows) {
+        const vendorCode = String(sale.vendorCode ?? "").trim();
+        if (!vendorCode) continue;
+        const vendorKey = normalizeVendorCode(vendorCode);
+        if (!wbRankVendorCodes.some((v) => normalizeVendorCode(v) === vendorKey)) {
+          continue;
+        }
+        const size =
+          String(sale.size ?? "").trim() || "Без размера";
+        const barcode = String(sale.barcode ?? "").trim();
+        const sizeKey = `${size}__${barcode}`;
+        const vendorMap =
+          sizeMapByVendor.get(vendorKey) ??
+          new Map<
+            string,
+            {
+              size: string;
+              barcode: string;
+              economicTurnover: number;
+              salesQty: number;
+              returnsQty: number;
+              netSalesQty: number;
+            }
+          >();
+        const current =
+          vendorMap.get(sizeKey) ??
+          {
+            size,
+            barcode,
+            economicTurnover: 0,
+            salesQty: 0,
+            returnsQty: 0,
+            netSalesQty: 0,
+          };
+        applyCanonicalWbSizeOperation(current, sale);
+        vendorMap.set(sizeKey, current);
+        sizeMapByVendor.set(vendorKey, vendorMap);
+      }
+      for (const [vendorKey, sizeMap] of sizeMapByVendor) {
+        const key = `${companyName}|${vendorKey}`;
+        const parts: InsightSizePart[] = Array.from(sizeMap.values())
+          .filter(
+            (s) =>
+              s.salesQty !== 0 ||
+              s.returnsQty !== 0 ||
+              s.netSalesQty !== 0,
+          )
+          .map((s) => ({
+            sizeLabel: s.size,
+            salesQty: s.netSalesQty,
+            revenue: null,
+            profit: null,
+            note: `Канон WB: продажи ${s.salesQty} − возвраты ${s.returnsQty} = ${s.netSalesQty}; P&L размера н/д`,
+          }))
+          .sort((a, b) => Math.abs(b.salesQty ?? 0) - Math.abs(a.salesQty ?? 0));
+        if (parts.length > 0) partsByKey.set(key, parts);
+      }
     }
     for (const row of rows) {
       if (row.marketplace !== "WB") continue;
       const key = `${row.companyName}|${normalizeVendorCode(row.vendorCode)}`;
       const parts = partsByKey.get(key);
-      if (parts && parts.length > 0) {
-        row.sizeParts = parts.sort(
-          (a, b) => (b.salesQty ?? 0) - (a.salesQty ?? 0),
-        );
+      if (!parts || parts.length === 0) {
+        row.sizeParts = [];
+        continue;
+      }
+      const partsNet = parts.reduce((s, p) => s + (p.salesQty ?? 0), 0);
+      const familyNet = row.salesQty;
+      // Only attach if size net reconciles to family netSalesQty (allow 0.5 rounding).
+      if (Math.abs(partsNet - familyNet) <= 0.51) {
+        row.sizeParts = parts;
+      } else {
+        row.sizeParts = [
+          {
+            sizeLabel: "сверка н/д",
+            salesQty: familyNet,
+            revenue: null,
+            profit: null,
+            note: `Сумма размеров ${partsNet} ≠ семья ${familyNet}; размеры не показаны как факт`,
+          },
+        ];
+        row.sizeLabel = "Все размеры";
+        row.sizeStatus = "FAMILY_ALL";
       }
     }
   }
@@ -375,109 +553,85 @@ export default async function InsightsPage({
   }
   const lossSkuCount = lossIdentityKeys.size;
 
-  // Deduplicate stock: keep latest createdAt per warehouse×identity×size.
-  type StockRaw = InsightStockRow & { _createdAt: number; _wh: string };
-  const stockCandidates: StockRaw[] = [
+  // Stock valuation = same formula as /stocks summaries (no field cascade fallbacks).
+  // WB: totalStock + inTransitToCustomer + inTransitReturns
+  // Ozon FBO: availableQty + preparingQty + supplyQty + inTransitQty + returnQty
+  //   (availableQty may be 0 — do NOT substitute other marketplaces' fields)
+  // Own warehouse: warehouseQty × (own costPrice or ProductCost)
+  const stockRowsRaw: InsightStockRow[] = [
     ...wbStocks.map((stock) => {
-      const row = stock as unknown as Record<string, unknown>;
-      const vendorCode = getAnyString(row, [
-        "vendorCode",
-        "supplierArticle",
-        "article",
-        "sku",
-      ]);
-      const quantity = getAnyNumber(row, [
-        "warehouseQty",
-        "totalStock",
-        "quantity",
-        "qty",
-        "stockQty",
-        "availableQty",
-        "available",
-        "quantityFull",
-      ]);
-      const sizeLabel =
-        getAnyString(row, ["size"]) || "н/д";
+      const quantity =
+        getAmount(stock.totalStock) +
+        getAmount(stock.inTransitToCustomer) +
+        getAmount(stock.inTransitReturns);
+      const vendorCode = String(stock.vendorCode ?? "").trim();
       const key = normalizeVendorCode(vendorCode);
       const hasCost = key ? costByVendorCode.has(key) : false;
       const unitCost = hasCost ? (costByVendorCode.get(key) ?? 0) : null;
-      const createdAt = stock.createdAt
-        ? new Date(stock.createdAt).getTime()
-        : 0;
       return {
-        companyName: getAnyString(row, ["companyName"]) || "—",
+        companyName: String(stock.companyName ?? "—"),
         marketplace: "WB" as const,
-        sku: getAnyString(row, ["nmId", "sku", "barcode"]),
+        sku: String(stock.nmId ?? stock.barcode ?? ""),
         vendorCode,
-        sizeLabel,
+        sizeLabel: String(stock.size ?? "").trim() || "н/д",
         quantity,
         unitCost,
         frozenMoney: unitCost == null ? null : quantity * unitCost,
         costCoverage: hasCost ? ("FULL" as const) : ("MISSING" as const),
-        _createdAt: createdAt,
-        _wh: getAnyString(row, ["warehouseName", "chrtId"]) || "",
       };
     }),
     ...ozonStocks.map((stock) => {
-      const row = stock as unknown as Record<string, unknown>;
-      const vendorCode = getAnyString(row, [
-        "vendorCode",
-        "offerId",
-        "article",
-        "sku",
-      ]);
-      const quantity = getAnyNumber(row, [
-        "availableQty",
-        "quantity",
-        "qty",
-        "stockQty",
-        "available",
-        "availableToSell",
-      ]);
+      const availableQty = getAmount(stock.availableQty);
+      const quantity =
+        availableQty +
+        getAmount(stock.preparingQty) +
+        getAmount(stock.supplyQty) +
+        getAmount(stock.inTransitQty) +
+        getAmount(stock.returnQty);
+      const vendorCode = String(stock.vendorCode ?? "").trim();
       const parsed = parseOzonSizeLabel(vendorCode);
-      const sizeLabel =
-        getAnyString(row, ["size"]) || parsed.sizeLabel;
       const key = normalizeVendorCode(vendorCode);
       const hasCost = key ? costByVendorCode.has(key) : false;
       const unitCost = hasCost ? (costByVendorCode.get(key) ?? 0) : null;
-      const createdAt = stock.createdAt
-        ? new Date(stock.createdAt).getTime()
-        : 0;
       return {
-        companyName: getAnyString(row, ["companyName"]) || "—",
+        companyName: String(stock.companyName ?? "—"),
         marketplace: "Ozon" as const,
-        sku: getAnyString(row, ["sku", "productId", "barcode"]),
+        sku: String(stock.sku ?? ""),
         vendorCode,
-        sizeLabel,
+        sizeLabel:
+          String(stock.size ?? "").trim() || parsed.sizeLabel || "н/д",
         quantity,
         unitCost,
         frozenMoney: unitCost == null ? null : quantity * unitCost,
         costCoverage: hasCost ? ("FULL" as const) : ("MISSING" as const),
-        _createdAt: createdAt,
-        _wh: getAnyString(row, ["warehouseName", "clusterName"]) || "",
       };
     }),
-  ];
-
-  const latestByKey = new Map<string, StockRaw>();
-  for (const s of stockCandidates) {
-    const dedupeKey = [
-      s.marketplace,
-      s.companyName,
-      normalizeVendorCode(s.vendorCode),
-      s.sku,
-      s.sizeLabel,
-      s._wh,
-    ].join("|");
-    const prev = latestByKey.get(dedupeKey);
-    if (!prev || s._createdAt >= prev._createdAt) {
-      latestByKey.set(dedupeKey, s);
-    }
-  }
-
-  const stockRowsRaw: InsightStockRow[] = Array.from(latestByKey.values())
-    .map(({ _createdAt: _a, _wh: _w, ...rest }) => rest)
-    .filter((row) => row.quantity > 0);
+    ...ownWarehouseStocks.map((stock) => {
+      const quantity = getAmount(stock.warehouseQty);
+      const vendorCode = String(stock.vendorCode ?? "").trim();
+      const key = normalizeVendorCode(vendorCode);
+      const ownCost = stock.costPrice != null ? getAmount(stock.costPrice) : null;
+      const mapCost = key ? costByVendorCode.get(key) : undefined;
+      const unitCost =
+        ownCost != null && Number.isFinite(ownCost)
+          ? ownCost
+          : mapCost != null
+            ? mapCost
+            : null;
+      const hasCost = unitCost != null;
+      return {
+        companyName: String(stock.companyName ?? "—"),
+        marketplace: "Ozon" as const,
+        sku: String(stock.sku ?? ""),
+        vendorCode,
+        sizeLabel: String(stock.size ?? "").trim() || "н/д",
+        quantity,
+        unitCost,
+        frozenMoney: unitCost == null ? null : quantity * unitCost,
+        costCoverage: hasCost ? ("FULL" as const) : ("MISSING" as const),
+      };
+    }),
+  ].filter((row) => row.quantity > 0);
 
   const stockWithCost = stockRowsRaw
     .filter((row) => row.frozenMoney != null && (row.frozenMoney ?? 0) > 0)
@@ -746,7 +900,7 @@ export default async function InsightsPage({
       lossCountIsUniqueIdentity: true,
       stockAtCost: stockWithCost.length > 0 ? stockAtCost : null,
       frozenCoveragePartial: stockMissingCost,
-      frozenAsOfLabel: "текущий снимок остатков (без дублей складов)",
+      frozenAsOfLabel: "как /stocks: WB+Ozon FBO+свой склад × ProductCost",
       skuDetail: {
         skuRevenue,
         soldProfit: soldProfitTotal,
@@ -754,6 +908,9 @@ export default async function InsightsPage({
         skuProfitTotal,
         salesMarginPercent: marginOrNull(skuRevenue, soldProfitTotal),
       },
+      ozonProfitSource: `${ozonTotalsSource}; ${ozonSources.join("|")}`,
+      ozonTotalCost,
+      wbTotalCost,
     },
     attention: {
       lossSkuCount,
