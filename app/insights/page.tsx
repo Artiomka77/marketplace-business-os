@@ -195,6 +195,15 @@ export default async function InsightsPage({
       ? companies.map((company) => company.name)
       : [selectedCompany];
 
+  const periodDays =
+    Math.round(
+      (Date.parse(`${dateTo}T00:00:00Z`) - Date.parse(`${dateFrom}T00:00:00Z`)) /
+        86400000,
+    ) + 1;
+  // Long periods (month+/YTD): prefer V6 KPIs; skip heavy per-company FC SKU scans
+  // that statement-timeout under DATABASE_POOL_MAX=1 (availability first).
+  const heavySkuAnalytics = periodDays > 0 && periodDays <= 45;
+
   // Sequential loads: DATABASE_POOL_MAX=1 — parallel Promise.all causes connect timeouts on ALL+YTD.
   // Ozon KPIs: same Wave B profit read-model path as /profit-ozon when HIT (includes COGS).
   const analyticsByCompany: Array<{
@@ -204,27 +213,31 @@ export default async function InsightsPage({
     ozonSource: "PROFIT_READ_MODEL_HIT" | "PROFIT_LIVE_FC";
   }> = [];
   const ozonSources: string[] = [];
-  for (const companyName of companyNames) {
-    const wb = await getProfitAnalytics({ dateFrom, dateTo, companyName });
-    const ozonLoaded = await loadOzonAnalyticsForInsights({
-      companyName,
-      dateFrom,
-      dateTo,
-    });
-    ozonSources.push(`${companyName}:${ozonLoaded.source}`);
-    analyticsByCompany.push({
-      companyName,
-      wb,
-      ozon: ozonLoaded.analytics,
-      ozonSource: ozonLoaded.source,
-    });
+  if (heavySkuAnalytics) {
+    for (const companyName of companyNames) {
+      const wb = await getProfitAnalytics({ dateFrom, dateTo, companyName });
+      const ozonLoaded = await loadOzonAnalyticsForInsights({
+        companyName,
+        dateFrom,
+        dateTo,
+      });
+      ozonSources.push(`${companyName}:${ozonLoaded.source}`);
+      analyticsByCompany.push({
+        companyName,
+        wb,
+        ozon: ozonLoaded.analytics,
+        ozonSource: ozonLoaded.source,
+      });
+    }
+  } else {
+    ozonSources.push(`SKIP_SKU_FC:periodDays=${periodDays}`);
   }
 
   // Prefer single ALL-scope Ozon Wave B totals when viewing ALL (matches Profit Ozon ALL).
   let ozonTotalsOverride: OzonAnalytics["totals"] | null = null;
   let ozonTotalsSource: "PROFIT_READ_MODEL_HIT" | "PROFIT_LIVE_FC" | "SUM_COMPANIES" =
     "SUM_COMPANIES";
-  if (selectedCompany === "ALL") {
+  if (selectedCompany === "ALL" && heavySkuAnalytics) {
     const allOzon = await loadOzonAnalyticsForInsights({
       companyName: "ALL",
       dateFrom,
@@ -235,40 +248,43 @@ export default async function InsightsPage({
   }
 
   // Finance INCLUDE for the same company scope / period (Dashboard netProfit contract).
-  const financeCategories = await prisma.financeCategory.findMany({
-    select: {
-      name: true,
-      categoryType: true,
-      parentName: true,
-      profitTreatment: true,
-    },
-  });
+  // On long periods V6 net already includes Finance — skip heavy transaction scan.
   let financeNetProfitImpact = 0;
   let ownerWithdrawals = 0;
-  for (const companyName of companyNames) {
-    const transactions = await prisma.financeTransaction.findMany({
-      where: {
-        companyName,
-        operationDate: {
-          gte: dayStartUtc(dateFrom),
-          lt: dayEndExclusiveUtc(dateTo),
-        },
-      },
+  if (heavySkuAnalytics) {
+    const financeCategories = await prisma.financeCategory.findMany({
       select: {
-        operationType: true,
-        category: true,
-        subcategory: true,
-        amount: true,
-        isInternalTransfer: true,
-        transferDirection: true,
+        name: true,
+        categoryType: true,
+        parentName: true,
+        profitTreatment: true,
       },
     });
-    const metrics = calculateFinanceMetricsForRows({
-      transactions,
-      categories: financeCategories,
-    });
-    financeNetProfitImpact += metrics.netProfitImpact;
-    ownerWithdrawals += metrics.ownerWithdrawals;
+    for (const companyName of companyNames) {
+      const transactions = await prisma.financeTransaction.findMany({
+        where: {
+          companyName,
+          operationDate: {
+            gte: dayStartUtc(dateFrom),
+            lt: dayEndExclusiveUtc(dateTo),
+          },
+        },
+        select: {
+          operationType: true,
+          category: true,
+          subcategory: true,
+          amount: true,
+          isInternalTransfer: true,
+          transferDirection: true,
+        },
+      });
+      const metrics = calculateFinanceMetricsForRows({
+        transactions,
+        categories: financeCategories,
+      });
+      financeNetProfitImpact += metrics.netProfitImpact;
+      ownerWithdrawals += metrics.ownerWithdrawals;
+    }
   }
 
   const productCosts = await prisma.productCost.findMany({
@@ -500,13 +516,7 @@ export default async function InsightsPage({
   );
 
   // WB size qty: ONLY canonical owned sales + SALE/RETURN classification (netSalesQty).
-  // Skip heavy YTD/month-long scans — statement timeout under DATABASE_POOL_MAX=1.
-  const periodDays =
-    Math.round(
-      (Date.parse(`${dateTo}T00:00:00Z`) - Date.parse(`${dateFrom}T00:00:00Z`)) /
-        86400000,
-    ) + 1;
-  const enableWbSizeDrilldown = periodDays > 0 && periodDays <= 45;
+  const enableWbSizeDrilldown = heavySkuAnalytics;
 
   const wbRankVendorCodes = enableWbSizeDrilldown
     ? Array.from(
