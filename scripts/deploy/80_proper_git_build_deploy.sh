@@ -11,7 +11,14 @@ rm -rf "${CTX:?}"/*
 
 # Reproducible context = git archive ONLY (no OPT hybrid, no route deletion)
 tar -xf /tmp/fin_close_proper_ctx.tar -C "$CTX"
-if [ -d "$CTX/src" ]; then SRC="$CTX/src"; else SRC="$CTX"; fi
+# Prefer tree that contains the Next app (archive may include a partial src/)
+if [ -f "$CTX/app/finance/page.tsx" ] || [ -f "$CTX/app/finance/operations/page.tsx" ]; then
+  SRC="$CTX"
+elif [ -f "$CTX/src/app/finance/page.tsx" ] || [ -f "$CTX/src/app/finance/operations/page.tsx" ]; then
+  SRC="$CTX/src"
+else
+  echo "NO_APP_TREE in archive"; exit 5
+fi
 cd "$SRC"
 
 echo "GIT_COMMIT=$(cat "$OUT/git_commit.txt" 2>/dev/null || true)" | tee "$OUT/build_meta.txt"
