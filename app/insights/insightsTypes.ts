@@ -12,6 +12,7 @@ export type InsightSkuRow = {
   /** null when revenue is 0 — never invent 0% or 100% margin */
   marginPercent: number | null;
   anomaly: "NONE" | "PROFIT_WITHOUT_REVENUE" | "LOSS_WITHOUT_REVENUE";
+  imageUrl?: string | null;
 };
 
 export type InsightStockRow = {
@@ -23,6 +24,7 @@ export type InsightStockRow = {
   unitCost: number | null;
   frozenMoney: number | null;
   costCoverage: "FULL" | "MISSING";
+  imageUrl?: string | null;
 };
 
 export type MarketplaceSlice = {
@@ -30,6 +32,9 @@ export type MarketplaceSlice = {
   revenue: number;
   profit: number;
   marginPercent: number | null;
+  /** SKU rows with revenue=0 and non-zero profit (adjustments), same marketplace */
+  adjustmentProfit: number;
+  adjustmentSkuCount: number;
 };
 
 export type InsightsPayload = {
@@ -67,6 +72,11 @@ export type InsightsPayload = {
   lossPreview: InsightSkuRow[];
   lossAll: InsightSkuRow[];
   adjustments: InsightSkuRow[];
+  adjustmentSummary: {
+    skuCount: number;
+    profitSum: number;
+  };
+  /** Positive margin strictly below 5% (excludes убыточные — они в ТОП убыточных) */
   lowMarginPreview: InsightSkuRow[];
   lowMarginAll: InsightSkuRow[];
   frozenPreview: InsightStockRow[];

@@ -161,19 +161,22 @@ export default async function InsightsPage({
     .filter((row) => row.profit > 0 && row.revenue > 0)
     .sort((a, b) => b.profit - a.profit);
 
+  // ТОП убыточных — только с продажами/выручкой; корректировки без продаж — отдельно.
   const soldLoss = rows
-    .filter((row) => row.profit < 0)
+    .filter((row) => row.profit < 0 && row.revenue > 0)
     .sort((a, b) => a.profit - b.profit);
 
   const adjustments = rows
     .filter((row) => row.anomaly !== "NONE")
     .sort((a, b) => Math.abs(b.profit) - Math.abs(a.profit));
 
+  // Зона риска: положительная маржа строго ниже 5% (убыточные не дублируем).
   const lowMarginRows = rows
     .filter(
       (row) =>
         row.revenue > 0 &&
         row.marginPercent != null &&
+        row.marginPercent >= 0 &&
         row.marginPercent < 5,
     )
     .sort(
@@ -286,15 +289,11 @@ export default async function InsightsPage({
         `${row.marketplace}|${normalizeVendorCode(row.vendorCode || row.sku)}`,
       );
     }
-    if (
-      row.revenue > 0 &&
-      row.marginPercent != null &&
-      row.marginPercent < 5
-    ) {
-      problemKeys.add(
-        `${row.marketplace}|${normalizeVendorCode(row.vendorCode || row.sku)}`,
-      );
-    }
+  }
+  for (const row of lowMarginRows) {
+    problemKeys.add(
+      `${row.marketplace}|${normalizeVendorCode(row.vendorCode || row.sku)}`,
+    );
   }
 
   const driversMap = new Map<string, MarketplaceSlice>();
@@ -304,16 +303,100 @@ export default async function InsightsPage({
       revenue: 0,
       profit: 0,
       marginPercent: null,
+      adjustmentProfit: 0,
+      adjustmentSkuCount: 0,
     });
   }
   for (const row of rows) {
     const slice = driversMap.get(row.marketplace)!;
     slice.revenue += row.revenue;
     slice.profit += row.profit;
+    if (row.anomaly !== "NONE") {
+      slice.adjustmentProfit += row.profit;
+      slice.adjustmentSkuCount += 1;
+    }
   }
   for (const slice of driversMap.values()) {
     slice.marginPercent = marginOrNull(slice.revenue, slice.profit);
   }
+
+  // Photos from existing catalog tables (best-effort, no financial impact).
+  const wbNmIds = Array.from(
+    new Set(
+      rows
+        .filter((r) => r.marketplace === "WB" && r.sku)
+        .map((r) => r.sku)
+        .filter(Boolean),
+    ),
+  ).slice(0, 400);
+  const ozonKeys = Array.from(
+    new Set(
+      rows
+        .filter((r) => r.marketplace === "Ozon")
+        .flatMap((r) => [r.sku, r.vendorCode].filter(Boolean)),
+    ),
+  ).slice(0, 400);
+
+  const [wbCards, ozonProducts] = await Promise.all([
+    wbNmIds.length
+      ? prisma.wbProductCard.findMany({
+          where: { nmId: { in: wbNmIds } },
+          select: {
+            nmId: true,
+            vendorCode: true,
+            photoSmallUrl: true,
+            photoBigUrl: true,
+          },
+          take: 500,
+        })
+      : Promise.resolve([]),
+    ozonKeys.length
+      ? prisma.ozonProduct.findMany({
+          where: {
+            OR: [
+              { sku: { in: ozonKeys } },
+              { vendorCode: { in: ozonKeys } },
+            ],
+          },
+          select: {
+            sku: true,
+            vendorCode: true,
+            imageSmallUrl: true,
+            imageUrl: true,
+          },
+          take: 500,
+        })
+      : Promise.resolve([]),
+  ]);
+
+  const imageByKey = new Map<string, string>();
+  for (const card of wbCards) {
+    const url = card.photoSmallUrl?.trim() || card.photoBigUrl?.trim();
+    if (!url) continue;
+    if (card.nmId) imageByKey.set(`WB|id:${card.nmId}`, url);
+    const vc = normalizeVendorCode(card.vendorCode);
+    if (vc) imageByKey.set(`WB|vc:${vc}`, url);
+  }
+  for (const product of ozonProducts) {
+    const url =
+      product.imageSmallUrl?.trim() || product.imageUrl?.trim() || "";
+    if (!url) continue;
+    if (product.sku) imageByKey.set(`Ozon|id:${product.sku}`, url);
+    const vc = normalizeVendorCode(product.vendorCode);
+    if (vc) imageByKey.set(`Ozon|vc:${vc}`, url);
+    if (product.sku) imageByKey.set(`Ozon|vc:${normalizeVendorCode(product.sku)}`, url);
+  }
+
+  const attachImage = <T extends InsightSkuRow | InsightStockRow>(row: T): T => {
+    const byId = imageByKey.get(`${row.marketplace}|id:${row.sku}`);
+    const byVc = imageByKey.get(
+      `${row.marketplace}|vc:${normalizeVendorCode(row.vendorCode)}`,
+    );
+    return { ...row, imageUrl: byId || byVc || null };
+  };
+
+  const withImages = <T extends InsightSkuRow | InsightStockRow>(list: T[]) =>
+    list.map(attachImage);
 
   const dataModes = Array.from(
     new Set(
@@ -338,6 +421,8 @@ export default async function InsightsPage({
     hour: "2-digit",
     minute: "2-digit",
   }).format(new Date());
+
+  const adjustmentProfitSum = adjustments.reduce((s, r) => s + r.profit, 0);
 
   const payload: InsightsPayload = {
     company: selectedCompany,
@@ -369,15 +454,19 @@ export default async function InsightsPage({
       noMovementSkuCount,
       excessStockSkuCount,
     },
-    profitablePreview: soldProfitable.slice(0, 5),
-    profitableAll: soldProfitable.slice(0, 20),
-    lossPreview: soldLoss.slice(0, 5),
-    lossAll: soldLoss.slice(0, 20),
-    adjustments: adjustments.slice(0, 30),
-    lowMarginPreview: lowMarginRows.slice(0, 5),
-    lowMarginAll: lowMarginRows.slice(0, 20),
-    frozenPreview: stockWithCost.slice(0, 5),
-    frozenAll: stockWithCost.slice(0, 20),
+    profitablePreview: withImages(soldProfitable.slice(0, 5)),
+    profitableAll: withImages(soldProfitable.slice(0, 20)),
+    lossPreview: withImages(soldLoss.slice(0, 5)),
+    lossAll: withImages(soldLoss.slice(0, 20)),
+    adjustments: withImages(adjustments.slice(0, 30)),
+    adjustmentSummary: {
+      skuCount: adjustments.length,
+      profitSum: adjustmentProfitSum,
+    },
+    lowMarginPreview: withImages(lowMarginRows.slice(0, 5)),
+    lowMarginAll: withImages(lowMarginRows.slice(0, 20)),
+    frozenPreview: withImages(stockWithCost.slice(0, 5)),
+    frozenAll: withImages(stockWithCost.slice(0, 20)),
   };
 
   return <InsightsDashboard data={payload} />;
