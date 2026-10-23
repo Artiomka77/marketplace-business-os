@@ -163,14 +163,17 @@ async function loadOzonAnalyticsForInsights(params: {
   companyName: string;
   dateFrom: string;
   dateTo: string;
+  /** Long periods must never run live Financial Core in GET (pool max=1). */
+  allowLiveFc?: boolean;
 }): Promise<{
   analytics: OzonAnalytics;
-  source: "PROFIT_READ_MODEL_HIT" | "PROFIT_LIVE_FC";
+  source: "PROFIT_READ_MODEL_HIT" | "PROFIT_LIVE_FC" | "UNAVAILABLE";
 }> {
   const scope =
     !params.companyName || params.companyName === "ALL"
       ? "ALL"
       : params.companyName;
+  const allowLiveFc = params.allowLiveFc !== false;
 
   if (isWaveBProfitReadModelFirstEnabled()) {
     const repository = createPrismaProfitReadModelRepository(
@@ -204,6 +207,13 @@ async function loadOzonAnalyticsForInsights(params: {
     if (!isWaveBHeavyLiveFallbackEnabled()) {
       // Prefer live over empty pending — Insights must stay available.
     }
+  }
+
+  if (!allowLiveFc) {
+    return {
+      analytics: { rows: [], totals: {} } as unknown as OzonAnalytics,
+      source: "UNAVAILABLE",
+    };
   }
 
   return {
@@ -332,7 +342,7 @@ export default async function InsightsPage({
     companyName: string;
     wb: WbAnalytics;
     ozon: OzonAnalytics;
-    ozonSource: "PROFIT_READ_MODEL_HIT" | "PROFIT_LIVE_FC";
+    ozonSource: "PROFIT_READ_MODEL_HIT" | "PROFIT_LIVE_FC" | "UNAVAILABLE";
   }> = [];
   const ozonSources: string[] = [];
   let skuStatus: InsightsSkuStatus = "PENDING";
@@ -345,6 +355,7 @@ export default async function InsightsPage({
         companyName,
         dateFrom,
         dateTo,
+        allowLiveFc: true,
       });
       ozonSources.push(`${companyName}:${ozonLoaded.source}`);
       analyticsByCompany.push({
@@ -360,15 +371,26 @@ export default async function InsightsPage({
     // Long period: ProfitSkuPeriodMetric (Wave B), never heavy live FC in GET.
     const skuScope =
       selectedCompany === "ALL" ? "ALL" : selectedCompany;
-    const skuRows = await prisma.profitSkuPeriodMetric.findMany({
-      where: {
-        companyScope: skuScope,
-        dateFrom: dayStartUtc(dateFrom),
-        dateTo: dayStartUtc(dateTo),
-      },
-      take: 5000,
-    });
-    if (skuRows.length === 0) {
+    let skuRows: Awaited<
+      ReturnType<typeof prisma.profitSkuPeriodMetric.findMany>
+    > = [];
+    try {
+      skuRows = await prisma.profitSkuPeriodMetric.findMany({
+        where: {
+          companyScope: skuScope,
+          dateFrom: dayStartUtc(dateFrom),
+          dateTo: dayStartUtc(dateTo),
+        },
+        take: 2500,
+      });
+    } catch (error) {
+      skuStatus = "UNAVAILABLE";
+      skuStatusReason = `PROFIT_SKU_PERIOD_ERROR:${error instanceof Error ? error.message : String(error)}`;
+      ozonSources.push(skuStatusReason);
+    }
+    if (skuStatus === "UNAVAILABLE" && skuStatusReason.startsWith("PROFIT_SKU_PERIOD_ERROR")) {
+      // keep empty analytics — finance KPIs still load below
+    } else if (skuRows.length === 0) {
       skuStatus = "UNAVAILABLE";
       skuStatusReason = `PROFIT_SKU_PERIOD_EMPTY:periodDays=${periodDays}`;
       ozonSources.push(skuStatusReason);
@@ -433,22 +455,34 @@ export default async function InsightsPage({
   }
 
   // Ozon Wave B totals (COGS tip + fallback finance) — cheap read-model, any period.
+  // Long periods: Wave B only — never live FC (YTD would starve pool max=1).
   let ozonTotalsOverride: OzonAnalytics["totals"] | null = null;
-  let ozonTotalsSource: "PROFIT_READ_MODEL_HIT" | "PROFIT_LIVE_FC" | "SUM_COMPANIES" =
-    "SUM_COMPANIES";
-  {
+  let ozonTotalsSource:
+    | "PROFIT_READ_MODEL_HIT"
+    | "PROFIT_LIVE_FC"
+    | "SUM_COMPANIES"
+    | "UNAVAILABLE" = "SUM_COMPANIES";
+  try {
     const allOzon = await loadOzonAnalyticsForInsights({
       companyName: selectedCompany === "ALL" ? "ALL" : selectedCompany,
       dateFrom,
       dateTo,
+      allowLiveFc: useLiveSkuFc,
     });
     if (allOzon.source === "PROFIT_READ_MODEL_HIT") {
       ozonTotalsOverride = allOzon.analytics.totals;
       ozonTotalsSource = allOzon.source;
-    } else if (useLiveSkuFc) {
+    } else if (useLiveSkuFc && allOzon.source === "PROFIT_LIVE_FC") {
       ozonTotalsOverride = allOzon.analytics.totals;
       ozonTotalsSource = allOzon.source;
+    } else {
+      ozonTotalsSource = "UNAVAILABLE";
     }
+  } catch (error) {
+    ozonTotalsSource = "UNAVAILABLE";
+    ozonSources.push(
+      `OZON_TOTALS_ERROR:${error instanceof Error ? error.message : String(error)}`,
+    );
   }
 
   // Finance INCLUDE only for short live path; V6 net already includes Finance.
@@ -490,32 +524,49 @@ export default async function InsightsPage({
     }
   }
 
-  const productCosts = await prisma.productCost.findMany({
-    orderBy: [{ costDate: "desc" }, { createdAt: "desc" }],
-  });
+  let productCosts: Awaited<ReturnType<typeof prisma.productCost.findMany>> = [];
+  let wbStocks: Awaited<ReturnType<typeof prisma.wbStock.findMany>> = [];
+  let ozonStocks: Awaited<ReturnType<typeof prisma.ozonStock.findMany>> = [];
+  let ownWarehouseStocks: Awaited<
+    ReturnType<typeof prisma.ozonWarehouseStock.findMany>
+  > = [];
+  let wbCardsForCost: Array<{
+    companyName: string;
+    nmId: string | null;
+    vendorCode: string | null;
+  }> = [];
   const stockCompanyWhere =
     selectedCompany !== "ALL" ? { companyName: selectedCompany } : {};
-  const wbStocks = await prisma.wbStock.findMany({
-    where: stockCompanyWhere,
-  });
-  const ozonStocks = await prisma.ozonStock.findMany({
-    where: stockCompanyWhere,
-  });
-  const ownWarehouseStocks = await prisma.ozonWarehouseStock.findMany({
-    where:
-      selectedCompany !== "ALL"
-        ? { companyName: selectedCompany }
-        : undefined,
-  });
-  const wbCardsForCost = await prisma.wbProductCard.findMany({
-    where: stockCompanyWhere,
-    select: {
-      companyName: true,
-      nmId: true,
-      vendorCode: true,
-    },
-    take: 5000,
-  });
+  try {
+    productCosts = await prisma.productCost.findMany({
+      orderBy: [{ costDate: "desc" }, { createdAt: "desc" }],
+    });
+    wbStocks = await prisma.wbStock.findMany({
+      where: stockCompanyWhere,
+    });
+    ozonStocks = await prisma.ozonStock.findMany({
+      where: stockCompanyWhere,
+    });
+    ownWarehouseStocks = await prisma.ozonWarehouseStock.findMany({
+      where:
+        selectedCompany !== "ALL"
+          ? { companyName: selectedCompany }
+          : undefined,
+    });
+    wbCardsForCost = await prisma.wbProductCard.findMany({
+      where: stockCompanyWhere,
+      select: {
+        companyName: true,
+        nmId: true,
+        vendorCode: true,
+      },
+      take: 5000,
+    });
+  } catch (error) {
+    ozonSources.push(
+      `STOCK_LAYER_ERROR:${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
 
   // Same ProductCost resolution as /stocks (supplier article + nmId mapping).
   const stockCostLookup = buildProductCostLookup(
@@ -615,69 +666,86 @@ export default async function InsightsPage({
       financeResolved = true;
     } else {
       financeStatusReason = lite.reason;
-      // 2) Full V6 loader (week/month often HIT; may timeout on YTD — caught).
-      try {
-        const v6 = await loadDashboardV6PeriodReadModel({
-          repository: getDefaultV6PeriodReadModelRepository(),
-          dateFrom,
-          dateTo,
-          companyScope: "ALL",
-        });
-        if (v6.status === "HIT") {
-          const rowsV6 =
-            selectedCompany === "ALL"
-              ? v6.bundle.companyRows
-              : v6.bundle.companyRows.filter(
-                  (r) => r.companyName === selectedCompany,
-                );
-          if (rowsV6.length > 0) {
-            applyV6Rows(
-              rowsV6,
-              v6.bundle.meta?.dataMode ?? null,
-              v6.bundle.meta?.generatedAt ?? null,
-              "DASHBOARD_V6_FULL_HIT",
-            );
-            financeResolved = true;
+      // 2) Full V6 loader only for short periods — YTD dailyPoints starves pool=1.
+      if (useLiveSkuFc) {
+        try {
+          const v6 = await loadDashboardV6PeriodReadModel({
+            repository: getDefaultV6PeriodReadModelRepository(),
+            dateFrom,
+            dateTo,
+            companyScope: "ALL",
+          });
+          if (v6.status === "HIT") {
+            const rowsV6 =
+              selectedCompany === "ALL"
+                ? v6.bundle.companyRows
+                : v6.bundle.companyRows.filter(
+                    (r) => r.companyName === selectedCompany,
+                  );
+            if (rowsV6.length > 0) {
+              applyV6Rows(
+                rowsV6,
+                v6.bundle.meta?.dataMode ?? null,
+                v6.bundle.meta?.generatedAt ?? null,
+                "DASHBOARD_V6_FULL_HIT",
+              );
+              financeResolved = true;
+            } else {
+              financeStatus = "SOURCE_MISSING";
+              financeStatusReason = "V6_HIT_BUT_NO_COMPANY_ROWS";
+            }
           } else {
-            financeStatus = "SOURCE_MISSING";
-            financeStatusReason = "V6_HIT_BUT_NO_COMPANY_ROWS";
+            financeStatus =
+              v6.status === "PENDING" ? "PENDING_BUILD" : "SOURCE_MISSING";
+            financeStatusReason = `${lite.reason}|FULL:${v6.status}:${v6.reason}`;
           }
-        } else {
-          financeStatus =
-            v6.status === "PENDING" ? "PENDING_BUILD" : "SOURCE_MISSING";
-          financeStatusReason = `${lite.reason}|FULL:${v6.status}:${v6.reason}`;
+        } catch (error) {
+          financeStatus = "ERROR";
+          financeStatusReason = `${lite.reason}|FULL_ERROR:${error instanceof Error ? error.message : String(error)}`;
         }
-      } catch (error) {
-        financeStatus = "ERROR";
-        financeStatusReason = `${lite.reason}|FULL_ERROR:${error instanceof Error ? error.message : String(error)}`;
+      } else {
+        financeStatus =
+          lite.status === "ERROR" ? "ERROR" : "PENDING_BUILD";
+        financeStatusReason = `${lite.reason}|SKIP_FULL_V6_LONG_PERIOD`;
       }
     }
   }
 
   // 3) Wave B Profit WB+Ozon totals (no live FC) when V6 unavailable.
   if (!financeResolved) {
-    const wbWave = await loadProfitReadModel({
-      repository: createPrismaProfitReadModelRepository(
-        createWaveBProfitTargetPrismaClient(),
-      ),
-      marketplace: "WB",
-      companyScope: selectedCompany === "ALL" ? "ALL" : selectedCompany,
-      dateFrom,
-      dateTo,
-      enqueueOnMiss: false,
-    });
-    const ozonWave = await loadProfitReadModel({
-      repository: createPrismaProfitReadModelRepository(
-        createWaveBProfitTargetPrismaClient(),
-      ),
-      marketplace: "OZON",
-      companyScope: selectedCompany === "ALL" ? "ALL" : selectedCompany,
-      dateFrom,
-      dateTo,
-      enqueueOnMiss: false,
-    });
+    let wbWave: Awaited<ReturnType<typeof loadProfitReadModel>> | null = null;
+    let ozonWave: Awaited<ReturnType<typeof loadProfitReadModel>> | null = null;
+    try {
+      wbWave = await loadProfitReadModel({
+        repository: createPrismaProfitReadModelRepository(
+          createWaveBProfitTargetPrismaClient(),
+        ),
+        marketplace: "WB",
+        companyScope: selectedCompany === "ALL" ? "ALL" : selectedCompany,
+        dateFrom,
+        dateTo,
+        enqueueOnMiss: false,
+      });
+      ozonWave = await loadProfitReadModel({
+        repository: createPrismaProfitReadModelRepository(
+          createWaveBProfitTargetPrismaClient(),
+        ),
+        marketplace: "OZON",
+        companyScope: selectedCompany === "ALL" ? "ALL" : selectedCompany,
+        dateFrom,
+        dateTo,
+        enqueueOnMiss: false,
+      });
+    } catch (error) {
+      financeStatus = "ERROR";
+      financeStatusReason = `WAVE_B_ERROR:${error instanceof Error ? error.message : String(error)}`;
+    }
 
-    if (wbWave.status === "HIT" || ozonWave.status === "HIT") {
+    if (
+      wbWave &&
+      ozonWave &&
+      (wbWave.status === "HIT" || ozonWave.status === "HIT")
+    ) {
       const wbTotals =
         wbWave.status === "HIT"
           ? ((wbWave.analytics as WbAnalytics).totals as Record<
@@ -1244,39 +1312,60 @@ export default async function InsightsPage({
         }
       : null;
 
-  const [wbCards, ozonProducts] = await Promise.all([
-    wbWhere
-      ? prisma.wbProductCard.findMany({
-          where: wbWhere,
-          select: {
-            nmId: true,
-            vendorCode: true,
-            companyName: true,
-            photoSmallUrl: true,
-            photoBigUrl: true,
-          },
-          take: 800,
-        })
-      : Promise.resolve([]),
-    ozonKeys.length
-      ? prisma.ozonProduct.findMany({
-          where: {
-            OR: [
-              { sku: { in: ozonKeys } },
-              { vendorCode: { in: ozonKeys } },
-            ],
-          },
-          select: {
-            sku: true,
-            vendorCode: true,
-            companyName: true,
-            imageSmallUrl: true,
-            imageUrl: true,
-          },
-          take: 800,
-        })
-      : Promise.resolve([]),
-  ]);
+  // Sequential under DATABASE_POOL_MAX=1 — Promise.all starves the pool.
+  type WbCardPhoto = {
+    nmId: string;
+    vendorCode: string | null;
+    companyName: string;
+    photoSmallUrl: string | null;
+    photoBigUrl: string | null;
+  };
+  type OzonProductPhoto = {
+    sku: string;
+    vendorCode: string;
+    companyName: string | null;
+    imageSmallUrl: string | null;
+    imageUrl: string | null;
+  };
+  let wbCards: WbCardPhoto[] = [];
+  let ozonProducts: OzonProductPhoto[] = [];
+  try {
+    if (wbWhere) {
+      wbCards = await prisma.wbProductCard.findMany({
+        where: wbWhere,
+        select: {
+          nmId: true,
+          vendorCode: true,
+          companyName: true,
+          photoSmallUrl: true,
+          photoBigUrl: true,
+        },
+        take: 800,
+      });
+    }
+    if (ozonKeys.length) {
+      ozonProducts = await prisma.ozonProduct.findMany({
+        where: {
+          OR: [
+            { sku: { in: ozonKeys } },
+            { vendorCode: { in: ozonKeys } },
+          ],
+        },
+        select: {
+          sku: true,
+          vendorCode: true,
+          companyName: true,
+          imageSmallUrl: true,
+          imageUrl: true,
+        },
+        take: 800,
+      });
+    }
+  } catch (error) {
+    ozonSources.push(
+      `PHOTO_LAYER_ERROR:${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
 
   const imageByKey = new Map<string, string>();
   const putImage = (key: string, raw: string | null | undefined) => {
