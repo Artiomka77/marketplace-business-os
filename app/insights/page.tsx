@@ -12,6 +12,10 @@ import {
   isWaveBProfitReadModelFirstEnabled,
   loadProfitReadModel,
 } from "@/lib/profitReadModel";
+import {
+  buildProductCostLookup,
+  getStockUnitCost,
+} from "@/lib/stocks/productCostLookup";
 import { selectCanonicalWbSaleSource } from "@/lib/wb/sourceOwnership";
 
 import InsightsDashboard from "./InsightsDashboard";
@@ -279,14 +283,32 @@ export default async function InsightsPage({
         ? { companyName: selectedCompany }
         : undefined,
   });
+  const wbCardsForCost = await prisma.wbProductCard.findMany({
+    where: stockCompanyWhere,
+    select: {
+      companyName: true,
+      nmId: true,
+      vendorCode: true,
+    },
+    take: 5000,
+  });
 
-  const costByVendorCode = new Map<string, number>();
-  for (const cost of productCosts) {
-    const key = normalizeVendorCode(cost.vendorCode);
-    if (key && !costByVendorCode.has(key)) {
-      costByVendorCode.set(key, getAmount(cost.costPrice));
-    }
-  }
+  // Same ProductCost resolution as /stocks (supplier article + nmId mapping).
+  const stockCostLookup = buildProductCostLookup(
+    productCosts,
+    [
+      ...wbStocks.map((stock) => ({
+        companyName: stock.companyName,
+        wbArticle: stock.nmId,
+        supplierArticle: stock.vendorCode,
+      })),
+      ...wbCardsForCost.map((card) => ({
+        companyName: card.companyName,
+        wbArticle: card.nmId,
+        supplierArticle: card.vendorCode,
+      })),
+    ],
+  );
 
   // Canonical management totals (same formulas as Profit WB/Ozon → Dashboard).
   let economicTurnoverWb = 0;
@@ -565,11 +587,15 @@ export default async function InsightsPage({
         getAmount(stock.inTransitToCustomer) +
         getAmount(stock.inTransitReturns);
       const vendorCode = String(stock.vendorCode ?? "").trim();
-      const key = normalizeVendorCode(vendorCode);
-      const hasCost = key ? costByVendorCode.has(key) : false;
-      const unitCost = hasCost ? (costByVendorCode.get(key) ?? 0) : null;
+      const companyName = String(stock.companyName ?? "—");
+      const unitCost = getStockUnitCost({
+        companyName,
+        vendorCode,
+        nmId: stock.nmId != null ? String(stock.nmId) : null,
+        costs: stockCostLookup,
+      });
       return {
-        companyName: String(stock.companyName ?? "—"),
+        companyName,
         marketplace: "WB" as const,
         sku: String(stock.nmId ?? stock.barcode ?? ""),
         vendorCode,
@@ -577,7 +603,8 @@ export default async function InsightsPage({
         quantity,
         unitCost,
         frozenMoney: unitCost == null ? null : quantity * unitCost,
-        costCoverage: hasCost ? ("FULL" as const) : ("MISSING" as const),
+        costCoverage:
+          unitCost == null ? ("MISSING" as const) : ("FULL" as const),
       };
     }),
     ...ozonStocks.map((stock) => {
@@ -590,11 +617,15 @@ export default async function InsightsPage({
         getAmount(stock.returnQty);
       const vendorCode = String(stock.vendorCode ?? "").trim();
       const parsed = parseOzonSizeLabel(vendorCode);
-      const key = normalizeVendorCode(vendorCode);
-      const hasCost = key ? costByVendorCode.has(key) : false;
-      const unitCost = hasCost ? (costByVendorCode.get(key) ?? 0) : null;
+      const companyName = String(stock.companyName ?? "—");
+      const unitCost = getStockUnitCost({
+        companyName,
+        vendorCode,
+        sku: stock.sku != null ? String(stock.sku) : null,
+        costs: stockCostLookup,
+      });
       return {
-        companyName: String(stock.companyName ?? "—"),
+        companyName,
         marketplace: "Ozon" as const,
         sku: String(stock.sku ?? ""),
         vendorCode,
@@ -603,24 +634,23 @@ export default async function InsightsPage({
         quantity,
         unitCost,
         frozenMoney: unitCost == null ? null : quantity * unitCost,
-        costCoverage: hasCost ? ("FULL" as const) : ("MISSING" as const),
+        costCoverage:
+          unitCost == null ? ("MISSING" as const) : ("FULL" as const),
       };
     }),
     ...ownWarehouseStocks.map((stock) => {
       const quantity = getAmount(stock.warehouseQty);
       const vendorCode = String(stock.vendorCode ?? "").trim();
-      const key = normalizeVendorCode(vendorCode);
-      const ownCost = stock.costPrice != null ? getAmount(stock.costPrice) : null;
-      const mapCost = key ? costByVendorCode.get(key) : undefined;
-      const unitCost =
-        ownCost != null && Number.isFinite(ownCost)
-          ? ownCost
-          : mapCost != null
-            ? mapCost
-            : null;
-      const hasCost = unitCost != null;
+      const companyName = String(stock.companyName ?? "—");
+      const unitCost = getStockUnitCost({
+        companyName,
+        vendorCode,
+        sku: stock.sku != null ? String(stock.sku) : null,
+        ownCostPrice: stock.costPrice,
+        costs: stockCostLookup,
+      });
       return {
-        companyName: String(stock.companyName ?? "—"),
+        companyName,
         marketplace: "Ozon" as const,
         sku: String(stock.sku ?? ""),
         vendorCode,
@@ -628,7 +658,8 @@ export default async function InsightsPage({
         quantity,
         unitCost,
         frozenMoney: unitCost == null ? null : quantity * unitCost,
-        costCoverage: hasCost ? ("FULL" as const) : ("MISSING" as const),
+        costCoverage:
+          unitCost == null ? ("MISSING" as const) : ("FULL" as const),
       };
     }),
   ].filter((row) => row.quantity > 0);
