@@ -66,6 +66,19 @@ export type MarketplaceSlice = {
   adjustmentSkuCount: number;
 };
 
+export type InsightsFinanceStatus =
+  | "VERIFIED_READY"
+  | "PRELIMINARY_WITH_VALUE"
+  | "PENDING_BUILD"
+  | "SOURCE_MISSING"
+  | "ERROR";
+
+export type InsightsSkuStatus =
+  | "READY"
+  | "PRELIMINARY"
+  | "PENDING"
+  | "UNAVAILABLE";
+
 export type InsightsPayload = {
   company: string;
   dateFrom: string;
@@ -73,6 +86,13 @@ export type InsightsPayload = {
   companies: Array<{ id: string; name: string }>;
   generatedAtLabel: string;
   dataModes: string[];
+  /** Readiness of management KPIs (never invent 0 ₽ on miss). */
+  financeStatus: InsightsFinanceStatus;
+  financeStatusReason: string;
+  /** Readiness of SKU rankings / adjustments strip. */
+  skuStatus: InsightsSkuStatus;
+  skuStatusReason: string;
+  sourceGeneratedAtLabel: string | null;
   kpi: {
     /** Canonical WB+Ozon economic turnover (management). Null if incomplete. */
     economicTurnover: number | null;
@@ -84,8 +104,8 @@ export type InsightsPayload = {
     financeNetProfitImpact: number | null;
     /** businessNetProfit / economicTurnover when both known */
     businessMarginPercent: number | null;
-    /** Unique product identities with negative attributed profit (rows if not unique). */
-    lossSkuCount: number;
+    /** Unique product identities with negative attributed profit. Null if SKU layer unavailable. */
+    lossSkuCount: number | null;
     lossCountIsUniqueIdentity: boolean;
     /** Stock × ProductCost on deduped current snapshot */
     stockAtCost: number | null;
@@ -101,20 +121,20 @@ export type InsightsPayload = {
     };
     /** Provenance for Ozon MP net (Wave B vs live) */
     ozonProfitSource: string;
-    ozonTotalCost: number;
-    wbTotalCost: number;
+    ozonTotalCost: number | null;
+    wbTotalCost: number | null;
   };
   attention: {
-    lossSkuCount: number;
-    lowMarginSkuCount: number;
-    profitableSkuCount: number;
+    lossSkuCount: number | null;
+    lowMarginSkuCount: number | null;
+    profitableSkuCount: number | null;
     stockAtCost: number | null;
   };
   drivers: MarketplaceSlice[];
   problems: {
-    uniqueProblemSkuCount: number;
-    lossSkuCount: number;
-    lowMarginSkuCount: number;
+    uniqueProblemSkuCount: number | null;
+    lossSkuCount: number | null;
+    lowMarginSkuCount: number | null;
     noMovementSkuCount: number | null;
     excessStockSkuCount: number | null;
   };

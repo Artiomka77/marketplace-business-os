@@ -6,9 +6,12 @@ import { getDefaultLastCompletedWeekRange } from "@/lib/date/defaultPeriod";
 import { calculateFinanceMetricsForRows } from "@/lib/finance/financeMetrics";
 import { snapshotCombinedProfit } from "@/lib/dashboard/managementRevenue";
 import {
+  FINANCIAL_CORE_V6_PERIOD_READMODEL_V2,
   getDefaultV6PeriodReadModelRepository,
   isDashboardV6ReadModelFirstEnabled,
+  isTrustedV2HitAttestation,
   loadDashboardV6PeriodReadModel,
+  type PeriodCompanyMarketplaceMetricsPayload,
 } from "@/lib/dashboard/v6PeriodReadModel";
 import {
   createPrismaProfitReadModelRepository,
@@ -28,12 +31,133 @@ import type {
   InsightSizePart,
   InsightSkuRow,
   InsightStockRow,
+  InsightsFinanceStatus,
   InsightsPayload,
+  InsightsSkuStatus,
   MarketplaceSlice,
 } from "./insightsTypes";
 
 type OzonAnalytics = Awaited<ReturnType<typeof getProfitAnalyticsOzon>>;
 type WbAnalytics = Awaited<ReturnType<typeof getProfitAnalytics>>;
+
+/** Period-grain V6 rows without dailyPoints (avoids YTD statement timeouts). */
+async function loadV6PeriodCompanyRowsLite(params: {
+  dateFrom: string;
+  dateTo: string;
+  selectedCompany: string;
+}): Promise<{
+  status: "HIT" | "MISS" | "UNTRUSTED" | "INCOMPLETE" | "ERROR";
+  reason: string;
+  dataMode: "FINAL" | "PRELIMINARY" | null;
+  generatedAt: string | null;
+  rows: PeriodCompanyMarketplaceMetricsPayload[];
+}> {
+  try {
+    const repository = getDefaultV6PeriodReadModelRepository();
+    const allPeriod = await repository.findPeriod({
+      companyScope: "ALL",
+      marketplace: "ALL",
+      dateFrom: params.dateFrom,
+      dateTo: params.dateTo,
+      formulaVersion: FINANCIAL_CORE_V6_PERIOD_READMODEL_V2,
+    });
+    if (!allPeriod) {
+      return {
+        status: "MISS",
+        reason: "V6_PERIOD_ALL_ROW_MISSING",
+        dataMode: null,
+        generatedAt: null,
+        rows: [],
+      };
+    }
+    if (
+      !isTrustedV2HitAttestation({
+        meta: allPeriod.meta,
+        dateFrom: params.dateFrom,
+        dateTo: params.dateTo,
+        companyScope: "ALL",
+      })
+    ) {
+      return {
+        status: "UNTRUSTED",
+        reason: "V2_SAFETY_ATTESTATION_MISSING_OR_UNSAFE",
+        dataMode: allPeriod.dataMode,
+        generatedAt: allPeriod.meta?.generatedAt ?? allPeriod.generatedAt ?? null,
+        rows: [],
+      };
+    }
+    if (allPeriod.coverageStatus !== "COMPLETE") {
+      return {
+        status: "INCOMPLETE",
+        reason: `COVERAGE_${allPeriod.coverageStatus}`,
+        dataMode: allPeriod.dataMode,
+        generatedAt: allPeriod.meta?.generatedAt ?? allPeriod.generatedAt ?? null,
+        rows: [],
+      };
+    }
+
+    const scopes =
+      params.selectedCompany === "ALL"
+        ? await repository.listPeriodCompanyScopes({
+            dateFrom: params.dateFrom,
+            dateTo: params.dateTo,
+            formulaVersion: FINANCIAL_CORE_V6_PERIOD_READMODEL_V2,
+          })
+        : [params.selectedCompany];
+
+    const rows: PeriodCompanyMarketplaceMetricsPayload[] = [];
+    for (const companyName of scopes) {
+      const row = await repository.findPeriod({
+        companyScope: companyName,
+        marketplace: "ALL",
+        dateFrom: params.dateFrom,
+        dateTo: params.dateTo,
+        formulaVersion: FINANCIAL_CORE_V6_PERIOD_READMODEL_V2,
+      });
+      if (!row || row.coverageStatus !== "COMPLETE") continue;
+      if (
+        !isTrustedV2HitAttestation({
+          meta: row.meta,
+          dateFrom: params.dateFrom,
+          dateTo: params.dateTo,
+          companyScope: companyName,
+        })
+      ) {
+        continue;
+      }
+      rows.push(row.payload);
+    }
+
+    if (rows.length === 0) {
+      return {
+        status: "MISS",
+        reason: "V6_PERIOD_COMPANY_ROWS_EMPTY",
+        dataMode: allPeriod.dataMode,
+        generatedAt: allPeriod.meta?.generatedAt ?? allPeriod.generatedAt ?? null,
+        rows: [],
+      };
+    }
+
+    return {
+      status: "HIT",
+      reason:
+        allPeriod.dataMode === "FINAL"
+          ? "DASHBOARD_V6_PERIOD_HIT"
+          : "DASHBOARD_V6_PERIOD_HIT_PRELIMINARY",
+      dataMode: allPeriod.dataMode,
+      generatedAt: allPeriod.meta?.generatedAt ?? allPeriod.generatedAt ?? null,
+      rows,
+    };
+  } catch (error) {
+    return {
+      status: "ERROR",
+      reason: `V6_LITE_ERROR:${error instanceof Error ? error.message : String(error)}`,
+      dataMode: null,
+      generatedAt: null,
+      rows: [],
+    };
+  }
+}
 
 async function loadOzonAnalyticsForInsights(params: {
   companyName: string;
@@ -200,12 +324,10 @@ export default async function InsightsPage({
       (Date.parse(`${dateTo}T00:00:00Z`) - Date.parse(`${dateFrom}T00:00:00Z`)) /
         86400000,
     ) + 1;
-  // Long periods (month+/YTD): prefer V6 KPIs; skip heavy per-company FC SKU scans
-  // that statement-timeout under DATABASE_POOL_MAX=1 (availability first).
-  const heavySkuAnalytics = periodDays > 0 && periodDays <= 45;
+  // Short periods: live FC SKU is safe under pool=1. Long periods: read-model SKU only.
+  const useLiveSkuFc = periodDays > 0 && periodDays <= 45;
 
-  // Sequential loads: DATABASE_POOL_MAX=1 — parallel Promise.all causes connect timeouts on ALL+YTD.
-  // Ozon KPIs: same Wave B profit read-model path as /profit-ozon when HIT (includes COGS).
+  // Sequential loads: DATABASE_POOL_MAX=1 — parallel Promise.all causes connect timeouts.
   const analyticsByCompany: Array<{
     companyName: string;
     wb: WbAnalytics;
@@ -213,7 +335,10 @@ export default async function InsightsPage({
     ozonSource: "PROFIT_READ_MODEL_HIT" | "PROFIT_LIVE_FC";
   }> = [];
   const ozonSources: string[] = [];
-  if (heavySkuAnalytics) {
+  let skuStatus: InsightsSkuStatus = "PENDING";
+  let skuStatusReason = "";
+
+  if (useLiveSkuFc) {
     for (const companyName of companyNames) {
       const wb = await getProfitAnalytics({ dateFrom, dateTo, companyName });
       const ozonLoaded = await loadOzonAnalyticsForInsights({
@@ -229,29 +354,107 @@ export default async function InsightsPage({
         ozonSource: ozonLoaded.source,
       });
     }
+    skuStatus = "READY";
+    skuStatusReason = "LIVE_FC_SKU";
   } else {
-    ozonSources.push(`SKIP_SKU_FC:periodDays=${periodDays}`);
+    // Long period: ProfitSkuPeriodMetric (Wave B), never heavy live FC in GET.
+    const skuScope =
+      selectedCompany === "ALL" ? "ALL" : selectedCompany;
+    const skuRows = await prisma.profitSkuPeriodMetric.findMany({
+      where: {
+        companyScope: skuScope,
+        dateFrom: dayStartUtc(dateFrom),
+        dateTo: dayStartUtc(dateTo),
+      },
+      take: 5000,
+    });
+    if (skuRows.length === 0) {
+      skuStatus = "UNAVAILABLE";
+      skuStatusReason = `PROFIT_SKU_PERIOD_EMPTY:periodDays=${periodDays}`;
+      ozonSources.push(skuStatusReason);
+    } else {
+      const byCompanyMp = new Map<
+        string,
+        { wbRows: any[]; ozonRows: any[]; modes: string[] }
+      >();
+      const ensure = (companyName: string) => {
+        const key = companyName || skuScope;
+        let bucket = byCompanyMp.get(key);
+        if (!bucket) {
+          bucket = { wbRows: [], ozonRows: [], modes: [] };
+          byCompanyMp.set(key, bucket);
+        }
+        return bucket;
+      };
+      for (const row of skuRows) {
+        const payload = (row.payload ?? {}) as Record<string, unknown>;
+        const companyName =
+          selectedCompany === "ALL"
+            ? String(
+                (payload as { companyName?: string }).companyName ??
+                  row.companyScope,
+              )
+            : selectedCompany;
+        // ALL-scope SKU table already aggregates — keep under synthetic company for listing.
+        const bucket =
+          selectedCompany === "ALL"
+            ? ensure("ALL")
+            : ensure(companyName);
+        const mapped = {
+          nmId: payload.nmId,
+          vendorCode: payload.vendorCode,
+          subject: payload.subject,
+          revenue: payload.revenue,
+          netProfitAfterTax: payload.netProfitAfterTax,
+          netSalesQty: payload.netSalesQty,
+        };
+        if (row.marketplace === "WB") bucket.wbRows.push(mapped);
+        else if (row.marketplace === "OZON") bucket.ozonRows.push(mapped);
+      }
+      for (const [companyName, bucket] of byCompanyMp) {
+        analyticsByCompany.push({
+          companyName: companyName === "ALL" ? "—" : companyName,
+          wb: {
+            rows: bucket.wbRows,
+            totals: {},
+            comparison: null,
+          } as unknown as WbAnalytics,
+          ozon: {
+            rows: bucket.ozonRows,
+            totals: {},
+          } as unknown as OzonAnalytics,
+          ozonSource: "PROFIT_READ_MODEL_HIT",
+        });
+        ozonSources.push(`${companyName}:PROFIT_SKU_PERIOD`);
+      }
+      skuStatus = "PRELIMINARY";
+      skuStatusReason = `PROFIT_SKU_PERIOD_HIT:rows=${skuRows.length}`;
+    }
   }
 
-  // Prefer single ALL-scope Ozon Wave B totals when viewing ALL (matches Profit Ozon ALL).
+  // Ozon Wave B totals (COGS tip + fallback finance) — cheap read-model, any period.
   let ozonTotalsOverride: OzonAnalytics["totals"] | null = null;
   let ozonTotalsSource: "PROFIT_READ_MODEL_HIT" | "PROFIT_LIVE_FC" | "SUM_COMPANIES" =
     "SUM_COMPANIES";
-  if (selectedCompany === "ALL" && heavySkuAnalytics) {
+  {
     const allOzon = await loadOzonAnalyticsForInsights({
-      companyName: "ALL",
+      companyName: selectedCompany === "ALL" ? "ALL" : selectedCompany,
       dateFrom,
       dateTo,
     });
-    ozonTotalsOverride = allOzon.analytics.totals;
-    ozonTotalsSource = allOzon.source;
+    if (allOzon.source === "PROFIT_READ_MODEL_HIT") {
+      ozonTotalsOverride = allOzon.analytics.totals;
+      ozonTotalsSource = allOzon.source;
+    } else if (useLiveSkuFc) {
+      ozonTotalsOverride = allOzon.analytics.totals;
+      ozonTotalsSource = allOzon.source;
+    }
   }
 
-  // Finance INCLUDE for the same company scope / period (Dashboard netProfit contract).
-  // On long periods V6 net already includes Finance — skip heavy transaction scan.
+  // Finance INCLUDE only for short live path; V6 net already includes Finance.
   let financeNetProfitImpact = 0;
   let ownerWithdrawals = 0;
-  if (heavySkuAnalytics) {
+  if (useLiveSkuFc) {
     const financeCategories = await prisma.financeCategory.findMany({
       select: {
         name: true,
@@ -331,130 +534,270 @@ export default async function InsightsPage({
     ],
   );
 
-  // Canonical management KPIs: Dashboard V6 HIT first (identical to /), else live/Wave B.
-  let economicTurnoverWb = 0;
-  let economicTurnoverOzon = 0;
-  let wbMpNet = 0;
-  let ozonMpNet = 0;
-  let ozonTotalCost = 0;
-  let wbTotalCost = 0;
-  let businessNetProfit = 0;
-  let marketplaceNetProfit = 0;
-  let financeImpactForKpi = financeNetProfitImpact;
-  let kpiSource:
-    | "DASHBOARD_V6_HIT"
-    | "OZON_WAVE_B_PLUS_WB_LIVE"
-    | "LIVE_SUM_COMPANIES" = "LIVE_SUM_COMPANIES";
+  // Canonical management KPIs — never leave numeric 0 on miss/pending.
+  let economicTurnoverWb: number | null = null;
+  let economicTurnoverOzon: number | null = null;
+  let wbMpNet: number | null = null;
+  let ozonMpNet: number | null = null;
+  let ozonTotalCost: number | null = null;
+  let wbTotalCost: number | null = null;
+  let businessNetProfit: number | null = null;
+  let marketplaceNetProfit: number | null = null;
+  let financeImpactForKpi: number | null = null;
+  let financeStatus: InsightsFinanceStatus = "PENDING_BUILD";
+  let financeStatusReason = "";
+  let sourceGeneratedAtLabel: string | null = null;
+  let kpiSource = "UNRESOLVED";
 
-  let v6Applied = false;
-  if (isDashboardV6ReadModelFirstEnabled()) {
-    try {
-      const v6 = await loadDashboardV6PeriodReadModel({
-        repository: getDefaultV6PeriodReadModelRepository(),
-        dateFrom,
-        dateTo,
-        companyScope: "ALL",
-      });
-      if (v6.status === "HIT") {
-        const rowsV6 =
-          selectedCompany === "ALL"
-            ? v6.bundle.companyRows
-            : v6.bundle.companyRows.filter(
-                (r) => r.companyName === selectedCompany,
-              );
-        economicTurnoverWb = rowsV6.reduce(
-          (s, r) => s + getAmount(r.wbRevenue),
-          0,
-        );
-        economicTurnoverOzon = rowsV6.reduce(
-          (s, r) => s + getAmount(r.ozonRevenue),
-          0,
-        );
-        marketplaceNetProfit = rowsV6.reduce(
-          (s, r) => s + getAmount(r.operatingProfitAfterTax),
-          0,
-        );
-        businessNetProfit = rowsV6.reduce(
-          (s, r) => s + getAmount(r.netProfit),
-          0,
-        );
-        financeImpactForKpi = businessNetProfit - marketplaceNetProfit;
-        const v6Wb = rowsV6.reduce(
-          (s, r) => s + getAmount(r.wbOperatingProfitAfterTax),
-          0,
-        );
-        const v6Oz = rowsV6.reduce(
-          (s, r) => s + getAmount(r.ozonOperatingProfitAfterTax),
-          0,
-        );
-        if (v6Wb !== 0 || v6Oz !== 0) {
-          wbMpNet = v6Wb;
-          ozonMpNet = v6Oz;
-        } else if (ozonTotalsOverride) {
-          ozonMpNet = getAmount(ozonTotalsOverride.netProfitAfterTax);
-          wbMpNet = marketplaceNetProfit - ozonMpNet;
-        } else {
-          wbMpNet = marketplaceNetProfit;
-          ozonMpNet = 0;
-        }
-        v6Applied = true;
-        kpiSource = "DASHBOARD_V6_HIT";
-      }
-    } catch {
-      v6Applied = false;
-    }
-  }
-
-  if (!v6Applied) {
-    for (const { wb, ozon } of analyticsByCompany) {
-      economicTurnoverWb += getAmount(
-        (wb.totals as { sellerRetailAmount?: number }).sellerRetailAmount,
-      );
-      wbMpNet += getAmount(
-        (wb.totals as { netProfitAfterTax?: number }).netProfitAfterTax,
-      );
-      wbTotalCost += getAmount((wb.totals as { totalCost?: number }).totalCost);
-      if (!ozonTotalsOverride) {
-        economicTurnoverOzon += getAmount(
-          (ozon.totals as { economicTurnover?: number }).economicTurnover,
-        );
-        ozonMpNet += getAmount(
-          (ozon.totals as { netProfitAfterTax?: number }).netProfitAfterTax,
-        );
-        ozonTotalCost += getAmount(
-          (ozon.totals as { totalCost?: number }).totalCost,
-        );
-      }
-    }
-    if (ozonTotalsOverride) {
-      economicTurnoverOzon = getAmount(ozonTotalsOverride.economicTurnover);
+  const applyV6Rows = (
+    rowsV6: PeriodCompanyMarketplaceMetricsPayload[],
+    dataMode: "FINAL" | "PRELIMINARY" | null,
+    generatedAt: string | null,
+    reason: string,
+  ) => {
+    economicTurnoverWb = rowsV6.reduce((s, r) => s + getAmount(r.wbRevenue), 0);
+    economicTurnoverOzon = rowsV6.reduce(
+      (s, r) => s + getAmount(r.ozonRevenue),
+      0,
+    );
+    marketplaceNetProfit = rowsV6.reduce(
+      (s, r) => s + getAmount(r.operatingProfitAfterTax),
+      0,
+    );
+    businessNetProfit = rowsV6.reduce((s, r) => s + getAmount(r.netProfit), 0);
+    financeImpactForKpi =
+      (businessNetProfit ?? 0) - (marketplaceNetProfit ?? 0);
+    const v6Wb = rowsV6.reduce(
+      (s, r) => s + getAmount(r.wbOperatingProfitAfterTax),
+      0,
+    );
+    const v6Oz = rowsV6.reduce(
+      (s, r) => s + getAmount(r.ozonOperatingProfitAfterTax),
+      0,
+    );
+    if (v6Wb !== 0 || v6Oz !== 0) {
+      wbMpNet = v6Wb;
+      ozonMpNet = v6Oz;
+    } else if (ozonTotalsOverride) {
       ozonMpNet = getAmount(ozonTotalsOverride.netProfitAfterTax);
-      ozonTotalCost = getAmount(
-        (ozonTotalsOverride as { totalCost?: number }).totalCost,
-      );
-      kpiSource = "OZON_WAVE_B_PLUS_WB_LIVE";
+      wbMpNet = (marketplaceNetProfit ?? 0) - (ozonMpNet ?? 0);
+    } else {
+      wbMpNet = marketplaceNetProfit;
+      ozonMpNet = 0;
     }
-    const combined = snapshotCombinedProfit({
-      wbNet: wbMpNet,
-      ozonNet: ozonMpNet,
-      financeImpact: financeNetProfitImpact,
-      ownerWithdrawals,
+    financeStatus =
+      dataMode === "FINAL" ? "VERIFIED_READY" : "PRELIMINARY_WITH_VALUE";
+    financeStatusReason = reason;
+    kpiSource =
+      dataMode === "FINAL" ? "DASHBOARD_V6_HIT" : "DASHBOARD_V6_HIT_PRELIMINARY";
+    if (generatedAt) {
+      sourceGeneratedAtLabel = new Intl.DateTimeFormat("ru-RU", {
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      }).format(new Date(generatedAt));
+    }
+  };
+
+  let financeResolved = false;
+
+  // 1) Prefer lite V6 period rows (no dailyPoints — YTD-safe).
+  if (isDashboardV6ReadModelFirstEnabled()) {
+    const lite = await loadV6PeriodCompanyRowsLite({
+      dateFrom,
+      dateTo,
+      selectedCompany,
     });
-    marketplaceNetProfit = getAmount(combined.operatingProfitAfterTax);
-    businessNetProfit = getAmount(combined.netProfit);
-    financeImpactForKpi = financeNetProfitImpact;
+    if (lite.status === "HIT") {
+      applyV6Rows(lite.rows, lite.dataMode, lite.generatedAt, lite.reason);
+      financeResolved = true;
+    } else {
+      financeStatusReason = lite.reason;
+      // 2) Full V6 loader (week/month often HIT; may timeout on YTD — caught).
+      try {
+        const v6 = await loadDashboardV6PeriodReadModel({
+          repository: getDefaultV6PeriodReadModelRepository(),
+          dateFrom,
+          dateTo,
+          companyScope: "ALL",
+        });
+        if (v6.status === "HIT") {
+          const rowsV6 =
+            selectedCompany === "ALL"
+              ? v6.bundle.companyRows
+              : v6.bundle.companyRows.filter(
+                  (r) => r.companyName === selectedCompany,
+                );
+          if (rowsV6.length > 0) {
+            applyV6Rows(
+              rowsV6,
+              v6.bundle.meta?.dataMode ?? null,
+              v6.bundle.meta?.generatedAt ?? null,
+              "DASHBOARD_V6_FULL_HIT",
+            );
+            financeResolved = true;
+          } else {
+            financeStatus = "SOURCE_MISSING";
+            financeStatusReason = "V6_HIT_BUT_NO_COMPANY_ROWS";
+          }
+        } else {
+          financeStatus =
+            v6.status === "PENDING" ? "PENDING_BUILD" : "SOURCE_MISSING";
+          financeStatusReason = `${lite.reason}|FULL:${v6.status}:${v6.reason}`;
+        }
+      } catch (error) {
+        financeStatus = "ERROR";
+        financeStatusReason = `${lite.reason}|FULL_ERROR:${error instanceof Error ? error.message : String(error)}`;
+      }
+    }
   }
 
-  if (ozonTotalsOverride) {
+  // 3) Wave B Profit WB+Ozon totals (no live FC) when V6 unavailable.
+  if (!financeResolved) {
+    const wbWave = await loadProfitReadModel({
+      repository: createPrismaProfitReadModelRepository(
+        createWaveBProfitTargetPrismaClient(),
+      ),
+      marketplace: "WB",
+      companyScope: selectedCompany === "ALL" ? "ALL" : selectedCompany,
+      dateFrom,
+      dateTo,
+      enqueueOnMiss: false,
+    });
+    const ozonWave = await loadProfitReadModel({
+      repository: createPrismaProfitReadModelRepository(
+        createWaveBProfitTargetPrismaClient(),
+      ),
+      marketplace: "OZON",
+      companyScope: selectedCompany === "ALL" ? "ALL" : selectedCompany,
+      dateFrom,
+      dateTo,
+      enqueueOnMiss: false,
+    });
+
+    if (wbWave.status === "HIT" || ozonWave.status === "HIT") {
+      const wbTotals =
+        wbWave.status === "HIT"
+          ? ((wbWave.analytics as WbAnalytics).totals as Record<
+              string,
+              unknown
+            >)
+          : null;
+      const ozTotals =
+        ozonWave.status === "HIT"
+          ? ((ozonWave.analytics as OzonAnalytics).totals as Record<
+              string,
+              unknown
+            >)
+          : ozonTotalsOverride;
+
+      economicTurnoverWb = wbTotals
+        ? getAmount(wbTotals.sellerRetailAmount)
+        : null;
+      economicTurnoverOzon = ozTotals
+        ? getAmount(ozTotals.economicTurnover)
+        : null;
+      wbMpNet = wbTotals ? getAmount(wbTotals.netProfitAfterTax) : null;
+      ozonMpNet = ozTotals ? getAmount(ozTotals.netProfitAfterTax) : null;
+      wbTotalCost = wbTotals ? getAmount(wbTotals.totalCost) : null;
+      ozonTotalCost = ozTotals ? getAmount(ozTotals.totalCost) : null;
+
+      if (wbMpNet != null || ozonMpNet != null) {
+        const combined = snapshotCombinedProfit({
+          wbNet: wbMpNet ?? 0,
+          ozonNet: ozonMpNet ?? 0,
+          financeImpact: financeNetProfitImpact,
+          ownerWithdrawals,
+        });
+        marketplaceNetProfit = getAmount(combined.operatingProfitAfterTax);
+        // On long periods Finance is not scanned — prefer MP-only until V6.
+        businessNetProfit =
+          useLiveSkuFc
+            ? getAmount(combined.netProfit)
+            : marketplaceNetProfit;
+        financeImpactForKpi = useLiveSkuFc ? financeNetProfitImpact : null;
+        const mode =
+          (wbWave.status === "HIT" && wbWave.dataMode === "FINAL" &&
+            ozonWave.status === "HIT" && ozonWave.dataMode === "FINAL")
+            ? "FINAL"
+            : "PRELIMINARY";
+        financeStatus =
+          mode === "FINAL" ? "VERIFIED_READY" : "PRELIMINARY_WITH_VALUE";
+        financeStatusReason = `PROFIT_WAVE_B:WB=${wbWave.status};OZON=${ozonWave.status}`;
+        kpiSource = "PROFIT_WAVE_B_HIT";
+        financeResolved = true;
+      }
+    } else if (useLiveSkuFc && analyticsByCompany.length > 0) {
+      let etWb = 0;
+      let etOz = 0;
+      let wbNet = 0;
+      let ozNet = 0;
+      for (const { wb, ozon } of analyticsByCompany) {
+        etWb += getAmount(
+          (wb.totals as { sellerRetailAmount?: number }).sellerRetailAmount,
+        );
+        wbNet += getAmount(
+          (wb.totals as { netProfitAfterTax?: number }).netProfitAfterTax,
+        );
+        wbTotalCost =
+          (wbTotalCost ?? 0) +
+          getAmount((wb.totals as { totalCost?: number }).totalCost);
+        if (!ozonTotalsOverride) {
+          etOz += getAmount(
+            (ozon.totals as { economicTurnover?: number }).economicTurnover,
+          );
+          ozNet += getAmount(
+            (ozon.totals as { netProfitAfterTax?: number }).netProfitAfterTax,
+          );
+          ozonTotalCost =
+            (ozonTotalCost ?? 0) +
+            getAmount((ozon.totals as { totalCost?: number }).totalCost);
+        }
+      }
+      if (ozonTotalsOverride) {
+        etOz = getAmount(ozonTotalsOverride.economicTurnover);
+        ozNet = getAmount(ozonTotalsOverride.netProfitAfterTax);
+        ozonTotalCost = getAmount(
+          (ozonTotalsOverride as { totalCost?: number }).totalCost,
+        );
+      }
+      economicTurnoverWb = etWb;
+      economicTurnoverOzon = etOz;
+      wbMpNet = wbNet;
+      ozonMpNet = ozNet;
+      const combined = snapshotCombinedProfit({
+        wbNet,
+        ozonNet: ozNet,
+        financeImpact: financeNetProfitImpact,
+        ownerWithdrawals,
+      });
+      marketplaceNetProfit = getAmount(combined.operatingProfitAfterTax);
+      businessNetProfit = getAmount(combined.netProfit);
+      financeImpactForKpi = financeNetProfitImpact;
+      financeStatus = "PRELIMINARY_WITH_VALUE";
+      financeStatusReason = "LIVE_SUM_COMPANIES";
+      kpiSource = "LIVE_SUM_COMPANIES";
+      financeResolved = true;
+    } else if (!financeResolved) {
+      if (financeStatus === "PENDING_BUILD" && !financeStatusReason) {
+        financeStatusReason = "NO_V6_NO_WAVE_B";
+      }
+      // Keep all KPI numbers null — UI shows н/д / «формируется», never fake 0.
+    }
+  }
+
+  if (ozonTotalsOverride && ozonTotalCost == null) {
     ozonTotalCost = getAmount(
       (ozonTotalsOverride as { totalCost?: number }).totalCost,
     );
   }
-  for (const { wb } of analyticsByCompany) {
-    wbTotalCost += getAmount((wb.totals as { totalCost?: number }).totalCost);
-  }
 
-  const economicTurnover = economicTurnoverWb + economicTurnoverOzon;
+  const economicTurnover =
+    economicTurnoverWb != null || economicTurnoverOzon != null
+      ? getAmount(economicTurnoverWb) + getAmount(economicTurnoverOzon)
+      : null;
 
   const rows: InsightSkuRow[] = analyticsByCompany.flatMap(
     ({ companyName, wb, ozon }) => [
@@ -516,7 +859,7 @@ export default async function InsightsPage({
   );
 
   // WB size qty: ONLY canonical owned sales + SALE/RETURN classification (netSalesQty).
-  const enableWbSizeDrilldown = heavySkuAnalytics;
+  const enableWbSizeDrilldown = useLiveSkuFc;
 
   const wbRankVendorCodes = enableWbSizeDrilldown
     ? Array.from(
@@ -679,7 +1022,9 @@ export default async function InsightsPage({
       );
     }
   }
-  const lossSkuCount = lossIdentityKeys.size;
+  const skuLayerReady =
+    skuStatus === "READY" || skuStatus === "PRELIMINARY";
+  const lossSkuCount = skuLayerReady ? lossIdentityKeys.size : null;
 
   // Stock valuation = same formula as /stocks summaries (no field cascade fallbacks).
   // WB: totalStock + inTransitToCustomer + inTransitReturns
@@ -993,17 +1338,23 @@ export default async function InsightsPage({
 
   const dataModes = Array.from(
     new Set(
-      analyticsByCompany.flatMap(({ wb, ozon }) => {
-        const modes: string[] = [];
-        const wbMode = (wb.totals as { dataMode?: string } | undefined)
-          ?.dataMode;
-        if (wbMode) modes.push(`WB:${wbMode}`);
-        const ozonMode = (
-          ozon.totals as { netProfitStatus?: string } | undefined
-        )?.netProfitStatus;
-        if (ozonMode) modes.push(`Ozon:${ozonMode}`);
-        return modes;
-      }),
+      [
+        `finance:${financeStatus}`,
+        `sku:${skuStatus}`,
+        financeStatusReason ? `financeReason:${financeStatusReason}` : "",
+        skuStatusReason ? `skuReason:${skuStatusReason}` : "",
+        ...analyticsByCompany.flatMap(({ wb, ozon }) => {
+          const modes: string[] = [];
+          const wbMode = (wb.totals as { dataMode?: string } | undefined)
+            ?.dataMode;
+          if (wbMode) modes.push(`WB:${wbMode}`);
+          const ozonMode = (
+            ozon.totals as { netProfitStatus?: string } | undefined
+          )?.netProfitStatus;
+          if (ozonMode) modes.push(`Ozon:${ozonMode}`);
+          return modes;
+        }),
+      ].filter(Boolean),
     ),
   );
 
@@ -1022,6 +1373,11 @@ export default async function InsightsPage({
     companies: companies.map((c) => ({ id: c.id, name: c.name })),
     generatedAtLabel: nowLabel,
     dataModes,
+    financeStatus,
+    financeStatusReason,
+    skuStatus,
+    skuStatusReason,
+    sourceGeneratedAtLabel,
     kpi: {
       economicTurnover,
       economicTurnoverWb,
@@ -1048,17 +1404,17 @@ export default async function InsightsPage({
     },
     attention: {
       lossSkuCount,
-      lowMarginSkuCount: lowMarginRows.length,
-      profitableSkuCount: soldProfitable.length,
+      lowMarginSkuCount: skuLayerReady ? lowMarginRows.length : null,
+      profitableSkuCount: skuLayerReady ? soldProfitable.length : null,
       stockAtCost: stockWithCost.length > 0 ? stockAtCost : null,
     },
     drivers: Array.from(driversMap.values()),
     problems: {
-      uniqueProblemSkuCount: problemKeys.size,
+      uniqueProblemSkuCount: skuLayerReady ? problemKeys.size : null,
       lossSkuCount,
-      lowMarginSkuCount: lowMarginRows.length,
-      noMovementSkuCount,
-      excessStockSkuCount,
+      lowMarginSkuCount: skuLayerReady ? lowMarginRows.length : null,
+      noMovementSkuCount: skuLayerReady ? noMovementSkuCount : null,
+      excessStockSkuCount: skuLayerReady ? excessStockSkuCount : null,
     },
     profitablePreview: withImages(soldProfitable.slice(0, 5)),
     profitableAll: withImages(soldProfitable.slice(0, 20)),

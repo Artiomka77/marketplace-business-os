@@ -960,7 +960,10 @@ export default function InsightsDashboard({ data }: { data: InsightsPayload }) {
       href: "#loss-sku",
       icon: "↓",
       tone: "rose" as const,
-      title: `${formatNumber(data.attention.lossSkuCount)} убыточных товаров`,
+      title:
+        data.attention.lossSkuCount == null
+          ? "Убыточные товары: н/д"
+          : `${formatNumber(data.attention.lossSkuCount)} убыточных товаров`,
       body: "Проверить рекламу и цены",
       detail:
         "Открыть рейтинг убыточных позиций с выручкой: пересмотреть рекламу, цену и себестоимость.",
@@ -979,7 +982,10 @@ export default function InsightsDashboard({ data }: { data: InsightsPayload }) {
       icon: "↑",
       tone: "emerald" as const,
       title: "ТОП прибыльных товаров",
-      body: `${formatNumber(data.attention.profitableSkuCount)} — масштабировать`,
+      body:
+        data.attention.profitableSkuCount == null
+          ? "товарная детализация н/д"
+          : `${formatNumber(data.attention.profitableSkuCount)} — масштабировать`,
       detail:
         "Прибыльные позиции с продажами: кандидаты на масштабирование остатков и рекламы.",
     },
@@ -1008,14 +1014,48 @@ export default function InsightsDashboard({ data }: { data: InsightsPayload }) {
             </p>
             {data.dataModes.length > 0 ? (
               <p className="mt-1 text-[10px] font-semibold text-amber-700">
-                Режим данных: {data.dataModes.join(", ")}
+                Режим данных:{" "}
+                {data.dataModes
+                  .filter(
+                    (m) =>
+                      !m.startsWith("financeReason:") &&
+                      !m.startsWith("skuReason:"),
+                  )
+                  .join(", ")}
+              </p>
+            ) : null}
+            {data.financeStatus === "PRELIMINARY_WITH_VALUE" ? (
+              <p className="mt-1 text-[10px] font-semibold text-amber-800">
+                Финансовые KPI: PRELIMINARY — доступные значения показаны, не
+                FINAL. {data.financeStatusReason}
+              </p>
+            ) : null}
+            {data.financeStatus === "PENDING_BUILD" ||
+            data.financeStatus === "SOURCE_MISSING" ||
+            data.financeStatus === "ERROR" ? (
+              <p className="mt-1 text-[10px] font-semibold text-rose-700">
+                Финансовые данные{" "}
+                {data.financeStatus === "PENDING_BUILD"
+                  ? "формируются"
+                  : "не подтверждены"}
+                — KPI не подменяются нулями. {data.financeStatusReason}
+              </p>
+            ) : null}
+            {data.skuStatus === "UNAVAILABLE" || data.skuStatus === "PENDING" ? (
+              <p className="mt-1 text-[10px] font-semibold text-slate-600">
+                Товарная детализация недоступна/формируется — рейтинги SKU не
+                выдаются за «0 товаров». {data.skuStatusReason}
               </p>
             ) : null}
           </div>
           <div className="flex flex-wrap items-center gap-1.5">
             <div className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[10px] font-semibold text-slate-600 shadow-sm">
-              Последнее обновление{" "}
-              <span className="text-slate-900">{data.generatedAtLabel}</span>
+              {data.sourceGeneratedAtLabel
+                ? "Снимок read-model "
+                : "Рендер страницы "}
+              <span className="text-slate-900">
+                {data.sourceGeneratedAtLabel ?? data.generatedAtLabel}
+              </span>
             </div>
             <button
               type="button"
