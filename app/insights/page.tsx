@@ -302,6 +302,7 @@ export default async function InsightsPage({
       marketplace: mp,
       revenue: 0,
       profit: 0,
+      soldProfit: 0,
       marginPercent: null,
       adjustmentProfit: 0,
       adjustmentSkuCount: 0,
@@ -314,40 +315,79 @@ export default async function InsightsPage({
     if (row.anomaly !== "NONE") {
       slice.adjustmentProfit += row.profit;
       slice.adjustmentSkuCount += 1;
+    } else if (row.revenue > 0) {
+      slice.soldProfit += row.profit;
     }
   }
   for (const slice of driversMap.values()) {
-    slice.marginPercent = marginOrNull(slice.revenue, slice.profit);
+    // Margin only on SKU revenue base (not adjustments-as-revenue).
+    slice.marginPercent = marginOrNull(slice.revenue, slice.soldProfit);
   }
 
-  // Photos from existing catalog tables (best-effort, no financial impact).
+  // Photos: match nmId AND vendorCode; proxy WB basket CDN via existing API.
+  const toDisplayImageUrl = (raw: string | null | undefined): string | null => {
+    const url = String(raw ?? "").trim();
+    if (!url) return null;
+    try {
+      const parsed = new URL(url);
+      if (/^basket-\d+\.wbbasket\.ru$/i.test(parsed.hostname)) {
+        return `/api/media/wb-image?u=${encodeURIComponent(url)}`;
+      }
+    } catch {
+      /* keep raw absolute/relative https URLs */
+    }
+    return url;
+  };
+
   const wbNmIds = Array.from(
     new Set(
       rows
         .filter((r) => r.marketplace === "WB" && r.sku)
-        .map((r) => r.sku)
+        .map((r) => String(r.sku).trim())
         .filter(Boolean),
     ),
-  ).slice(0, 400);
+  ).slice(0, 500);
+  const wbVendorCodes = Array.from(
+    new Set(
+      rows
+        .filter((r) => r.marketplace === "WB" && r.vendorCode)
+        .map((r) => String(r.vendorCode).trim())
+        .filter(Boolean),
+    ),
+  ).slice(0, 500);
   const ozonKeys = Array.from(
     new Set(
       rows
         .filter((r) => r.marketplace === "Ozon")
-        .flatMap((r) => [r.sku, r.vendorCode].filter(Boolean)),
+        .flatMap((r) => [r.sku, r.vendorCode].map((x) => String(x ?? "").trim()))
+        .filter(Boolean),
     ),
-  ).slice(0, 400);
+  ).slice(0, 500);
+
+  const wbWhere =
+    wbNmIds.length || wbVendorCodes.length
+      ? {
+          OR: [
+            ...(wbNmIds.length ? [{ nmId: { in: wbNmIds } }] : []),
+            ...(wbVendorCodes.length
+              ? [{ vendorCode: { in: wbVendorCodes } }]
+              : []),
+          ],
+        }
+      : null;
 
   const [wbCards, ozonProducts] = await Promise.all([
-    wbNmIds.length
+    wbWhere
       ? prisma.wbProductCard.findMany({
-          where: { nmId: { in: wbNmIds } },
+          where: wbWhere,
           select: {
             nmId: true,
             vendorCode: true,
+            companyName: true,
             photoSmallUrl: true,
             photoBigUrl: true,
           },
-          take: 500,
+          take: 800,
         })
       : Promise.resolve([]),
     ozonKeys.length
@@ -361,38 +401,68 @@ export default async function InsightsPage({
           select: {
             sku: true,
             vendorCode: true,
+            companyName: true,
             imageSmallUrl: true,
             imageUrl: true,
           },
-          take: 500,
+          take: 800,
         })
       : Promise.resolve([]),
   ]);
 
   const imageByKey = new Map<string, string>();
+  const putImage = (key: string, raw: string | null | undefined) => {
+    const display = toDisplayImageUrl(raw);
+    if (!display || imageByKey.has(key)) return;
+    imageByKey.set(key, display);
+  };
   for (const card of wbCards) {
-    const url = card.photoSmallUrl?.trim() || card.photoBigUrl?.trim();
-    if (!url) continue;
-    if (card.nmId) imageByKey.set(`WB|id:${card.nmId}`, url);
+    const raw = card.photoSmallUrl?.trim() || card.photoBigUrl?.trim() || "";
+    if (!raw) continue;
+    if (card.nmId) {
+      putImage(`WB|id:${card.nmId}`, raw);
+      putImage(`WB|${card.companyName}|id:${card.nmId}`, raw);
+    }
     const vc = normalizeVendorCode(card.vendorCode);
-    if (vc) imageByKey.set(`WB|vc:${vc}`, url);
+    if (vc) {
+      putImage(`WB|vc:${vc}`, raw);
+      putImage(`WB|${card.companyName}|vc:${vc}`, raw);
+    }
   }
   for (const product of ozonProducts) {
-    const url =
+    const raw =
       product.imageSmallUrl?.trim() || product.imageUrl?.trim() || "";
-    if (!url) continue;
-    if (product.sku) imageByKey.set(`Ozon|id:${product.sku}`, url);
+    if (!raw) continue;
+    const company = product.companyName || "";
+    if (product.sku) {
+      putImage(`Ozon|id:${product.sku}`, raw);
+      if (company) putImage(`Ozon|${company}|id:${product.sku}`, raw);
+      putImage(`Ozon|vc:${normalizeVendorCode(product.sku)}`, raw);
+    }
     const vc = normalizeVendorCode(product.vendorCode);
-    if (vc) imageByKey.set(`Ozon|vc:${vc}`, url);
-    if (product.sku) imageByKey.set(`Ozon|vc:${normalizeVendorCode(product.sku)}`, url);
+    if (vc) {
+      putImage(`Ozon|vc:${vc}`, raw);
+      if (company) putImage(`Ozon|${company}|vc:${vc}`, raw);
+    }
   }
 
   const attachImage = <T extends InsightSkuRow | InsightStockRow>(row: T): T => {
-    const byId = imageByKey.get(`${row.marketplace}|id:${row.sku}`);
-    const byVc = imageByKey.get(
+    const company = row.companyName || "";
+    const candidates = [
+      `${row.marketplace}|${company}|id:${row.sku}`,
+      `${row.marketplace}|id:${row.sku}`,
+      `${row.marketplace}|${company}|vc:${normalizeVendorCode(row.vendorCode)}`,
       `${row.marketplace}|vc:${normalizeVendorCode(row.vendorCode)}`,
-    );
-    return { ...row, imageUrl: byId || byVc || null };
+    ];
+    let imageUrl: string | null = null;
+    for (const key of candidates) {
+      const hit = imageByKey.get(key);
+      if (hit) {
+        imageUrl = hit;
+        break;
+      }
+    }
+    return { ...row, imageUrl };
   };
 
   const withImages = <T extends InsightSkuRow | InsightStockRow>(list: T[]) =>
@@ -423,6 +493,9 @@ export default async function InsightsPage({
   }).format(new Date());
 
   const adjustmentProfitSum = adjustments.reduce((s, r) => s + r.profit, 0);
+  const soldProfitTotal = rows
+    .filter((r) => r.revenue > 0)
+    .reduce((s, r) => s + r.profit, 0);
 
   const payload: InsightsPayload = {
     company: selectedCompany,
@@ -434,6 +507,9 @@ export default async function InsightsPage({
     kpi: {
       revenue: totalRevenue,
       netProfit: totalProfit,
+      soldProfit: soldProfitTotal,
+      adjustmentProfit: adjustmentProfitSum,
+      // Denominator = SKU revenue; numerator includes adjustments → can exceed 100%.
       netMarginPercent: marginOrNull(totalRevenue, totalProfit),
       lossSkuCount,
       frozenMoney: stockWithCost.length > 0 ? frozenMoney : null,

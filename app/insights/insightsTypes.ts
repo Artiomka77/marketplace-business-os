@@ -29,8 +29,12 @@ export type InsightStockRow = {
 
 export type MarketplaceSlice = {
   marketplace: MarketplaceCode;
+  /** Sum of SKU revenue (sales only; adjustments have revenue 0) */
   revenue: number;
+  /** Total SKU netProfitAfterTax including adjustments */
   profit: number;
+  /** profit attributable to rows with revenue > 0 */
+  soldProfit: number;
   marginPercent: number | null;
   /** SKU rows with revenue=0 and non-zero profit (adjustments), same marketplace */
   adjustmentProfit: number;
@@ -45,8 +49,14 @@ export type InsightsPayload = {
   generatedAtLabel: string;
   dataModes: string[];
   kpi: {
+    /** Sum of SKU `revenue` (WB+Ozon). Not Dashboard sales/accruals. */
     revenue: number;
+    /** Sum of SKU `netProfitAfterTax` including adjustments without sales. */
     netProfit: number;
+    /** soldProfit only (revenue>0 rows) — for transparency */
+    soldProfit: number;
+    /** adjustment profit sum (revenue=0 rows) */
+    adjustmentProfit: number;
     netMarginPercent: number | null;
     lossSkuCount: number;
     frozenMoney: number | null;

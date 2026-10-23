@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
 import type {
@@ -68,12 +68,18 @@ function SkuThumb({
   marketplace: string;
   imageUrl?: string | null;
 }) {
-  if (imageUrl) {
+  const [failed, setFailed] = useState(false);
+  const showImg = Boolean(imageUrl) && !failed;
+
+  if (showImg) {
     return (
       // eslint-disable-next-line @next/next/no-img-element
       <img
-        src={imageUrl}
+        src={imageUrl!}
         alt=""
+        loading="lazy"
+        referrerPolicy="no-referrer"
+        onError={() => setFailed(true)}
         className="h-8 w-8 shrink-0 rounded-md border border-slate-200 object-cover bg-white"
       />
     );
@@ -86,6 +92,7 @@ function SkuThumb({
           : "bg-sky-100 text-sky-700"
       }`}
       aria-hidden
+      title="Нет фото"
     >
       {marketplace === "WB" ? "WB" : "Oz"}
     </div>
@@ -198,31 +205,32 @@ function AttentionCard({
 
 function DriversPanel({ drivers }: { drivers: MarketplaceSlice[] }) {
   const [mode, setMode] = useState<"revenue" | "profit" | "margin">("revenue");
-  const rows = useMemo(() => {
-    return drivers.map((d) => {
-      const value =
-        mode === "revenue"
-          ? d.revenue
-          : mode === "profit"
-            ? d.profit
-            : d.marginPercent;
-      return { ...d, value };
-    });
-  }, [drivers, mode]);
+
+  const primaryValue = (d: MarketplaceSlice) => {
+    if (mode === "revenue") return d.revenue;
+    if (mode === "profit") return d.soldProfit;
+    return d.marginPercent;
+  };
 
   const maxAbs = Math.max(
     1,
-    ...rows.map((r) =>
-      r.value == null || !Number.isFinite(r.value)
-        ? 0
-        : Math.abs(Number(r.value)),
+    ...drivers.map((d) => {
+      const v = primaryValue(d);
+      return v == null || !Number.isFinite(v) ? 0 : Math.abs(Number(v));
+    }),
+    ...drivers.map((d) =>
+      mode === "profit" ? Math.abs(d.adjustmentProfit) : 0,
     ),
   );
 
-  const totalPositive =
-    mode === "margin"
-      ? null
-      : rows.reduce((s, r) => s + Math.max(0, Number(r.value ?? 0)), 0);
+  const totalPositiveRevenue = drivers.reduce(
+    (s, d) => s + Math.max(0, d.revenue),
+    0,
+  );
+  const totalPositiveSoldProfit = drivers.reduce(
+    (s, d) => s + Math.max(0, d.soldProfit),
+    0,
+  );
 
   return (
     <section className="rounded-xl border border-slate-200/80 bg-white p-3 shadow-sm">
@@ -230,7 +238,11 @@ function DriversPanel({ drivers }: { drivers: MarketplaceSlice[] }) {
         <div>
           <h2 className="text-sm font-black text-slate-900">Драйверы прибыли</h2>
           <p className="text-[10px] text-slate-500">
-            Вклад МП в SKU-выручку и чистую прибыль
+            {mode === "revenue"
+              ? "Доля SKU-выручки по МП (не оборот Dashboard)"
+              : mode === "profit"
+                ? "Прибыль с продажами отдельно от корректировок без продаж"
+                : "Маржа SKU = прибыль с продажами / SKU-выручка"}
           </p>
         </div>
         <div
@@ -264,15 +276,22 @@ function DriversPanel({ drivers }: { drivers: MarketplaceSlice[] }) {
       </div>
 
       <div className="mt-3 space-y-2.5">
-        {rows.map((row) => {
-          const numeric = Number(row.value ?? 0);
+        {drivers.map((row) => {
+          const numeric = Number(primaryValue(row) ?? 0);
           const widthPct = Math.min(100, (Math.abs(numeric) / maxAbs) * 100);
+          const adjWidth =
+            mode === "profit"
+              ? Math.min(100, (Math.abs(row.adjustmentProfit) / maxAbs) * 100)
+              : 0;
+          const shareBase =
+            mode === "revenue"
+              ? totalPositiveRevenue
+              : mode === "profit"
+                ? totalPositiveSoldProfit
+                : null;
           const share =
-            mode !== "margin" &&
-            totalPositive &&
-            totalPositive > 0 &&
-            numeric > 0
-              ? (numeric / totalPositive) * 100
+            shareBase != null && shareBase > 0 && numeric > 0
+              ? (numeric / shareBase) * 100
               : null;
           const barColor =
             numeric < 0
@@ -280,20 +299,19 @@ function DriversPanel({ drivers }: { drivers: MarketplaceSlice[] }) {
               : row.marketplace === "WB"
                 ? "bg-violet-500"
                 : "bg-sky-500";
-          const zeroRevenueWithAdj =
-            row.revenue === 0 &&
-            (row.adjustmentSkuCount > 0 || row.profit !== 0);
 
           return (
-            <div key={row.marketplace}>
+            <div key={row.marketplace} data-driver={row.marketplace} data-mode={mode}>
               <div className="mb-1 flex items-center justify-between gap-2 text-xs">
                 <span className="font-bold text-slate-800">
                   {row.marketplace === "WB" ? "Wildberries" : "Ozon"}
                 </span>
                 <span className="font-black tabular-nums text-slate-900">
                   {mode === "margin"
-                    ? formatPercent(row.value as number | null)
-                    : formatMoney(numeric)}
+                    ? formatPercent(row.marginPercent)
+                    : mode === "profit"
+                      ? formatMoney(row.soldProfit)
+                      : formatMoney(row.revenue)}
                   {share != null ? (
                     <span className="ml-1.5 text-[10px] font-semibold text-slate-500">
                       ({share.toFixed(1)}%)
@@ -305,16 +323,44 @@ function DriversPanel({ drivers }: { drivers: MarketplaceSlice[] }) {
                 <div
                   className={`h-full rounded-full ${barColor}`}
                   style={{ width: `${widthPct}%` }}
+                  data-bar="primary"
                 />
               </div>
-              {zeroRevenueWithAdj ? (
+              {mode === "profit" && row.adjustmentSkuCount > 0 ? (
+                <div className="mt-1">
+                  <div className="mb-0.5 flex items-center justify-between text-[10px] font-semibold text-amber-800">
+                    <span>Корректировки без продаж</span>
+                    <span className={moneyClass(row.adjustmentProfit)}>
+                      {formatMoney(row.adjustmentProfit)} ·{" "}
+                      {formatNumber(row.adjustmentSkuCount)} SKU
+                    </span>
+                  </div>
+                  <div className="h-1.5 overflow-hidden rounded-full bg-amber-100">
+                    <div
+                      className={`h-full rounded-full ${
+                        row.adjustmentProfit < 0 ? "bg-rose-400" : "bg-amber-400"
+                      }`}
+                      style={{ width: `${adjWidth}%` }}
+                      data-bar="adjustments"
+                    />
+                  </div>
+                </div>
+              ) : null}
+              {mode === "revenue" &&
+              row.revenue === 0 &&
+              row.adjustmentSkuCount > 0 ? (
                 <p className="mt-1 text-[10px] leading-3 text-amber-700">
-                  SKU-выручка 0 ₽, но есть корректировки без продаж:{" "}
-                  {formatNumber(row.adjustmentSkuCount)} SKU · прибыль{" "}
+                  SKU-выручка 0 ₽ — корректировки без продаж (
+                  {formatNumber(row.adjustmentSkuCount)} SKU,{" "}
                   <span className={moneyClass(row.adjustmentProfit)}>
                     {formatMoney(row.adjustmentProfit)}
                   </span>
-                  . Это не налоговый/экономический оборот Dashboard.
+                  ) не являются выручкой. Смотрите режим «Прибыль».
+                </p>
+              ) : null}
+              {mode === "margin" && !(row.revenue > 0) ? (
+                <p className="mt-1 text-[10px] leading-3 text-slate-500">
+                  Маржа н/д: нет SKU-выручки (корректировки без знаменателя).
                 </p>
               ) : null}
             </div>
@@ -838,8 +884,8 @@ export default function InsightsDashboard({ data }: { data: InsightsPayload }) {
   const marginHigh =
     data.kpi.netMarginPercent != null && data.kpi.netMarginPercent > 100;
   const marginTip = marginHigh
-    ? "Проверьте состав выручки и распределённых корректировок"
-    : undefined;
+    ? "Маржа SKU = прибыль SKU (вкл. корректировки) / SKU-выручка"
+    : "Маржа SKU = прибыль SKU / SKU-выручка";
 
   return (
     <main className="min-h-screen bg-[#eef2f7] p-3 sm:p-4">
@@ -931,20 +977,23 @@ export default function InsightsDashboard({ data }: { data: InsightsPayload }) {
 
         <section className="grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
           <KpiCard
-            title="Выручка"
+            title="SKU-выручка"
             value={formatMoney(data.kpi.revenue)}
             accent="blue"
             icon="₽"
-            tip="SKU-выручка Insights (поле revenue WB+Ozon), не путать с Dashboard продажами/начислениями."
+            subtitle="поле revenue SKU · не оборот Dashboard"
+            tip="Сумма SKU revenue WB+Ozon. Не равна продажам/начислениям Dashboard."
           />
           <KpiCard
-            title="Чистая прибыль"
+            title="Прибыль SKU"
             value={formatMoney(data.kpi.netProfit)}
             accent="green"
             icon="↑"
+            subtitle={`с продаж ${formatMoney(data.kpi.soldProfit)} · корр. ${formatMoney(data.kpi.adjustmentProfit)}`}
+            tip="Сумма netProfitAfterTax по SKU, включая корректировки без продаж. Не «чистая прибыль бизнеса» Dashboard."
           />
           <KpiCard
-            title="Чистая маржа"
+            title="Маржа SKU"
             value={formatPercent(data.kpi.netMarginPercent)}
             accent="violet"
             icon="%"
@@ -956,6 +1005,7 @@ export default function InsightsDashboard({ data }: { data: InsightsPayload }) {
             value={formatNumber(data.kpi.lossSkuCount)}
             accent="red"
             icon="!"
+            subtitle="profit < 0 (все строки)"
           />
           <KpiCard
             title="Заморожено в остатках"
@@ -972,19 +1022,24 @@ export default function InsightsDashboard({ data }: { data: InsightsPayload }) {
 
         {marginHigh ? (
           <p className="rounded-lg border border-violet-100 bg-violet-50/70 px-2.5 py-1.5 text-[10px] text-violet-900">
-            Маржа {formatPercent(data.kpi.netMarginPercent)} выше 100%: в KPI
-            входят корректировки без продаж и SKU-выручка может не совпадать с
-            оборотом Dashboard. Значение не скрыто и не нормализовано.
+            Маржа SKU {formatPercent(data.kpi.netMarginPercent)} &gt; 100%: в
+            числителе прибыль SKU с корректировками без продаж (
+            {formatMoney(data.kpi.adjustmentProfit)}), знаменатель — только
+            SKU-выручка ({formatMoney(data.kpi.revenue)}). Не скрыто и не
+            нормализовано.
           </p>
         ) : null}
 
-        <section className="rounded-xl border border-slate-200/80 bg-white p-2.5 shadow-sm">
+        <section
+          id="recommendations"
+          className="rounded-xl border border-slate-200/80 bg-white p-2.5 shadow-sm scroll-mt-4"
+        >
           <div className="mb-2 flex flex-wrap items-center justify-between gap-1.5">
             <h2 className="text-sm font-black text-slate-900">
               Что требует внимания сегодня
             </h2>
             <a
-              href="#loss-sku"
+              href="#recommendations"
               className="text-[10px] font-bold text-violet-700 hover:underline"
             >
               Смотреть все рекомендации
