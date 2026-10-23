@@ -9,20 +9,24 @@ import {
   getFinanceTransactionCashEffect,
   getFinanceTransactionTreatment,
 } from "@/lib/finance/financeMetrics";
+import {
+  firstSearchParam,
+  type SearchParamValue,
+} from "./searchParams";
 
 type SearchParams = {
-  company?: string;
-  operationType?: string;
-  category?: string;
-  bankAccount?: string;
-  search?: string;
-  rows?: string;
-  sortBy?: string;
-  sortDir?: string;
-  dateFrom?: string;
-  dateTo?: string;
-  metric?: string;
-  source?: string;
+  company?: SearchParamValue;
+  operationType?: SearchParamValue;
+  category?: SearchParamValue;
+  bankAccount?: SearchParamValue;
+  search?: SearchParamValue;
+  rows?: SearchParamValue;
+  sortBy?: SearchParamValue;
+  sortDir?: SearchParamValue;
+  dateFrom?: SearchParamValue;
+  dateTo?: SearchParamValue;
+  metric?: SearchParamValue;
+  source?: SearchParamValue;
 };
 
 type OperationType =
@@ -415,21 +419,21 @@ async function deleteFinanceTransaction(formData: FormData) {
 function buildHref(params: SearchParams, patch: Partial<SearchParams>) {
   const query = new URLSearchParams();
   const defaultRange = getDefaultDateRange();
+  const patched = { ...params, ...patch };
 
   const next = {
-    company: params.company ?? "ALL",
-    operationType: params.operationType ?? "ALL",
-    category: params.category ?? "ALL",
-    bankAccount: params.bankAccount ?? "ALL",
-    search: params.search ?? "",
-    dateFrom: params.dateFrom ?? defaultRange.dateFrom,
-    dateTo: params.dateTo ?? defaultRange.dateTo,
-    rows: params.rows ?? "50",
-    sortBy: params.sortBy ?? "operationDate",
-    sortDir: params.sortDir ?? "desc",
-    metric: params.metric ?? "",
-    source: params.source ?? "ALL",
-    ...patch,
+    company: firstSearchParam(patched.company, "ALL"),
+    operationType: firstSearchParam(patched.operationType, "ALL"),
+    category: firstSearchParam(patched.category, "ALL"),
+    bankAccount: firstSearchParam(patched.bankAccount, "ALL"),
+    search: firstSearchParam(patched.search, ""),
+    dateFrom: firstSearchParam(patched.dateFrom, defaultRange.dateFrom),
+    dateTo: firstSearchParam(patched.dateTo, defaultRange.dateTo),
+    rows: firstSearchParam(patched.rows, "50"),
+    sortBy: firstSearchParam(patched.sortBy, "operationDate"),
+    sortDir: firstSearchParam(patched.sortDir, "desc"),
+    metric: firstSearchParam(patched.metric, ""),
+    source: firstSearchParam(patched.source, "ALL"),
   };
 
   query.set("company", next.company);
@@ -589,18 +593,24 @@ export default async function FinanceOperationsPage({
   const params = await searchParams;
   const defaultRange = getDefaultDateRange();
 
-  const company = params?.company ?? "ALL";
-  const operationType = (params?.operationType ?? "ALL") as OperationType;
-  const selectedCategory = params?.category ?? "ALL";
-  const selectedBankAccount = params?.bankAccount ?? "ALL";
-  const search = params?.search ?? "";
-  const rowsLimit = Number(params?.rows ?? 50);
-  const sortBy = params?.sortBy ?? "operationDate";
-  const sortDir = params?.sortDir ?? "desc";
-  const dateFrom = params?.dateFrom ?? defaultRange.dateFrom;
-  const dateTo = params?.dateTo ?? defaultRange.dateTo;
-  const selectedMetric = params?.metric ?? "";
-  const selectedSource = normalizeSourceFilter(params?.source);
+  // Coerce duplicate query keys (string[]) before Prisma where — root cause of INCOME filter crash.
+  const company = firstSearchParam(params?.company, "ALL");
+  const operationType = firstSearchParam(
+    params?.operationType,
+    "ALL",
+  ) as OperationType;
+  const selectedCategory = firstSearchParam(params?.category, "ALL");
+  const selectedBankAccount = firstSearchParam(params?.bankAccount, "ALL");
+  const search = firstSearchParam(params?.search, "");
+  const rowsLimit = Number(firstSearchParam(params?.rows, "50"));
+  const sortBy = firstSearchParam(params?.sortBy, "operationDate");
+  const sortDir = firstSearchParam(params?.sortDir, "desc");
+  const dateFrom = firstSearchParam(params?.dateFrom, defaultRange.dateFrom);
+  const dateTo = firstSearchParam(params?.dateTo, defaultRange.dateTo);
+  const selectedMetric = firstSearchParam(params?.metric, "");
+  const selectedSource = normalizeSourceFilter(
+    firstSearchParam(params?.source, "ALL"),
+  );
 
   const safeRowsLimit = ROWS_OPTIONS.includes(rowsLimit) ? rowsLimit : 50;
   const safeSortBy = SORTABLE_COLUMNS.includes(sortBy) ? sortBy : "operationDate";
@@ -621,32 +631,33 @@ export default async function FinanceOperationsPage({
     return safeSortDir === "desc" ? "↓" : "↑";
   }
 
-  const [categories, companies, accounts] = await Promise.all([
-    prisma.financeCategory.findMany({
-      where: {
-        isActive: true,
-      },
-      orderBy: [{ categoryType: "asc" }, { sortOrder: "asc" }, { name: "asc" }],
-    }),
-    prisma.$queryRaw<{ id: string; name: string }[]>`
+  // Sequential reads: PRISMA_POOL_MAX=1 — parallel Promise.all starves the pool under load.
+  const categories = await prisma.financeCategory.findMany({
+    where: {
+      isActive: true,
+    },
+    orderBy: [{ categoryType: "asc" }, { sortOrder: "asc" }, { name: "asc" }],
+  });
+  const companies = await prisma.$queryRaw<{ id: string; name: string }[]>`
       select "id", "name"
       from "Company"
       where "isActive" = true
       order by "name" asc
-    `,
-    prisma.financeAccount.findMany({
-      where: {
-        isActive: true,
-      },
-      orderBy: [{ companyName: "asc" }, { name: "asc" }],
-    }),
-  ]);
+    `;
+  const accounts = await prisma.financeAccount.findMany({
+    where: {
+      isActive: true,
+    },
+    orderBy: [{ companyName: "asc" }, { name: "asc" }],
+  });
 
   const transactionWhere = {
     ...(company !== "ALL" ? { companyName: company } : {}),
     ...(operationType !== "ALL" ? { operationType } : {}),
     ...(selectedCategory !== "ALL" ? { category: selectedCategory } : {}),
-    ...(selectedBankAccount !== "ALL" ? { bankAccount: selectedBankAccount } : {}),
+    ...(selectedBankAccount !== "ALL"
+      ? { bankAccount: selectedBankAccount }
+      : {}),
     ...(selectedSource === "MANUAL" ? { sourceType: null } : {}),
     ...(selectedSource === "TELEGRAM" ? { sourceType: "TELEGRAM_BOT" } : {}),
     ...(selectedSource === "EXCEL"
@@ -678,21 +689,10 @@ export default async function FinanceOperationsPage({
       : {}),
   };
 
-  const [metricRows, rawRows, rawTotalRowsCount] = await Promise.all([
-    prisma.financeTransaction.findMany({
-      where: transactionWhere,
-    }),
-    prisma.financeTransaction.findMany({
-      where: transactionWhere,
-      orderBy: {
-        [safeSortBy]: safeSortDir,
-      },
-      take: safeRowsLimit,
-    }),
-    prisma.financeTransaction.count({
-      where: transactionWhere,
-    }),
-  ]);
+  // One filtered fetch for KPI + table (avoids 3 parallel finds on a pool of 1).
+  const metricRows = await prisma.financeTransaction.findMany({
+    where: transactionWhere,
+  });
 
   const metrics = calculateFinanceMetricsForRows({
     transactions: metricRows,
@@ -714,16 +714,17 @@ export default async function FinanceOperationsPage({
       })
     : [];
 
-  const rows = selectedMetricConfig
-    ? sortFinanceRowsInMemory(selectedMetricRowsAll, safeSortBy, safeSortDir).slice(
-        0,
-        safeRowsLimit,
-      )
-    : rawRows;
+  const tableSourceRows = selectedMetricConfig
+    ? selectedMetricRowsAll
+    : metricRows;
 
-  const totalRowsCount = selectedMetricConfig
-    ? selectedMetricRowsAll.length
-    : rawTotalRowsCount;
+  const rows = sortFinanceRowsInMemory(
+    tableSourceRows,
+    safeSortBy,
+    safeSortDir,
+  ).slice(0, safeRowsLimit);
+
+  const totalRowsCount = tableSourceRows.length;
 
   const selectedMetricValue = selectedMetricConfig
     ? getMetricValue(selectedMetricConfig.key, metrics)
@@ -885,7 +886,8 @@ export default async function FinanceOperationsPage({
             <input type="hidden" name="sortBy" value={safeSortBy} />
             <input type="hidden" name="sortDir" value={safeSortDir} />
             <input type="hidden" name="metric" value={selectedMetric} />
-            <input type="hidden" name="bankAccount" value={selectedBankAccount} />
+            {/* bankAccount lives only in advanced filters select — duplicate hidden caused
+                bankAccount[]=["ALL","ALL"] → PrismaClientValidationError on Apply. */}
 
             <label className="block">
               <span className="text-xs font-black text-slate-500">Период от</span>
