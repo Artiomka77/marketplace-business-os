@@ -424,8 +424,8 @@ export default async function InsightsPage({
       financeImpact: financeNetProfitImpact,
       ownerWithdrawals,
     });
-    marketplaceNetProfit = combined.operatingProfitAfterTax;
-    businessNetProfit = combined.netProfit;
+    marketplaceNetProfit = getAmount(combined.operatingProfitAfterTax);
+    businessNetProfit = getAmount(combined.netProfit);
     financeImpactForKpi = financeNetProfitImpact;
   }
 
