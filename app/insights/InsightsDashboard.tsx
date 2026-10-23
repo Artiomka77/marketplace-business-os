@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
 import type {
@@ -37,10 +37,18 @@ function formatDateRu(iso: string) {
   return `${d}.${m}.${y}`;
 }
 
-function moneyClass(value: number) {
+function moneyClass(value: number | null | undefined) {
+  if (value == null || !Number.isFinite(value)) return "text-slate-400";
   if (value > 0) return "text-emerald-600";
   if (value < 0) return "text-rose-600";
   return "text-slate-800";
+}
+
+function stockChannelLabel(channel: string) {
+  if (channel === "WB") return "WB";
+  if (channel === "Ozon") return "Ozon";
+  if (channel === "OWN") return "Склад";
+  return channel;
 }
 
 function RankBadge({ n }: { n: number }) {
@@ -89,12 +97,14 @@ function SkuThumb({
       className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-[9px] font-black ${
         marketplace === "WB"
           ? "bg-violet-100 text-violet-700"
-          : "bg-sky-100 text-sky-700"
+          : marketplace === "OWN"
+            ? "bg-emerald-100 text-emerald-800"
+            : "bg-sky-100 text-sky-700"
       }`}
       aria-hidden
       title="Нет фото"
     >
-      {marketplace === "WB" ? "WB" : "Oz"}
+      {marketplace === "WB" ? "WB" : marketplace === "OWN" ? "СК" : "Oz"}
     </div>
   );
 }
@@ -219,7 +229,7 @@ function DriversPanel({ drivers }: { drivers: MarketplaceSlice[] }) {
       return v == null || !Number.isFinite(v) ? 0 : Math.abs(Number(v));
     }),
     ...drivers.map((d) =>
-      mode === "profit" ? Math.abs(d.adjustmentProfit) : 0,
+      mode === "profit" ? Math.abs(d.adjustmentProfit ?? 0) : 0,
     ),
   );
 
@@ -231,6 +241,7 @@ function DriversPanel({ drivers }: { drivers: MarketplaceSlice[] }) {
     (s, d) => s + Math.max(0, d.marketplaceNetProfit ?? 0),
     0,
   );
+  const skuLayerKnown = drivers.every((d) => d.skuRevenue != null);
 
   return (
     <section className="rounded-xl border border-slate-200/80 bg-white p-3 shadow-sm">
@@ -281,7 +292,10 @@ function DriversPanel({ drivers }: { drivers: MarketplaceSlice[] }) {
           const widthPct = Math.min(100, (Math.abs(numeric) / maxAbs) * 100);
           const adjWidth =
             mode === "profit"
-              ? Math.min(100, (Math.abs(row.adjustmentProfit) / maxAbs) * 100)
+              ? Math.min(
+                  100,
+                  (Math.abs(row.adjustmentProfit ?? 0) / maxAbs) * 100,
+                )
               : 0;
           const shareBase =
             mode === "revenue"
@@ -326,7 +340,7 @@ function DriversPanel({ drivers }: { drivers: MarketplaceSlice[] }) {
                   data-bar="primary"
                 />
               </div>
-              {mode === "profit" && row.adjustmentSkuCount > 0 ? (
+              {mode === "profit" && (row.adjustmentSkuCount ?? 0) > 0 ? (
                 <div className="mt-1">
                   <div className="mb-0.5 flex items-center justify-between text-[10px] font-semibold text-amber-800">
                     <span>Корректировки без продаж (SKU)</span>
@@ -338,7 +352,9 @@ function DriversPanel({ drivers }: { drivers: MarketplaceSlice[] }) {
                   <div className="h-1.5 overflow-hidden rounded-full bg-amber-100">
                     <div
                       className={`h-full rounded-full ${
-                        row.adjustmentProfit < 0 ? "bg-rose-400" : "bg-amber-400"
+                        (row.adjustmentProfit ?? 0) < 0
+                          ? "bg-rose-400"
+                          : "bg-amber-400"
                       }`}
                       style={{ width: `${adjWidth}%` }}
                       data-bar="adjustments"
@@ -351,8 +367,9 @@ function DriversPanel({ drivers }: { drivers: MarketplaceSlice[] }) {
                 </div>
               ) : null}
               {mode === "revenue" &&
-              (row.economicTurnover ?? 0) === 0 &&
-              row.adjustmentSkuCount > 0 ? (
+              row.economicTurnover != null &&
+              row.economicTurnover === 0 &&
+              (row.adjustmentSkuCount ?? 0) > 0 ? (
                 <p className="mt-1 text-[10px] leading-3 text-amber-700">
                   Экономический оборот 0 ₽ — есть корректировки без продаж (
                   {formatNumber(row.adjustmentSkuCount)} поз.,{" "}
@@ -362,12 +379,22 @@ function DriversPanel({ drivers }: { drivers: MarketplaceSlice[] }) {
                   ). Это не выручка. Смотрите режим «Прибыль».
                 </p>
               ) : null}
-              {mode === "revenue" && (row.economicTurnover ?? 0) > 0 ? (
+              {mode === "revenue" && row.economicTurnover == null ? (
+                <p className="mt-1 text-[10px] leading-3 text-slate-500">
+                  Экономический оборот н/д — источник ещё формируется.
+                </p>
+              ) : null}
+              {mode === "revenue" &&
+              row.economicTurnover != null &&
+              row.economicTurnover > 0 ? (
                 <p className="mt-1 text-[9px] leading-3 text-slate-500">
-                  Атрибуция по товарам: {formatMoney(row.skuRevenue)}
-                  {row.skuRevenue !== (row.economicTurnover ?? 0)
-                    ? " (может отличаться от управленческого оборота)"
-                    : null}
+                  {skuLayerKnown
+                    ? `Атрибуция по товарам: ${formatMoney(row.skuRevenue)}${
+                        row.skuRevenue !== row.economicTurnover
+                          ? " (может отличаться от управленческого оборота)"
+                          : ""
+                      }`
+                    : "Атрибуция по товарам: формируется / н/д"}
                 </p>
               ) : null}
               {mode === "margin" &&
@@ -649,7 +676,23 @@ function AdjustmentsStrip({
   rows: InsightSkuRow[];
 }) {
   const [open, setOpen] = useState(false);
-  if (summary.skuCount <= 0) return null;
+  if (summary.status === "EMPTY") return null;
+  if (summary.status === "PENDING") {
+    return (
+      <section
+        id="adjustments"
+        className="rounded-xl border border-slate-200 bg-slate-50/80 px-3 py-2 shadow-sm"
+      >
+        <div className="text-xs font-black text-slate-800">
+          Корректировки без продаж
+        </div>
+        <div className="text-[10px] text-slate-600">
+          Товарный слой ещё формируется — не «0 позиций» и не «не найдено».
+        </div>
+      </section>
+    );
+  }
+  if ((summary.skuCount ?? 0) <= 0) return null;
 
   return (
     <section
@@ -721,9 +764,11 @@ function AdjustmentsStrip({
 function LowMarginTable({
   rows,
   allRows,
+  pending,
 }: {
   rows: InsightSkuRow[];
   allRows: InsightSkuRow[];
+  pending?: boolean;
 }) {
   const [expanded, setExpanded] = useState(false);
   const visible = expanded ? allRows : rows;
@@ -814,7 +859,9 @@ function LowMarginTable({
                   colSpan={8}
                   className="px-3 py-5 text-center text-xs text-slate-500"
                 >
-                  SKU с положительной маржой ниже 5% не найдены.
+                  {pending
+                    ? "Товарная детализация формируется — не «не найдено»."
+                    : "SKU с положительной маржой ниже 5% не найдены."}
                 </td>
               </tr>
             ) : null}
@@ -915,7 +962,7 @@ function FrozenTable({
                     {row.sizeLabel || "н/д"}
                   </td>
                   <td className="px-1.5 py-1.5 font-semibold">
-                    {row.marketplace}
+                    {stockChannelLabel(row.marketplace)}
                   </td>
                   <td className="px-1.5 py-1.5 text-right tabular-nums">
                     {formatNumber(row.quantity)}
@@ -954,6 +1001,36 @@ export default function InsightsDashboard({ data }: { data: InsightsPayload }) {
   const [showAllRecommendations, setShowAllRecommendations] = useState(false);
   const [showSkuDetail, setShowSkuDetail] = useState(false);
   const sku = data.kpi.skuDetail;
+  const softRefreshAttempts = useRef(0);
+  const skuLayerReady =
+    data.skuStatus === "READY" || data.skuStatus === "PRELIMINARY";
+  const needsSoftRefresh =
+    data.rebuildPending ||
+    data.financeStatus === "PENDING_BUILD" ||
+    data.skuStatus === "PENDING";
+
+  useEffect(() => {
+    if (!needsSoftRefresh) {
+      softRefreshAttempts.current = 0;
+      return;
+    }
+    if (softRefreshAttempts.current >= 12) return;
+    const timer = window.setTimeout(() => {
+      softRefreshAttempts.current += 1;
+      startTransition(() => router.refresh());
+    }, 12000);
+    return () => window.clearTimeout(timer);
+  }, [
+    needsSoftRefresh,
+    data.financeStatus,
+    data.skuStatus,
+    data.rebuildPending,
+    data.dateFrom,
+    data.dateTo,
+    data.company,
+    router,
+    startTransition,
+  ]);
 
   const recommendationItems = [
     {
@@ -1046,8 +1123,26 @@ export default function InsightsDashboard({ data }: { data: InsightsPayload }) {
             ) : null}
             {data.skuStatus === "UNAVAILABLE" || data.skuStatus === "PENDING" ? (
               <p className="mt-1 text-[10px] font-semibold text-slate-600">
-                Товарная детализация недоступна/формируется — рейтинги SKU не
-                выдаются за «0 товаров». {data.skuStatusReason}
+                Товарная детализация{" "}
+                {data.skuStatus === "PENDING"
+                  ? "формируется"
+                  : "недоступна"}{" "}
+                — рейтинги SKU не выдаются за «0 товаров» / «не найдено».{" "}
+                {data.skuStatusReason}
+              </p>
+            ) : null}
+            {data.rebuildPending ? (
+              <p className="mt-1 text-[10px] font-semibold text-sky-800">
+                Поставлено штатное задание пересчёта read-model. Страница
+                обновится автоматически. {data.rebuildDetail}
+              </p>
+            ) : null}
+            {!data.kpi.businessNetIncludesFinance &&
+            data.kpi.marketplaceNetProfit != null ? (
+              <p className="mt-1 text-[10px] font-semibold text-amber-800">
+                Показана прибыль МП после налога; «чистая прибыль бизнеса»
+                (с Finance INCLUDE) ожидает V6-агрегат — не подменяется суммой
+                WB+Ozon.
               </p>
             ) : null}
           </div>
@@ -1066,7 +1161,11 @@ export default function InsightsDashboard({ data }: { data: InsightsPayload }) {
               onClick={() => startTransition(() => router.refresh())}
               className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[10px] font-black text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:opacity-60"
             >
-              {pending ? "Обновление…" : "Обновить"}
+              {pending
+                ? "Обновление…"
+                : needsSoftRefresh
+                  ? "Обновить (ожидание агрегата)"
+                  : "Обновить"}
             </button>
           </div>
         </header>
@@ -1140,7 +1239,11 @@ export default function InsightsDashboard({ data }: { data: InsightsPayload }) {
             accent="green"
             icon="↑"
             subtitle={`МП ${formatMoney(data.kpi.marketplaceNetProfit)} · финансы ${formatMoney(data.kpi.financeNetProfitImpact)}`}
-            tip={`Прибыль МП после налога (Ozon COGS ${formatMoney(data.kpi.ozonTotalCost)}, источник ${data.kpi.ozonProfitSource}) + Finance INCLUDE, до личных выводов. Не сумма SKU-корректировок.`}
+            tip={
+              data.kpi.businessNetIncludesFinance
+                ? `Прибыль МП после налога (Ozon COGS ${formatMoney(data.kpi.ozonTotalCost)}, источник ${data.kpi.ozonProfitSource}) + Finance INCLUDE, до личных выводов. Не сумма SKU-корректировок.`
+                : `Пока доступна только прибыль МП после налога (${formatMoney(data.kpi.marketplaceNetProfit)}). Чистая прибыль бизнеса с Finance INCLUDE появится после V6 read-model — смысл KPI не подменяется.`
+            }
           />
           <KpiCard
             title="Рентабельность бизнеса"
@@ -1168,10 +1271,10 @@ export default function InsightsDashboard({ data }: { data: InsightsPayload }) {
             icon="▣"
             subtitle={
               data.kpi.frozenCoveragePartial
-                ? `${data.kpi.frozenAsOfLabel} · себест. частично`
+                ? `${data.kpi.frozenAsOfLabel} · себест. частично (${data.kpi.stockMissingCostQty})`
                 : data.kpi.frozenAsOfLabel
             }
-            tip="Количество × себестоимость (ProductCost). Управленческая оценка, не касса."
+            tip={`WB ${formatMoney(data.kpi.stockAtCostWb)} · Ozon FBO ${formatMoney(data.kpi.stockAtCostOzon)} · свой склад ${formatMoney(data.kpi.stockAtCostOwn)}. Без себестоимости — неполнота, не 0 ₽.`}
           />
         </section>
 
@@ -1194,7 +1297,7 @@ export default function InsightsDashboard({ data }: { data: InsightsPayload }) {
                 Выручка по товарам
               </div>
               <div className="text-sm font-black tabular-nums text-slate-900">
-                {formatMoney(sku.skuRevenue)}
+                {skuLayerReady ? formatMoney(sku.skuRevenue) : "н/д"}
               </div>
             </div>
             <div className="rounded-md bg-slate-50 px-2 py-1.5">
@@ -1204,7 +1307,7 @@ export default function InsightsDashboard({ data }: { data: InsightsPayload }) {
               <div
                 className={`text-sm font-black tabular-nums ${moneyClass(sku.soldProfit)}`}
               >
-                {formatMoney(sku.soldProfit)}
+                {skuLayerReady ? formatMoney(sku.soldProfit) : "н/д"}
               </div>
             </div>
             <div className="rounded-md bg-amber-50 px-2 py-1.5">
@@ -1214,7 +1317,7 @@ export default function InsightsDashboard({ data }: { data: InsightsPayload }) {
               <div
                 className={`text-sm font-black tabular-nums ${moneyClass(sku.adjustmentProfit)}`}
               >
-                {formatMoney(sku.adjustmentProfit)}
+                {skuLayerReady ? formatMoney(sku.adjustmentProfit) : "н/д"}
               </div>
             </div>
             <div className="rounded-md bg-slate-50 px-2 py-1.5">
@@ -1224,10 +1327,23 @@ export default function InsightsDashboard({ data }: { data: InsightsPayload }) {
               <div
                 className={`text-sm font-black tabular-nums ${moneyClass(sku.skuProfitTotal)}`}
               >
-                {formatMoney(sku.skuProfitTotal)}
+                {skuLayerReady ? formatMoney(sku.skuProfitTotal) : "н/д"}
               </div>
             </div>
           </div>
+          {sku.truncated && sku.totalSkuRows != null ? (
+            <p className="mt-1.5 text-[10px] text-amber-800">
+              SKU-слой усечён для рейтингов: показаны топ/антитоп срезы, всего в
+              read-model {formatNumber(sku.totalSkuRows)} строк — без скрытой
+              потери полноты счётчиков убыточных (DB COUNT).
+            </p>
+          ) : null}
+          {!skuLayerReady ? (
+            <p className="mt-1.5 text-[10px] text-slate-600">
+              Товарная аналитика формируется — блоки ниже не означают «товаров
+              не найдено».
+            </p>
+          ) : null}
           {showSkuDetail ? (
             <p className="mt-1.5 text-[10px] leading-3.5 text-slate-600">
               Маржа продаж по товарам{" "}
@@ -1322,7 +1438,11 @@ export default function InsightsDashboard({ data }: { data: InsightsPayload }) {
             title="ТОП прибыльных SKU"
             rows={data.profitablePreview}
             allRows={data.profitableAll}
-            emptyText="Прибыльных SKU с продажами не найдено."
+            emptyText={
+              skuLayerReady
+                ? "Прибыльных SKU с продажами не найдено."
+                : "Товарная детализация формируется — не «не найдено»."
+            }
             tone="profit"
           />
           <SkuRankTable
@@ -1330,7 +1450,11 @@ export default function InsightsDashboard({ data }: { data: InsightsPayload }) {
             title="ТОП убыточных SKU"
             rows={data.lossPreview}
             allRows={data.lossAll}
-            emptyText="Убыточных SKU с выручкой не найдено."
+            emptyText={
+              skuLayerReady
+                ? "Убыточных SKU с выручкой не найдено."
+                : "Товарная детализация формируется — не «не найдено»."
+            }
             tone="loss"
           />
         </section>
@@ -1344,6 +1468,7 @@ export default function InsightsDashboard({ data }: { data: InsightsPayload }) {
           <LowMarginTable
             rows={data.lowMarginPreview}
             allRows={data.lowMarginAll}
+            pending={!skuLayerReady || data.kpi.skuDetail.truncated}
           />
           <FrozenTable
             rows={data.frozenPreview}

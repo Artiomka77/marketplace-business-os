@@ -1,5 +1,8 @@
 export type MarketplaceCode = "WB" | "Ozon";
 
+/** Stock channel: marketplace FBO or own warehouse. */
+export type StockChannel = MarketplaceCode | "OWN";
+
 export type InsightSizePart = {
   sizeLabel: string;
   salesQty: number | null;
@@ -30,7 +33,7 @@ export type InsightSkuRow = {
 
 export type InsightStockRow = {
   companyName: string;
-  marketplace: MarketplaceCode;
+  marketplace: StockChannel;
   sku: string;
   vendorCode: string;
   sizeLabel: string;
@@ -52,18 +55,18 @@ export type MarketplaceSlice = {
   marketplaceNetProfit: number | null;
   /**
    * Sum of SKU `revenue` field (sales attribution only; adjustments have 0).
-   * Not Dashboard economic turnover.
+   * Not Dashboard economic turnover. Null when SKU layer unavailable.
    */
-  skuRevenue: number;
-  /** Total SKU netProfitAfterTax including adjustments */
-  skuProfit: number;
+  skuRevenue: number | null;
+  /** Total SKU netProfitAfterTax including adjustments. Null when SKU unavailable. */
+  skuProfit: number | null;
   /** profit attributable to rows with revenue > 0 */
-  soldProfit: number;
+  soldProfit: number | null;
   /** Margin on economic turnover when available; else on skuRevenue */
   marginPercent: number | null;
   /** SKU rows with revenue=0 and non-zero profit (adjustments) */
-  adjustmentProfit: number;
-  adjustmentSkuCount: number;
+  adjustmentProfit: number | null;
+  adjustmentSkuCount: number | null;
 };
 
 export type InsightsFinanceStatus =
@@ -92,6 +95,9 @@ export type InsightsPayload = {
   /** Readiness of SKU rankings / adjustments strip. */
   skuStatus: InsightsSkuStatus;
   skuStatusReason: string;
+  /** True when a cheap read-model rebuild was requested this render. */
+  rebuildPending: boolean;
+  rebuildDetail: string;
   sourceGeneratedAtLabel: string | null;
   kpi: {
     /** Canonical WB+Ozon economic turnover (management). Null if incomplete. */
@@ -100,6 +106,8 @@ export type InsightsPayload = {
     economicTurnoverOzon: number | null;
     /** Dashboard business netProfit: MP after tax + Finance INCLUDE, before owner. */
     businessNetProfit: number | null;
+    /** True only when businessNetProfit includes Finance INCLUDE (V6 / short live). */
+    businessNetIncludesFinance: boolean;
     marketplaceNetProfit: number | null;
     financeNetProfitImpact: number | null;
     /** businessNetProfit / economicTurnover when both known */
@@ -107,17 +115,23 @@ export type InsightsPayload = {
     /** Unique product identities with negative attributed profit. Null if SKU layer unavailable. */
     lossSkuCount: number | null;
     lossCountIsUniqueIdentity: boolean;
-    /** Stock × ProductCost on deduped current snapshot */
+    /** Stock × ProductCost on deduped current snapshot (known-cost rows only). */
     stockAtCost: number | null;
+    stockAtCostWb: number | null;
+    stockAtCostOzon: number | null;
+    stockAtCostOwn: number | null;
+    stockMissingCostQty: number;
     frozenCoveragePartial: boolean;
     frozenAsOfLabel: string;
     /** Transparent SKU analytics (not top-row business KPIs) */
     skuDetail: {
-      skuRevenue: number;
-      soldProfit: number;
-      adjustmentProfit: number;
-      skuProfitTotal: number;
+      skuRevenue: number | null;
+      soldProfit: number | null;
+      adjustmentProfit: number | null;
+      skuProfitTotal: number | null;
       salesMarginPercent: number | null;
+      truncated: boolean;
+      totalSkuRows: number | null;
     };
     /** Provenance for Ozon MP net (Wave B vs live) */
     ozonProfitSource: string;
@@ -144,8 +158,9 @@ export type InsightsPayload = {
   lossAll: InsightSkuRow[];
   adjustments: InsightSkuRow[];
   adjustmentSummary: {
-    skuCount: number;
-    profitSum: number;
+    skuCount: number | null;
+    profitSum: number | null;
+    status: "READY" | "PENDING" | "EMPTY";
   };
   /** Positive margin strictly below 5% (excludes убыточные — они в ТОП убыточных) */
   lowMarginPreview: InsightSkuRow[];

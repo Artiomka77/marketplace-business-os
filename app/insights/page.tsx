@@ -16,6 +16,7 @@ import {
 import {
   createPrismaProfitReadModelRepository,
   createWaveBProfitTargetPrismaClient,
+  formulaForMarketplace,
   isWaveBHeavyLiveFallbackEnabled,
   isWaveBProfitReadModelFirstEnabled,
   loadProfitReadModel,
@@ -36,6 +37,77 @@ import type {
   InsightsSkuStatus,
   MarketplaceSlice,
 } from "./insightsTypes";
+
+/** Soft cap for full SKU load; above this we use ranked slices + DB counts. */
+const SKU_FULL_LOAD_CAP = 4000;
+const SKU_RANK_SLICE = 400;
+
+async function enqueueV6PeriodRebuild(params: {
+  dateFrom: string;
+  dateTo: string;
+  companyScope: string;
+}): Promise<{ enqueued: boolean; detail: string }> {
+  try {
+    const repository = getDefaultV6PeriodReadModelRepository();
+    if (!repository.requestRebuild) {
+      return { enqueued: false, detail: "NO_REQUEST_REBUILD_API" };
+    }
+    const result = await repository.requestRebuild({
+      companyScope:
+        !params.companyScope || params.companyScope === "ALL"
+          ? "ALL"
+          : params.companyScope,
+      dateFrom: params.dateFrom,
+      dateTo: params.dateTo,
+      priority: 80,
+    });
+    return {
+      enqueued: result === "queued_prisma" || result === "queued_local",
+      detail: `V6:${result}`,
+    };
+  } catch (error) {
+    return {
+      enqueued: false,
+      detail: `V6_ENQUEUE_ERR:${error instanceof Error ? error.message : String(error)}`,
+    };
+  }
+}
+
+async function enqueueWaveBProfitRebuild(params: {
+  dateFrom: string;
+  dateTo: string;
+  companyScope: string;
+  marketplace: "WB" | "OZON";
+}): Promise<{ enqueued: boolean; detail: string }> {
+  try {
+    const repository = createPrismaProfitReadModelRepository(
+      createWaveBProfitTargetPrismaClient(),
+    );
+    const enq = await repository.enqueueRebuild({
+      companyScope:
+        !params.companyScope || params.companyScope === "ALL"
+          ? "ALL"
+          : params.companyScope,
+      dateFrom: params.dateFrom,
+      dateTo: params.dateTo,
+      formulaVersion: formulaForMarketplace(params.marketplace),
+      priority: 55,
+    });
+    const enqueued =
+      enq.action === "create" ||
+      enq.action === "reopen_success" ||
+      enq.action === "keep_existing";
+    return {
+      enqueued,
+      detail: `WAVE_B_${params.marketplace}:${enq.action}`,
+    };
+  } catch (error) {
+    return {
+      enqueued: false,
+      detail: `WAVE_B_ENQUEUE_ERR:${error instanceof Error ? error.message : String(error)}`,
+    };
+  }
+}
 
 type OzonAnalytics = Awaited<ReturnType<typeof getProfitAnalyticsOzon>>;
 type WbAnalytics = Awaited<ReturnType<typeof getProfitAnalytics>>;
@@ -347,6 +419,11 @@ export default async function InsightsPage({
   const ozonSources: string[] = [];
   let skuStatus: InsightsSkuStatus = "PENDING";
   let skuStatusReason = "";
+  let skuTotalInDb: number | null = null;
+  let skuTruncated = false;
+  let skuLossCountDb: number | null = null;
+  let rebuildPending = false;
+  const rebuildDetails: string[] = [];
 
   if (useLiveSkuFc) {
     for (const companyName of companyNames) {
@@ -371,30 +448,78 @@ export default async function InsightsPage({
     // Long period: ProfitSkuPeriodMetric (Wave B), never heavy live FC in GET.
     const skuScope =
       selectedCompany === "ALL" ? "ALL" : selectedCompany;
+    const skuWhere = {
+      companyScope: skuScope,
+      dateFrom: dayStartUtc(dateFrom),
+      dateTo: dayStartUtc(dateTo),
+    };
     let skuRows: Awaited<
       ReturnType<typeof prisma.profitSkuPeriodMetric.findMany>
     > = [];
     try {
-      skuRows = await prisma.profitSkuPeriodMetric.findMany({
-        where: {
-          companyScope: skuScope,
-          dateFrom: dayStartUtc(dateFrom),
-          dateTo: dayStartUtc(dateTo),
-        },
-        take: 2500,
+      skuTotalInDb = await prisma.profitSkuPeriodMetric.count({
+        where: skuWhere,
       });
+      if (skuTotalInDb === 0) {
+        skuStatus = "PENDING";
+        skuStatusReason = `PROFIT_SKU_PERIOD_EMPTY:periodDays=${periodDays}`;
+        ozonSources.push(skuStatusReason);
+      } else if (skuTotalInDb <= SKU_FULL_LOAD_CAP) {
+        skuRows = await prisma.profitSkuPeriodMetric.findMany({
+          where: skuWhere,
+        });
+        skuStatus = "PRELIMINARY";
+        skuStatusReason = `PROFIT_SKU_PERIOD_HIT:rows=${skuRows.length}`;
+      } else {
+        // Avoid silent take=N drop: load ranked slices + DB loss count.
+        skuTruncated = true;
+        type SkuRaw = {
+          id: string;
+          companyScope: string;
+          marketplace: string;
+          payload: unknown;
+        };
+        const topProfit = await prisma.$queryRaw<SkuRaw[]>`
+          SELECT id, "companyScope", marketplace, payload
+          FROM "ProfitSkuPeriodMetric"
+          WHERE "companyScope" = ${skuScope}
+            AND "dateFrom" = ${dayStartUtc(dateFrom)}
+            AND "dateTo" = ${dayStartUtc(dateTo)}
+          ORDER BY COALESCE((payload->>'netProfitAfterTax')::double precision, 0) DESC
+          LIMIT ${SKU_RANK_SLICE}
+        `;
+        const topLoss = await prisma.$queryRaw<SkuRaw[]>`
+          SELECT id, "companyScope", marketplace, payload
+          FROM "ProfitSkuPeriodMetric"
+          WHERE "companyScope" = ${skuScope}
+            AND "dateFrom" = ${dayStartUtc(dateFrom)}
+            AND "dateTo" = ${dayStartUtc(dateTo)}
+          ORDER BY COALESCE((payload->>'netProfitAfterTax')::double precision, 0) ASC
+          LIMIT ${SKU_RANK_SLICE}
+        `;
+        const lossAgg = await prisma.$queryRaw<Array<{ c: bigint | number }>>`
+          SELECT COUNT(*)::bigint AS c
+          FROM "ProfitSkuPeriodMetric"
+          WHERE "companyScope" = ${skuScope}
+            AND "dateFrom" = ${dayStartUtc(dateFrom)}
+            AND "dateTo" = ${dayStartUtc(dateTo)}
+            AND COALESCE((payload->>'netProfitAfterTax')::double precision, 0) < 0
+        `;
+        skuLossCountDb = Number(lossAgg[0]?.c ?? 0);
+        const byId = new Map<string, SkuRaw>();
+        for (const row of [...topProfit, ...topLoss]) byId.set(row.id, row);
+        skuRows = Array.from(byId.values()) as typeof skuRows;
+        skuStatus = "PRELIMINARY";
+        skuStatusReason = `PROFIT_SKU_PERIOD_HIT_TRUNCATED:shown=${skuRows.length};total=${skuTotalInDb};rankSlice=${SKU_RANK_SLICE}`;
+      }
     } catch (error) {
       skuStatus = "UNAVAILABLE";
       skuStatusReason = `PROFIT_SKU_PERIOD_ERROR:${error instanceof Error ? error.message : String(error)}`;
       ozonSources.push(skuStatusReason);
     }
-    if (skuStatus === "UNAVAILABLE" && skuStatusReason.startsWith("PROFIT_SKU_PERIOD_ERROR")) {
-      // keep empty analytics — finance KPIs still load below
-    } else if (skuRows.length === 0) {
-      skuStatus = "UNAVAILABLE";
-      skuStatusReason = `PROFIT_SKU_PERIOD_EMPTY:periodDays=${periodDays}`;
-      ozonSources.push(skuStatusReason);
-    } else {
+    if (skuStatus === "PENDING" || skuStatus === "UNAVAILABLE") {
+      // keep empty analytics — finance KPIs still load below; enqueue later
+    } else if (skuRows.length > 0) {
       const byCompanyMp = new Map<
         string,
         { wbRows: any[]; ozonRows: any[]; modes: string[] }
@@ -417,7 +542,6 @@ export default async function InsightsPage({
                   row.companyScope,
               )
             : selectedCompany;
-        // ALL-scope SKU table already aggregates — keep under synthetic company for listing.
         const bucket =
           selectedCompany === "ALL"
             ? ensure("ALL")
@@ -449,8 +573,6 @@ export default async function InsightsPage({
         });
         ozonSources.push(`${companyName}:PROFIT_SKU_PERIOD`);
       }
-      skuStatus = "PRELIMINARY";
-      skuStatusReason = `PROFIT_SKU_PERIOD_HIT:rows=${skuRows.length}`;
     }
   }
 
@@ -707,11 +829,19 @@ export default async function InsightsPage({
         financeStatus =
           lite.status === "ERROR" ? "ERROR" : "PENDING_BUILD";
         financeStatusReason = `${lite.reason}|SKIP_FULL_V6_LONG_PERIOD`;
+        const enq = await enqueueV6PeriodRebuild({
+          dateFrom,
+          dateTo,
+          companyScope: selectedCompany,
+        });
+        rebuildDetails.push(enq.detail);
+        if (enq.enqueued) rebuildPending = true;
       }
     }
   }
 
   // 3) Wave B Profit WB+Ozon totals (no live FC) when V6 unavailable.
+  // Semantically: ET + MP net OK; business net requires Finance INCLUDE (V6).
   if (!financeResolved) {
     let wbWave: Awaited<ReturnType<typeof loadProfitReadModel>> | null = null;
     let ozonWave: Awaited<ReturnType<typeof loadProfitReadModel>> | null = null;
@@ -776,26 +906,42 @@ export default async function InsightsPage({
         const combined = snapshotCombinedProfit({
           wbNet: wbMpNet ?? 0,
           ozonNet: ozonMpNet ?? 0,
-          financeImpact: financeNetProfitImpact,
-          ownerWithdrawals,
+          financeImpact: useLiveSkuFc ? financeNetProfitImpact : 0,
+          ownerWithdrawals: useLiveSkuFc ? ownerWithdrawals : 0,
         });
         marketplaceNetProfit = getAmount(combined.operatingProfitAfterTax);
-        // On long periods Finance is not scanned — prefer MP-only until V6.
-        businessNetProfit =
-          useLiveSkuFc
-            ? getAmount(combined.netProfit)
-            : marketplaceNetProfit;
-        financeImpactForKpi = useLiveSkuFc ? financeNetProfitImpact : null;
-        const mode =
-          (wbWave.status === "HIT" && wbWave.dataMode === "FINAL" &&
-            ozonWave.status === "HIT" && ozonWave.dataMode === "FINAL")
-            ? "FINAL"
-            : "PRELIMINARY";
-        financeStatus =
-          mode === "FINAL" ? "VERIFIED_READY" : "PRELIMINARY_WITH_VALUE";
-        financeStatusReason = `PROFIT_WAVE_B:WB=${wbWave.status};OZON=${ozonWave.status}`;
-        kpiSource = "PROFIT_WAVE_B_HIT";
-        financeResolved = true;
+        if (useLiveSkuFc) {
+          // Short path: Finance INCLUDE scanned — business net is canonical.
+          businessNetProfit = getAmount(combined.netProfit);
+          financeImpactForKpi = financeNetProfitImpact;
+          const mode =
+            wbWave.status === "HIT" &&
+            wbWave.dataMode === "FINAL" &&
+            ozonWave.status === "HIT" &&
+            ozonWave.dataMode === "FINAL"
+              ? "FINAL"
+              : "PRELIMINARY";
+          financeStatus =
+            mode === "FINAL" ? "VERIFIED_READY" : "PRELIMINARY_WITH_VALUE";
+          financeStatusReason = `PROFIT_WAVE_B:WB=${wbWave.status};OZON=${ozonWave.status}`;
+          kpiSource = "PROFIT_WAVE_B_HIT";
+          financeResolved = true;
+        } else {
+          // Long path: do NOT rename MP-after-tax as business net without Finance.
+          businessNetProfit = null;
+          financeImpactForKpi = null;
+          financeStatus = "PRELIMINARY_WITH_VALUE";
+          financeStatusReason = `PROFIT_WAVE_B_MP_ONLY:WB=${wbWave.status};OZON=${ozonWave.status}|BUSINESS_NET_AWAITS_V6_FINANCE`;
+          kpiSource = "PROFIT_WAVE_B_MP_ONLY";
+          financeResolved = true;
+          const enq = await enqueueV6PeriodRebuild({
+            dateFrom,
+            dateTo,
+            companyScope: selectedCompany,
+          });
+          rebuildDetails.push(enq.detail);
+          if (enq.enqueued) rebuildPending = true;
+        }
       }
     } else if (useLiveSkuFc && analyticsByCompany.length > 0) {
       let etWb = 0;
@@ -853,6 +999,45 @@ export default async function InsightsPage({
         financeStatusReason = "NO_V6_NO_WAVE_B";
       }
       // Keep all KPI numbers null — UI shows н/д / «формируется», never fake 0.
+      if (!useLiveSkuFc) {
+        const enq = await enqueueV6PeriodRebuild({
+          dateFrom,
+          dateTo,
+          companyScope: selectedCompany,
+        });
+        rebuildDetails.push(enq.detail);
+        if (enq.enqueued) rebuildPending = true;
+      }
+    }
+  }
+
+  // Long-period SKU miss/pending → cheap Wave B rebuild (produces ProfitSkuPeriodMetric).
+  if (
+    !useLiveSkuFc &&
+    (skuStatus === "PENDING" || skuStatus === "UNAVAILABLE")
+  ) {
+    const scope = selectedCompany === "ALL" ? "ALL" : selectedCompany;
+    const wbEnq = await enqueueWaveBProfitRebuild({
+      dateFrom,
+      dateTo,
+      companyScope: scope,
+      marketplace: "WB",
+    });
+    const ozEnq = await enqueueWaveBProfitRebuild({
+      dateFrom,
+      dateTo,
+      companyScope: scope,
+      marketplace: "OZON",
+    });
+    rebuildDetails.push(wbEnq.detail, ozEnq.detail);
+    if (wbEnq.enqueued || ozEnq.enqueued) {
+      rebuildPending = true;
+      if (skuStatus === "UNAVAILABLE" && skuStatusReason.includes("EMPTY")) {
+        skuStatus = "PENDING";
+      } else if (skuStatus === "UNAVAILABLE") {
+        skuStatus = "PENDING";
+      }
+      skuStatusReason = `${skuStatusReason}|ENQUEUED_WAVE_B`;
     }
   }
 
@@ -1092,7 +1277,12 @@ export default async function InsightsPage({
   }
   const skuLayerReady =
     skuStatus === "READY" || skuStatus === "PRELIMINARY";
-  const lossSkuCount = skuLayerReady ? lossIdentityKeys.size : null;
+  // Truncated long-period: prefer DB COUNT of negative-profit rows over in-memory slice.
+  const lossSkuCount = !skuLayerReady
+    ? null
+    : skuTruncated && skuLossCountDb != null
+      ? skuLossCountDb
+      : lossIdentityKeys.size;
 
   // Stock valuation = same formula as /stocks summaries (no field cascade fallbacks).
   // WB: totalStock + inTransitToCustomer + inTransitReturns
@@ -1170,7 +1360,7 @@ export default async function InsightsPage({
       });
       return {
         companyName,
-        marketplace: "Ozon" as const,
+        marketplace: "OWN" as const,
         sku: String(stock.sku ?? ""),
         vendorCode,
         sizeLabel: String(stock.size ?? "").trim() || "н/д",
@@ -1187,13 +1377,23 @@ export default async function InsightsPage({
     .filter((row) => row.frozenMoney != null && (row.frozenMoney ?? 0) > 0)
     .sort((a, b) => (b.frozenMoney ?? 0) - (a.frozenMoney ?? 0));
 
+  const sumStockChannel = (channel: InsightStockRow["marketplace"]) => {
+    const part = stockWithCost.filter((r) => r.marketplace === channel);
+    if (part.length === 0) return null;
+    return part.reduce((sum, row) => sum + (row.frozenMoney ?? 0), 0);
+  };
+  const stockAtCostWb = sumStockChannel("WB");
+  const stockAtCostOzon = sumStockChannel("Ozon");
+  const stockAtCostOwn = sumStockChannel("OWN");
+
   const stockAtCost = stockWithCost.reduce(
     (sum, row) => sum + (row.frozenMoney ?? 0),
     0,
   );
-  const stockMissingCost = stockRowsRaw.some(
+  const stockMissingCostQty = stockRowsRaw.filter(
     (row) => row.costCoverage === "MISSING",
-  );
+  ).length;
+  const stockMissingCost = stockMissingCostQty > 0;
 
   const salesKeys = new Set(
     rows
@@ -1226,38 +1426,41 @@ export default async function InsightsPage({
   }
 
   // Drivers: comparable management ET + MP net; SKU adjustments kept separate.
+  // When SKU layer is not ready, SKU fields stay null (never fake 0 attribution).
   const driversMap = new Map<string, MarketplaceSlice>();
   driversMap.set("WB", {
     marketplace: "WB",
     economicTurnover: economicTurnoverWb,
     marketplaceNetProfit: wbMpNet,
-    skuRevenue: 0,
-    skuProfit: 0,
-    soldProfit: 0,
+    skuRevenue: skuLayerReady ? 0 : null,
+    skuProfit: skuLayerReady ? 0 : null,
+    soldProfit: skuLayerReady ? 0 : null,
     marginPercent: marginOrNull(economicTurnoverWb, wbMpNet),
-    adjustmentProfit: 0,
-    adjustmentSkuCount: 0,
+    adjustmentProfit: skuLayerReady ? 0 : null,
+    adjustmentSkuCount: skuLayerReady ? 0 : null,
   });
   driversMap.set("Ozon", {
     marketplace: "Ozon",
     economicTurnover: economicTurnoverOzon,
     marketplaceNetProfit: ozonMpNet,
-    skuRevenue: 0,
-    skuProfit: 0,
-    soldProfit: 0,
+    skuRevenue: skuLayerReady ? 0 : null,
+    skuProfit: skuLayerReady ? 0 : null,
+    soldProfit: skuLayerReady ? 0 : null,
     marginPercent: marginOrNull(economicTurnoverOzon, ozonMpNet),
-    adjustmentProfit: 0,
-    adjustmentSkuCount: 0,
+    adjustmentProfit: skuLayerReady ? 0 : null,
+    adjustmentSkuCount: skuLayerReady ? 0 : null,
   });
-  for (const row of rows) {
-    const slice = driversMap.get(row.marketplace)!;
-    slice.skuRevenue += row.revenue;
-    slice.skuProfit += row.profit;
-    if (row.anomaly !== "NONE") {
-      slice.adjustmentProfit += row.profit;
-      slice.adjustmentSkuCount += 1;
-    } else if (row.revenue > 0) {
-      slice.soldProfit += row.profit;
+  if (skuLayerReady) {
+    for (const row of rows) {
+      const slice = driversMap.get(row.marketplace)!;
+      slice.skuRevenue = (slice.skuRevenue ?? 0) + row.revenue;
+      slice.skuProfit = (slice.skuProfit ?? 0) + row.profit;
+      if (row.anomaly !== "NONE") {
+        slice.adjustmentProfit = (slice.adjustmentProfit ?? 0) + row.profit;
+        slice.adjustmentSkuCount = (slice.adjustmentSkuCount ?? 0) + 1;
+      } else if (row.revenue > 0) {
+        slice.soldProfit = (slice.soldProfit ?? 0) + row.profit;
+      }
     }
   }
 
@@ -1425,6 +1628,12 @@ export default async function InsightsPage({
   const withImages = <T extends InsightSkuRow | InsightStockRow>(list: T[]) =>
     list.map(attachImage);
 
+  const businessNetIncludesFinance =
+    businessNetProfit != null &&
+    (kpiSource.startsWith("DASHBOARD_V6") ||
+      kpiSource === "PROFIT_WAVE_B_HIT" ||
+      kpiSource === "LIVE_SUM_COMPANIES");
+
   const dataModes = Array.from(
     new Set(
       [
@@ -1432,6 +1641,8 @@ export default async function InsightsPage({
         `sku:${skuStatus}`,
         financeStatusReason ? `financeReason:${financeStatusReason}` : "",
         skuStatusReason ? `skuReason:${skuStatusReason}` : "",
+        rebuildPending ? "rebuild:PENDING" : "",
+        ...rebuildDetails,
         ...analyticsByCompany.flatMap(({ wb, ozon }) => {
           const modes: string[] = [];
           const wbMode = (wb.totals as { dataMode?: string } | undefined)
@@ -1466,26 +1677,38 @@ export default async function InsightsPage({
     financeStatusReason,
     skuStatus,
     skuStatusReason,
+    rebuildPending,
+    rebuildDetail: rebuildDetails.join("|"),
     sourceGeneratedAtLabel,
     kpi: {
       economicTurnover,
       economicTurnoverWb,
       economicTurnoverOzon,
       businessNetProfit,
+      businessNetIncludesFinance,
       marketplaceNetProfit,
       financeNetProfitImpact: financeImpactForKpi,
       businessMarginPercent: marginOrNull(economicTurnover, businessNetProfit),
       lossSkuCount,
-      lossCountIsUniqueIdentity: true,
+      lossCountIsUniqueIdentity: !(skuTruncated && skuLossCountDb != null),
       stockAtCost: stockWithCost.length > 0 ? stockAtCost : null,
+      stockAtCostWb,
+      stockAtCostOzon,
+      stockAtCostOwn,
+      stockMissingCostQty,
       frozenCoveragePartial: stockMissingCost,
-      frozenAsOfLabel: "как /stocks: WB+Ozon FBO+свой склад × ProductCost",
+      frozenAsOfLabel:
+        "как /stocks: WB + Ozon FBO + свой склад × ProductCost",
       skuDetail: {
-        skuRevenue,
-        soldProfit: soldProfitTotal,
-        adjustmentProfit: adjustmentProfitSum,
-        skuProfitTotal,
-        salesMarginPercent: marginOrNull(skuRevenue, soldProfitTotal),
+        skuRevenue: skuLayerReady ? skuRevenue : null,
+        soldProfit: skuLayerReady ? soldProfitTotal : null,
+        adjustmentProfit: skuLayerReady ? adjustmentProfitSum : null,
+        skuProfitTotal: skuLayerReady ? skuProfitTotal : null,
+        salesMarginPercent: skuLayerReady
+          ? marginOrNull(skuRevenue, soldProfitTotal)
+          : null,
+        truncated: skuTruncated,
+        totalSkuRows: skuTotalInDb,
       },
       ozonProfitSource: `${kpiSource}; ozon=${ozonTotalsSource}; ${ozonSources.join("|")}`,
       ozonTotalCost,
@@ -1493,15 +1716,31 @@ export default async function InsightsPage({
     },
     attention: {
       lossSkuCount,
-      lowMarginSkuCount: skuLayerReady ? lowMarginRows.length : null,
-      profitableSkuCount: skuLayerReady ? soldProfitable.length : null,
+      lowMarginSkuCount: skuLayerReady
+        ? skuTruncated
+          ? null
+          : lowMarginRows.length
+        : null,
+      profitableSkuCount: skuLayerReady
+        ? skuTruncated
+          ? null
+          : soldProfitable.length
+        : null,
       stockAtCost: stockWithCost.length > 0 ? stockAtCost : null,
     },
     drivers: Array.from(driversMap.values()),
     problems: {
-      uniqueProblemSkuCount: skuLayerReady ? problemKeys.size : null,
+      uniqueProblemSkuCount: skuLayerReady
+        ? skuTruncated
+          ? null
+          : problemKeys.size
+        : null,
       lossSkuCount,
-      lowMarginSkuCount: skuLayerReady ? lowMarginRows.length : null,
+      lowMarginSkuCount: skuLayerReady
+        ? skuTruncated
+          ? null
+          : lowMarginRows.length
+        : null,
       noMovementSkuCount: skuLayerReady ? noMovementSkuCount : null,
       excessStockSkuCount: skuLayerReady ? excessStockSkuCount : null,
     },
@@ -1509,13 +1748,22 @@ export default async function InsightsPage({
     profitableAll: withImages(soldProfitable.slice(0, 20)),
     lossPreview: withImages(soldLoss.slice(0, 5)),
     lossAll: withImages(soldLoss.slice(0, 20)),
-    adjustments: withImages(adjustments.slice(0, 30)),
+    adjustments: withImages(skuLayerReady ? adjustments.slice(0, 30) : []),
     adjustmentSummary: {
-      skuCount: adjustments.length,
-      profitSum: adjustmentProfitSum,
+      skuCount: skuLayerReady ? adjustments.length : null,
+      profitSum: skuLayerReady ? adjustmentProfitSum : null,
+      status: !skuLayerReady
+        ? "PENDING"
+        : adjustments.length > 0
+          ? "READY"
+          : "EMPTY",
     },
-    lowMarginPreview: withImages(lowMarginRows.slice(0, 5)),
-    lowMarginAll: withImages(lowMarginRows.slice(0, 20)),
+    lowMarginPreview: withImages(
+      skuLayerReady && !skuTruncated ? lowMarginRows.slice(0, 5) : [],
+    ),
+    lowMarginAll: withImages(
+      skuLayerReady && !skuTruncated ? lowMarginRows.slice(0, 20) : [],
+    ),
     frozenPreview: withImages(stockWithCost.slice(0, 5)),
     frozenAll: withImages(stockWithCost.slice(0, 20)),
   };
