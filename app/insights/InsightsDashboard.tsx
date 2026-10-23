@@ -501,16 +501,16 @@ function SkuRankTable({
           {expanded ? "Свернуть" : "Смотреть все →"}
         </button>
       </div>
-      <div className="overflow-x-auto">
-        <table className="w-full min-w-[560px] text-xs">
+      <div className="overflow-x-auto lg:overflow-x-visible">
+        <table className="w-full min-w-[520px] text-xs lg:min-w-0 lg:table-fixed">
           <thead className="bg-slate-50 text-left text-[9px] font-bold uppercase tracking-wide text-slate-500">
             <tr>
-              <th className="px-2.5 py-1.5">#</th>
+              <th className="w-8 px-2 py-1.5">#</th>
               <th className="px-1.5 py-1.5">Артикул</th>
-              <th className="px-1.5 py-1.5">МП</th>
-              <th className="px-1.5 py-1.5 text-right">Выручка</th>
-              <th className="px-1.5 py-1.5 text-right">Прибыль</th>
-              <th className="px-2.5 py-1.5 text-right">Маржа</th>
+              <th className="w-10 px-1 py-1.5">МП</th>
+              <th className="w-[18%] px-1 py-1.5 text-right">Выручка</th>
+              <th className="w-[18%] px-1 py-1.5 text-right">Прибыль</th>
+              <th className="w-14 px-2 py-1.5 text-right">Маржа</th>
             </tr>
           </thead>
           <tbody>
@@ -687,17 +687,17 @@ function LowMarginTable({
           {expanded ? "Свернуть" : "Смотреть все →"}
         </button>
       </div>
-      <div className="overflow-x-auto">
-        <table className="w-full min-w-[600px] text-xs">
+      <div className="overflow-x-auto lg:overflow-x-visible">
+        <table className="w-full min-w-[520px] text-xs lg:min-w-0 lg:table-fixed">
           <thead className="bg-slate-50 text-left text-[9px] font-bold uppercase tracking-wide text-slate-500">
             <tr>
-              <th className="px-2.5 py-1.5">#</th>
+              <th className="w-8 px-2 py-1.5">#</th>
               <th className="px-1.5 py-1.5">Артикул</th>
-              <th className="px-1.5 py-1.5">МП</th>
-              <th className="px-1.5 py-1.5 text-right">Продажи</th>
-              <th className="px-1.5 py-1.5 text-right">Выручка</th>
-              <th className="px-1.5 py-1.5 text-right">Прибыль</th>
-              <th className="px-2.5 py-1.5 text-right">Маржа</th>
+              <th className="w-10 px-1 py-1.5">МП</th>
+              <th className="w-14 px-1 py-1.5 text-right">Прод.</th>
+              <th className="w-[16%] px-1 py-1.5 text-right">Выручка</th>
+              <th className="w-[16%] px-1 py-1.5 text-right">Прибыль</th>
+              <th className="w-14 px-2 py-1.5 text-right">Маржа</th>
             </tr>
           </thead>
           <tbody>
@@ -800,16 +800,16 @@ function FrozenTable({
           {expanded ? "Свернуть" : "Смотреть все →"}
         </button>
       </div>
-      <div className="overflow-x-auto">
-        <table className="w-full min-w-[600px] text-xs">
+      <div className="overflow-x-auto lg:overflow-x-visible">
+        <table className="w-full min-w-[520px] text-xs lg:min-w-0 lg:table-fixed">
           <thead className="bg-slate-50 text-left text-[9px] font-bold uppercase tracking-wide text-slate-500">
             <tr>
-              <th className="px-2.5 py-1.5">#</th>
+              <th className="w-8 px-2 py-1.5">#</th>
               <th className="px-1.5 py-1.5">Артикул</th>
-              <th className="px-1.5 py-1.5">МП</th>
-              <th className="px-1.5 py-1.5 text-right">Остаток</th>
-              <th className="px-1.5 py-1.5 text-right">Себестоимость</th>
-              <th className="px-2.5 py-1.5 text-right">Заморожено</th>
+              <th className="w-10 px-1 py-1.5">МП</th>
+              <th className="w-14 px-1 py-1.5 text-right">Остаток</th>
+              <th className="w-[18%] px-1 py-1.5 text-right">Себест.</th>
+              <th className="w-[20%] px-2 py-1.5 text-right">Заморожено</th>
             </tr>
           </thead>
           <tbody>
@@ -881,11 +881,53 @@ function FrozenTable({
 export default function InsightsDashboard({ data }: { data: InsightsPayload }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
+  const [showAllRecommendations, setShowAllRecommendations] = useState(false);
   const marginHigh =
     data.kpi.netMarginPercent != null && data.kpi.netMarginPercent > 100;
-  const marginTip = marginHigh
-    ? "Маржа SKU = прибыль SKU (вкл. корректировки) / SKU-выручка"
-    : "Маржа SKU = прибыль SKU / SKU-выручка";
+  const salesMarginTip =
+    "Маржа продаж = прибыль с продаж / SKU-выручка (без корректировок)";
+  const netMarginTip = marginHigh
+    ? "Маржа SKU полная = прибыль SKU (вкл. корректировки) / SKU-выручка"
+    : "Маржа SKU полная = прибыль SKU / SKU-выручка";
+
+  const recommendationItems = [
+    {
+      href: "#loss-sku",
+      icon: "↓",
+      tone: "rose" as const,
+      title: `${formatNumber(data.attention.lossSkuCount)} убыточных SKU`,
+      body: "Проверить рекламу и цены",
+      detail:
+        "Открыть рейтинг убыточных SKU с выручкой: пересмотреть рекламу, цену и себестоимость.",
+    },
+    {
+      href: "#risk-margin",
+      icon: "%",
+      tone: "amber" as const,
+      title: `${formatNumber(data.attention.lowMarginSkuCount)} SKU с маржой 0–5%`,
+      body: "Зона риска — анализ",
+      detail:
+        "SKU в зоне тонкой маржи: проверить комиссию, логистику и COGS до перехода в убыток.",
+    },
+    {
+      href: "#profit-sku",
+      icon: "↑",
+      tone: "emerald" as const,
+      title: "ТОП прибыльных SKU",
+      body: `${formatNumber(data.attention.profitableSkuCount)} — масштабировать`,
+      detail:
+        "Прибыльные SKU с продажами: кандидаты на масштабирование остатков и рекламы.",
+    },
+    {
+      href: "#frozen-stock",
+      icon: "▣",
+      tone: "violet" as const,
+      title: `Заморожено ${formatMoney(data.attention.frozenMoney)}`,
+      body: "Проверить залежавшиеся",
+      detail:
+        "Деньги в остатках с известной себестоимостью: проверить оборачиваемость и залежавшиеся позиции.",
+    },
+  ];
 
   return (
     <main className="min-h-screen bg-[#eef2f7] p-3 sm:p-4">
@@ -975,7 +1017,7 @@ export default function InsightsDashboard({ data }: { data: InsightsPayload }) {
           </p>
         </form>
 
-        <section className="grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
+        <section className="grid gap-2 grid-cols-2 md:grid-cols-3 lg:grid-cols-5">
           <KpiCard
             title="SKU-выручка"
             value={formatMoney(data.kpi.revenue)}
@@ -993,12 +1035,12 @@ export default function InsightsDashboard({ data }: { data: InsightsPayload }) {
             tip="Сумма netProfitAfterTax по SKU, включая корректировки без продаж. Не «чистая прибыль бизнеса» Dashboard."
           />
           <KpiCard
-            title="Маржа SKU"
-            value={formatPercent(data.kpi.netMarginPercent)}
+            title="Маржа продаж"
+            value={formatPercent(data.kpi.salesMarginPercent)}
             accent="violet"
             icon="%"
-            subtitle={marginTip}
-            tip={marginTip}
+            subtitle={salesMarginTip}
+            tip={salesMarginTip}
           />
           <KpiCard
             title="Убыточные SKU"
@@ -1020,15 +1062,20 @@ export default function InsightsDashboard({ data }: { data: InsightsPayload }) {
           />
         </section>
 
-        {marginHigh ? (
-          <p className="rounded-lg border border-violet-100 bg-violet-50/70 px-2.5 py-1.5 text-[10px] text-violet-900">
-            Маржа SKU {formatPercent(data.kpi.netMarginPercent)} &gt; 100%: в
-            числителе прибыль SKU с корректировками без продаж (
-            {formatMoney(data.kpi.adjustmentProfit)}), знаменатель — только
-            SKU-выручка ({formatMoney(data.kpi.revenue)}). Не скрыто и не
-            нормализовано.
-          </p>
-        ) : null}
+        <p className="rounded-lg border border-violet-100 bg-violet-50/70 px-2.5 py-1.5 text-[10px] text-violet-900">
+          <span className="font-bold">Маржа SKU полная </span>
+          {formatPercent(data.kpi.netMarginPercent)}
+          {" = прибыль SKU (с продаж "}
+          {formatMoney(data.kpi.soldProfit)}
+          {" + корректировки "}
+          {formatMoney(data.kpi.adjustmentProfit)}
+          {") / SKU-выручка "}
+          {formatMoney(data.kpi.revenue)}
+          {marginHigh
+            ? ". >100%: корректировки без продаж в числителе, знаменатель — только выручка. Не скрыто и не нормализовано."
+            : `. ${netMarginTip}.`}
+          {" Оперативный KPI выше — маржа продаж без корректировок."}
+        </p>
 
         <section
           id="recommendations"
@@ -1038,43 +1085,65 @@ export default function InsightsDashboard({ data }: { data: InsightsPayload }) {
             <h2 className="text-sm font-black text-slate-900">
               Что требует внимания сегодня
             </h2>
-            <a
-              href="#recommendations"
+            <button
+              type="button"
+              onClick={() => setShowAllRecommendations((v) => !v)}
               className="text-[10px] font-bold text-violet-700 hover:underline"
+              aria-expanded={showAllRecommendations}
+              aria-controls="recommendations-full-list"
             >
-              Смотреть все рекомендации
-            </a>
+              {showAllRecommendations
+                ? "Свернуть список"
+                : "Смотреть все рекомендации"}
+            </button>
           </div>
           <div className="grid gap-1.5 md:grid-cols-2 xl:grid-cols-4">
-            <AttentionCard
-              href="#loss-sku"
-              icon="↓"
-              tone="rose"
-              title={`${formatNumber(data.attention.lossSkuCount)} убыточных SKU`}
-              body="Проверить рекламу и цены"
-            />
-            <AttentionCard
-              href="#risk-margin"
-              icon="%"
-              tone="amber"
-              title={`${formatNumber(data.attention.lowMarginSkuCount)} SKU с маржой 0–5%`}
-              body="Зона риска — анализ"
-            />
-            <AttentionCard
-              href="#profit-sku"
-              icon="↑"
-              tone="emerald"
-              title="ТОП прибыльных SKU"
-              body={`${formatNumber(data.attention.profitableSkuCount)} — масштабировать`}
-            />
-            <AttentionCard
-              href="#frozen-stock"
-              icon="▣"
-              tone="violet"
-              title={`Заморожено ${formatMoney(data.attention.frozenMoney)}`}
-              body="Проверить залежавшиеся"
-            />
+            {recommendationItems.map((item) => (
+              <AttentionCard
+                key={item.href}
+                href={item.href}
+                icon={item.icon}
+                tone={item.tone}
+                title={item.title}
+                body={item.body}
+              />
+            ))}
           </div>
+          {showAllRecommendations ? (
+            <div
+              id="recommendations-full-list"
+              className="mt-2 space-y-1.5 rounded-lg border border-violet-100 bg-violet-50/40 p-2"
+            >
+              <p className="px-1 text-[10px] font-bold uppercase tracking-wide text-violet-800">
+                Полный список рекомендаций
+              </p>
+              <ol className="space-y-1">
+                {recommendationItems.map((item, index) => (
+                  <li key={`full-${item.href}`}>
+                    <a
+                      href={item.href}
+                      className="flex items-start gap-2 rounded-lg border border-white bg-white px-2.5 py-2 transition hover:border-violet-200"
+                    >
+                      <span className="mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-violet-100 text-[10px] font-black text-violet-800">
+                        {index + 1}
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <div className="text-xs font-black text-slate-900">
+                          {item.title}
+                        </div>
+                        <div className="mt-0.5 text-[10px] leading-3.5 text-slate-600">
+                          {item.detail}
+                        </div>
+                      </div>
+                      <span className="text-slate-400" aria-hidden>
+                        →
+                      </span>
+                    </a>
+                  </li>
+                ))}
+              </ol>
+            </div>
+          ) : null}
         </section>
 
         <section className="grid gap-2.5 xl:grid-cols-2">

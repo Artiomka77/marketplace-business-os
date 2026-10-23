@@ -57,6 +57,9 @@ export type InsightsPayload = {
     soldProfit: number;
     /** adjustment profit sum (revenue=0 rows) */
     adjustmentProfit: number;
+    /** Operational: soldProfit / revenue (без корректировок) */
+    salesMarginPercent: number | null;
+    /** Full SKU margin: netProfit / revenue (может включать корректировки → >100%) */
     netMarginPercent: number | null;
     lossSkuCount: number;
     frozenMoney: number | null;

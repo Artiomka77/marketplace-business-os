@@ -509,7 +509,9 @@ export default async function InsightsPage({
       netProfit: totalProfit,
       soldProfit: soldProfitTotal,
       adjustmentProfit: adjustmentProfitSum,
-      // Denominator = SKU revenue; numerator includes adjustments → can exceed 100%.
+      // Operational margin: sales only (no adjustments in numerator).
+      salesMarginPercent: marginOrNull(totalRevenue, soldProfitTotal),
+      // Full SKU margin: includes adjustments → can exceed 100%.
       netMarginPercent: marginOrNull(totalRevenue, totalProfit),
       lossSkuCount,
       frozenMoney: stockWithCost.length > 0 ? frozenMoney : null,
