@@ -1,11 +1,24 @@
 export type MarketplaceCode = "WB" | "Ozon";
 
+export type InsightSizePart = {
+  sizeLabel: string;
+  salesQty: number | null;
+  revenue: number | null;
+  /** Allocated / ledger profit — null when not proven per size */
+  profit: number | null;
+  note?: string;
+};
+
 export type InsightSkuRow = {
   companyName: string;
   marketplace: MarketplaceCode;
   sku: string;
   vendorCode: string;
   subject: string;
+  /** Visible size label: exact size, «Все размеры», or «н/д» */
+  sizeLabel: string;
+  sizeStatus: "EXACT" | "FAMILY_ALL" | "UNKNOWN";
+  sizeParts: InsightSizePart[];
   salesQty: number;
   revenue: number;
   profit: number;
@@ -20,6 +33,7 @@ export type InsightStockRow = {
   marketplace: MarketplaceCode;
   sku: string;
   vendorCode: string;
+  sizeLabel: string;
   quantity: number;
   unitCost: number | null;
   frozenMoney: number | null;
@@ -29,14 +43,25 @@ export type InsightStockRow = {
 
 export type MarketplaceSlice = {
   marketplace: MarketplaceCode;
-  /** Sum of SKU revenue (sales only; adjustments have revenue 0) */
-  revenue: number;
+  /**
+   * Canonical management economic turnover for this MP
+   * (WB sellerRetailAmount / Ozon economicTurnover).
+   */
+  economicTurnover: number | null;
+  /** Marketplace netProfitAfterTax from analytics totals (P&L after tax). */
+  marketplaceNetProfit: number | null;
+  /**
+   * Sum of SKU `revenue` field (sales attribution only; adjustments have 0).
+   * Not Dashboard economic turnover.
+   */
+  skuRevenue: number;
   /** Total SKU netProfitAfterTax including adjustments */
-  profit: number;
+  skuProfit: number;
   /** profit attributable to rows with revenue > 0 */
   soldProfit: number;
+  /** Margin on economic turnover when available; else on skuRevenue */
   marginPercent: number | null;
-  /** SKU rows with revenue=0 and non-zero profit (adjustments), same marketplace */
+  /** SKU rows with revenue=0 and non-zero profit (adjustments) */
   adjustmentProfit: number;
   adjustmentSkuCount: number;
 };
@@ -49,28 +74,37 @@ export type InsightsPayload = {
   generatedAtLabel: string;
   dataModes: string[];
   kpi: {
-    /** Sum of SKU `revenue` (WB+Ozon). Not Dashboard sales/accruals. */
-    revenue: number;
-    /** Sum of SKU `netProfitAfterTax` including adjustments without sales. */
-    netProfit: number;
-    /** soldProfit only (revenue>0 rows) — for transparency */
-    soldProfit: number;
-    /** adjustment profit sum (revenue=0 rows) */
-    adjustmentProfit: number;
-    /** Operational: soldProfit / revenue (без корректировок) */
-    salesMarginPercent: number | null;
-    /** Full SKU margin: netProfit / revenue (может включать корректировки → >100%) */
-    netMarginPercent: number | null;
+    /** Canonical WB+Ozon economic turnover (management). Null if incomplete. */
+    economicTurnover: number | null;
+    economicTurnoverWb: number | null;
+    economicTurnoverOzon: number | null;
+    /** Dashboard business netProfit: MP after tax + Finance INCLUDE, before owner. */
+    businessNetProfit: number | null;
+    marketplaceNetProfit: number | null;
+    financeNetProfitImpact: number | null;
+    /** businessNetProfit / economicTurnover when both known */
+    businessMarginPercent: number | null;
+    /** Unique product identities with negative attributed profit (rows if not unique). */
     lossSkuCount: number;
-    frozenMoney: number | null;
+    lossCountIsUniqueIdentity: boolean;
+    /** Stock × ProductCost on deduped current snapshot */
+    stockAtCost: number | null;
     frozenCoveragePartial: boolean;
     frozenAsOfLabel: string;
+    /** Transparent SKU analytics (not top-row business KPIs) */
+    skuDetail: {
+      skuRevenue: number;
+      soldProfit: number;
+      adjustmentProfit: number;
+      skuProfitTotal: number;
+      salesMarginPercent: number | null;
+    };
   };
   attention: {
     lossSkuCount: number;
     lowMarginSkuCount: number;
     profitableSkuCount: number;
-    frozenMoney: number | null;
+    stockAtCost: number | null;
   };
   drivers: MarketplaceSlice[];
   problems: {

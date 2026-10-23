@@ -207,8 +207,8 @@ function DriversPanel({ drivers }: { drivers: MarketplaceSlice[] }) {
   const [mode, setMode] = useState<"revenue" | "profit" | "margin">("revenue");
 
   const primaryValue = (d: MarketplaceSlice) => {
-    if (mode === "revenue") return d.revenue;
-    if (mode === "profit") return d.soldProfit;
+    if (mode === "revenue") return d.economicTurnover;
+    if (mode === "profit") return d.marketplaceNetProfit;
     return d.marginPercent;
   };
 
@@ -224,11 +224,11 @@ function DriversPanel({ drivers }: { drivers: MarketplaceSlice[] }) {
   );
 
   const totalPositiveRevenue = drivers.reduce(
-    (s, d) => s + Math.max(0, d.revenue),
+    (s, d) => s + Math.max(0, d.economicTurnover ?? 0),
     0,
   );
   const totalPositiveSoldProfit = drivers.reduce(
-    (s, d) => s + Math.max(0, d.soldProfit),
+    (s, d) => s + Math.max(0, d.marketplaceNetProfit ?? 0),
     0,
   );
 
@@ -239,10 +239,10 @@ function DriversPanel({ drivers }: { drivers: MarketplaceSlice[] }) {
           <h2 className="text-sm font-black text-slate-900">Драйверы прибыли</h2>
           <p className="text-[10px] text-slate-500">
             {mode === "revenue"
-              ? "Доля SKU-выручки по МП (не оборот Dashboard)"
+              ? "Экономический оборот WB + Ozon (управленческий)"
               : mode === "profit"
-                ? "Прибыль с продажами отдельно от корректировок без продаж"
-                : "Маржа SKU = прибыль с продажами / SKU-выручка"}
+                ? "Прибыль МП после налога; корректировки SKU — отдельно"
+                : "Рентабельность МП = прибыль МП / экономический оборот"}
           </p>
         </div>
         <div
@@ -310,8 +310,8 @@ function DriversPanel({ drivers }: { drivers: MarketplaceSlice[] }) {
                   {mode === "margin"
                     ? formatPercent(row.marginPercent)
                     : mode === "profit"
-                      ? formatMoney(row.soldProfit)
-                      : formatMoney(row.revenue)}
+                      ? formatMoney(row.marketplaceNetProfit)
+                      : formatMoney(row.economicTurnover)}
                   {share != null ? (
                     <span className="ml-1.5 text-[10px] font-semibold text-slate-500">
                       ({share.toFixed(1)}%)
@@ -329,10 +329,10 @@ function DriversPanel({ drivers }: { drivers: MarketplaceSlice[] }) {
               {mode === "profit" && row.adjustmentSkuCount > 0 ? (
                 <div className="mt-1">
                   <div className="mb-0.5 flex items-center justify-between text-[10px] font-semibold text-amber-800">
-                    <span>Корректировки без продаж</span>
+                    <span>Корректировки без продаж (SKU)</span>
                     <span className={moneyClass(row.adjustmentProfit)}>
                       {formatMoney(row.adjustmentProfit)} ·{" "}
-                      {formatNumber(row.adjustmentSkuCount)} SKU
+                      {formatNumber(row.adjustmentSkuCount)} поз.
                     </span>
                   </div>
                   <div className="h-1.5 overflow-hidden rounded-full bg-amber-100">
@@ -344,23 +344,36 @@ function DriversPanel({ drivers }: { drivers: MarketplaceSlice[] }) {
                       data-bar="adjustments"
                     />
                   </div>
+                  <p className="mt-0.5 text-[9px] leading-3 text-amber-800/80">
+                    Не продажи недели и не выручка. Уже входят в прибыль МП
+                    выше, если канон их учёл; здесь — прозрачный SKU-слой.
+                  </p>
                 </div>
               ) : null}
               {mode === "revenue" &&
-              row.revenue === 0 &&
+              (row.economicTurnover ?? 0) === 0 &&
               row.adjustmentSkuCount > 0 ? (
                 <p className="mt-1 text-[10px] leading-3 text-amber-700">
-                  SKU-выручка 0 ₽ — корректировки без продаж (
-                  {formatNumber(row.adjustmentSkuCount)} SKU,{" "}
+                  Экономический оборот 0 ₽ — есть корректировки без продаж (
+                  {formatNumber(row.adjustmentSkuCount)} поз.,{" "}
                   <span className={moneyClass(row.adjustmentProfit)}>
                     {formatMoney(row.adjustmentProfit)}
                   </span>
-                  ) не являются выручкой. Смотрите режим «Прибыль».
+                  ). Это не выручка. Смотрите режим «Прибыль».
                 </p>
               ) : null}
-              {mode === "margin" && !(row.revenue > 0) ? (
+              {mode === "revenue" && (row.economicTurnover ?? 0) > 0 ? (
+                <p className="mt-1 text-[9px] leading-3 text-slate-500">
+                  Атрибуция по товарам: {formatMoney(row.skuRevenue)}
+                  {row.skuRevenue !== (row.economicTurnover ?? 0)
+                    ? " (может отличаться от управленческого оборота)"
+                    : null}
+                </p>
+              ) : null}
+              {mode === "margin" &&
+              !(row.economicTurnover != null && row.economicTurnover > 0) ? (
                 <p className="mt-1 text-[10px] leading-3 text-slate-500">
-                  Маржа н/д: нет SKU-выручки (корректировки без знаменателя).
+                  Рентабельность н/д: нет экономического оборота за период.
                 </p>
               ) : null}
             </div>
@@ -468,6 +481,51 @@ function ProblemsPanel({
   );
 }
 
+function SizeCell({ row }: { row: InsightSkuRow }) {
+  const [open, setOpen] = useState(false);
+  const hasParts = row.sizeParts.length > 0;
+  return (
+    <div className="min-w-0">
+      <button
+        type="button"
+        disabled={!hasParts}
+        onClick={() => setOpen((v) => !v)}
+        className={`truncate text-left text-[10px] font-semibold ${
+          hasParts
+            ? "text-violet-700 hover:underline"
+            : "cursor-default text-slate-600"
+        }`}
+        title={
+          row.sizeStatus === "FAMILY_ALL"
+            ? "Прибыль на уровне артикула (все размеры)"
+            : row.sizeStatus === "UNKNOWN"
+              ? "Размер не подтверждён"
+              : undefined
+        }
+      >
+        {row.sizeLabel}
+        {hasParts ? (open ? " ▴" : " ▾") : null}
+      </button>
+      {open && hasParts ? (
+        <ul className="mt-1 max-h-28 space-y-0.5 overflow-y-auto rounded border border-slate-100 bg-slate-50 p-1 text-[9px] text-slate-600">
+          {row.sizeParts.map((p, i) => (
+            <li
+              key={`${p.sizeLabel}-${i}`}
+              className="flex justify-between gap-1 tabular-nums"
+            >
+              <span className="font-bold text-slate-800">{p.sizeLabel}</span>
+              <span>
+                {p.salesQty != null ? `${formatNumber(p.salesQty)} шт` : "н/д"}
+                {p.profit != null ? ` · ${formatMoney(p.profit)}` : " · P&L н/д"}
+              </span>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </div>
+  );
+}
+
 function SkuRankTable({
   id,
   title,
@@ -502,14 +560,15 @@ function SkuRankTable({
         </button>
       </div>
       <div className="overflow-x-auto lg:overflow-x-visible">
-        <table className="w-full min-w-[520px] text-xs lg:min-w-0 lg:table-fixed">
+        <table className="w-full min-w-[560px] text-xs lg:min-w-0 lg:table-fixed">
           <thead className="bg-slate-50 text-left text-[9px] font-bold uppercase tracking-wide text-slate-500">
             <tr>
               <th className="w-8 px-2 py-1.5">#</th>
               <th className="px-1.5 py-1.5">Артикул</th>
+              <th className="w-16 px-1 py-1.5">Размер</th>
               <th className="w-10 px-1 py-1.5">МП</th>
-              <th className="w-[18%] px-1 py-1.5 text-right">Выручка</th>
-              <th className="w-[18%] px-1 py-1.5 text-right">Прибыль</th>
+              <th className="w-[15%] px-1 py-1.5 text-right">Выручка</th>
+              <th className="w-[15%] px-1 py-1.5 text-right">Прибыль</th>
               <th className="w-14 px-2 py-1.5 text-right">Маржа</th>
             </tr>
           </thead>
@@ -538,6 +597,9 @@ function SkuRankTable({
                     </div>
                   </div>
                 </td>
+                <td className="px-1 py-1.5 align-top">
+                  <SizeCell row={row} />
+                </td>
                 <td className="px-1.5 py-1.5 font-semibold text-slate-700">
                   {row.marketplace}
                 </td>
@@ -565,7 +627,7 @@ function SkuRankTable({
             {visible.length === 0 ? (
               <tr>
                 <td
-                  colSpan={6}
+                  colSpan={7}
                   className="px-3 py-5 text-center text-xs text-slate-500"
                 >
                   {emptyText}
@@ -600,11 +662,11 @@ function AdjustmentsStrip({
             Корректировки без продаж
           </div>
           <div className="text-[10px] text-amber-800">
-            {formatNumber(summary.skuCount)} SKU · сумма{" "}
+            {formatNumber(summary.skuCount)} позиций · сумма{" "}
             <span className={`font-bold ${moneyClass(summary.profitSum)}`}>
               {formatMoney(summary.profitSum)}
             </span>
-            {" · "}в KPI сохранены, в ТОП продаж не входят
+            {" · "}не продажи недели; в главных KPI бизнеса не подменяют оборот
           </div>
         </div>
         <button
@@ -693,10 +755,11 @@ function LowMarginTable({
             <tr>
               <th className="w-8 px-2 py-1.5">#</th>
               <th className="px-1.5 py-1.5">Артикул</th>
+              <th className="w-16 px-1 py-1.5">Размер</th>
               <th className="w-10 px-1 py-1.5">МП</th>
               <th className="w-14 px-1 py-1.5 text-right">Прод.</th>
-              <th className="w-[16%] px-1 py-1.5 text-right">Выручка</th>
-              <th className="w-[16%] px-1 py-1.5 text-right">Прибыль</th>
+              <th className="w-[14%] px-1 py-1.5 text-right">Выручка</th>
+              <th className="w-[14%] px-1 py-1.5 text-right">Прибыль</th>
               <th className="w-14 px-2 py-1.5 text-right">Маржа</th>
             </tr>
           </thead>
@@ -725,6 +788,9 @@ function LowMarginTable({
                     </div>
                   </div>
                 </td>
+                <td className="px-1 py-1.5 align-top">
+                  <SizeCell row={row} />
+                </td>
                 <td className="px-1.5 py-1.5 font-semibold">{row.marketplace}</td>
                 <td className="px-1.5 py-1.5 text-right tabular-nums">
                   {formatNumber(row.salesQty)}
@@ -745,7 +811,7 @@ function LowMarginTable({
             {visible.length === 0 ? (
               <tr>
                 <td
-                  colSpan={7}
+                  colSpan={8}
                   className="px-3 py-5 text-center text-xs text-slate-500"
                 >
                   SKU с положительной маржой ниже 5% не найдены.
@@ -785,11 +851,11 @@ function FrozenTable({
       <div className="flex items-center justify-between gap-2 border-b border-slate-100 px-3 py-2">
         <div>
           <h2 className="text-sm font-black text-slate-900">
-            Замороженные деньги в остатках
+            Товарные остатки по себестоимости
           </h2>
           <p className="text-[9px] text-slate-500">
             Срез: {asOfLabel}
-            {partial ? " · COGS частично" : ""}
+            {partial ? " · себестоимость частично" : ""}
           </p>
         </div>
         <button
@@ -806,10 +872,11 @@ function FrozenTable({
             <tr>
               <th className="w-8 px-2 py-1.5">#</th>
               <th className="px-1.5 py-1.5">Артикул</th>
+              <th className="w-14 px-1 py-1.5">Размер</th>
               <th className="w-10 px-1 py-1.5">МП</th>
               <th className="w-14 px-1 py-1.5 text-right">Остаток</th>
-              <th className="w-[18%] px-1 py-1.5 text-right">Себест.</th>
-              <th className="w-[20%] px-2 py-1.5 text-right">Заморожено</th>
+              <th className="w-[16%] px-1 py-1.5 text-right">Себест.</th>
+              <th className="w-[18%] px-2 py-1.5 text-right">На складе</th>
             </tr>
           </thead>
           <tbody>
@@ -844,6 +911,9 @@ function FrozenTable({
                       </div>
                     </div>
                   </td>
+                  <td className="px-1 py-1.5 text-[10px] font-semibold text-slate-700">
+                    {row.sizeLabel || "н/д"}
+                  </td>
                   <td className="px-1.5 py-1.5 font-semibold">
                     {row.marketplace}
                   </td>
@@ -864,7 +934,7 @@ function FrozenTable({
             {visible.length === 0 ? (
               <tr>
                 <td
-                  colSpan={6}
+                  colSpan={7}
                   className="px-3 py-5 text-center text-xs text-slate-500"
                 >
                   Нет данных по остаткам с известной себестоимостью.
@@ -882,50 +952,45 @@ export default function InsightsDashboard({ data }: { data: InsightsPayload }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [showAllRecommendations, setShowAllRecommendations] = useState(false);
-  const marginHigh =
-    data.kpi.netMarginPercent != null && data.kpi.netMarginPercent > 100;
-  const salesMarginTip =
-    "Маржа продаж = прибыль с продаж / SKU-выручка (без корректировок)";
-  const netMarginTip = marginHigh
-    ? "Маржа SKU полная = прибыль SKU (вкл. корректировки) / SKU-выручка"
-    : "Маржа SKU полная = прибыль SKU / SKU-выручка";
+  const [showSkuDetail, setShowSkuDetail] = useState(false);
+  const sku = data.kpi.skuDetail;
 
   const recommendationItems = [
     {
       href: "#loss-sku",
       icon: "↓",
       tone: "rose" as const,
-      title: `${formatNumber(data.attention.lossSkuCount)} убыточных SKU`,
+      title: `${formatNumber(data.attention.lossSkuCount)} убыточных товаров`,
       body: "Проверить рекламу и цены",
       detail:
-        "Открыть рейтинг убыточных SKU с выручкой: пересмотреть рекламу, цену и себестоимость.",
+        "Открыть рейтинг убыточных позиций с выручкой: пересмотреть рекламу, цену и себестоимость.",
     },
     {
       href: "#risk-margin",
       icon: "%",
       tone: "amber" as const,
-      title: `${formatNumber(data.attention.lowMarginSkuCount)} SKU с маржой 0–5%`,
+      title: `${formatNumber(data.attention.lowMarginSkuCount)} товаров с маржой 0–5%`,
       body: "Зона риска — анализ",
       detail:
-        "SKU в зоне тонкой маржи: проверить комиссию, логистику и COGS до перехода в убыток.",
+        "Товары в зоне тонкой маржи: проверить комиссию, логистику и себестоимость.",
     },
     {
       href: "#profit-sku",
       icon: "↑",
       tone: "emerald" as const,
-      title: "ТОП прибыльных SKU",
+      title: "ТОП прибыльных товаров",
       body: `${formatNumber(data.attention.profitableSkuCount)} — масштабировать`,
       detail:
-        "Прибыльные SKU с продажами: кандидаты на масштабирование остатков и рекламы.",
+        "Прибыльные позиции с продажами: кандидаты на масштабирование остатков и рекламы.",
     },
     {
       href: "#frozen-stock",
       icon: "▣",
       tone: "violet" as const,
-      title: `Заморожено ${formatMoney(data.attention.frozenMoney)}`,
+      title: `Остатки ${formatMoney(data.attention.stockAtCost)}`,
       body: "Проверить залежавшиеся",
       detail:
-        "Деньги в остатках с известной себестоимостью: проверить оборачиваемость и залежавшиеся позиции.",
+        "Оценка остатков по себестоимости: проверить оборачиваемость и позиции без продаж.",
     },
   ];
 
@@ -1019,63 +1084,120 @@ export default function InsightsDashboard({ data }: { data: InsightsPayload }) {
 
         <section className="grid gap-2 grid-cols-2 md:grid-cols-3 lg:grid-cols-5">
           <KpiCard
-            title="SKU-выручка"
-            value={formatMoney(data.kpi.revenue)}
+            title="Экономический оборот"
+            value={formatMoney(data.kpi.economicTurnover)}
             accent="blue"
             icon="₽"
-            subtitle="поле revenue SKU · не оборот Dashboard"
-            tip="Сумма SKU revenue WB+Ozon. Не равна продажам/начислениям Dashboard."
+            subtitle="WB + Ozon · управленческий оборот"
+            tip={`WB ${formatMoney(data.kpi.economicTurnoverWb)} + Ozon ${formatMoney(data.kpi.economicTurnoverOzon)}. Канон Dashboard: WB до СПП, Ozon taxable+баллы+партнёры.`}
           />
           <KpiCard
-            title="Прибыль SKU"
-            value={formatMoney(data.kpi.netProfit)}
+            title="Чистая прибыль бизнеса"
+            value={formatMoney(data.kpi.businessNetProfit)}
             accent="green"
             icon="↑"
-            subtitle={`с продаж ${formatMoney(data.kpi.soldProfit)} · корр. ${formatMoney(data.kpi.adjustmentProfit)}`}
-            tip="Сумма netProfitAfterTax по SKU, включая корректировки без продаж. Не «чистая прибыль бизнеса» Dashboard."
+            subtitle={`МП ${formatMoney(data.kpi.marketplaceNetProfit)} · финансы ${formatMoney(data.kpi.financeNetProfitImpact)}`}
+            tip="Прибыль маркетплейсов после налога + операции INCLUDE, до личных выводов. Не сумма SKU-корректировок."
           />
           <KpiCard
-            title="Маржа продаж"
-            value={formatPercent(data.kpi.salesMarginPercent)}
+            title="Рентабельность бизнеса"
+            value={formatPercent(data.kpi.businessMarginPercent)}
             accent="violet"
             icon="%"
-            subtitle={salesMarginTip}
-            tip={salesMarginTip}
+            subtitle="Чистая прибыль / экономический оборот"
+            tip="Одинаковый scope с двумя KPI выше. При отсутствии оборота — н/д."
           />
           <KpiCard
-            title="Убыточные SKU"
+            title="Убыточные товары"
             value={formatNumber(data.kpi.lossSkuCount)}
             accent="red"
             icon="!"
-            subtitle="profit < 0 (все строки)"
+            subtitle={
+              data.kpi.lossCountIsUniqueIdentity
+                ? "уникальные позиции с убытком"
+                : "строки с отрицательной прибылью"
+            }
           />
           <KpiCard
-            title="Заморожено в остатках"
-            value={formatMoney(data.kpi.frozenMoney)}
+            title="Товарные остатки"
+            value={formatMoney(data.kpi.stockAtCost)}
             accent="purple"
             icon="▣"
             subtitle={
               data.kpi.frozenCoveragePartial
-                ? `Срез ${data.kpi.frozenAsOfLabel} · COGS частично`
-                : `Срез ${data.kpi.frozenAsOfLabel}`
+                ? `${data.kpi.frozenAsOfLabel} · себест. частично`
+                : data.kpi.frozenAsOfLabel
             }
+            tip="Количество × себестоимость (ProductCost). Управленческая оценка, не касса."
           />
         </section>
 
-        <p className="rounded-lg border border-violet-100 bg-violet-50/70 px-2.5 py-1.5 text-[10px] text-violet-900">
-          <span className="font-bold">Маржа SKU полная </span>
-          {formatPercent(data.kpi.netMarginPercent)}
-          {" = прибыль SKU (с продаж "}
-          {formatMoney(data.kpi.soldProfit)}
-          {" + корректировки "}
-          {formatMoney(data.kpi.adjustmentProfit)}
-          {") / SKU-выручка "}
-          {formatMoney(data.kpi.revenue)}
-          {marginHigh
-            ? ". >100%: корректировки без продаж в числителе, знаменатель — только выручка. Не скрыто и не нормализовано."
-            : `. ${netMarginTip}.`}
-          {" Оперативный KPI выше — маржа продаж без корректировок."}
-        </p>
+        <section className="rounded-lg border border-slate-200/80 bg-white px-2.5 py-2 shadow-sm">
+          <div className="flex flex-wrap items-center justify-between gap-1.5">
+            <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">
+              Детализация по товарам (не главные KPI)
+            </p>
+            <button
+              type="button"
+              onClick={() => setShowSkuDetail((v) => !v)}
+              className="text-[10px] font-bold text-violet-700 hover:underline"
+            >
+              {showSkuDetail ? "Свернуть" : "Из чего состоит"}
+            </button>
+          </div>
+          <div className="mt-1.5 grid gap-1.5 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="rounded-md bg-slate-50 px-2 py-1.5">
+              <div className="text-[9px] font-semibold text-slate-500">
+                Выручка по товарам
+              </div>
+              <div className="text-sm font-black tabular-nums text-slate-900">
+                {formatMoney(sku.skuRevenue)}
+              </div>
+            </div>
+            <div className="rounded-md bg-slate-50 px-2 py-1.5">
+              <div className="text-[9px] font-semibold text-slate-500">
+                Прибыль именно от продаж
+              </div>
+              <div
+                className={`text-sm font-black tabular-nums ${moneyClass(sku.soldProfit)}`}
+              >
+                {formatMoney(sku.soldProfit)}
+              </div>
+            </div>
+            <div className="rounded-md bg-amber-50 px-2 py-1.5">
+              <div className="text-[9px] font-semibold text-amber-800">
+                Корректировки без продаж
+              </div>
+              <div
+                className={`text-sm font-black tabular-nums ${moneyClass(sku.adjustmentProfit)}`}
+              >
+                {formatMoney(sku.adjustmentProfit)}
+              </div>
+            </div>
+            <div className="rounded-md bg-slate-50 px-2 py-1.5">
+              <div className="text-[9px] font-semibold text-slate-500">
+                Итог SKU-распределения
+              </div>
+              <div
+                className={`text-sm font-black tabular-nums ${moneyClass(sku.skuProfitTotal)}`}
+              >
+                {formatMoney(sku.skuProfitTotal)}
+              </div>
+            </div>
+          </div>
+          {showSkuDetail ? (
+            <p className="mt-1.5 text-[10px] leading-3.5 text-slate-600">
+              Маржа продаж по товарам{" "}
+              <span className="font-bold">
+                {formatPercent(sku.salesMarginPercent)}
+              </span>
+              {" = прибыль от продаж / выручка по товарам (без корректировок). "}
+              Корректировки без продаж — не «чистая прибыль бизнеса» и не выручка
+              недели. Сверка с Dashboard: экономический оборот и чистая прибыль
+              бизнеса — в карточках выше.
+            </p>
+          ) : null}
+        </section>
 
         <section
           id="recommendations"
@@ -1189,9 +1311,9 @@ export default function InsightsDashboard({ data }: { data: InsightsPayload }) {
         </section>
 
         <p className="pb-2 text-center text-[10px] text-slate-400">
-          Источники: getProfitAnalytics / getProfitAnalyticsOzon · ProductCost ·
-          wbStock / ozonStock · фото: WbProductCard / OzonProduct. Формулы не
-          изменялись.
+          Источники KPI: канонический Profit WB/Ozon + Finance INCLUDE
+          (Dashboard). Детализация товаров и корректировок — SKU-слой. Фото:
+          WbProductCard / OzonProduct. Формулы не изменялись.
         </p>
       </div>
     </main>
