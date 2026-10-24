@@ -104,18 +104,36 @@ export async function enqueueV6PeriodRebuild(params: {
     const details: string[] = [];
     let enqueued = false;
 
-    // YTD compose needs the current month partition first (pool-safe path).
+    // YTD compose needs current month partitions for ALL + each company first.
     if (isLongJan1Span(params.dateFrom, params.dateTo)) {
       const part = monthPartitionForDateTo(params.dateTo);
-      const monthResult = await repository.requestRebuild({
-        companyScope: scope,
-        dateFrom: part.dateFrom,
-        dateTo: part.dateTo,
-        priority: 90,
-      });
-      details.push(`V6_MONTH_${part.dateFrom}_${part.dateTo}:${monthResult}`);
-      if (monthResult === "queued_prisma" || monthResult === "queued_local") {
-        enqueued = true;
+      const { prisma } = await import("@/lib/prisma");
+      const monthScopes =
+        scope === "ALL"
+          ? [
+              "ALL",
+              ...(
+                await prisma.company.findMany({
+                  where: { isActive: true },
+                  select: { name: true },
+                  orderBy: { name: "asc" },
+                })
+              ).map((c) => c.name),
+            ]
+          : [scope];
+      for (const monthScope of monthScopes) {
+        const monthResult = await repository.requestRebuild({
+          companyScope: monthScope,
+          dateFrom: part.dateFrom,
+          dateTo: part.dateTo,
+          priority: 90,
+        });
+        details.push(
+          `V6_MONTH_${monthScope}_${part.dateFrom}_${part.dateTo}:${monthResult}`,
+        );
+        if (monthResult === "queued_prisma" || monthResult === "queued_local") {
+          enqueued = true;
+        }
       }
     }
 
