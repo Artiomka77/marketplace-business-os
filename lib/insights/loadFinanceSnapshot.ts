@@ -312,15 +312,10 @@ export async function loadInsightsFinanceSnapshot(params: {
     }
 
     if (financeCoverage !== "FULL") {
-      // Incomplete V6 company set must not be presented as trusted FULL HIT.
-      // Keep known MP component values; never invent business net from partials.
-      if (!profitComponentsOk) {
-        businessNetProfit = null;
-        financeImpactForKpi = null;
-      } else if (financeCoverage !== "FULL") {
-        businessNetProfit = null;
-        financeImpactForKpi = null;
-      }
+      // Incomplete V6 set must not be trusted FULL. Keep known MP revenues;
+      // never invent business net / finance impact from partials.
+      businessNetProfit = null;
+      financeImpactForKpi = null;
       financeStatus = "PRELIMINARY_WITH_VALUE";
       financeStatusReason = `${reason}|COVERAGE_${financeCoverage}${
         profitComponentsOk ? "" : "|PROFIT_COMPONENTS_INCOMPLETE"
