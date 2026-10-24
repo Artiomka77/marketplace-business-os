@@ -81,4 +81,26 @@ describe("insights finance coverage rules", () => {
         : "INCOMPLETE";
     expect(coverage).toBe("INCOMPLETE");
   });
+
+  it("FULL requires mandatory profit components (null ≠ 0)", () => {
+    const required = [
+      "wbRevenue",
+      "ozonRevenue",
+      "wbOperatingProfitAfterTax",
+      "ozonOperatingProfitAfterTax",
+      "operatingProfitAfterTax",
+      "netProfit",
+    ] as const;
+    const payload: Record<string, number | null> = {
+      wbRevenue: 100,
+      ozonRevenue: 200,
+      wbOperatingProfitAfterTax: 10,
+      ozonOperatingProfitAfterTax: 20,
+      operatingProfitAfterTax: 30,
+      netProfit: null,
+    };
+    const missing = required.filter((k) => payload[k] == null);
+    expect(missing).toEqual(["netProfit"]);
+  });
 });
+

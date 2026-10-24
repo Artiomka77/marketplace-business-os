@@ -23,6 +23,82 @@ import {
 
 const SKU_FULL_LOAD_CAP = 4000;
 const SKU_RANK_SLICE = 400;
+/** Warn when a stock channel snapshot is older than this many calendar days. */
+const STOCK_STALE_DAYS = 7;
+
+/** Per-company × marketplace presence required before SKU READY. */
+function assessSkuSourceCompleteness(params: {
+  rows: Array<{ companyScope: string; marketplace: string }>;
+  expectedCompanies: string[];
+  selectedCompany: string;
+}): { complete: boolean; gaps: string[] } {
+  const gaps: string[] = [];
+  const companies =
+    params.selectedCompany === "ALL"
+      ? params.expectedCompanies
+      : [params.selectedCompany];
+
+  const byCompany = new Map<string, { wb: boolean; ozon: boolean }>();
+  for (const name of companies) {
+    byCompany.set(name, { wb: false, ozon: false });
+  }
+  let allScopeWb = false;
+  let allScopeOzon = false;
+
+  for (const row of params.rows) {
+    const mp = String(row.marketplace ?? "").toUpperCase();
+    const scope = String(row.companyScope ?? "");
+    if (scope === "ALL") {
+      if (mp === "WB") allScopeWb = true;
+      if (mp === "OZON") allScopeOzon = true;
+      continue;
+    }
+    const bucket = byCompany.get(scope);
+    if (!bucket) continue;
+    if (mp === "WB") bucket.wb = true;
+    if (mp === "OZON") bucket.ozon = true;
+  }
+
+  // Prefer per-company scopes. ALL-scope alone only covers ALL filter when both MPs exist.
+  const anyPerCompany = params.rows.some((r) => r.companyScope !== "ALL");
+  if (anyPerCompany || params.selectedCompany !== "ALL") {
+    for (const name of companies) {
+      const bucket = byCompany.get(name) ?? { wb: false, ozon: false };
+      if (!bucket.wb) gaps.push(`${name}:WB_SKU_MISSING`);
+      if (!bucket.ozon) gaps.push(`${name}:OZON_SKU_MISSING`);
+    }
+  } else {
+    if (!allScopeWb) gaps.push("ALL:WB_SKU_MISSING");
+    if (!allScopeOzon) gaps.push("ALL:OZON_SKU_MISSING");
+  }
+  return { complete: gaps.length === 0, gaps };
+}
+
+function putUnambiguousOwner(
+  map: Map<string, string>,
+  key: string,
+  companyName: string,
+) {
+  if (!key || !companyName) return;
+  const prev = map.get(key);
+  if (prev == null) {
+    map.set(key, companyName);
+    return;
+  }
+  if (prev !== companyName) {
+    // Ambiguous identifier across companies — do not invent ownership.
+    map.set(key, "");
+  }
+}
+
+function lookupUnambiguousOwner(
+  map: Map<string, string>,
+  key: string,
+): string | null {
+  if (!key) return null;
+  const v = map.get(key);
+  return v ? v : null;
+}
 
 function parseOzonSizeLabel(vendorCode: string): {
   sizeLabel: string;
@@ -203,8 +279,42 @@ export async function loadInsightsDetailSnapshot(params: {
       }
     } else if (skuTotalInDb <= SKU_FULL_LOAD_CAP) {
       skuRows = await prisma.profitSkuPeriodMetric.findMany({ where: skuWhere });
-      skuStatus = "READY";
-      skuStatusReason = `PROFIT_SKU_PERIOD_HIT:${skuLoadMode}:rows=${skuRows.length}`;
+      const completeness = assessSkuSourceCompleteness({
+        rows: skuRows,
+        expectedCompanies: activeCompanies,
+        selectedCompany,
+      });
+      if (!completeness.complete) {
+        skuStatus = "PENDING";
+        skuStatusReason = `SKU_INCOMPLETE:${completeness.gaps.join(",")}`;
+        for (const gap of completeness.gaps) {
+          const [scope, kind] = gap.split(":");
+          const companyScope = scope === "ALL" ? "ALL" : scope;
+          if (kind?.startsWith("WB")) {
+            const enq = await enqueueWaveBProfitRebuild({
+              dateFrom,
+              dateTo,
+              companyScope,
+              marketplace: "WB",
+            });
+            rebuildDetails.push(enq.detail);
+            if (enq.enqueued) rebuildPending = true;
+          }
+          if (kind?.startsWith("OZON")) {
+            const enq = await enqueueWaveBProfitRebuild({
+              dateFrom,
+              dateTo,
+              companyScope,
+              marketplace: "OZON",
+            });
+            rebuildDetails.push(enq.detail);
+            if (enq.enqueued) rebuildPending = true;
+          }
+        }
+      } else {
+        skuStatus = "READY";
+        skuStatusReason = `PROFIT_SKU_PERIOD_HIT:${skuLoadMode}:rows=${skuRows.length}`;
+      }
     } else {
       skuTruncated = true;
       const ranked = await prisma.profitSkuPeriodMetric.findMany({
@@ -227,44 +337,56 @@ export async function loadInsightsDetailSnapshot(params: {
       const byId = new Map<string, (typeof ranked)[number]>();
       for (const item of [...topProfit, ...topLoss]) byId.set(item.row.id, item.row);
       skuRows = Array.from(byId.values());
-      skuStatus = "PRELIMINARY";
-      skuStatusReason = `PROFIT_SKU_PERIOD_HIT_TRUNCATED:${skuLoadMode}:shown=${skuRows.length};total=${skuTotalInDb}`;
+      const completeness = assessSkuSourceCompleteness({
+        rows: ranked,
+        expectedCompanies: activeCompanies,
+        selectedCompany,
+      });
+      if (!completeness.complete) {
+        skuStatus = "PENDING";
+        skuStatusReason = `SKU_INCOMPLETE:${completeness.gaps.join(",")}`;
+        skuTruncated = false;
+      } else {
+        skuStatus = "PRELIMINARY";
+        skuStatusReason = `PROFIT_SKU_PERIOD_HIT_TRUNCATED:${skuLoadMode}:shown=${skuRows.length};total=${skuTotalInDb}`;
+      }
     }
   } catch (error) {
     skuStatus = "UNAVAILABLE";
     skuStatusReason = `PROFIT_SKU_PERIOD_ERROR:${error instanceof Error ? error.message : String(error)}`;
   }
 
-  // Canonical company ownership lookup for ALL-scope rows lacking payload.companyName.
+  // Canonical company ownership for ALL-scope rows: only unambiguous IDs
+  // (WB nmId / Ozon sku). Never invent from ambiguous vendorCode.
   const companyByWbNm = new Map<string, string>();
-  const companyByWbVendor = new Map<string, string>();
   const companyByOzonSku = new Map<string, string>();
-  const companyByOzonVendor = new Map<string, string>();
   if (skuLoadMode === "ALL_SCOPE" && skuRows.length > 0) {
     try {
       const wbCards = await prisma.wbProductCard.findMany({
         where: { companyName: { in: activeCompanies } },
-        select: { companyName: true, nmId: true, vendorCode: true },
+        select: { companyName: true, nmId: true },
         take: 5000,
       });
       for (const card of wbCards) {
-        if (!card.companyName) continue;
-        if (card.nmId) companyByWbNm.set(String(card.nmId).trim(), card.companyName);
-        const vc = normalizeVendorCode(card.vendorCode);
-        if (vc) companyByWbVendor.set(vc, card.companyName);
+        if (!card.companyName || !card.nmId) continue;
+        putUnambiguousOwner(
+          companyByWbNm,
+          String(card.nmId).trim(),
+          card.companyName,
+        );
       }
       const ozonProducts = await prisma.ozonProduct.findMany({
         where: { companyName: { in: activeCompanies } },
-        select: { companyName: true, sku: true, vendorCode: true },
+        select: { companyName: true, sku: true },
         take: 5000,
       });
       for (const product of ozonProducts) {
-        if (!product.companyName) continue;
-        if (product.sku) {
-          companyByOzonSku.set(String(product.sku).trim(), product.companyName);
-        }
-        const vc = normalizeVendorCode(product.vendorCode);
-        if (vc) companyByOzonVendor.set(vc, product.companyName);
+        if (!product.companyName || !product.sku) continue;
+        putUnambiguousOwner(
+          companyByOzonSku,
+          String(product.sku).trim(),
+          product.companyName,
+        );
       }
     } catch (error) {
       rebuildDetails.push(
@@ -280,25 +402,25 @@ export async function loadInsightsDetailSnapshot(params: {
   }): string => {
     if (selectedCompany !== "ALL") return selectedCompany;
     const fromPayload = String(params.payload.companyName ?? "").trim();
-    if (fromPayload && fromPayload !== "ALL" && fromPayload !== "—") {
+    if (
+      fromPayload &&
+      fromPayload !== "ALL" &&
+      fromPayload !== "—" &&
+      fromPayload !== "н/д"
+    ) {
       return fromPayload;
     }
     if (params.companyScope && params.companyScope !== "ALL") {
       return params.companyScope;
     }
     const nmId = String(params.payload.nmId ?? "").trim();
-    const vendorCode = normalizeVendorCode(params.payload.vendorCode);
     if (params.marketplace === "WB") {
-      if (nmId && companyByWbNm.has(nmId)) return companyByWbNm.get(nmId)!;
-      if (vendorCode && companyByWbVendor.has(vendorCode)) {
-        return companyByWbVendor.get(vendorCode)!;
-      }
+      const owner = lookupUnambiguousOwner(companyByWbNm, nmId);
+      if (owner) return owner;
     }
     if (params.marketplace === "OZON") {
-      if (nmId && companyByOzonSku.has(nmId)) return companyByOzonSku.get(nmId)!;
-      if (vendorCode && companyByOzonVendor.has(vendorCode)) {
-        return companyByOzonVendor.get(vendorCode)!;
-      }
+      const owner = lookupUnambiguousOwner(companyByOzonSku, nmId);
+      if (owner) return owner;
     }
     return "н/д";
   };
@@ -426,8 +548,10 @@ export async function loadInsightsDetailSnapshot(params: {
       );
     }
   }
+  // READY = full per-MP/company SKU sources. PRELIMINARY only for truncated full sources.
+  // Incomplete marketplace coverage stays PENDING — do not present partial rankings as full.
   const skuLayerReady =
-    skuStatus === "READY" || skuStatus === "PRELIMINARY";
+    skuStatus === "READY" || (skuStatus === "PRELIMINARY" && skuTruncated);
   const lossSkuCount = !skuLayerReady
     ? null
     : skuTruncated && skuLossCountDb != null
@@ -622,13 +746,42 @@ export async function loadInsightsDetailSnapshot(params: {
   const stockAtCostWb = sumChannel("WB");
   const stockAtCostOzon = sumChannel("Ozon");
   const stockAtCostOwn = sumChannel("OWN");
-  const stockAtCost = stockWithCost.reduce(
-    (sum, row) => sum + (row.frozenMoney ?? 0),
-    0,
-  );
   const stockMissingCostQty = stockRowsRaw.filter(
     (row) => row.costCoverage === "MISSING",
   ).length;
+  const stockChannelDates = [wbStockAsOf, ozonStockAsOf, ownStockAsOf].filter(
+    (d): d is string => Boolean(d),
+  );
+  const stockDatesMixed =
+    stockChannelDates.length >= 2 &&
+    new Set(stockChannelDates).size > 1;
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const staleDays = (asOf: string | null): number | null => {
+    if (!asOf) return null;
+    const a = Date.parse(`${asOf}T00:00:00.000Z`);
+    const b = Date.parse(`${todayIso}T00:00:00.000Z`);
+    if (!Number.isFinite(a) || !Number.isFinite(b)) return null;
+    return Math.round((b - a) / 86400000);
+  };
+  const ozonStaleDays = staleDays(ozonStockAsOf);
+  const wbStaleDays = staleDays(wbStockAsOf);
+  const ownStaleDays = staleDays(ownStockAsOf);
+  const stockStaleWarnings: string[] = [];
+  if (ozonStaleDays != null && ozonStaleDays > STOCK_STALE_DAYS) {
+    stockStaleWarnings.push(`Ozon FBO устарел ${ozonStaleDays}д (${ozonStockAsOf})`);
+  }
+  if (wbStaleDays != null && wbStaleDays > STOCK_STALE_DAYS) {
+    stockStaleWarnings.push(`WB устарел ${wbStaleDays}д (${wbStockAsOf})`);
+  }
+  if (ownStaleDays != null && ownStaleDays > STOCK_STALE_DAYS) {
+    stockStaleWarnings.push(`свой склад устарел ${ownStaleDays}д (${ownStockAsOf})`);
+  }
+  // Do not present a single confirmed total when channel as-of dates differ.
+  const stockAtCost = stockDatesMixed
+    ? null
+    : stockWithCost.length > 0
+      ? stockWithCost.reduce((sum, row) => sum + (row.frozenMoney ?? 0), 0)
+      : null;
 
   // Photos — sequential
   const wbNmIds = Array.from(
@@ -847,25 +1000,29 @@ export async function loadInsightsDetailSnapshot(params: {
     detailGeneratedAtLabel: nowLabel,
     lossSkuCount,
     lossCountIsUniqueIdentity: !(skuTruncated && skuLossCountDb != null),
-    stockAtCost: stockWithCost.length > 0 ? stockAtCost : null,
+    stockAtCost,
     stockAtCostWb,
     stockAtCostOzon,
     stockAtCostOwn,
     stockMissingCostQty,
     frozenCoveragePartial:
       stockMissingCostQty > 0 ||
-      (wbStockAsOf != null &&
-        ozonStockAsOf != null &&
-        wbStockAsOf !== ozonStockAsOf) ||
-      (ownStockAsOf != null &&
-        wbStockAsOf != null &&
-        ownStockAsOf !== wbStockAsOf),
+      stockDatesMixed ||
+      stockStaleWarnings.length > 0,
     frozenAsOfLabel: [
-      "текущий snapshot × ProductCost",
+      stockDatesMixed
+        ? "каналы на разных датах — единый итог не подтверждён"
+        : "текущий snapshot × ProductCost",
       wbStockAsOf ? `WB ${wbStockAsOf}` : "WB н/д",
       ozonStockAsOf ? `Ozon FBO ${ozonStockAsOf}` : "Ozon FBO н/д",
       ownStockAsOf ? `свой ${ownStockAsOf}` : "свой н/д",
-    ].join(" · "),
+      stockMissingCostQty > 0
+        ? `себестоимость частично (без cost: ${stockMissingCostQty} поз.)`
+        : null,
+      ...stockStaleWarnings,
+    ]
+      .filter(Boolean)
+      .join(" · "),
     skuDetail: {
       skuRevenue: skuLayerReady ? skuRevenue : null,
       soldProfit: skuLayerReady ? soldProfitTotal : null,
@@ -889,7 +1046,7 @@ export async function loadInsightsDetailSnapshot(params: {
           ? null
           : soldProfitable.length
         : null,
-      stockAtCost: stockWithCost.length > 0 ? stockAtCost : null,
+      stockAtCost,
     },
     driverSkuPatches,
     problems: {
@@ -907,10 +1064,14 @@ export async function loadInsightsDetailSnapshot(params: {
       noMovementSkuCount: skuLayerReady ? noMovementSkuCount : null,
       excessStockSkuCount: skuLayerReady ? excessStockSkuCount : null,
     },
-    profitablePreview: withImages(soldProfitable.slice(0, 5)),
-    profitableAll: withImages(soldProfitable.slice(0, 20)),
-    lossPreview: withImages(soldLoss.slice(0, 5)),
-    lossAll: withImages(soldLoss.slice(0, 20)),
+    profitablePreview: skuLayerReady
+      ? withImages(soldProfitable.slice(0, 5))
+      : [],
+    profitableAll: skuLayerReady
+      ? withImages(soldProfitable.slice(0, 20))
+      : [],
+    lossPreview: skuLayerReady ? withImages(soldLoss.slice(0, 5)) : [],
+    lossAll: skuLayerReady ? withImages(soldLoss.slice(0, 20)) : [],
     adjustments: withImages(skuLayerReady ? adjustments.slice(0, 30) : []),
     adjustmentSummary: {
       skuCount: skuLayerReady ? adjustments.length : null,

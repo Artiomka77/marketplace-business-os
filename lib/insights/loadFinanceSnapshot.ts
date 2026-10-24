@@ -74,14 +74,22 @@ async function expectedActiveCompanyNames(): Promise<string[]> {
 function companyRowComponentsComplete(
   payload: PeriodCompanyMarketplaceMetricsPayload,
 ): { ok: boolean; reason: string } {
-  const wb = asFiniteNumberOrNull(payload.wbRevenue);
-  const oz = asFiniteNumberOrNull(payload.ozonRevenue);
-  if (wb == null && oz == null) {
-    return { ok: false, reason: "WB_AND_OZON_REVENUE_NULL" };
+  // FULL requires every mandatory finance component. True 0 is allowed; null is not.
+  const required: Array<[keyof PeriodCompanyMarketplaceMetricsPayload, string]> = [
+    ["wbRevenue", "WB_REVENUE_NULL"],
+    ["ozonRevenue", "OZON_REVENUE_NULL"],
+    ["wbOperatingProfitAfterTax", "WB_MP_NET_NULL"],
+    ["ozonOperatingProfitAfterTax", "OZON_MP_NET_NULL"],
+    ["operatingProfitAfterTax", "MARKETPLACE_NET_NULL"],
+    ["netProfit", "BUSINESS_NET_NULL"],
+  ];
+  const missing: string[] = [];
+  for (const [key, code] of required) {
+    if (asFiniteNumberOrNull(payload[key]) == null) missing.push(code);
   }
-  if (wb == null) return { ok: false, reason: "WB_REVENUE_NULL" };
-  if (oz == null) return { ok: false, reason: "OZON_REVENUE_NULL" };
-  // True zero is allowed; missing/null is not.
+  if (missing.length > 0) {
+    return { ok: false, reason: missing.join("+") };
+  }
   return { ok: true, reason: "OK" };
 }
 
@@ -285,22 +293,38 @@ export async function loadInsightsFinanceSnapshot(params: {
 
     const wbOk = economicTurnoverWb != null;
     const ozOk = economicTurnoverOzon != null;
-    if (wbOk && ozOk) {
+    const profitComponentsOk =
+      marketplaceNetProfit != null &&
+      businessNetProfit != null &&
+      wbMpNet != null &&
+      ozonMpNet != null;
+    if (wbOk && ozOk && profitComponentsOk) {
       financeCoverage = "FULL";
-    } else if (wbOk) {
+    } else if (wbOk && !ozOk) {
       financeCoverage = "PARTIAL_WB";
-    } else if (ozOk) {
+    } else if (ozOk && !wbOk) {
       financeCoverage = "PARTIAL_OZON";
+    } else if (wbOk && ozOk && !profitComponentsOk) {
+      // Both revenues present but mandatory profit components missing → not FULL.
+      financeCoverage = "NONE";
     } else {
       financeCoverage = "NONE";
     }
 
     if (financeCoverage !== "FULL") {
       // Incomplete V6 company set must not be presented as trusted FULL HIT.
-      businessNetProfit = null;
-      financeImpactForKpi = null;
+      // Keep known MP component values; never invent business net from partials.
+      if (!profitComponentsOk) {
+        businessNetProfit = null;
+        financeImpactForKpi = null;
+      } else if (financeCoverage !== "FULL") {
+        businessNetProfit = null;
+        financeImpactForKpi = null;
+      }
       financeStatus = "PRELIMINARY_WITH_VALUE";
-      financeStatusReason = `${reason}|COVERAGE_${financeCoverage}`;
+      financeStatusReason = `${reason}|COVERAGE_${financeCoverage}${
+        profitComponentsOk ? "" : "|PROFIT_COMPONENTS_INCOMPLETE"
+      }`;
       kpiSource = "DASHBOARD_V6_PARTIAL";
       sourceGeneratedAtLabel = formatGeneratedAt(generatedAt);
       return;
