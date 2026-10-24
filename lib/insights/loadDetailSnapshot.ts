@@ -59,17 +59,20 @@ function assessSkuSourceCompleteness(params: {
     if (mp === "OZON") bucket.ozon = true;
   }
 
-  // Prefer per-company scopes. ALL-scope alone only covers ALL filter when both MPs exist.
-  const anyPerCompany = params.rows.some((r) => r.companyScope !== "ALL");
-  if (anyPerCompany || params.selectedCompany !== "ALL") {
+  // ALL READY requires WB+Ozon for every active ИП. ALL-scope rows alone never grant READY.
+  // Single-company views still accept that company's per-MP rows (or unambiguous ALL-scope MP).
+  if (params.selectedCompany === "ALL") {
     for (const name of companies) {
       const bucket = byCompany.get(name) ?? { wb: false, ozon: false };
       if (!bucket.wb) gaps.push(`${name}:WB_SKU_MISSING`);
       if (!bucket.ozon) gaps.push(`${name}:OZON_SKU_MISSING`);
     }
   } else {
-    if (!allScopeWb) gaps.push("ALL:WB_SKU_MISSING");
-    if (!allScopeOzon) gaps.push("ALL:OZON_SKU_MISSING");
+    for (const name of companies) {
+      const bucket = byCompany.get(name) ?? { wb: false, ozon: false };
+      if (!bucket.wb && !allScopeWb) gaps.push(`${name}:WB_SKU_MISSING`);
+      if (!bucket.ozon && !allScopeOzon) gaps.push(`${name}:OZON_SKU_MISSING`);
+    }
   }
   return { complete: gaps.length === 0, gaps };
 }
