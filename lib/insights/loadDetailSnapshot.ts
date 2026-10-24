@@ -218,40 +218,76 @@ export async function loadInsightsDetailSnapshot(params: {
         ).map((c) => c.name)
       : [selectedCompany];
 
-  // Prefer per-company SKU scopes (canonical ownership). ALL-scope rows often
-  // omit payload.companyName — do not invent "—".
+  // Prefer per-company SKU scopes (canonical ownership). For ALL, load each
+  // company separately and merge by id — avoids losing one ИП under a shared IN.
   const preferredScopes =
     selectedCompany === "ALL" ? activeCompanies : [selectedCompany];
-  let skuWhere: {
-    companyScope: string | { in: string[] };
-    dateFrom: Date;
-    dateTo: Date;
-  } = {
-    companyScope:
-      preferredScopes.length === 1
-        ? preferredScopes[0]
-        : { in: preferredScopes },
-    dateFrom: dayStartUtc(dateFrom),
-    dateTo: dayStartUtc(dateTo),
-  };
   let skuLoadMode: "PER_COMPANY" | "ALL_SCOPE" = "PER_COMPANY";
 
   let skuRows: Awaited<
     ReturnType<typeof prisma.profitSkuPeriodMetric.findMany>
   > = [];
 
+  const dateFromUtc = dayStartUtc(dateFrom);
+  const dateToUtc = dayStartUtc(dateTo);
+
+  const mergeSkuRowsById = (
+    parts: Array<Awaited<ReturnType<typeof prisma.profitSkuPeriodMetric.findMany>>>,
+  ) => {
+    const byId = new Map<string, (typeof skuRows)[number]>();
+    for (const part of parts) {
+      for (const row of part) byId.set(row.id, row);
+    }
+    return Array.from(byId.values());
+  };
+
   try {
-    skuTotalInDb = await prisma.profitSkuPeriodMetric.count({ where: skuWhere });
-    if (skuTotalInDb === 0 && selectedCompany === "ALL") {
-      skuWhere = {
-        companyScope: "ALL",
-        dateFrom: dayStartUtc(dateFrom),
-        dateTo: dayStartUtc(dateTo),
+    if (selectedCompany === "ALL" && preferredScopes.length > 1) {
+      const parts: Array<
+        Awaited<ReturnType<typeof prisma.profitSkuPeriodMetric.findMany>>
+      > = [];
+      let total = 0;
+      for (const scope of preferredScopes) {
+        const where = {
+          companyScope: scope,
+          dateFrom: dateFromUtc,
+          dateTo: dateToUtc,
+        };
+        const n = await prisma.profitSkuPeriodMetric.count({ where });
+        total += n;
+        if (n > 0) {
+          parts.push(await prisma.profitSkuPeriodMetric.findMany({ where }));
+        }
+      }
+      skuTotalInDb = total;
+      skuRows = mergeSkuRowsById(parts);
+      skuLoadMode = "PER_COMPANY";
+      if (skuTotalInDb === 0) {
+        const allWhere = {
+          companyScope: "ALL",
+          dateFrom: dateFromUtc,
+          dateTo: dateToUtc,
+        };
+        skuTotalInDb = await prisma.profitSkuPeriodMetric.count({
+          where: allWhere,
+        });
+        if (skuTotalInDb > 0) {
+          skuLoadMode = "ALL_SCOPE";
+          skuRows = await prisma.profitSkuPeriodMetric.findMany({
+            where: allWhere,
+          });
+        }
+      }
+    } else {
+      const where = {
+        companyScope: preferredScopes[0],
+        dateFrom: dateFromUtc,
+        dateTo: dateToUtc,
       };
-      skuLoadMode = "ALL_SCOPE";
-      skuTotalInDb = await prisma.profitSkuPeriodMetric.count({
-        where: skuWhere,
-      });
+      skuTotalInDb = await prisma.profitSkuPeriodMetric.count({ where });
+      if (skuTotalInDb > 0) {
+        skuRows = await prisma.profitSkuPeriodMetric.findMany({ where });
+      }
     }
 
     if (skuTotalInDb === 0) {
@@ -278,7 +314,6 @@ export async function loadInsightsDetailSnapshot(params: {
         if (wbEnq.enqueued || ozEnq.enqueued) rebuildPending = true;
       }
     } else if (skuTotalInDb <= SKU_FULL_LOAD_CAP) {
-      skuRows = await prisma.profitSkuPeriodMetric.findMany({ where: skuWhere });
       const completeness = assessSkuSourceCompleteness({
         rows: skuRows,
         expectedCompanies: activeCompanies,
@@ -317,12 +352,7 @@ export async function loadInsightsDetailSnapshot(params: {
       }
     } else {
       skuTruncated = true;
-      const ranked = await prisma.profitSkuPeriodMetric.findMany({
-        where: skuWhere,
-        take: SKU_FULL_LOAD_CAP,
-      });
-      // Rank in memory under pool=1 — avoid ambiguous ALL/IN raw SQL.
-      const scored = ranked.map((row) => {
+      const scored = skuRows.map((row) => {
         const payload = (row.payload ?? {}) as Record<string, unknown>;
         const profit = Number(payload.netProfitAfterTax ?? 0);
         return { row, profit: Number.isFinite(profit) ? profit : 0 };
@@ -334,11 +364,12 @@ export async function loadInsightsDetailSnapshot(params: {
         .sort((a, b) => a.profit - b.profit)
         .slice(0, SKU_RANK_SLICE);
       skuLossCountDb = scored.filter((s) => s.profit < 0).length;
-      const byId = new Map<string, (typeof ranked)[number]>();
+      const byId = new Map<string, (typeof skuRows)[number]>();
       for (const item of [...topProfit, ...topLoss]) byId.set(item.row.id, item.row);
+      const rankedAll = skuRows;
       skuRows = Array.from(byId.values());
       const completeness = assessSkuSourceCompleteness({
-        rows: ranked,
+        rows: rankedAll,
         expectedCompanies: activeCompanies,
         selectedCompany,
       });

@@ -27,7 +27,6 @@ import {
   enqueueV6PeriodRebuild,
   enqueueWaveBProfitRebuild,
   formatGeneratedAt,
-  getAmount,
   marginOrNull,
   sumNullable,
 } from "./shared";
@@ -402,37 +401,40 @@ export async function loadInsightsFinanceSnapshot(params: {
             null)
           : null;
 
+      // Wave B: null ≠ 0 — never coerce missing totals via getAmount().
       if (wbTotals) {
-        economicTurnoverWb = getAmount(wbTotals.sellerRetailAmount);
-        wbMpNet = getAmount(wbTotals.netProfitAfterTax);
-        wbTotalCost = getAmount(wbTotals.totalCost);
+        economicTurnoverWb = asFiniteNumberOrNull(wbTotals.sellerRetailAmount);
+        wbMpNet = asFiniteNumberOrNull(wbTotals.netProfitAfterTax);
+        wbTotalCost = asFiniteNumberOrNull(wbTotals.totalCost);
       }
       if (ozTotals) {
-        economicTurnoverOzon = getAmount(ozTotals.economicTurnover);
-        ozonMpNet = getAmount(ozTotals.netProfitAfterTax);
-        ozonTotalCost = getAmount(ozTotals.totalCost);
+        economicTurnoverOzon = asFiniteNumberOrNull(ozTotals.economicTurnover);
+        ozonMpNet = asFiniteNumberOrNull(ozTotals.netProfitAfterTax);
+        ozonTotalCost = asFiniteNumberOrNull(ozTotals.totalCost);
       }
 
-      const wbOk = economicTurnoverWb != null;
-      const ozOk = economicTurnoverOzon != null;
+      const wbOk = economicTurnoverWb != null && wbMpNet != null;
+      const ozOk = economicTurnoverOzon != null && ozonMpNet != null;
       if (wbOk && ozOk) {
         financeCoverage = "FULL";
-      } else if (wbOk) {
+      } else if (economicTurnoverWb != null && economicTurnoverOzon == null) {
         financeCoverage = "PARTIAL_WB";
-      } else if (ozOk) {
+      } else if (economicTurnoverOzon != null && economicTurnoverWb == null) {
         financeCoverage = "PARTIAL_OZON";
       } else {
         financeCoverage = "NONE";
       }
 
-      if (wbMpNet != null || ozonMpNet != null) {
+      if (wbMpNet != null && ozonMpNet != null) {
         const combined = snapshotCombinedProfit({
-          wbNet: wbMpNet ?? 0,
-          ozonNet: ozonMpNet ?? 0,
+          wbNet: wbMpNet,
+          ozonNet: ozonMpNet,
           financeImpact: 0,
           ownerWithdrawals: 0,
         });
-        marketplaceNetProfit = getAmount(combined.operatingProfitAfterTax);
+        marketplaceNetProfit = asFiniteNumberOrNull(
+          combined.operatingProfitAfterTax,
+        );
         // Business net requires Finance INCLUDE (V6) — never invent from MP sum.
         businessNetProfit = null;
         financeImpactForKpi = null;
@@ -442,6 +444,24 @@ export async function loadInsightsFinanceSnapshot(params: {
             ? `PROFIT_WAVE_B_MP_ONLY:WB=${wbWave.status};OZON=${ozonWave.status}|BUSINESS_NET_AWAITS_V6_FINANCE`
             : `PROFIT_WAVE_B_PARTIAL:${financeCoverage}|BUSINESS_NET_AWAITS_V6_FINANCE`;
         kpiSource = "PROFIT_WAVE_B_MP_ONLY";
+        financeResolved = true;
+        const enq = await enqueueV6PeriodRebuild({
+          dateFrom,
+          dateTo,
+          companyScope: selectedCompany,
+        });
+        rebuildDetails.push(enq.detail);
+        if (enq.enqueued) rebuildPending = true;
+      } else if (wbMpNet != null || ozonMpNet != null) {
+        // Single-MP net is known — keep it; do not invent the other side as 0.
+        marketplaceNetProfit = wbMpNet != null && ozonMpNet != null
+          ? wbMpNet + ozonMpNet
+          : null;
+        businessNetProfit = null;
+        financeImpactForKpi = null;
+        financeStatus = "PRELIMINARY_WITH_VALUE";
+        financeStatusReason = `PROFIT_WAVE_B_PARTIAL:${financeCoverage}|MP_NET_INCOMPLETE|BUSINESS_NET_AWAITS_V6_FINANCE`;
+        kpiSource = "PROFIT_WAVE_B_PARTIAL";
         financeResolved = true;
         const enq = await enqueueV6PeriodRebuild({
           dateFrom,
@@ -477,10 +497,12 @@ export async function loadInsightsFinanceSnapshot(params: {
   }
 
   // Total ET only when FULL coverage — never present partial as WB+Ozon total.
+  // null ≠ 0: both components must be present finite numbers.
   const economicTurnover =
     financeCoverage === "FULL" &&
-    (economicTurnoverWb != null || economicTurnoverOzon != null)
-      ? getAmount(economicTurnoverWb) + getAmount(economicTurnoverOzon)
+    economicTurnoverWb != null &&
+    economicTurnoverOzon != null
+      ? economicTurnoverWb + economicTurnoverOzon
       : null;
 
   const drivers: MarketplaceSlice[] = [
