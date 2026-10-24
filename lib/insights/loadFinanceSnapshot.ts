@@ -20,12 +20,16 @@ import type {
   MarketplaceSlice,
 } from "@/app/insights/insightsTypes";
 
+import { prisma } from "@/lib/prisma";
+
 import {
+  asFiniteNumberOrNull,
   enqueueV6PeriodRebuild,
   enqueueWaveBProfitRebuild,
   formatGeneratedAt,
   getAmount,
   marginOrNull,
+  sumNullable,
 } from "./shared";
 
 export type FinanceCoverage =
@@ -57,6 +61,29 @@ export type InsightsFinanceSnapshot = {
   drivers: MarketplaceSlice[];
   dataModes: string[];
 };
+
+async function expectedActiveCompanyNames(): Promise<string[]> {
+  const companies = await prisma.company.findMany({
+    where: { isActive: true },
+    select: { name: true },
+    orderBy: { name: "asc" },
+  });
+  return companies.map((c) => c.name).filter(Boolean);
+}
+
+function companyRowComponentsComplete(
+  payload: PeriodCompanyMarketplaceMetricsPayload,
+): { ok: boolean; reason: string } {
+  const wb = asFiniteNumberOrNull(payload.wbRevenue);
+  const oz = asFiniteNumberOrNull(payload.ozonRevenue);
+  if (wb == null && oz == null) {
+    return { ok: false, reason: "WB_AND_OZON_REVENUE_NULL" };
+  }
+  if (wb == null) return { ok: false, reason: "WB_REVENUE_NULL" };
+  if (oz == null) return { ok: false, reason: "OZON_REVENUE_NULL" };
+  // True zero is allowed; missing/null is not.
+  return { ok: true, reason: "OK" };
+}
 
 async function loadV6PeriodCompanyRowsLite(params: {
   dateFrom: string;
@@ -113,17 +140,24 @@ async function loadV6PeriodCompanyRowsLite(params: {
       };
     }
 
-    const scopes =
+    const expectedNames =
       params.selectedCompany === "ALL"
-        ? await repository.listPeriodCompanyScopes({
-            dateFrom: params.dateFrom,
-            dateTo: params.dateTo,
-            formulaVersion: FINANCIAL_CORE_V6_PERIOD_READMODEL_V2,
-          })
+        ? await expectedActiveCompanyNames()
         : [params.selectedCompany];
+    if (expectedNames.length === 0) {
+      return {
+        status: "INCOMPLETE",
+        reason: "NO_ACTIVE_COMPANIES",
+        dataMode: allPeriod.dataMode,
+        generatedAt: allPeriod.meta?.generatedAt ?? allPeriod.generatedAt ?? null,
+        rows: [],
+      };
+    }
 
     const rows: PeriodCompanyMarketplaceMetricsPayload[] = [];
-    for (const companyName of scopes) {
+    const missing: string[] = [];
+    const incomplete: string[] = [];
+    for (const companyName of expectedNames) {
       const row = await repository.findPeriod({
         companyScope: companyName,
         marketplace: "ALL",
@@ -131,7 +165,14 @@ async function loadV6PeriodCompanyRowsLite(params: {
         dateTo: params.dateTo,
         formulaVersion: FINANCIAL_CORE_V6_PERIOD_READMODEL_V2,
       });
-      if (!row || row.coverageStatus !== "COMPLETE") continue;
+      if (!row) {
+        missing.push(companyName);
+        continue;
+      }
+      if (row.coverageStatus !== "COMPLETE") {
+        incomplete.push(`${companyName}:COVERAGE_${row.coverageStatus}`);
+        continue;
+      }
       if (
         !isTrustedV2HitAttestation({
           meta: row.meta,
@@ -140,15 +181,37 @@ async function loadV6PeriodCompanyRowsLite(params: {
           companyScope: companyName,
         })
       ) {
+        incomplete.push(`${companyName}:UNTRUSTED`);
+        continue;
+      }
+      const components = companyRowComponentsComplete(row.payload);
+      if (!components.ok) {
+        incomplete.push(`${companyName}:${components.reason}`);
         continue;
       }
       rows.push(row.payload);
     }
 
-    if (rows.length === 0) {
+    if (missing.length > 0 || incomplete.length > 0) {
       return {
-        status: "MISS",
-        reason: "V6_PERIOD_COMPANY_ROWS_EMPTY",
+        status: "INCOMPLETE",
+        reason: [
+          missing.length ? `MISSING_COMPANIES:${missing.join(",")}` : "",
+          incomplete.length ? `INCOMPLETE_COMPONENTS:${incomplete.join("|")}` : "",
+          `HAVE=${rows.length}/${expectedNames.length}`,
+        ]
+          .filter(Boolean)
+          .join(";"),
+        dataMode: allPeriod.dataMode,
+        generatedAt: allPeriod.meta?.generatedAt ?? allPeriod.generatedAt ?? null,
+        rows: [],
+      };
+    }
+
+    if (rows.length !== expectedNames.length) {
+      return {
+        status: "INCOMPLETE",
+        reason: `EXPECTED_${expectedNames.length}_GOT_${rows.length}`,
         dataMode: allPeriod.dataMode,
         generatedAt: allPeriod.meta?.generatedAt ?? allPeriod.generatedAt ?? null,
         rows: [],
@@ -211,27 +274,42 @@ export async function loadInsightsFinanceSnapshot(params: {
     generatedAt: string | null,
     reason: string,
   ) => {
-    economicTurnoverWb = rowsV6.reduce((s, r) => s + getAmount(r.wbRevenue), 0);
-    economicTurnoverOzon = rowsV6.reduce(
-      (s, r) => s + getAmount(r.ozonRevenue),
-      0,
-    );
-    marketplaceNetProfit = rowsV6.reduce(
-      (s, r) => s + getAmount(r.operatingProfitAfterTax),
-      0,
-    );
-    businessNetProfit = rowsV6.reduce((s, r) => s + getAmount(r.netProfit), 0);
+    const asRows = rowsV6 as Array<Record<string, unknown>>;
+    // Never coerce missing components to 0 when confirming FULL coverage.
+    economicTurnoverWb = sumNullable(asRows, "wbRevenue");
+    economicTurnoverOzon = sumNullable(asRows, "ozonRevenue");
+    marketplaceNetProfit = sumNullable(asRows, "operatingProfitAfterTax");
+    businessNetProfit = sumNullable(asRows, "netProfit");
+    wbMpNet = sumNullable(asRows, "wbOperatingProfitAfterTax");
+    ozonMpNet = sumNullable(asRows, "ozonOperatingProfitAfterTax");
+
+    const wbOk = economicTurnoverWb != null;
+    const ozOk = economicTurnoverOzon != null;
+    if (wbOk && ozOk) {
+      financeCoverage = "FULL";
+    } else if (wbOk) {
+      financeCoverage = "PARTIAL_WB";
+    } else if (ozOk) {
+      financeCoverage = "PARTIAL_OZON";
+    } else {
+      financeCoverage = "NONE";
+    }
+
+    if (financeCoverage !== "FULL") {
+      // Incomplete V6 company set must not be presented as trusted FULL HIT.
+      businessNetProfit = null;
+      financeImpactForKpi = null;
+      financeStatus = "PRELIMINARY_WITH_VALUE";
+      financeStatusReason = `${reason}|COVERAGE_${financeCoverage}`;
+      kpiSource = "DASHBOARD_V6_PARTIAL";
+      sourceGeneratedAtLabel = formatGeneratedAt(generatedAt);
+      return;
+    }
+
     financeImpactForKpi =
-      (businessNetProfit ?? 0) - (marketplaceNetProfit ?? 0);
-    wbMpNet = rowsV6.reduce(
-      (s, r) => s + getAmount(r.wbOperatingProfitAfterTax),
-      0,
-    );
-    ozonMpNet = rowsV6.reduce(
-      (s, r) => s + getAmount(r.ozonOperatingProfitAfterTax),
-      0,
-    );
-    financeCoverage = "FULL";
+      businessNetProfit != null && marketplaceNetProfit != null
+        ? businessNetProfit - marketplaceNetProfit
+        : null;
     financeStatus =
       dataMode === "FINAL" ? "VERIFIED_READY" : "PRELIMINARY_WITH_VALUE";
     financeStatusReason = reason;

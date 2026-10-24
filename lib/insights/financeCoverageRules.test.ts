@@ -63,4 +63,22 @@ describe("insights finance coverage rules", () => {
     expect(marginOrNull(0, 100)).toBeNull();
     expect(marginOrNull(200, 50)).toBe(25);
   });
+
+  it("ALL completeness requires every expected company with both MP components", () => {
+    const expected = ["ИП Петров", "ИП Лебедева"];
+    const present = [
+      { company: "ИП Петров", wb: 1, oz: 2 },
+      // Лебедева missing
+    ];
+    const missing = expected.filter(
+      (name) => !present.some((p) => p.company === name),
+    );
+    expect(missing).toEqual(["ИП Лебедева"]);
+    const coverage =
+      missing.length === 0 &&
+      present.every((p) => p.wb != null && p.oz != null)
+        ? "FULL"
+        : "INCOMPLETE";
+    expect(coverage).toBe("INCOMPLETE");
+  });
 });

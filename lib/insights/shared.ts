@@ -14,6 +14,28 @@ export function getAmount(value: unknown) {
   return Number.isFinite(number) ? number : 0;
 }
 
+/** Sum numeric fields without treating null/missing as 0. */
+export function sumNullable(
+  rows: Array<Record<string, unknown>>,
+  key: string,
+): number | null {
+  let sum = 0;
+  for (const row of rows) {
+    const raw = row[key];
+    if (raw == null) return null;
+    const n = Number(raw);
+    if (!Number.isFinite(n)) return null;
+    sum += n;
+  }
+  return sum;
+}
+
+export function asFiniteNumberOrNull(value: unknown): number | null {
+  if (value == null) return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
 export function dayStartUtc(iso: string) {
   const [y, m, d] = iso.split("-").map(Number);
   return new Date(Date.UTC(y, m - 1, d));
@@ -52,6 +74,19 @@ export function formatGeneratedAt(iso: string | null | undefined): string | null
   }
 }
 
+function monthPartitionForDateTo(dateTo: string): { dateFrom: string; dateTo: string } {
+  const [y, m] = dateTo.split("-").map(Number);
+  const dateFrom = `${y}-${String(m).padStart(2, "0")}-01`;
+  return { dateFrom, dateTo };
+}
+
+function isLongJan1Span(dateFrom: string, dateTo: string): boolean {
+  if (!/^\d{4}-01-01$/.test(dateFrom)) return false;
+  const from = new Date(`${dateFrom}T00:00:00.000Z`).getTime();
+  const to = new Date(`${dateTo}T00:00:00.000Z`).getTime();
+  return (to - from) / 86_400_000 >= 60;
+}
+
 export async function enqueueV6PeriodRebuild(params: {
   dateFrom: string;
   dateTo: string;
@@ -62,18 +97,94 @@ export async function enqueueV6PeriodRebuild(params: {
     if (!repository.requestRebuild) {
       return { enqueued: false, detail: "NO_REQUEST_REBUILD_API" };
     }
+    const scope =
+      !params.companyScope || params.companyScope === "ALL"
+        ? "ALL"
+        : params.companyScope;
+    const details: string[] = [];
+    let enqueued = false;
+
+    // YTD compose needs the current month partition first (pool-safe path).
+    if (isLongJan1Span(params.dateFrom, params.dateTo)) {
+      const part = monthPartitionForDateTo(params.dateTo);
+      const monthResult = await repository.requestRebuild({
+        companyScope: scope,
+        dateFrom: part.dateFrom,
+        dateTo: part.dateTo,
+        priority: 90,
+      });
+      details.push(`V6_MONTH_${part.dateFrom}_${part.dateTo}:${monthResult}`);
+      if (monthResult === "queued_prisma" || monthResult === "queued_local") {
+        enqueued = true;
+      }
+    }
+
     const result = await repository.requestRebuild({
-      companyScope:
-        !params.companyScope || params.companyScope === "ALL"
-          ? "ALL"
-          : params.companyScope,
+      companyScope: scope,
       dateFrom: params.dateFrom,
       dateTo: params.dateTo,
       priority: 80,
     });
+    details.push(`V6:${result}`);
+    if (result === "queued_prisma" || result === "queued_local") {
+      enqueued = true;
+    }
+
+    // Exhausted ERROR jobs are not reopened by ordinary requestRebuild.
+    // Soft-reopen only the YTD partition-compose failure class so Insights can
+    // complete MISS→HIT after month partitions land.
+    if (result === "keep_existing" && isLongJan1Span(params.dateFrom, params.dateTo)) {
+      try {
+        const { prisma } = await import("@/lib/prisma");
+        const { FINANCIAL_CORE_V6_PERIOD_READMODEL_V2 } = await import(
+          "@/lib/dashboard/v6PeriodReadModel"
+        );
+        const dateFrom = new Date(`${params.dateFrom}T00:00:00.000Z`);
+        const dateTo = new Date(`${params.dateTo}T00:00:00.000Z`);
+        const existing = await prisma.dashboardPeriodSnapshotJob.findFirst({
+          where: {
+            companyScope: scope,
+            dateFrom,
+            dateTo,
+            formulaVersion: FINANCIAL_CORE_V6_PERIOD_READMODEL_V2,
+          },
+        });
+        const err = String(existing?.lastError ?? "");
+        if (
+          existing &&
+          existing.status === "ERROR" &&
+          existing.attempts >= existing.maxAttempts &&
+          err.includes("YTD_MONTH_PARTITIONS_INCOMPLETE")
+        ) {
+          const now = new Date();
+          await prisma.dashboardPeriodSnapshotJob.update({
+            where: { id: existing.id },
+            data: {
+              status: "PENDING",
+              attempts: 0,
+              nextAttemptAt: now,
+              lockedAt: null,
+              lockedBy: null,
+              startedAt: null,
+              finishedAt: null,
+              lastError: null,
+              updatedAt: now,
+              priority: 80,
+            },
+          });
+          details.push("V6_REOPEN_EXHAUSTED_YTD_COMPOSE");
+          enqueued = true;
+        }
+      } catch (reopenError) {
+        details.push(
+          `V6_REOPEN_ERR:${reopenError instanceof Error ? reopenError.message : String(reopenError)}`,
+        );
+      }
+    }
+
     return {
-      enqueued: result === "queued_prisma" || result === "queued_local",
-      detail: `V6:${result}`,
+      enqueued,
+      detail: details.join("|"),
     };
   } catch (error) {
     return {

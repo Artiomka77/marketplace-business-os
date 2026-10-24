@@ -131,12 +131,34 @@ export async function loadInsightsDetailSnapshot(params: {
     ozonRows: MappedRow[];
   }> = [];
 
-  const skuScope = selectedCompany === "ALL" ? "ALL" : selectedCompany;
-  const skuWhere = {
-    companyScope: skuScope,
+  const activeCompanies =
+    selectedCompany === "ALL"
+      ? (
+          await prisma.company.findMany({
+            where: { isActive: true },
+            select: { name: true },
+            orderBy: { name: "asc" },
+          })
+        ).map((c) => c.name)
+      : [selectedCompany];
+
+  // Prefer per-company SKU scopes (canonical ownership). ALL-scope rows often
+  // omit payload.companyName — do not invent "—".
+  const preferredScopes =
+    selectedCompany === "ALL" ? activeCompanies : [selectedCompany];
+  let skuWhere: {
+    companyScope: string | { in: string[] };
+    dateFrom: Date;
+    dateTo: Date;
+  } = {
+    companyScope:
+      preferredScopes.length === 1
+        ? preferredScopes[0]
+        : { in: preferredScopes },
     dateFrom: dayStartUtc(dateFrom),
     dateTo: dayStartUtc(dateTo),
   };
+  let skuLoadMode: "PER_COMPANY" | "ALL_SCOPE" = "PER_COMPANY";
 
   let skuRows: Awaited<
     ReturnType<typeof prisma.profitSkuPeriodMetric.findMany>
@@ -144,72 +166,142 @@ export async function loadInsightsDetailSnapshot(params: {
 
   try {
     skuTotalInDb = await prisma.profitSkuPeriodMetric.count({ where: skuWhere });
+    if (skuTotalInDb === 0 && selectedCompany === "ALL") {
+      skuWhere = {
+        companyScope: "ALL",
+        dateFrom: dayStartUtc(dateFrom),
+        dateTo: dayStartUtc(dateTo),
+      };
+      skuLoadMode = "ALL_SCOPE";
+      skuTotalInDb = await prisma.profitSkuPeriodMetric.count({
+        where: skuWhere,
+      });
+    }
+
     if (skuTotalInDb === 0) {
       skuStatus = "PENDING";
       skuStatusReason = "PROFIT_SKU_PERIOD_EMPTY";
-      const wbEnq = await enqueueWaveBProfitRebuild({
-        dateFrom,
-        dateTo,
-        companyScope: skuScope,
-        marketplace: "WB",
-      });
-      const ozEnq = await enqueueWaveBProfitRebuild({
-        dateFrom,
-        dateTo,
-        companyScope: skuScope,
-        marketplace: "OZON",
-      });
-      rebuildDetails.push(wbEnq.detail, ozEnq.detail);
-      if (wbEnq.enqueued || ozEnq.enqueued) rebuildPending = true;
+      const scopesToEnqueue =
+        selectedCompany === "ALL"
+          ? ["ALL", ...activeCompanies]
+          : [selectedCompany];
+      for (const scope of scopesToEnqueue) {
+        const wbEnq = await enqueueWaveBProfitRebuild({
+          dateFrom,
+          dateTo,
+          companyScope: scope,
+          marketplace: "WB",
+        });
+        const ozEnq = await enqueueWaveBProfitRebuild({
+          dateFrom,
+          dateTo,
+          companyScope: scope,
+          marketplace: "OZON",
+        });
+        rebuildDetails.push(wbEnq.detail, ozEnq.detail);
+        if (wbEnq.enqueued || ozEnq.enqueued) rebuildPending = true;
+      }
     } else if (skuTotalInDb <= SKU_FULL_LOAD_CAP) {
       skuRows = await prisma.profitSkuPeriodMetric.findMany({ where: skuWhere });
       skuStatus = "READY";
-      skuStatusReason = `PROFIT_SKU_PERIOD_HIT:rows=${skuRows.length}`;
+      skuStatusReason = `PROFIT_SKU_PERIOD_HIT:${skuLoadMode}:rows=${skuRows.length}`;
     } else {
       skuTruncated = true;
-      type SkuRaw = {
-        id: string;
-        companyScope: string;
-        marketplace: string;
-        payload: unknown;
-      };
-      const topProfit = await prisma.$queryRaw<SkuRaw[]>`
-        SELECT id, "companyScope", marketplace, payload
-        FROM "ProfitSkuPeriodMetric"
-        WHERE "companyScope" = ${skuScope}
-          AND "dateFrom" = ${dayStartUtc(dateFrom)}
-          AND "dateTo" = ${dayStartUtc(dateTo)}
-        ORDER BY COALESCE((payload->>'netProfitAfterTax')::double precision, 0) DESC
-        LIMIT ${SKU_RANK_SLICE}
-      `;
-      const topLoss = await prisma.$queryRaw<SkuRaw[]>`
-        SELECT id, "companyScope", marketplace, payload
-        FROM "ProfitSkuPeriodMetric"
-        WHERE "companyScope" = ${skuScope}
-          AND "dateFrom" = ${dayStartUtc(dateFrom)}
-          AND "dateTo" = ${dayStartUtc(dateTo)}
-        ORDER BY COALESCE((payload->>'netProfitAfterTax')::double precision, 0) ASC
-        LIMIT ${SKU_RANK_SLICE}
-      `;
-      const lossAgg = await prisma.$queryRaw<Array<{ c: bigint | number }>>`
-        SELECT COUNT(*)::bigint AS c
-        FROM "ProfitSkuPeriodMetric"
-        WHERE "companyScope" = ${skuScope}
-          AND "dateFrom" = ${dayStartUtc(dateFrom)}
-          AND "dateTo" = ${dayStartUtc(dateTo)}
-          AND COALESCE((payload->>'netProfitAfterTax')::double precision, 0) < 0
-      `;
-      skuLossCountDb = Number(lossAgg[0]?.c ?? 0);
-      const byId = new Map<string, SkuRaw>();
-      for (const row of [...topProfit, ...topLoss]) byId.set(row.id, row);
-      skuRows = Array.from(byId.values()) as typeof skuRows;
+      const ranked = await prisma.profitSkuPeriodMetric.findMany({
+        where: skuWhere,
+        take: SKU_FULL_LOAD_CAP,
+      });
+      // Rank in memory under pool=1 — avoid ambiguous ALL/IN raw SQL.
+      const scored = ranked.map((row) => {
+        const payload = (row.payload ?? {}) as Record<string, unknown>;
+        const profit = Number(payload.netProfitAfterTax ?? 0);
+        return { row, profit: Number.isFinite(profit) ? profit : 0 };
+      });
+      const topProfit = [...scored]
+        .sort((a, b) => b.profit - a.profit)
+        .slice(0, SKU_RANK_SLICE);
+      const topLoss = [...scored]
+        .sort((a, b) => a.profit - b.profit)
+        .slice(0, SKU_RANK_SLICE);
+      skuLossCountDb = scored.filter((s) => s.profit < 0).length;
+      const byId = new Map<string, (typeof ranked)[number]>();
+      for (const item of [...topProfit, ...topLoss]) byId.set(item.row.id, item.row);
+      skuRows = Array.from(byId.values());
       skuStatus = "PRELIMINARY";
-      skuStatusReason = `PROFIT_SKU_PERIOD_HIT_TRUNCATED:shown=${skuRows.length};total=${skuTotalInDb}`;
+      skuStatusReason = `PROFIT_SKU_PERIOD_HIT_TRUNCATED:${skuLoadMode}:shown=${skuRows.length};total=${skuTotalInDb}`;
     }
   } catch (error) {
     skuStatus = "UNAVAILABLE";
     skuStatusReason = `PROFIT_SKU_PERIOD_ERROR:${error instanceof Error ? error.message : String(error)}`;
   }
+
+  // Canonical company ownership lookup for ALL-scope rows lacking payload.companyName.
+  const companyByWbNm = new Map<string, string>();
+  const companyByWbVendor = new Map<string, string>();
+  const companyByOzonSku = new Map<string, string>();
+  const companyByOzonVendor = new Map<string, string>();
+  if (skuLoadMode === "ALL_SCOPE" && skuRows.length > 0) {
+    try {
+      const wbCards = await prisma.wbProductCard.findMany({
+        where: { companyName: { in: activeCompanies } },
+        select: { companyName: true, nmId: true, vendorCode: true },
+        take: 5000,
+      });
+      for (const card of wbCards) {
+        if (!card.companyName) continue;
+        if (card.nmId) companyByWbNm.set(String(card.nmId).trim(), card.companyName);
+        const vc = normalizeVendorCode(card.vendorCode);
+        if (vc) companyByWbVendor.set(vc, card.companyName);
+      }
+      const ozonProducts = await prisma.ozonProduct.findMany({
+        where: { companyName: { in: activeCompanies } },
+        select: { companyName: true, sku: true, vendorCode: true },
+        take: 5000,
+      });
+      for (const product of ozonProducts) {
+        if (!product.companyName) continue;
+        if (product.sku) {
+          companyByOzonSku.set(String(product.sku).trim(), product.companyName);
+        }
+        const vc = normalizeVendorCode(product.vendorCode);
+        if (vc) companyByOzonVendor.set(vc, product.companyName);
+      }
+    } catch (error) {
+      rebuildDetails.push(
+        `COMPANY_LOOKUP_ERROR:${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
+
+  const resolveSkuCompanyName = (params: {
+    companyScope: string;
+    marketplace: string;
+    payload: Record<string, unknown>;
+  }): string => {
+    if (selectedCompany !== "ALL") return selectedCompany;
+    const fromPayload = String(params.payload.companyName ?? "").trim();
+    if (fromPayload && fromPayload !== "ALL" && fromPayload !== "—") {
+      return fromPayload;
+    }
+    if (params.companyScope && params.companyScope !== "ALL") {
+      return params.companyScope;
+    }
+    const nmId = String(params.payload.nmId ?? "").trim();
+    const vendorCode = normalizeVendorCode(params.payload.vendorCode);
+    if (params.marketplace === "WB") {
+      if (nmId && companyByWbNm.has(nmId)) return companyByWbNm.get(nmId)!;
+      if (vendorCode && companyByWbVendor.has(vendorCode)) {
+        return companyByWbVendor.get(vendorCode)!;
+      }
+    }
+    if (params.marketplace === "OZON") {
+      if (nmId && companyByOzonSku.has(nmId)) return companyByOzonSku.get(nmId)!;
+      if (vendorCode && companyByOzonVendor.has(vendorCode)) {
+        return companyByOzonVendor.get(vendorCode)!;
+      }
+    }
+    return "н/д";
+  };
 
   if (skuRows.length > 0) {
     const byCompanyMp = new Map<
@@ -226,15 +318,12 @@ export async function loadInsightsDetailSnapshot(params: {
     };
     for (const row of skuRows) {
       const payload = (row.payload ?? {}) as Record<string, unknown>;
-      const companyName =
-        selectedCompany === "ALL"
-          ? String(
-              (payload as { companyName?: string }).companyName ??
-                row.companyScope,
-            )
-          : selectedCompany;
-      const bucket =
-        selectedCompany === "ALL" ? ensure("ALL") : ensure(companyName);
+      const companyName = resolveSkuCompanyName({
+        companyScope: row.companyScope,
+        marketplace: row.marketplace,
+        payload,
+      });
+      const bucket = ensure(companyName);
       const mapped: MappedRow = {
         nmId: payload.nmId,
         vendorCode: payload.vendorCode,
@@ -248,7 +337,7 @@ export async function loadInsightsDetailSnapshot(params: {
     }
     for (const [companyName, bucket] of byCompanyMp) {
       analyticsByCompany.push({
-        companyName: companyName === "ALL" ? "—" : companyName,
+        companyName,
         wbRows: bucket.wbRows,
         ozonRows: bucket.ozonRows,
       });
@@ -345,7 +434,8 @@ export async function loadInsightsDetailSnapshot(params: {
       ? skuLossCountDb
       : lossIdentityKeys.size;
 
-  // Stocks — sequential under pool=1
+  // Stocks — current snapshot only (latest createdAt day per channel).
+  // Do not mix historical import days across channels as one trusted total.
   let productCosts: Awaited<ReturnType<typeof prisma.productCost.findMany>> = [];
   let wbStocks: Awaited<ReturnType<typeof prisma.wbStock.findMany>> = [];
   let ozonStocks: Awaited<ReturnType<typeof prisma.ozonStock.findMany>> = [];
@@ -357,20 +447,64 @@ export async function loadInsightsDetailSnapshot(params: {
     nmId: string | null;
     vendorCode: string | null;
   }> = [];
+  let wbStockAsOf: string | null = null;
+  let ozonStockAsOf: string | null = null;
+  let ownStockAsOf: string | null = null;
   const stockCompanyWhere =
     selectedCompany !== "ALL" ? { companyName: selectedCompany } : {};
+
+  const latestCreatedDay = async (
+    table: "WbStock" | "OzonStock" | "OzonWarehouseStock",
+  ): Promise<Date | null> => {
+    const rows = await prisma.$queryRawUnsafe<Array<{ d: Date | null }>>(
+      `SELECT MAX(DATE("createdAt")) AS d FROM "${table}"`,
+    );
+    const d = rows[0]?.d;
+    return d ? new Date(d) : null;
+  };
+  const dayRange = (day: Date) => {
+    const start = new Date(
+      Date.UTC(day.getUTCFullYear(), day.getUTCMonth(), day.getUTCDate()),
+    );
+    const end = new Date(start.getTime() + 24 * 60 * 60 * 1000);
+    return { gte: start, lt: end };
+  };
+  const isoDay = (day: Date | null) =>
+    day
+      ? `${day.getUTCFullYear()}-${String(day.getUTCMonth() + 1).padStart(2, "0")}-${String(day.getUTCDate()).padStart(2, "0")}`
+      : null;
+
   try {
     productCosts = await prisma.productCost.findMany({
       orderBy: [{ costDate: "desc" }, { createdAt: "desc" }],
     });
-    wbStocks = await prisma.wbStock.findMany({ where: stockCompanyWhere });
-    ozonStocks = await prisma.ozonStock.findMany({ where: stockCompanyWhere });
-    ownWarehouseStocks = await prisma.ozonWarehouseStock.findMany({
-      where:
-        selectedCompany !== "ALL"
-          ? { companyName: selectedCompany }
-          : undefined,
-    });
+    const wbDay = await latestCreatedDay("WbStock");
+    const ozDay = await latestCreatedDay("OzonStock");
+    const ownDay = await latestCreatedDay("OzonWarehouseStock");
+    wbStockAsOf = isoDay(wbDay);
+    ozonStockAsOf = isoDay(ozDay);
+    ownStockAsOf = isoDay(ownDay);
+
+    if (wbDay) {
+      wbStocks = await prisma.wbStock.findMany({
+        where: { ...stockCompanyWhere, createdAt: dayRange(wbDay) },
+      });
+    }
+    if (ozDay) {
+      ozonStocks = await prisma.ozonStock.findMany({
+        where: { ...stockCompanyWhere, createdAt: dayRange(ozDay) },
+      });
+    }
+    if (ownDay) {
+      ownWarehouseStocks = await prisma.ozonWarehouseStock.findMany({
+        where: {
+          ...(selectedCompany !== "ALL"
+            ? { companyName: selectedCompany }
+            : {}),
+          createdAt: dayRange(ownDay),
+        },
+      });
+    }
     wbCardsForCost = await prisma.wbProductCard.findMany({
       where: stockCompanyWhere,
       select: { companyName: true, nmId: true, vendorCode: true },
@@ -402,7 +536,7 @@ export async function loadInsightsDetailSnapshot(params: {
         getAmount(stock.inTransitToCustomer) +
         getAmount(stock.inTransitReturns);
       const vendorCode = String(stock.vendorCode ?? "").trim();
-      const companyName = String(stock.companyName ?? "—");
+      const companyName = String(stock.companyName ?? "").trim() || "н/д";
       const unitCost = getStockUnitCost({
         companyName,
         vendorCode,
@@ -431,7 +565,7 @@ export async function loadInsightsDetailSnapshot(params: {
         getAmount(stock.returnQty);
       const vendorCode = String(stock.vendorCode ?? "").trim();
       const parsed = parseOzonSizeLabel(vendorCode);
-      const companyName = String(stock.companyName ?? "—");
+      const companyName = String(stock.companyName ?? "").trim() || "н/д";
       const unitCost = getStockUnitCost({
         companyName,
         vendorCode,
@@ -454,7 +588,7 @@ export async function loadInsightsDetailSnapshot(params: {
     ...ownWarehouseStocks.map((stock) => {
       const quantity = getAmount(stock.warehouseQty);
       const vendorCode = String(stock.vendorCode ?? "").trim();
-      const companyName = String(stock.companyName ?? "—");
+      const companyName = String(stock.companyName ?? "").trim() || "н/д";
       const unitCost = getStockUnitCost({
         companyName,
         vendorCode,
@@ -718,8 +852,20 @@ export async function loadInsightsDetailSnapshot(params: {
     stockAtCostOzon,
     stockAtCostOwn,
     stockMissingCostQty,
-    frozenCoveragePartial: stockMissingCostQty > 0,
-    frozenAsOfLabel: "как /stocks: WB + Ozon FBO + свой склад × ProductCost",
+    frozenCoveragePartial:
+      stockMissingCostQty > 0 ||
+      (wbStockAsOf != null &&
+        ozonStockAsOf != null &&
+        wbStockAsOf !== ozonStockAsOf) ||
+      (ownStockAsOf != null &&
+        wbStockAsOf != null &&
+        ownStockAsOf !== wbStockAsOf),
+    frozenAsOfLabel: [
+      "текущий snapshot × ProductCost",
+      wbStockAsOf ? `WB ${wbStockAsOf}` : "WB н/д",
+      ozonStockAsOf ? `Ozon FBO ${ozonStockAsOf}` : "Ozon FBO н/д",
+      ownStockAsOf ? `свой ${ownStockAsOf}` : "свой н/д",
+    ].join(" · "),
     skuDetail: {
       skuRevenue: skuLayerReady ? skuRevenue : null,
       soldProfit: skuLayerReady ? soldProfitTotal : null,

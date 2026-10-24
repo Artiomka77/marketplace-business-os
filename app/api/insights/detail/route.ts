@@ -1,5 +1,10 @@
+import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 
+import {
+  LOCAL_AUTH_COOKIE_NAME,
+  verifyLocalAuthToken,
+} from "@/lib/auth/localAuth";
 import { loadInsightsDetailSnapshot } from "@/lib/insights/loadDetailSnapshot";
 
 export const dynamic = "force-dynamic";
@@ -22,6 +27,15 @@ function first(
 }
 
 export async function GET(request: Request) {
+  const cookieStore = await cookies();
+  const token = cookieStore.get(LOCAL_AUTH_COOKIE_NAME)?.value;
+  if (!verifyLocalAuthToken(token)) {
+    return NextResponse.json(
+      { ok: false, error: "UNAUTHORIZED" },
+      { status: 401 },
+    );
+  }
+
   const url = new URL(request.url);
   const dateFrom = first(url.searchParams.get("dateFrom") ?? undefined, "");
   const dateTo = first(url.searchParams.get("dateTo") ?? undefined, "");
