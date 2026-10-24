@@ -133,7 +133,7 @@ export async function enqueueV6PeriodRebuild(params: {
     // Exhausted ERROR jobs are not reopened by ordinary requestRebuild.
     // Soft-reopen only the YTD partition-compose failure class so Insights can
     // complete MISS→HIT after month partitions land.
-    if (result === "keep_existing" && isLongJan1Span(params.dateFrom, params.dateTo)) {
+    if (isLongJan1Span(params.dateFrom, params.dateTo)) {
       try {
         const { prisma } = await import("@/lib/prisma");
         const { FINANCIAL_CORE_V6_PERIOD_READMODEL_V2 } = await import(
@@ -153,7 +153,7 @@ export async function enqueueV6PeriodRebuild(params: {
         if (
           existing &&
           existing.status === "ERROR" &&
-          existing.attempts >= existing.maxAttempts &&
+          Number(existing.attempts) >= Number(existing.maxAttempts) &&
           err.includes("YTD_MONTH_PARTITIONS_INCOMPLETE")
         ) {
           const now = new Date();
@@ -174,6 +174,10 @@ export async function enqueueV6PeriodRebuild(params: {
           });
           details.push("V6_REOPEN_EXHAUSTED_YTD_COMPOSE");
           enqueued = true;
+        } else if (existing?.status === "ERROR") {
+          details.push(
+            `V6_ERROR_KEPT:attempts=${existing.attempts}/${existing.maxAttempts}`,
+          );
         }
       } catch (reopenError) {
         details.push(
