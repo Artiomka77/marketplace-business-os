@@ -4,7 +4,8 @@ const sourcePath = new URL(
   "../../lib/analytics/profitAnalytics.ts",
   import.meta.url
 );
-const source = readFileSync(sourcePath, "utf8");
+// Normalize EOLs so CRLF worktree checkouts match LF markers (Windows/git).
+const source = readFileSync(sourcePath, "utf8").replace(/\r\n/g, "\n");
 
 function requireMarker(marker, label) {
   if (!source.includes(marker)) {
