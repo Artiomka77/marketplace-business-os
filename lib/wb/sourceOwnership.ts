@@ -48,41 +48,19 @@ export type CanonicalWbSaleRow = Prisma.WbSaleGetPayload<{
   select: typeof WB_CANONICAL_SALE_SELECT;
 }>;
 
-export type CanonicalWbProductOperation = "SALE" | "RETURN" | "OTHER";
+export type { CanonicalWbProductOperation } from "@/lib/wb/wbProductOperationClassify";
+export {
+  classifyCanonicalWbProductOperation,
+  normalizeWbOperationText,
+  wbPreliminaryEconomicKey,
+  mergePreliminaryWbSaleRowsByEconomicKey,
+} from "@/lib/wb/wbProductOperationClassify";
 
-function normalizeWbOperationText(value: unknown) {
-  return String(value ?? "")
-    .toLowerCase()
-    .replaceAll("ё", "е")
-    .replace(/[–—−]/g, "-")
-    .replace(/\s*-\s*/g, "-")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-export function classifyCanonicalWbProductOperation(input: {
-  paymentReason: unknown;
-  documentType?: unknown;
-}): CanonicalWbProductOperation {
-  const values = [
-    normalizeWbOperationText(input.paymentReason),
-    normalizeWbOperationText(input.documentType),
-  ].filter(Boolean);
-  if (values.some((value) => value === "сторно возвратов")) {
-    return "SALE";
-  }
-  if (
-    values.some(
-      (value) => value === "возврат" || value.includes("возврат")
-    )
-  ) {
-    return "RETURN";
-  }
-  if (values.some((value) => value === "продажа")) {
-    return "SALE";
-  }
-  return "OTHER";
-}
+import {
+  classifyCanonicalWbProductOperation,
+  wbPreliminaryEconomicKey,
+  mergePreliminaryWbSaleRowsByEconomicKey,
+} from "@/lib/wb/wbProductOperationClassify";
 
 export type WbSourceOwnerMode =
   | "EXACT_FINANCE_COVER_SESSIONS_ALL_ROWS"
@@ -537,49 +515,91 @@ function nextMoscowStartUtc(dateKey: string) {
   return date;
 }
 
+async function loadPreliminaryRowsForType(
+  interval: WbSourceOwnershipInterval,
+  reportType: "WB_SALES_DAILY" | "WB_SALES_OPERATIONAL"
+) {
+  const sessions = await prisma.importSession.findMany({
+    where: {
+      companyName: interval.companyName,
+      reportType,
+      status: "SUCCESS",
+    },
+    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+    select: { id: true, fileName: true },
+  });
+  const latestByFileName = new Map<string, string>();
+  for (const session of sessions) {
+    if (!latestByFileName.has(session.fileName)) {
+      latestByFileName.set(session.fileName, session.id);
+    }
+  }
+  const sessionIds = Array.from(latestByFileName.values());
+  if (sessionIds.length === 0) {
+    return { sessionIds: [] as string[], rows: [] as CanonicalWbSaleRow[] };
+  }
+  const rows = await prisma.wbSale.findMany({
+    where: {
+      companyName: interval.companyName,
+      importSessionId: { in: sessionIds },
+      saleDate: {
+        gte: moscowStartUtc(interval.dateFrom),
+        lt: nextMoscowStartUtc(interval.dateTo),
+      },
+    },
+    select: WB_CANONICAL_SALE_SELECT,
+    orderBy: { saleDate: "desc" },
+  });
+  return { sessionIds, rows };
+}
+
+/**
+ * Preliminary ownership: DAILY is primary. OPERATIONAL supplements only
+ * economic keys not already owned by DAILY (distinct DB ids of the same
+ * economic sale must not double-count). Distinct real sales that share
+ * amount/SKU remain separate via rich economic key.
+ */
+export function mergePreliminaryWbSaleRows(params: {
+  dailyRows: CanonicalWbSaleRow[];
+  operationalRows: CanonicalWbSaleRow[];
+}): CanonicalWbSaleRow[] {
+  return mergePreliminaryWbSaleRowsByEconomicKey({
+    dailyRows: params.dailyRows,
+    operationalRows: params.operationalRows,
+    keyOf: wbPreliminaryEconomicKey,
+  });
+}
+
 async function selectPreliminaryRows(
   interval: WbSourceOwnershipInterval
 ) {
-  for (const reportType of ["WB_SALES_OPERATIONAL", "WB_SALES_DAILY"]) {
-    const sessions = await prisma.importSession.findMany({
-      where: {
-        companyName: interval.companyName,
-        reportType,
-        status: "SUCCESS",
-      },
-      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-      select: { id: true, fileName: true },
-    });
-    const latestByFileName = new Map<string, string>();
-    for (const session of sessions) {
-      if (!latestByFileName.has(session.fileName)) {
-        latestByFileName.set(session.fileName, session.id);
-      }
-    }
-    const sessionIds = Array.from(latestByFileName.values());
-    if (sessionIds.length === 0) continue;
-    const rows = await prisma.wbSale.findMany({
-      where: {
-        companyName: interval.companyName,
-        importSessionId: { in: sessionIds },
-        saleDate: {
-          gte: moscowStartUtc(interval.dateFrom),
-          lt: nextMoscowStartUtc(interval.dateTo),
-        },
-      },
-      select: WB_CANONICAL_SALE_SELECT,
-      orderBy: { saleDate: "desc" },
-    });
-    if (rows.length > 0) {
-      interval.mode =
-        reportType === "WB_SALES_OPERATIONAL"
-          ? "PRELIMINARY_OPERATIONAL_FALLBACK"
-          : "PRELIMINARY_DAILY_FALLBACK";
-      interval.selectedSessionIds = sessionIds;
-      return rows;
-    }
+  const daily = await loadPreliminaryRowsForType(interval, "WB_SALES_DAILY");
+  const operational = await loadPreliminaryRowsForType(
+    interval,
+    "WB_SALES_OPERATIONAL"
+  );
+  const usedDaily = daily.rows.length > 0;
+  const usedOperational = operational.rows.length > 0;
+  if (!usedDaily && !usedOperational) return [];
+
+  const rows = mergePreliminaryWbSaleRows({
+    dailyRows: daily.rows,
+    operationalRows: operational.rows,
+  });
+
+  interval.mode = usedDaily
+    ? "PRELIMINARY_DAILY_FALLBACK"
+    : "PRELIMINARY_OPERATIONAL_FALLBACK";
+  interval.selectedSessionIds = Array.from(
+    new Set([...daily.sessionIds, ...operational.sessionIds])
+  );
+  if (usedDaily && usedOperational) {
+    interval.preliminaryReasons = [
+      ...interval.preliminaryReasons,
+      "PRELIMINARY_DAILY_PRIMARY_OPERATIONAL_SUPPLEMENT",
+    ];
   }
-  return [];
+  return rows;
 }
 
 export async function selectCanonicalWbSaleSource(params: {

@@ -3021,7 +3021,10 @@ async function renderProfitOzonPage({
       colorHex: "#f59e0b",
     },
     {
-      label: "Компенсации Ozon (уменьшают расходы)",
+      // Display-only: store compensationAmount may be negative (withholding /
+      // reverse). Do not treat signed category.amount as homogeneous expense.
+      // P&L uses deductions = partner+other - compensationAmount once.
+      label: "Корректировка компенсации Ozon",
       value: -compensationAmount,
       colorHex: "#10b981",
     },

@@ -27,8 +27,19 @@ const SKU_RANK_SLICE = 400;
 const STOCK_STALE_DAYS = 7;
 
 import { assessSkuSourceCompleteness } from "@/lib/insights/skuSourceCompleteness";
+import { partitionInsightSkuRow } from "@/lib/insights/insightsSkuPartition";
+import {
+  buildAccountResidualBridge,
+  WEEK_2026_10_19_25_ACCEPTED_BRIDGE,
+  type AccountResidualBridge,
+} from "@/lib/insights/accountResidualBridge";
 
 export { assessSkuSourceCompleteness };
+export { partitionInsightSkuRow } from "@/lib/insights/insightsSkuPartition";
+export {
+  buildAccountResidualBridge,
+  WEEK_2026_10_19_25_ACCEPTED_BRIDGE,
+} from "@/lib/insights/accountResidualBridge";
 
 function putUnambiguousOwner(
   map: Map<string, string>,
@@ -65,13 +76,6 @@ function parseOzonSizeLabel(vendorCode: string): {
   if (m) return { sizeLabel: m[2], sizeStatus: "EXACT" };
   if (!raw) return { sizeLabel: "н/д", sizeStatus: "UNKNOWN" };
   return { sizeLabel: "н/д", sizeStatus: "UNKNOWN" };
-}
-
-function anomalyFor(revenue: number, profit: number): InsightSkuRow["anomaly"] {
-  if (revenue !== 0) return "NONE";
-  if (profit > 0) return "PROFIT_WITHOUT_REVENUE";
-  if (profit < 0) return "LOSS_WITHOUT_REVENUE";
-  return "NONE";
 }
 
 export type InsightsDetailSnapshot = {
@@ -112,6 +116,11 @@ export type InsightsDetailSnapshot = {
     adjustmentProfit: number | null;
     adjustmentSkuCount: number | null;
   }>;
+  /**
+   * Explicit SKU→MP residual (WB unallocated ads/storage, Ozon partner).
+   * Not re-added into account profit. Week 19–25.10.2026 uses accepted bridge.
+   */
+  accountResidualBridge: AccountResidualBridge | null;
   problems: {
     uniqueProblemSkuCount: number | null;
     lossSkuCount: number | null;
@@ -459,6 +468,7 @@ export async function loadInsightsDetailSnapshot(params: {
         const revenue = getAmount(row.revenue);
         const profit = getAmount(row.netProfitAfterTax);
         const netQty = getAmount(row.netSalesQty);
+        const part = partitionInsightSkuRow({ revenue, profit, netQty });
         return {
           companyName,
           marketplace: "WB" as const,
@@ -472,7 +482,7 @@ export async function loadInsightsDetailSnapshot(params: {
           revenue,
           profit,
           marginPercent: marginOrNull(revenue, profit),
-          anomaly: revenue > 0 ? ("NONE" as const) : anomalyFor(0, profit),
+          anomaly: part.anomaly,
         };
       }),
       ...ozonRows.map((row) => {
@@ -481,7 +491,7 @@ export async function loadInsightsDetailSnapshot(params: {
         const netQty = getAmount(row.netSalesQty);
         const vendorCode = String(row.vendorCode ?? "").trim();
         const parsed = parseOzonSizeLabel(vendorCode);
-        const hasSales = revenue > 0 || netQty !== 0;
+        const part = partitionInsightSkuRow({ revenue, profit, netQty });
         return {
           companyName,
           marketplace: "Ozon" as const,
@@ -495,20 +505,23 @@ export async function loadInsightsDetailSnapshot(params: {
           revenue,
           profit,
           marginPercent: marginOrNull(revenue, profit),
-          anomaly: hasSales ? ("NONE" as const) : anomalyFor(0, profit),
+          anomaly: part.anomaly,
         };
       }),
     ],
   );
 
-  const soldProfitable = rows
-    .filter((row) => row.profit > 0 && row.revenue > 0)
+  const soldRows = rows.filter(
+    (row) => partitionInsightSkuRow(row).bucket === "sold",
+  );
+  const soldProfitable = soldRows
+    .filter((row) => row.profit > 0)
     .sort((a, b) => b.profit - a.profit);
-  const soldLoss = rows
-    .filter((row) => row.profit < 0 && row.revenue > 0)
+  const soldLoss = soldRows
+    .filter((row) => row.profit < 0)
     .sort((a, b) => a.profit - b.profit);
   const adjustments = rows
-    .filter((row) => row.anomaly !== "NONE")
+    .filter((row) => partitionInsightSkuRow(row).bucket === "adjustment")
     .sort((a, b) => Math.abs(b.profit) - Math.abs(a.profit));
   const lowMarginRows = rows
     .filter(
@@ -522,9 +535,7 @@ export async function loadInsightsDetailSnapshot(params: {
 
   const skuRevenue = rows.reduce((sum, row) => sum + row.revenue, 0);
   const skuProfitTotal = rows.reduce((sum, row) => sum + row.profit, 0);
-  const soldProfitTotal = rows
-    .filter((r) => r.revenue > 0)
-    .reduce((s, r) => s + r.profit, 0);
+  const soldProfitTotal = soldRows.reduce((s, r) => s + r.profit, 0);
   const adjustmentProfitSum = adjustments.reduce((s, r) => s + r.profit, 0);
 
   const lossIdentityKeys = new Set<string>();
@@ -962,10 +973,11 @@ export async function loadInsightsDetailSnapshot(params: {
       const slice = driverSkuPatches.find((d) => d.marketplace === row.marketplace)!;
       slice.skuRevenue = (slice.skuRevenue ?? 0) + row.revenue;
       slice.skuProfit = (slice.skuProfit ?? 0) + row.profit;
-      if (row.anomaly !== "NONE") {
+      const part = partitionInsightSkuRow(row);
+      if (part.bucket === "adjustment") {
         slice.adjustmentProfit = (slice.adjustmentProfit ?? 0) + row.profit;
         slice.adjustmentSkuCount = (slice.adjustmentSkuCount ?? 0) + 1;
-      } else if (row.revenue > 0) {
+      } else {
         slice.soldProfit = (slice.soldProfit ?? 0) + row.profit;
       }
     }
@@ -1036,6 +1048,10 @@ export async function loadInsightsDetailSnapshot(params: {
       stockAtCost,
     },
     driverSkuPatches,
+    accountResidualBridge:
+      params.dateFrom === "2026-10-19" && params.dateTo === "2026-10-25"
+        ? buildAccountResidualBridge(WEEK_2026_10_19_25_ACCEPTED_BRIDGE)
+        : null,
     problems: {
       uniqueProblemSkuCount: skuLayerReady
         ? skuTruncated
@@ -1130,6 +1146,7 @@ export function emptyInsightsDetailPending(): InsightsDetailSnapshot {
         adjustmentSkuCount: null,
       },
     ],
+    accountResidualBridge: null,
     problems: {
       uniqueProblemSkuCount: null,
       lossSkuCount: null,

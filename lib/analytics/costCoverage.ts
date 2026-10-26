@@ -1,5 +1,9 @@
 import { prisma } from "@/lib/prisma";
 import { buildCanonicalPositiveCostLookups } from "@/lib/analytics/productCostResolver";
+import {
+  extractOzonAccrualProductMovements,
+  mapMovementsToCogsProductRows,
+} from "@/lib/ozon/ozonAccrualProductMovements";
 
 type CostRecord = {
   id: string;
@@ -48,6 +52,12 @@ export type CostCoverageSummary = {
   technicalWbAmount: number;
   unmappedOzonItemsCount: number;
   missingRealCostItemsCount: number;
+  /** Product-grain Ozon movements used for COGS authority (not OzonFinance emptiness). */
+  ozonProductMovementGroups: number;
+  ozonFinanceFallbackGroups: number;
+  ozonProductAuthorityEmpty: boolean;
+  /** No product authority and no finance product sales — not "all costs found". */
+  ozonSourceMissing: boolean;
 };
 
 function normalizeText(value: unknown) {
@@ -241,7 +251,16 @@ export async function getCostCoverageSummary(params: {
       }
     : {};
 
-  const [costs, wbProductCards, ozonProducts, ozonStockMappings, wbRows, ozonRows] = await Promise.all([
+  const [
+    costs,
+    wbProductCards,
+    ozonProducts,
+    ozonStockMappings,
+    wbRows,
+    ozonFinanceRows,
+    ozonRealizationRows,
+    ozonAccrualSessions,
+  ] = await Promise.all([
     prisma.productCost.findMany({
       select: {
         id: true,
@@ -314,6 +333,37 @@ export async function getCostCoverageSummary(params: {
         totalAmount: true,
       },
     }),
+    prisma.ozonRealizationRow.findMany({
+      where: {
+        ...companyFilter,
+        sku: { not: null },
+        dateFrom: { gte: dateFrom },
+        dateTo: { lte: dateTo },
+      },
+      select: {
+        companyName: true,
+        vendorCode: true,
+        sku: true,
+        productName: true,
+        realizedQty: true,
+        returnedQty: true,
+        realizedAmount: true,
+        returnedAmount: true,
+      },
+    }),
+    prisma.importSession.findMany({
+      where: {
+        ...companyFilter,
+        reportType: "OZON_ACCRUAL_BY_DAY_API",
+        status: { in: ["SUCCESS", "RAW_PERSISTED", "CANONICAL_PERSISTED"] },
+      },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      select: {
+        id: true,
+        companyName: true,
+        previewJson: true,
+      },
+    }),
   ]);
 
   const { hasWbCost, resolveOzonCost } = createCostResolvers({
@@ -367,40 +417,161 @@ export async function getCostCoverageSummary(params: {
     });
   }
 
-  for (const row of ozonRows) {
+  // Same physical universe as COGS: RAW accrual products first, then sku-grain
+  // realization. Per-company: product authority does not suppress another
+  // company's finance fallback.
+  const vendorBySku = new Map<string, string>();
+  for (const row of [...ozonProducts, ...ozonStockMappings]) {
+    const sku = cleanText(row.sku);
+    const vendor = cleanText(row.vendorCode);
+    if (sku && vendor && !vendorBySku.has(sku)) vendorBySku.set(sku, vendor);
+  }
+
+  type OzonMovementAgg = {
+    companyName: string;
+    vendorCode: string;
+    sku: string;
+    productName: string;
+    quantity: number;
+    amount: number;
+  };
+  const ozonProductRows: OzonMovementAgg[] = [];
+  const periodFrom = params.dateFrom.slice(0, 10);
+  const periodTo = params.dateTo.slice(0, 10);
+
+  for (const session of ozonAccrualSessions) {
+    const preview =
+      session.previewJson && typeof session.previewJson === "object"
+        ? (session.previewJson as Record<string, unknown>)
+        : null;
+    if (!preview) continue;
+    const sessionFrom = String(preview.dateFrom ?? "").slice(0, 10);
+    const sessionTo = String(preview.dateTo ?? "").slice(0, 10);
+    if (!sessionFrom || !sessionTo) continue;
+    if (sessionTo < periodFrom || sessionFrom > periodTo) continue;
+    const companyName = cleanText(session.companyName) || "Без компании";
+    const movements = extractOzonAccrualProductMovements({
+      companyName,
+      sessionId: session.id,
+      rawAccruals: Array.isArray(preview.rawAccruals) ? preview.rawAccruals : [],
+      dateFrom: periodFrom,
+      dateTo: periodTo,
+    });
+    for (const row of mapMovementsToCogsProductRows(movements, vendorBySku)) {
+      const quantity =
+        Math.abs(row.realizedQty) + Math.abs(row.returnedQty);
+      const amount =
+        Math.abs(row.realizedAmount) + Math.abs(row.returnedAmount);
+      if (quantity <= 0 && amount <= 0) continue;
+      ozonProductRows.push({
+        companyName: row.companyName,
+        vendorCode: cleanText(row.vendorCode) || "—",
+        sku: cleanText(row.sku) || "—",
+        productName: cleanText(row.vendorCode) || cleanText(row.sku) || "Без названия",
+        quantity,
+        amount,
+      });
+    }
+  }
+
+  if (ozonProductRows.length === 0) {
+    for (const row of ozonRealizationRows) {
+      const vendorCode = cleanText(row.vendorCode);
+      const sku = cleanText(row.sku);
+      if (!vendorCode && !sku) continue;
+      const quantity =
+        Math.abs(toNumber(row.realizedQty)) + Math.abs(toNumber(row.returnedQty));
+      const amount =
+        Math.abs(toNumber(row.realizedAmount)) +
+        Math.abs(toNumber(row.returnedAmount));
+      if (quantity <= 0 && amount <= 0) continue;
+      ozonProductRows.push({
+        companyName: cleanText(row.companyName) || "Без компании",
+        vendorCode: vendorCode || "—",
+        sku: sku || "—",
+        productName: cleanText(row.productName) || vendorCode || sku || "Без названия",
+        quantity,
+        amount,
+      });
+    }
+  }
+
+  const productCompanies = new Set(
+    ozonProductRows.map((row) => cleanText(row.companyName)),
+  );
+  let ozonProductMovementGroups = 0;
+  let ozonFinanceFallbackGroups = 0;
+
+  const groupedProducts = new Map<string, OzonMovementAgg>();
+  for (const row of ozonProductRows) {
+    const key = `${row.companyName}|${row.vendorCode}|${row.sku}`;
+    const cur = groupedProducts.get(key) ?? {
+      ...row,
+      quantity: 0,
+      amount: 0,
+    };
+    cur.quantity += row.quantity;
+    cur.amount += row.amount;
+    groupedProducts.set(key, cur);
+  }
+  ozonProductMovementGroups = groupedProducts.size;
+  for (const row of groupedProducts.values()) {
+    checkedItemsCount += 1;
+    const resolved = resolveOzonCost({
+      vendorCode: row.vendorCode,
+      sku: row.sku,
+    });
+    if (resolved.hasCost) continue;
+    if (!resolved.hasProductMapping) unmappedOzonItemsCount += 1;
+    uniquePushMissingItem(missingByKey, {
+      marketplace: "OZON",
+      companyName: row.companyName,
+      vendorCode: row.vendorCode || resolved.displayVendorCode || "—",
+      externalId: row.sku,
+      productName: row.productName,
+      quantity: row.quantity,
+      amount: row.amount,
+      issueType: resolved.hasProductMapping
+        ? "MISSING_COST"
+        : "MISSING_OZON_MAPPING",
+    });
+  }
+
+  for (const row of ozonFinanceRows) {
+    const companyName = cleanText(row.companyName) || "Без компании";
+    // Finance fallback only for companies without product authority.
+    if (productCompanies.has(companyName)) continue;
     const vendorCode = cleanText(row.vendorCode);
     const sku = cleanText(row.sku);
     const quantity = Math.abs(toNumber(row._sum.quantity));
     const salesAmount = Math.abs(toNumber(row._sum.salesAmount));
     const totalAmount = Math.abs(toNumber(row._sum.totalAmount));
     const amount = salesAmount || totalAmount;
-
     if (!vendorCode && !sku) continue;
-
-    // Cost coverage should check product movements, not marketplace service rows.
     if (quantity <= 0 && salesAmount <= 0) continue;
-
+    ozonFinanceFallbackGroups += 1;
     checkedItemsCount += 1;
-
     const resolved = resolveOzonCost({ vendorCode, sku });
-
     if (resolved.hasCost) continue;
-
-    if (!resolved.hasProductMapping) {
-      unmappedOzonItemsCount += 1;
-    }
-
+    if (!resolved.hasProductMapping) unmappedOzonItemsCount += 1;
     uniquePushMissingItem(missingByKey, {
       marketplace: "OZON",
-      companyName: cleanText(row.companyName) || "Без компании",
+      companyName,
       vendorCode: vendorCode || resolved.displayVendorCode || "—",
       externalId: sku || "—",
-      productName: vendorCode || resolved.displayVendorCode || sku || "Без названия",
+      productName:
+        vendorCode || resolved.displayVendorCode || sku || "Без названия",
       quantity,
       amount,
-      issueType: resolved.hasProductMapping ? "MISSING_COST" : "MISSING_OZON_MAPPING",
+      issueType: resolved.hasProductMapping
+        ? "MISSING_COST"
+        : "MISSING_OZON_MAPPING",
     });
   }
+
+  const ozonProductAuthorityEmpty = ozonProductMovementGroups === 0;
+  const ozonSourceMissing =
+    ozonProductAuthorityEmpty && ozonFinanceFallbackGroups === 0;
 
   const missingItems = Array.from(missingByKey.values()).sort((a, b) => {
     const amountDelta = b.amount - a.amount;
@@ -431,11 +602,15 @@ export async function getCostCoverageSummary(params: {
     missingQuantity,
     missingAmount,
     examples: missingItems.slice(0, params.examplesLimit ?? 8),
-    hasMissingCosts: missingItems.length > 0,
+    hasMissingCosts: missingItems.length > 0 || ozonSourceMissing,
     technicalWbItemsCount,
     technicalWbQuantity,
     technicalWbAmount,
     unmappedOzonItemsCount,
     missingRealCostItemsCount,
+    ozonProductMovementGroups,
+    ozonFinanceFallbackGroups,
+    ozonProductAuthorityEmpty,
+    ozonSourceMissing,
   };
 }
