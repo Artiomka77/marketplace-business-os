@@ -52,8 +52,8 @@
     {
       "path": "lib/analytics/profitAnalyticsOzon.ts",
       "role": "Канонический расчёт прибыли Ozon",
-      "sha256": "7e74eb841bd3906d356e11641391295b8f52a63de8c2c75ed968c6fd3e13dd11",
-      "snapshotSha256": "7e74eb841bd3906d356e11641391295b8f52a63de8c2c75ed968c6fd3e13dd11",
+      "sha256": "7f44458abb0b5086d79f68e3795de2c056f7270fbc06979b9a201d6b2352cef9",
+      "snapshotSha256": "7f44458abb0b5086d79f68e3795de2c056f7270fbc06979b9a201d6b2352cef9",
       "sizeBytes": 68679
     },
     {
@@ -150,8 +150,8 @@
     {
       "path": "lib/wb/sourceOwnership.ts",
       "role": "Канонический владелец WB Sales источника по finance reportNumber",
-      "sha256": "406ba9648f102fedf2966e84bd5c1f6ded2d431c25200ba8feb336e409859a13",
-      "snapshotSha256": "406ba9648f102fedf2966e84bd5c1f6ded2d431c25200ba8feb336e409859a13",
+      "sha256": "ab3edfe446479d7eee22bce3bbee5f0a3c0024119c4b7224ccbec229729c2e16",
+      "snapshotSha256": "ab3edfe446479d7eee22bce3bbee5f0a3c0024119c4b7224ccbec229729c2e16",
       "sizeBytes": 22704
     },
     {
@@ -164,8 +164,8 @@
     {
       "path": "lib/analytics/productCostResolver.ts",
       "role": "Единый детерминированный resolver положительной себестоимости",
-      "sha256": "adcff625bd21616ed15bdc76d9dd35304e06430afb5c66bd42eb721d38682a89",
-      "snapshotSha256": "adcff625bd21616ed15bdc76d9dd35304e06430afb5c66bd42eb721d38682a89",
+      "sha256": "6dc6adaf82ebeb3a715053dd16740c91fe25c3227096afc4f358ffef6a0000ba",
+      "snapshotSha256": "6dc6adaf82ebeb3a715053dd16740c91fe25c3227096afc4f358ffef6a0000ba",
       "sizeBytes": 2187
     },
     {
@@ -185,8 +185,8 @@
     {
       "path": "lib/analytics/costCoverage.ts",
       "role": "Coverage себестоимости на общем положительном resolver",
-      "sha256": "eee6563f6a92316d2734ed63a1d6d72e46c5a5d29bfcb3c275d9c361efd535bd",
-      "snapshotSha256": "eee6563f6a92316d2734ed63a1d6d72e46c5a5d29bfcb3c275d9c361efd535bd",
+      "sha256": "333078b358c7472a30f0475e238a3777649eb458fb2347c7b802fbf4679cb729",
+      "snapshotSha256": "333078b358c7472a30f0475e238a3777649eb458fb2347c7b802fbf4679cb729",
       "sizeBytes": 12256
     },
     {

@@ -38,8 +38,8 @@
     {
       "path": "lib/analytics/profitAnalyticsOzon.ts",
       "role": "Канонический расчёт прибыли Ozon",
-      "sha256": "7e74eb841bd3906d356e11641391295b8f52a63de8c2c75ed968c6fd3e13dd11",
-      "snapshotSha256": "7e74eb841bd3906d356e11641391295b8f52a63de8c2c75ed968c6fd3e13dd11",
+      "sha256": "7f44458abb0b5086d79f68e3795de2c056f7270fbc06979b9a201d6b2352cef9",
+      "snapshotSha256": "7f44458abb0b5086d79f68e3795de2c056f7270fbc06979b9a201d6b2352cef9",
       "sizeBytes": 68679
     },
     {

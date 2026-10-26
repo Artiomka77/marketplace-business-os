@@ -1,4 +1,26 @@
 import { prisma } from "@/lib/prisma";
+export {
+  buildHybridOzonCogsSourceRows,
+  buildOzonRealizationProductCoverageDays,
+  mapOzonProductRowToFinanceLike,
+  summarizeOzonCogsCoverage,
+} from "@/lib/analytics/ozonCogsHybridSource";
+import {
+  buildHybridOzonCogsSourceRows,
+  summarizeOzonCogsCoverage,
+  type OzonCogsAuthorityDay,
+  type OzonCogsFinanceLikeRow,
+  type OzonCogsProductRow,
+} from "@/lib/analytics/ozonCogsHybridSource";
+import {
+  buildOzonAccrualAuthorityDays,
+  extractOzonAccrualProductMovements,
+  mapMovementsToCogsProductRows,
+} from "@/lib/ozon/ozonAccrualProductMovements";
+import {
+  buildCanonicalPositiveCostLookups,
+  resolveCanonicalOzonUnitCost,
+} from "@/lib/analytics/productCostResolver";
 
 function toNumber(value: unknown): number {
   if (value === null || value === undefined) return 0;
@@ -379,6 +401,12 @@ export type OzonProfitTotals = {
   taxCalculationBase: number;
   taxesEstimated: boolean;
   netProfitStatus: "FINAL" | "PRELIMINARY";
+  /** True when physical product COGS qty authority is incomplete for the period. */
+  costCoverageIncomplete: boolean;
+  quantityCoverageComplete: boolean;
+  productCostCoverageComplete: boolean;
+  cogsCoverageComplete: boolean;
+  quantityMissingDays: string[];
 
   sellerPayout: number;
 
@@ -453,8 +481,12 @@ type OzonProfitAnalyticsResult = {
 const OZON_COMPANY_NAMES = ["ИП Петров", "ИП Лебедева"];
 
 type CostRecord = {
+  id?: string | null;
   vendorCode: string;
+  nmId?: string | null;
   costPrice: unknown;
+  costDate?: Date | string | null;
+  createdAt?: Date | string | null;
 };
 
 type OzonFinanceRecord = {
@@ -468,6 +500,10 @@ type OzonFinanceRecord = {
   logisticsCost: unknown;
   reverseLogisticsCost: unknown;
   totalAmount: unknown;
+  physicalMovement?: "SALE" | "RETURN" | null;
+  quantityUnknown?: boolean;
+  eventId?: string | null;
+  companyName?: string | null;
 };
 
 type OzonAdsRecord = {
@@ -511,18 +547,33 @@ type OzonProductRecord = {
 };
 
 function buildCostByVendorCode(costs: CostRecord[]) {
-  const costByVendorCode = new Map<string, number>();
+  return buildCanonicalPositiveCostLookups(
+    costs.map((c) => ({
+      vendorCode: c.vendorCode,
+      costPrice: c.costPrice,
+    })),
+  ).costByVendorCode;
+}
 
-  for (const cost of costs) {
-    const vendorCode = normalizeText(cost.vendorCode);
-    if (!vendorCode) continue;
-
-    if (!costByVendorCode.has(vendorCode)) {
-      costByVendorCode.set(vendorCode, toNumber(cost.costPrice));
-    }
-  }
-
-  return costByVendorCode;
+function buildOzonCostLookups(costs: CostRecord[]) {
+  return buildCanonicalPositiveCostLookups(
+    costs.map((c) => ({
+      vendorCode: c.vendorCode,
+      nmId: (c as { nmId?: unknown }).nmId,
+      costPrice: c.costPrice,
+      id: (c as { id?: unknown }).id as string | null | undefined,
+      costDate: (c as { costDate?: unknown }).costDate as
+        | Date
+        | string
+        | null
+        | undefined,
+      createdAt: (c as { createdAt?: unknown }).createdAt as
+        | Date
+        | string
+        | null
+        | undefined,
+    })),
+  );
 }
 
 function buildOzonProductLookup(ozonProducts: OzonProductRecord[]) {
@@ -979,6 +1030,14 @@ function applyOzonEconomicModel(
   result.totals.netProfitStatus = realizationCoverageComplete
     ? "FINAL"
     : "PRELIMINARY";
+  // COGS completeness is independent of tax revenue coverage.
+  if (result.totals.costCoverageIncomplete) {
+    result.totals.netProfitStatus = "PRELIMINARY";
+  }
+  result.totals.cogsCoverageComplete =
+    result.totals.quantityCoverageComplete !== false &&
+    result.totals.productCostCoverageComplete !== false &&
+    !result.totals.costCoverageIncomplete;
 
   result.totals.taxesAmount =
     result.totals.taxCalculationBase * (usnRate / 100) +
@@ -1066,6 +1125,11 @@ function createEmptyTotals(
     taxCalculationBase: 0,
     taxesEstimated: false,
     netProfitStatus: "FINAL",
+    costCoverageIncomplete: false,
+    quantityCoverageComplete: true,
+    productCostCoverageComplete: true,
+    cogsCoverageComplete: true,
+    quantityMissingDays: [],
 
     sellerPayout: 0,
 
@@ -1143,7 +1207,7 @@ function finalizeOzonTotals(totals: OzonProfitTotals) {
   return totals;
 }
 
-function mergeOzonTotals(
+export function mergeOzonTotals(
   totalsList: OzonProfitTotals[],
   usnRate: number,
   vatRate: number,
@@ -1199,6 +1263,15 @@ function mergeOzonTotals(
       result.taxRevenueCoverageComplete && totals.taxRevenueCoverageComplete;
     result.discountPointsCoverageComplete =
       result.discountPointsCoverageComplete && totals.discountPointsCoverageComplete;
+    result.costCoverageIncomplete =
+      Boolean(result.costCoverageIncomplete) ||
+      Boolean(totals.costCoverageIncomplete);
+    result.quantityCoverageComplete =
+      result.quantityCoverageComplete !== false &&
+      totals.quantityCoverageComplete !== false;
+    result.productCostCoverageComplete =
+      result.productCostCoverageComplete !== false &&
+      totals.productCostCoverageComplete !== false;
     result.taxRevenueMissingDays = Array.from(
       new Set([...result.taxRevenueMissingDays, ...totals.taxRevenueMissingDays]),
     );
@@ -1208,6 +1281,12 @@ function mergeOzonTotals(
         ...totals.discountPointsMissingDays,
       ]),
     );
+    result.quantityMissingDays = Array.from(
+      new Set([
+        ...(result.quantityMissingDays ?? []),
+        ...(totals.quantityMissingDays ?? []),
+      ]),
+    ).sort();
   }
 
   result.taxRevenueSource = result.taxRevenueCoverageComplete
@@ -1220,9 +1299,19 @@ function mergeOzonTotals(
     ? "FINAL_TAXABLE_REVENUE"
     : "ESTIMATED_ECONOMIC_TURNOVER";
   result.taxesEstimated = !result.taxRevenueCoverageComplete;
-  result.netProfitStatus = result.taxRevenueCoverageComplete
-    ? "FINAL"
-    : "PRELIMINARY";
+  result.cogsCoverageComplete =
+    result.quantityCoverageComplete !== false &&
+    result.productCostCoverageComplete !== false &&
+    !result.costCoverageIncomplete;
+  if (result.quantityCoverageComplete === false) {
+    result.costCoverageIncomplete = true;
+  }
+  result.netProfitStatus =
+    result.taxRevenueCoverageComplete &&
+    !result.costCoverageIncomplete &&
+    result.cogsCoverageComplete !== false
+      ? "FINAL"
+      : "PRELIMINARY";
 
   return finalizeOzonTotals(result);
 }
@@ -1424,7 +1513,8 @@ function calculateRowsAndTotals({
   usnRate: number;
   vatRate: number;
 }) {
-  const costByVendorCode = buildCostByVendorCode(costs);
+  const ozonCostLookups = buildOzonCostLookups(costs);
+  const costByVendorCode = ozonCostLookups.costByVendorCode;
   const productLookup = buildOzonProductLookup(ozonProducts);
 
   const { adsCostByVendorCode, undistributedAdsCost } =
@@ -1516,7 +1606,14 @@ function calculateRowsAndTotals({
       adsCost: adsCostByVendorCode.get(vendorCodeKey) ?? 0,
       drrPercent: 0,
 
-      costPrice: costByVendorCode.get(vendorCodeKey) ?? 0,
+      costPrice:
+        resolveCanonicalOzonUnitCost({
+          vendorCode: displayVendorCode || vendorCodeKey,
+          sku: financeRow.sku,
+          costByVendorCode: ozonCostLookups.costByVendorCode,
+          costByNmId: ozonCostLookups.costByNmId,
+          costByVendorFamily: ozonCostLookups.costByVendorFamily,
+        }).unitCost ?? 0,
       totalCost: 0,
 
       marginProfit: 0,
@@ -1539,23 +1636,37 @@ function calculateRowsAndTotals({
     }
 
     if (current.costPrice === 0 && vendorCodeKey) {
-      current.costPrice = costByVendorCode.get(vendorCodeKey) ?? 0;
+      current.costPrice =
+        resolveCanonicalOzonUnitCost({
+          vendorCode: displayVendorCode || vendorCodeKey,
+          sku: financeRow.sku,
+          costByVendorCode: ozonCostLookups.costByVendorCode,
+          costByNmId: ozonCostLookups.costByNmId,
+          costByVendorFamily: ozonCostLookups.costByVendorFamily,
+        }).unitCost ?? 0;
     }
 
     const quantity = Math.abs(toNumber(financeRow.quantity));
     const salesAmount = toNumber(financeRow.salesAmount);
     const totalAmount = toNumber(financeRow.totalAmount);
+    const physical = financeRow.physicalMovement ?? null;
+    const quantityUnknown = Boolean(financeRow.quantityUnknown);
 
     // Cost of goods belongs only to real product sales and returns.
-    // Service rows may carry quantity and positive reversals, so quantity or
-    // totalAmount must never be used as sale/return classifiers.
-    if (salesAmount > 0) {
+    // physicalMovement allows zero-money confirmed movements without fake ₽.
+    // Unknown quantity never invents units for COGS.
+    const isSale =
+      physical === "SALE" || (physical == null && salesAmount > 0);
+    const isReturn =
+      physical === "RETURN" || (physical == null && salesAmount < 0);
+
+    if (isSale && !quantityUnknown && quantity > 0) {
       current.salesQty += quantity;
       current.netSalesQty += quantity;
       current.totalCost += current.costPrice * quantity;
     }
 
-    if (salesAmount < 0) {
+    if (isReturn && !quantityUnknown && quantity > 0) {
       current.returnsQty += quantity;
       current.netSalesQty -= quantity;
       current.totalCost -= current.costPrice * quantity;
@@ -2035,6 +2146,214 @@ async function findOzonFinancialCategoryFactsByDatePeriod(params?: {
   });
 }
 
+function enumerateUtcDaysInclusive(dateFrom: string, dateTo: string): string[] {
+  const out: string[] = [];
+  let cur = dateFrom.slice(0, 10);
+  const end = dateTo.slice(0, 10);
+  while (cur <= end) {
+    out.push(cur);
+    const d = new Date(`${cur}T00:00:00.000Z`);
+    d.setUTCDate(d.getUTCDate() + 1);
+    cur = d.toISOString().slice(0, 10);
+  }
+  return out;
+}
+
+/**
+ * Product-grain COGS authority from saved ImportSession RAW posting.products
+ * (OZON_ACCRUAL_BY_DAY_API). Day-total RealizationRow (sku=null) is not used.
+ * Materialized RealizationRow with sku remains a secondary source when present.
+ */
+async function findOzonProductCogsRowsByPeriod(params?: {
+  dateFrom?: string | null;
+  dateTo?: string | null;
+  companyName?: string | null;
+}): Promise<{
+  productRows: OzonCogsProductRow[];
+  authorityDays: OzonCogsAuthorityDay[];
+}> {
+  if (!params?.dateFrom || !params?.dateTo) {
+    return { productRows: [], authorityDays: [] };
+  }
+  const dateFrom = new Date(`${params.dateFrom}T00:00:00.000Z`);
+  const dateTo = new Date(`${params.dateTo}T00:00:00.000Z`);
+
+  const [ozonProducts, ozonStocks, sessions, realizationRows] =
+    await Promise.all([
+      prisma.ozonProduct.findMany({
+        where: params.companyName ? { companyName: params.companyName } : {},
+        select: { sku: true, vendorCode: true },
+      }),
+      prisma.ozonStock.findMany({
+        where: params.companyName ? { companyName: params.companyName } : {},
+        select: { sku: true, vendorCode: true },
+      }),
+      prisma.importSession.findMany({
+        where: {
+          reportType: "OZON_ACCRUAL_BY_DAY_API",
+          status: { in: ["SUCCESS", "RAW_PERSISTED", "CANONICAL_PERSISTED"] },
+          ...(params.companyName ? { companyName: params.companyName } : {}),
+        },
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        select: {
+          id: true,
+          companyName: true,
+          previewJson: true,
+          status: true,
+          createdAt: true,
+        },
+      }),
+      prisma.ozonRealizationRow.findMany({
+        where: {
+          sku: { not: null },
+          dateFrom: { gte: dateFrom },
+          dateTo: { lte: dateTo },
+          ...(params.companyName ? { companyName: params.companyName } : {}),
+        },
+        select: {
+          companyName: true,
+          sku: true,
+          vendorCode: true,
+          productName: true,
+          realizedQty: true,
+          returnedQty: true,
+          netQty: true,
+          realizedAmount: true,
+          returnedAmount: true,
+          taxableRevenue: true,
+          partnerProgramsAmount: true,
+          dateFrom: true,
+          dateTo: true,
+        },
+      }),
+    ]);
+
+  const vendorBySku = new Map<string, string>();
+  for (const row of [...ozonProducts, ...ozonStocks]) {
+    const sku = cleanText(row.sku);
+    const vendor = cleanText(row.vendorCode);
+    if (sku && vendor && !vendorBySku.has(sku)) vendorBySku.set(sku, vendor);
+  }
+
+  const productRows: OzonCogsProductRow[] = [];
+  const authorityDays: OzonCogsAuthorityDay[] = [];
+  const seenSessionDay = new Set<string>();
+
+  for (const session of sessions) {
+    const preview =
+      session.previewJson && typeof session.previewJson === "object"
+        ? (session.previewJson as Record<string, unknown>)
+        : null;
+    if (!preview) continue;
+    const sessionFrom = String(preview.dateFrom ?? "").slice(0, 10);
+    const sessionTo = String(preview.dateTo ?? "").slice(0, 10);
+    if (!sessionFrom || !sessionTo) continue;
+    if (sessionTo < params.dateFrom || sessionFrom > params.dateTo) continue;
+
+    const companyName = cleanText(session.companyName);
+    if (!companyName) continue;
+    const rawAccruals = Array.isArray(preview.rawAccruals)
+      ? preview.rawAccruals
+      : [];
+    const requestedDates = Array.isArray(preview.requestedDates)
+      ? preview.requestedDates.map((d) => String(d).slice(0, 10))
+      : sessionFrom === sessionTo
+        ? [sessionFrom]
+        : enumerateUtcDaysInclusive(sessionFrom, sessionTo).filter(
+            (d) => d >= params.dateFrom! && d <= params.dateTo!,
+          );
+
+    const movements = extractOzonAccrualProductMovements({
+      companyName,
+      sessionId: session.id,
+      rawAccruals,
+      dateFrom: params.dateFrom,
+      dateTo: params.dateTo,
+    });
+    productRows.push(
+      ...mapMovementsToCogsProductRows(movements, vendorBySku).map((row) => ({
+        ...row,
+        authorityCompleteForDay: true,
+      })),
+    );
+
+    const coverageComplete = preview.coverageComplete !== false;
+    for (const auth of buildOzonAccrualAuthorityDays({
+      companyName,
+      sessionId: session.id,
+      requestedDates: requestedDates.filter(
+        (d) => d >= params.dateFrom! && d <= params.dateTo!,
+      ),
+      movements,
+      coverageComplete,
+    })) {
+      const key = `${auth.companyName}|${auth.day}`;
+      if (seenSessionDay.has(key)) continue;
+      seenSessionDay.add(key);
+      authorityDays.push(auth);
+    }
+  }
+
+  // Secondary: sku-grain realization rows (not day totals).
+  if (productRows.length === 0) {
+    for (const row of realizationRows) {
+      if (!cleanText(row.sku)) continue;
+      const from = row.dateFrom;
+      const to = row.dateTo;
+      const sameDay =
+        from && to && from.toISOString().slice(0, 10) === to.toISOString().slice(0, 10);
+      productRows.push({
+        companyName: row.companyName,
+        sku: row.sku,
+        vendorCode: row.vendorCode,
+        productName: row.productName,
+        realizedQty: Math.abs(toNumber(row.realizedQty)),
+        returnedQty: Math.abs(toNumber(row.returnedQty)),
+        netQty: toNumber(row.netQty),
+        realizedAmount: toNumber(row.realizedAmount),
+        returnedAmount: toNumber(row.returnedAmount),
+        taxableRevenue: toNumber(row.taxableRevenue),
+        partnerProgramsAmount: toNumber(row.partnerProgramsAmount),
+        dateFrom: row.dateFrom,
+        dateTo: row.dateTo,
+        operationDay: sameDay ? from!.toISOString().slice(0, 10) : null,
+        quantityKnown: true,
+        authorityCompleteForDay: Boolean(sameDay),
+      });
+    }
+  }
+
+  return { productRows, authorityDays };
+}
+
+function applyOzonCogsCoverageFlags(
+  totals: OzonProfitTotals,
+  coverage: ReturnType<typeof summarizeOzonCogsCoverage>,
+  costs: CostRecord[],
+  rows: OzonProfitAnalyticsRow[],
+) {
+  totals.quantityCoverageComplete = coverage.quantityCoverageComplete;
+  totals.quantityMissingDays = coverage.missingProductDays;
+  const costByVendor = buildCostByVendorCode(costs);
+  let missingCostUnits = 0;
+  for (const row of rows) {
+    const key = normalizeText(row.vendorCode);
+    const hasCost = key ? costByVendor.has(key) && (costByVendor.get(key) ?? 0) > 0 : false;
+    const units = Math.abs(toNumber(row.salesQty)) + Math.abs(toNumber(row.returnsQty));
+    if (units > 0 && !hasCost) missingCostUnits += units;
+  }
+  totals.productCostCoverageComplete = missingCostUnits === 0;
+  totals.costCoverageIncomplete =
+    coverage.costCoverageIncomplete || missingCostUnits > 0;
+  totals.cogsCoverageComplete =
+    totals.quantityCoverageComplete !== false &&
+    totals.productCostCoverageComplete !== false &&
+    !totals.costCoverageIncomplete;
+  if (totals.costCoverageIncomplete) {
+    totals.netProfitStatus = "PRELIMINARY";
+  }
+}
+
 async function findLatestOzonFinanceRowsByPeriod(params?: {
   dateFrom?: string | null;
   dateTo?: string | null;
@@ -2276,11 +2595,33 @@ export async function getProfitAnalyticsOzon(params?: {
 
   const ozonProductMappings = [...ozonProducts, ...ozonStockMappings];
 
-  const currentFinanceRows = await findLatestOzonFinanceRowsByPeriod({
+  const rawFinanceRows = await findLatestOzonFinanceRowsByPeriod({
     dateFrom: params?.dateFrom,
     dateTo: params?.dateTo,
     companyName,
   });
+  const { productRows: productCogsRows, authorityDays: productAuthorityDays } =
+    await findOzonProductCogsRowsByPeriod({
+      dateFrom: params?.dateFrom,
+      dateTo: params?.dateTo,
+      companyName,
+    });
+  const periodDays =
+    params?.dateFrom && params?.dateTo
+      ? enumerateUtcDaysInclusive(params.dateFrom, params.dateTo)
+      : [];
+  const cogsCoverage = summarizeOzonCogsCoverage({
+    productRows: productCogsRows,
+    financeRows: rawFinanceRows as OzonCogsFinanceLikeRow[],
+    periodDays,
+    authorityDays: productAuthorityDays,
+    companyName,
+  });
+  const currentFinanceRows = buildHybridOzonCogsSourceRows({
+    productRows: productCogsRows,
+    financeRows: rawFinanceRows as OzonCogsFinanceLikeRow[],
+    authorityDays: productAuthorityDays,
+  }) as typeof rawFinanceRows;
 
   const currentRealizationSummary = await findOzonRealizationSummaryByPeriod({
     dateFrom: params?.dateFrom,
@@ -2318,12 +2659,26 @@ export async function getProfitAnalyticsOzon(params?: {
     params?.dateTo,
   );
 
-  const previousFinanceRows = previousPeriod
+  const previousRawFinanceRows = previousPeriod
     ? await findLatestOzonFinanceRowsByDatePeriod({
         dateFrom: previousPeriod.dateFrom,
         dateTo: previousPeriod.dateTo,
         companyName,
       })
+    : [];
+  const previousProductCogs = previousPeriod
+    ? await findOzonProductCogsRowsByPeriod({
+        dateFrom: previousPeriod.dateFrom.toISOString().slice(0, 10),
+        dateTo: previousPeriod.dateTo.toISOString().slice(0, 10),
+        companyName,
+      })
+    : { productRows: [], authorityDays: [] };
+  const previousFinanceRows = previousPeriod
+    ? (buildHybridOzonCogsSourceRows({
+        productRows: previousProductCogs.productRows,
+        financeRows: previousRawFinanceRows as OzonCogsFinanceLikeRow[],
+        authorityDays: previousProductCogs.authorityDays,
+      }) as typeof previousRawFinanceRows)
     : [];
 
   const previousRealizationSummary = previousPeriod
@@ -2377,6 +2732,7 @@ export async function getProfitAnalyticsOzon(params?: {
     usnRate,
     vatRate,
   );
+  applyOzonCogsCoverageFlags(current.totals, cogsCoverage, costs, current.rows);
 
   const previous = applyOzonEconomicModel(
     calculateRowsAndTotals({
