@@ -103,7 +103,7 @@ export function buildAuthoritativeOzonProductDays(params: {
     // claim authority for every calendar day in the span.
     const end = utcDay(row.dateTo);
     if (row.operationDay || (day && end && day === end)) {
-      if (row.authorityCompleteForDay !== false) add(company, day);
+      add(company, day);
     }
   }
   return byCompany;
