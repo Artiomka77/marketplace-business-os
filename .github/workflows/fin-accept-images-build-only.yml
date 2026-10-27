@@ -454,9 +454,13 @@ jobs:
             err=$(psql "$SMOKE_DATABASE_URL" -Atc "SELECT COALESCE(\"lastError\",'') FROM \"DashboardPeriodSnapshotJob\" WHERE id='job-v6-r09'")
             echo "v6_job_status=$st err=${err:0:300}" | tee -a job-logs/assertions.txt
             [[ "$st" == "SUCCESS" ]] || exit 1
-            snaps=$(psql "$SMOKE_DATABASE_URL" -Atc "SELECT COUNT(*) FROM \"DashboardPeriodSnapshot\" WHERE \"formulaVersion\"='FINANCIAL_CORE_V6_PERIOD_READMODEL_V2'")
-            [[ "$snaps" -ge 1 ]]
-            echo "V6_POSITIVE_CONTROLLED_JOB_OK snaps=$snaps" | tee -a job-logs/assertions.txt
+            # V6 persists PeriodCompanyMarketplaceMetric / DailyCompanyMarketplaceMetric (not DashboardPeriodSnapshot).
+            period_rows=$(psql "$SMOKE_DATABASE_URL" -Atc "SELECT COUNT(*) FROM \"PeriodCompanyMarketplaceMetric\" WHERE \"formulaVersion\"='FINANCIAL_CORE_V6_PERIOD_READMODEL_V2'")
+            daily_rows=$(psql "$SMOKE_DATABASE_URL" -Atc "SELECT COUNT(*) FROM \"DailyCompanyMarketplaceMetric\" WHERE \"formulaVersion\"='FINANCIAL_CORE_V6_PERIOD_READMODEL_V2'")
+            echo "v6_period_rows=$period_rows daily_rows=$daily_rows" | tee -a job-logs/assertions.txt
+            [[ "$period_rows" -ge 1 ]]
+            [[ "$daily_rows" -ge 1 ]]
+            echo "V6_POSITIVE_CONTROLLED_JOB_OK period=$period_rows daily=$daily_rows" | tee -a job-logs/assertions.txt
           }
           run_profit
           run_dash

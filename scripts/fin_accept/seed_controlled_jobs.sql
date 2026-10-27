@@ -162,7 +162,7 @@ INSERT INTO "DashboardPeriodSnapshotJob" (
 ),
 (
   'job-v6-r09',
-  'ALL',
+  'ИП Петров',
   TIMESTAMPTZ '2026-10-19 00:00:00+00',
   TIMESTAMPTZ '2026-10-25 00:00:00+00',
   'FINANCIAL_CORE_V6_PERIOD_READMODEL_V2',
