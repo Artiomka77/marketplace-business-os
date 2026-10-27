@@ -31,6 +31,9 @@ jobs:
     steps:
       - name: Checkout build branch
         uses: actions/checkout@v4
+        with:
+          # Need full ancestry so financialSourceCommit bf4f8b5 is reachable.
+          fetch-depth: 0
 
       - name: Prove GitHub-hosted runner
         run: |
