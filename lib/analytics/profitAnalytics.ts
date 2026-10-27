@@ -790,7 +790,56 @@ type WbFinanceExpenseTotals = {
   settlement: number;
   settlementAvailable: boolean;
   logisticsCostByCompanyName: Map<string, number>;
+  /** Suffix/interval estimated logistics (PRELIMINARY ownership days). */
+  estimatedLogisticsCost?: number;
+  estimatedStorageCost?: number;
+  estimatedAcceptanceCost?: number;
+  estimatedPenaltiesAmount?: number;
+  ownershipExpenseMode?: string;
 };
+
+function emptyWbFinanceExpenseTotals(): WbFinanceExpenseTotals {
+  return {
+    hasRows: false,
+    revenue: 0,
+    sellerPayout: 0,
+    storageCost: 0,
+    acceptanceCost: 0,
+    penaltiesAmount: 0,
+    logisticsCost: 0,
+    deductions: 0,
+    settlement: 0,
+    settlementAvailable: false,
+    logisticsCostByCompanyName: new Map(),
+    estimatedLogisticsCost: 0,
+    estimatedStorageCost: 0,
+    estimatedAcceptanceCost: 0,
+    estimatedPenaltiesAmount: 0,
+  };
+}
+
+function saleQtyInDateKeyRange(
+  rows: Array<{ saleDate?: Date | string | null; quantity?: unknown; paymentReason?: unknown; documentType?: unknown }>,
+  fromKey: string,
+  toKey: string,
+) {
+  const start = dateKeyToDayNumber(fromKey);
+  const end = dateKeyToDayNumber(toKey);
+  let salesQty = 0;
+  for (const row of rows) {
+    const key = getMoscowDateKey(row.saleDate);
+    if (key === "unknown") continue;
+    const day = dateKeyToDayNumber(key);
+    if (day < start || day > end) continue;
+    const op = classifyCanonicalWbProductOperation({
+      paymentReason: row.paymentReason,
+      documentType: row.documentType,
+    });
+    if (op !== "SALE") continue;
+    salesQty += Math.max(0, toNumber(row.quantity));
+  }
+  return salesQty;
+}
 
 
 function reconcileWbSaleRowsLogisticsToOfficialFinance(
@@ -1835,6 +1884,133 @@ async function findWbFinanceExpenseTotalsByPeriod(params?: {
   return totals;
 }
 
+/**
+ * When ownership mixes a financially final prefix with a preliminary suffix,
+ * official WbFinance for the whole week must not silence suffix estimates.
+ * Compose: official expenses per final interval + rate estimates per prelim interval.
+ */
+async function composeWbOwnershipIntervalExpenses(params: {
+  intervals: Array<{
+    dateFrom: string;
+    dateTo: string;
+    isFinanciallyFinal: boolean;
+    mode: string;
+  }>;
+  salesRows: Array<{
+    saleDate?: Date | string | null;
+    quantity?: unknown;
+    paymentReason?: unknown;
+    documentType?: unknown;
+  }>;
+  companyName?: string | null;
+  anchorDate?: string | null;
+}): Promise<WbFinanceExpenseTotals | null> {
+  const { intervals } = params;
+  if (intervals.length < 2) return null;
+  const hasFinal = intervals.some((i) => i.isFinanciallyFinal);
+  const hasPrelim = intervals.some((i) => !i.isFinanciallyFinal);
+  if (!hasFinal || !hasPrelim) return null;
+
+  const composed = emptyWbFinanceExpenseTotals();
+  let estimatedLogistics = 0;
+  let estimatedStorage = 0;
+  let estimatedAcceptance = 0;
+  let estimatedPenalties = 0;
+  const modes: string[] = [];
+
+  // Collapse contiguous financially-final days into one query so a multi-day
+  // WbFinance document is not counted once per daily interval.
+  type Range = { dateFrom: string; dateTo: string; isFinanciallyFinal: boolean };
+  const collapsed: Range[] = [];
+  for (const interval of intervals) {
+    const last = collapsed[collapsed.length - 1];
+    if (
+      last &&
+      last.isFinanciallyFinal &&
+      interval.isFinanciallyFinal &&
+      dateKeyToDayNumber(interval.dateFrom) ===
+        dateKeyToDayNumber(last.dateTo) + 1
+    ) {
+      last.dateTo = interval.dateTo;
+      continue;
+    }
+    collapsed.push({
+      dateFrom: interval.dateFrom,
+      dateTo: interval.dateTo,
+      isFinanciallyFinal: interval.isFinanciallyFinal,
+    });
+  }
+
+  for (const interval of collapsed) {
+    if (interval.isFinanciallyFinal) {
+      const fin = await findWbFinanceExpenseTotalsByPeriod({
+        dateFrom: interval.dateFrom,
+        dateTo: interval.dateTo,
+        companyName: params.companyName,
+      });
+      modes.push(`${interval.dateFrom}..${interval.dateTo}:OFFICIAL`);
+      if (!fin.hasRows) continue;
+      composed.hasRows = true;
+      // Official prefix: ops + payout/revenue/settlement. Whole-week preferred
+      // selection is empty when suffix days lack WbFinance docs — never read
+      // payout from that empty week layer.
+      composed.revenue += fin.revenue;
+      composed.sellerPayout += fin.sellerPayout;
+      composed.settlement += fin.settlement;
+      composed.settlementAvailable =
+        composed.settlementAvailable || fin.settlementAvailable;
+      composed.logisticsCost += fin.logisticsCost;
+      composed.storageCost += fin.storageCost;
+      composed.acceptanceCost += fin.acceptanceCost;
+      composed.penaltiesAmount += fin.penaltiesAmount;
+      composed.deductions += fin.deductions;
+      for (const [k, v] of fin.logisticsCostByCompanyName) {
+        composed.logisticsCostByCompanyName.set(
+          k,
+          (composed.logisticsCostByCompanyName.get(k) ?? 0) + v,
+        );
+      }
+      continue;
+    }
+
+    modes.push(`${interval.dateFrom}..${interval.dateTo}:ESTIMATED`);
+    const rates = await findLatestWbOperationalExpenseRates({
+      companyName: params.companyName,
+      anchorDate: params.anchorDate ?? interval.dateTo,
+    });
+    if (!rates?.hasRates) continue;
+
+    const qty = saleQtyInDateKeyRange(
+      params.salesRows,
+      interval.dateFrom,
+      interval.dateTo,
+    );
+    estimatedLogistics += qty * rates.logisticsPerSaleQty;
+    estimatedStorage += qty * rates.storagePerSaleQty;
+    estimatedAcceptance += qty * rates.acceptancePerSaleQty;
+    estimatedPenalties += qty * rates.penaltiesPerSaleQty;
+  }
+
+  composed.logisticsCost += estimatedLogistics;
+  composed.storageCost += estimatedStorage;
+  composed.acceptanceCost += estimatedAcceptance;
+  composed.penaltiesAmount += estimatedPenalties;
+  composed.estimatedLogisticsCost = estimatedLogistics;
+  composed.estimatedStorageCost = estimatedStorage;
+  composed.estimatedAcceptanceCost = estimatedAcceptance;
+  composed.estimatedPenaltiesAmount = estimatedPenalties;
+  composed.ownershipExpenseMode = modes.join("+");
+  composed.hasRows =
+    composed.hasRows ||
+    Math.abs(estimatedLogistics) +
+      Math.abs(estimatedStorage) +
+      Math.abs(estimatedAcceptance) +
+      Math.abs(estimatedPenalties) >
+      0.005;
+
+  return composed.hasRows ? composed : null;
+}
+
 function applyWbFinanceExpenseTotals(
   result: {
     rows: ProfitAnalyticsRow[];
@@ -2202,16 +2378,174 @@ function applyEstimatedOperationalExpenses(
   return result;
 }
 
+function mergeWbCompanyAnalyticsAsAll(
+  parts: Array<{
+    rows: ProfitAnalyticsRow[];
+    totals: ProfitTotals;
+    previousRows: ProfitAnalyticsRow[];
+    previousTotals: ProfitTotals;
+    comparison: Record<string, unknown>;
+  }>,
+  params?: {
+    dateFrom?: string | null;
+    dateTo?: string | null;
+  }
+) {
+  const rows = parts.flatMap((part) => part.rows);
+  const previousRows = parts.flatMap((part) => part.previousRows);
+  const sumTotals = (items: ProfitTotals[]): ProfitTotals => {
+    const base = { ...items[0] };
+    const skip = new Set([
+      "usnRate",
+      "vatRate",
+      "dataMode",
+      "sourceOwnershipMode",
+      "sourceOwnershipFinal",
+      "sourceOwnershipReasons",
+      "drrPercent",
+      "marginProfitPercent",
+      "marginAfterTaxPercent",
+    ]);
+    for (const key of Object.keys(base) as Array<keyof ProfitTotals>) {
+      if (skip.has(String(key))) continue;
+      const sample = base[key];
+      if (typeof sample === "number") {
+        (base as Record<string, unknown>)[key as string] = items.reduce(
+          (sum, item) => sum + (Number(item[key]) || 0),
+          0
+        );
+      }
+    }
+    base.usnRate = items.every((item) => item.usnRate === items[0].usnRate)
+      ? items[0].usnRate
+      : 1;
+    base.vatRate = items.every((item) => item.vatRate === items[0].vatRate)
+      ? items[0].vatRate
+      : 5;
+    base.dataMode = items.some((item) => item.dataMode === "PRELIMINARY")
+      ? "PRELIMINARY"
+      : items[0].dataMode;
+    base.sourceOwnershipMode = Array.from(
+      new Set(
+        items
+          .map((item) => item.sourceOwnershipMode)
+          .filter(Boolean)
+          .flatMap((mode) => String(mode).split("+"))
+      )
+    ).join("+");
+    base.sourceOwnershipFinal = items.every(
+      (item) => item.sourceOwnershipFinal
+    );
+    base.sourceOwnershipReasons = Array.from(
+      new Set(items.flatMap((item) => item.sourceOwnershipReasons ?? []))
+    );
+    const revenue = Number(base.revenue) || 0;
+    base.drrPercent = revenue > 0 ? (Number(base.adsCost) / revenue) * 100 : 0;
+    base.marginProfitPercent =
+      revenue > 0 ? (Number(base.marginProfit) / revenue) * 100 : 0;
+    base.marginAfterTaxPercent =
+      revenue > 0 ? (Number(base.netProfitAfterTax) / revenue) * 100 : 0;
+    return base;
+  };
+  const totals = sumTotals(parts.map((part) => part.totals));
+  const previousTotals = sumTotals(parts.map((part) => part.previousTotals));
+  void params;
+  return {
+    rows,
+    totals,
+    previousRows,
+    previousTotals,
+    comparison: {
+      revenue: createComparison(totals.revenue, previousTotals.revenue),
+      taxableRevenue: createComparison(
+        totals.taxableRevenue,
+        previousTotals.taxableRevenue
+      ),
+      sellerRetailAmount: createComparison(
+        totals.sellerRetailAmount,
+        previousTotals.sellerRetailAmount
+      ),
+      sellerPayout: createComparison(
+        totals.sellerPayout,
+        previousTotals.sellerPayout
+      ),
+      totalCost: createComparison(totals.totalCost, previousTotals.totalCost),
+      wbCommission: createComparison(
+        totals.wbCommission,
+        previousTotals.wbCommission
+      ),
+      logisticsCost: createComparison(
+        totals.logisticsCost,
+        previousTotals.logisticsCost
+      ),
+      adsCost: createComparison(totals.adsCost, previousTotals.adsCost),
+      taxesAmount: createComparison(
+        totals.taxesAmount,
+        previousTotals.taxesAmount
+      ),
+      marginProfit: createComparison(
+        totals.marginProfit,
+        previousTotals.marginProfit
+      ),
+      netProfitAfterTax: createComparison(
+        totals.netProfitAfterTax,
+        previousTotals.netProfitAfterTax
+      ),
+    },
+  };
+}
+
+type ProfitAnalyticsResult = {
+  rows: ProfitAnalyticsRow[];
+  totals: ProfitTotals;
+  previousRows: ProfitAnalyticsRow[];
+  previousTotals: ProfitTotals;
+  comparison: Record<string, ReturnType<typeof createComparison>>;
+};
+
 export async function getProfitAnalytics(params?: {
   dateFrom?: string | null;
   dateTo?: string | null;
   companyName?: string | null;
   skipComparison?: boolean;
-}) {
+  /** Internal: skip ALL→sum-of-entities recursion. */
+  _allAggregated?: boolean;
+}): Promise<ProfitAnalyticsResult> {
   const companyName =
     params?.companyName && params.companyName !== "ALL"
       ? params.companyName
       : null;
+
+  // ALL = sum of company-scoped runs (tax rates, ownership, estimates stay per IP).
+  if (
+    !companyName &&
+    params?.dateFrom &&
+    params?.dateTo &&
+    !params._allAggregated
+  ) {
+    const companyRows = await prisma.company.findMany({
+      select: { name: true },
+      orderBy: { name: "asc" },
+    });
+    const names = companyRows
+      .map((row) => String(row.name ?? "").trim())
+      .filter(Boolean);
+    if (names.length >= 2) {
+      const parts = [];
+      for (const name of names) {
+        parts.push(
+          await getProfitAnalytics({
+            ...params,
+            companyName: name,
+            // Preserve previous-period comparison for ALL (sum of child comparisons).
+            skipComparison: params.skipComparison === true,
+            _allAggregated: true,
+          })
+        );
+      }
+      return mergeWbCompanyAnalyticsAsAll(parts, params);
+    }
+  }
 
   const companySettingsRows = await prisma.company.findMany({
     where: companyName
@@ -2312,6 +2646,17 @@ export async function getProfitAnalytics(params?: {
     dateTo: params?.dateTo,
     companyName,
   });
+  // Interval compose discloses suffix estimates and official prefix ops. P&L still
+  // applies week finance when present (payout/settlement stay period-consistent);
+  // estimated* fields carry the preliminary suffix so 24–25 is not silent zero.
+  const composedOwnershipExpenses = currentSource?.intervals?.length
+    ? await composeWbOwnershipIntervalExpenses({
+        intervals: currentSource.intervals,
+        salesRows: currentSalesRows,
+        companyName,
+        anchorDate: params?.dateTo ?? params?.dateFrom,
+      })
+    : null;
 
   const previousAdsRows = previousPeriod
     ? await findAdsRowsByPeriod({
@@ -2327,19 +2672,7 @@ export async function getProfitAnalytics(params?: {
         dateTo: previousPeriod.dateTo.toISOString().slice(0, 10),
         companyName,
       })
-    : {
-        hasRows: false,
-        revenue: 0,
-        sellerPayout: 0,
-        logisticsCost: 0,
-        storageCost: 0,
-        acceptanceCost: 0,
-        penaltiesAmount: 0,
-        deductions: 0,
-        settlement: 0,
-        settlementAvailable: false,
-        logisticsCostByCompanyName: new Map<string, number>(),
-      };
+    : emptyWbFinanceExpenseTotals();
 
   const reconciledCurrentSalesRows =
     currentFinanceExpenses.hasRows
@@ -2366,9 +2699,20 @@ export async function getProfitAnalytics(params?: {
         anchorDate: params?.dateTo ?? params?.dateFrom,
       });
 
-  const current = currentFinanceExpenses.hasRows
-    ? applyWbFinanceExpenseTotals(currentBase, currentFinanceExpenses)
-    : currentOperationalRates
+  // Payout/revenue identity: prefer whole-week official finance when the
+  // preferred path covers the period; otherwise keep sales-based payout from
+  // currentBase (do not zero payout just because suffix days lack WbFinance).
+  // Ops expenses: when ownership mixes final+prelim, use composed official
+  // prefix (once) + suffix estimates — never silent-zero 24–25.
+  const payoutFinance =
+    currentFinanceExpenses.hasRows &&
+    Math.abs(currentFinanceExpenses.sellerPayout) > 0.005
+      ? currentFinanceExpenses
+      : null;
+
+  let current = payoutFinance
+    ? applyWbFinanceExpenseTotals(currentBase, payoutFinance)
+    : currentOperationalRates && !composedOwnershipExpenses
       ? applyEstimatedOperationalExpenses(
           currentBase,
           currentOperationalRates,
@@ -2376,6 +2720,71 @@ export async function getProfitAnalytics(params?: {
           vatRate
         )
       : currentBase;
+
+  if (composedOwnershipExpenses && composedOwnershipExpenses.hasRows) {
+    // Overlay composed ops without wiping payout. Re-run settlement/profit
+    // via apply with payout preserved from sales or week finance.
+    const overlay: WbFinanceExpenseTotals = {
+      ...composedOwnershipExpenses,
+      // Prefer week official payout when present; else keep sales-week payout
+      // (never substitute prefix-only payout for the full week).
+      revenue: payoutFinance?.revenue ?? current.totals.revenue,
+      sellerPayout:
+        payoutFinance?.sellerPayout ?? current.totals.sellerPayout,
+      settlement:
+        payoutFinance?.settlement ??
+        current.totals.officialCashSettlement ??
+        composedOwnershipExpenses.settlement,
+      settlementAvailable:
+        payoutFinance?.settlementAvailable ||
+        Boolean(current.totals.officialCashSettlementAvailable) ||
+        composedOwnershipExpenses.settlementAvailable,
+      deductions:
+        payoutFinance?.deductions ??
+        current.totals.deductions ??
+        composedOwnershipExpenses.deductions,
+    };
+    current = applyWbFinanceExpenseTotals(currentBase, overlay);
+    current.totals.estimatedLogisticsCost =
+      composedOwnershipExpenses.estimatedLogisticsCost ?? 0;
+    current.totals.estimatedStorageCost =
+      composedOwnershipExpenses.estimatedStorageCost ?? 0;
+    current.totals.estimatedAcceptanceCost =
+      composedOwnershipExpenses.estimatedAcceptanceCost ?? 0;
+    current.totals.estimatedPenaltiesAmount =
+      composedOwnershipExpenses.estimatedPenaltiesAmount ?? 0;
+    (current.totals as { ownershipExpenseMode?: string }).ownershipExpenseMode =
+      composedOwnershipExpenses.ownershipExpenseMode;
+    current.totals.dataMode = "PRELIMINARY";
+  }
+
+  // Account−SKU residual metadata for loader (never invent missing as 0 silently
+  // later — producer stores the finite computed residual).
+  {
+    const skuLogistics = current.rows.reduce((s, r) => s + r.logisticsCost, 0);
+    const skuStorage = current.rows.reduce((s, r) => s + r.storageCost, 0);
+    const skuAds = current.rows.reduce((s, r) => s + r.adsCost, 0);
+    const skuAcceptance = current.rows.reduce(
+      (s, r) => s + (r.acceptanceCost ?? 0),
+      0,
+    );
+    const skuPenalties = current.rows.reduce(
+      (s, r) => s + (r.penaltiesAmount ?? 0),
+      0,
+    );
+    current.totals.unallocatedLogisticsCost =
+      current.totals.logisticsCost - skuLogistics;
+    current.totals.unallocatedStorageCost =
+      current.totals.storageCost - skuStorage;
+    current.totals.undistributedAdsCost = Math.max(
+      0,
+      current.totals.adsCost - skuAds,
+    );
+    (current.totals as { unallocatedAcceptanceCost?: number }).unallocatedAcceptanceCost =
+      current.totals.acceptanceCost - skuAcceptance;
+    (current.totals as { unallocatedPenaltiesAmount?: number }).unallocatedPenaltiesAmount =
+      current.totals.penaltiesAmount - skuPenalties;
+  }
   const currentProductCoverage = evaluateWbProductCoverage(
     currentSalesRows,
     costs

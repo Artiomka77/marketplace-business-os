@@ -28,7 +28,7 @@ function moneyAccrual(params: {
   };
 }
 
-test("type92 clear signed amount becomes OZON_UNCLASSIFIED_ADJUSTMENT once", () => {
+test("type92 clear signed amount becomes OZON_OTHER_SERVICES once (FIN_OZON)", () => {
   const mapped = mapOzonAccrualByDay({
     accruals: [
       moneyAccrual({
@@ -54,17 +54,15 @@ test("type92 clear signed amount becomes OZON_UNCLASSIFIED_ADJUSTMENT once", () 
   });
 
   assert.equal(mapped.diagnostics.unknownMeaningfulTypeIds.length, 0);
-  assert.equal(mapped.diagnostics.unclassifiedAdjustments.length, 1);
-  assert.equal(mapped.diagnostics.unclassifiedAdjustments[0].typeId, 92);
-  assert.equal(mapped.diagnostics.unclassifiedAdjustments[0].amount, -266.63);
+  assert.equal(mapped.diagnostics.unclassifiedAdjustments.length, 0);
 
-  const unclassifiedFacts = mapped.facts.filter(
-    (f) => f.category === "OZON_UNCLASSIFIED_ADJUSTMENT",
+  const otherFacts = mapped.facts.filter(
+    (f) => f.category === "OZON_OTHER_SERVICES",
   );
-  assert.equal(unclassifiedFacts.length, 1);
+  assert.equal(otherFacts.length, 1);
   // createFact stores positive expense for negative accrued charge
-  assert.equal(unclassifiedFacts[0].amount, 266.63);
-  assert.equal(unclassifiedFacts[0].sourceTypeId, 92);
+  assert.equal(otherFacts[0].amount, 266.63);
+  assert.equal(otherFacts[0].sourceTypeId, 92);
 
   const plan = planCanonicalOzonAccrualPersist({
     mapped,
@@ -72,10 +70,10 @@ test("type92 clear signed amount becomes OZON_UNCLASSIFIED_ADJUSTMENT once", () 
     dateTo: new Date("2026-10-12T00:00:00.000Z"),
     requestedDates: ["2026-10-12"],
   });
-  assert.equal(plan.ingestPlan.status, "FINAL_WITH_UNCLASSIFIED");
+  assert.equal(plan.ingestPlan.status, "FINAL");
   assert.equal(plan.ingestPlan.failFinality, false);
   assert.equal(plan.ingestPlan.quarantine.length, 0);
-  assert.equal(plan.ingestPlan.unclassifiedAdjustments.length, 1);
+  assert.equal(plan.ingestPlan.unclassifiedAdjustments.length, 0);
   assert.ok(isOzonFinanciallyFinalStatus(plan.ingestPlan.status));
 });
 
@@ -147,24 +145,25 @@ test("future unknown positive +500 is signed credit adjustment, not taxable", ()
 });
 
 test("duplicate unknown row is not double-counted in facts", () => {
+  // Use still-unmapped typeId so OZON_UNCLASSIFIED_ADJUSTMENT path remains covered.
   const mapped = mapOzonAccrualByDay({
     accruals: [
       moneyAccrual({
         accrualId: 11,
         date: "2026-10-12",
-        typeId: 92,
+        typeId: 991,
         accrued: -100,
         totalAmount: -100,
       }),
       moneyAccrual({
         accrualId: 12,
         date: "2026-10-12",
-        typeId: 92,
+        typeId: 991,
         accrued: -100,
         totalAmount: -100,
       }),
     ],
-    accrualTypes: [{ id: 92, name: null, description: null }],
+    accrualTypes: [{ id: 991, name: null, description: null }],
     requestedDates: ["2026-10-12"],
     dayEnvelopes: [
       {

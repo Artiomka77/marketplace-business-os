@@ -105,12 +105,30 @@ const v5Manifest = JSON.parse(
 const v5Ozon = v5Manifest.protectedFiles.find(
   (row) => row.path === "lib/analytics/profitAnalyticsOzon.ts"
 );
-if (
-  !v5Ozon ||
-  digest(path.join(root, "lib/analytics/profitAnalyticsOzon.ts")) !==
-    v5Ozon.sha256
-) {
+const ozonActiveHash = digest(
+  path.join(root, "lib/analytics/profitAnalyticsOzon.ts")
+);
+const ozonPolicy = String(manifest.policy?.ozonLogic || "");
+const ozonRevision = manifest.ozonRevisionTransition || null;
+// Historical V5 Ozon snapshot stays immutable. An explicit V6 revision may
+// diverge when policy + transition document the parent V5 hash and reason.
+if (!v5Ozon) {
   failures.push("Ozon financial logic differs from Financial Core V5");
+} else if (ozonActiveHash === v5Ozon.sha256) {
+  // still identical to V5 — OK
+} else if (
+  ozonPolicy.startsWith("REVISED_FROM_V5_") &&
+  ozonRevision &&
+  ozonRevision.parentV5OzonSha256 === v5Ozon.sha256 &&
+  ozonRevision.candidateOzonSha256 === ozonActiveHash &&
+  typeof ozonRevision.reason === "string" &&
+  ozonRevision.reason.length > 0
+) {
+  // documented transition accepted; V5 historical hash unchanged
+} else {
+  failures.push(
+    "Ozon financial logic differs from Financial Core V5 (missing documented ozonRevisionTransition)"
+  );
 }
 
 // Prisma client must exist before V6 TS guards import lib/prisma.

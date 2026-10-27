@@ -215,6 +215,11 @@ function legacyCompatibleFactMetadata(fact: OzonAccrualByDayFact) {
     };
   }
 
+  const skuSuffix =
+    fact.sku != null && String(fact.sku).trim() !== ""
+      ? `:${String(fact.sku).trim()}`
+      : "";
+
   return {
     sourceOperationType: fact.sourceTypeDescription ?? fact.sourceKind,
     sourceOperationCode:
@@ -222,7 +227,9 @@ function legacyCompatibleFactMetadata(fact: OzonAccrualByDayFact) {
       (fact.sourceTypeId === null
         ? "SALE_COMMISSION"
         : `TYPE_${fact.sourceTypeId}`),
-    sourceServiceName: fact.eventKey,
+    // eventKey + optional SKU enables exact TYPE_16 (etc.) SKU attribution
+    // without inventing amounts: accrualId:kind:typeId:ordinal[:sku]
+    sourceServiceName: `${fact.eventKey}${skuSuffix}`,
   };
 }
 

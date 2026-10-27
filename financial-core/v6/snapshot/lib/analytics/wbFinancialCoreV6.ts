@@ -1,3 +1,5 @@
+import { calculateMarketplaceTax } from "@/lib/finance/marketplaceTax";
+
 export type WbV6RevenueInput = {
   retailPrice: unknown;
   retailPriceWithDiscount: unknown;
@@ -158,11 +160,13 @@ export function calculateWbTaxes(
   usnRate: number,
   vatRate: number
 ) {
-  const usn = taxableRevenue * (usnRate / 100);
-  const vat =
-    vatRate > 0 ? taxableRevenue * (vatRate / (100 + vatRate)) : 0;
-
-  return usn + vat;
+  // Ordinary WB tax: USN on ex-VAT base, VAT via rate/(100+rate) of inclusive.
+  // Do not compute USN on the VAT-inclusive amount (that overstates tax).
+  return calculateMarketplaceTax({
+    ordinarySalesVatInclusive: taxableRevenue,
+    usnRate,
+    vatRate,
+  }).totalTax;
 }
 
 export function buildWbDeductionReconciliation(input: {

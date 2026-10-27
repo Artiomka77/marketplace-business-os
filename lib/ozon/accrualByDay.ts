@@ -1,3 +1,9 @@
+import {
+  OZON_ACCRUAL_TYPE_CATEGORY,
+  ozonType71GroupKey,
+  resolveOzonType71Categories,
+} from "@/lib/ozon/ozonAccrualTypeCategory";
+
 export type OzonFinancialCategory =
   | "OZON_COMMISSION"
   | "OZON_DELIVERY"
@@ -196,56 +202,11 @@ const BACKOFF_MS = [15_000, 30_000, 60_000, 90_000, 120_000, 150_000];
 // Mapping proven against official Ozon accrual Excel for 03-09.08.2026 and
 // historical SellerReturns samples from June-July 2026. Text descriptions
 // from /types are retained as audit metadata; type_id is the primary key.
-const TYPE_CATEGORY = new Map<number, OzonFinancialCategory>([
-  [41, "OZON_ADVERTISING"],
-  // typeId 48 = PremiumCashbackIndividualPoints («Бонусы продавца»).
-  // Exact Petrov event accrual_id=61738770292 / 2026-09-02 / -15.39 RUB / sku=1852662537.
-  // Legacy OzonFinance EXACT_MATCH operationType=«Бонусы продавца». Official Premium*
-  // family siblings 52/54 already map to OZON_ADVERTISING. Evidence:
-  // AVOROFIN_OZON_TYPE48_SEMANTIC_CLOSURE + this preprod package.
-  [48, "OZON_ADVERTISING"],
-  [54, "OZON_ADVERTISING"],
-  [1, "OZON_PARTNER_SERVICES"],
-  [39, "OZON_PARTNER_SERVICES"],
-  [45, "OZON_PARTNER_SERVICES"],
-  [74, "OZON_PARTNER_SERVICES"],
-  [79, "OZON_PARTNER_SERVICES"],
-  [15, "OZON_OTHER_SERVICES"],
-  [18, "OZON_OTHER_SERVICES"],
-  [20, "OZON_OTHER_SERVICES"],
-  [38, "OZON_OTHER_SERVICES"],
-  [78, "OZON_OTHER_SERVICES"],
-  // typeId 76 = PRODUCT_INSURANCE («Страхование товара от массовых повреждений»).
-  // Amount policy: DYNAMIC_SOURCE_AMOUNT. Ingest the exact Ozon operation/day
-  // amount. Never hardcode a premium, never compute from stock/goods value,
-  // and never treat Seller UI rounding as the source of truth.
-  // Evidence: Petrov Insurance page 2026-08-23 UI-rounds the premium to 1,912 RUB
-  // while raw Excel/API may keep kopecks (historical charge −1,911.55). 2026-08-24
-  // UI premium 1,918 RUB shows the charge is dynamic. Economics grouped cards
-  // (e.g. «Иные услуги и штрафы») are supporting evidence only and must not be
-  // forced to equal the insurance premium. Canonical category remains
-  // OZON_OTHER_SERVICES: not advertising, commission, logistics, or taxable
-  // revenue. Unknown meaningful type IDs stay fail-closed.
-  [76, "OZON_OTHER_SERVICES"],
-  [52, "OZON_ADVERTISING"],
-  [12, "OZON_FBO"],
-  [46, "OZON_FBO"],
-  [77, "OZON_FBO"],
-  [29, "OZON_DELIVERY"],
-  [32, "OZON_DELIVERY"],
-  [59, "OZON_DELIVERY"],
-  [98, "OZON_DELIVERY"],
-  // typeId 17 = Drop-Off Agent («Обработка отправления Drop-off партнёрами»).
-  // Live /v1/finance/accrual/types + Petrov 2026-09-06: 100% posting.delivery.services
-  // (POSTING_DELIVERY_SERVICE), FBS. Same structural channel as Logistic/LastMile.
-  // Canonical: OZON_DELIVERY. Evidence package: ozon-type-17-94-semantic-20260907.
-  [17, "OZON_DELIVERY"],
-  // typeId 94 = DefectFineShipmentDelayRate («Отгрузка в нерекомендованный слот»).
-  // Live /types + Petrov 2026-09-06: 100% NON_ITEM_FEE seller defect fine.
-  // Canonical: OZON_OTHER_SERVICES (fines/misc with 15/76/78). Not ads/commission/tax.
-  [94, "OZON_OTHER_SERVICES"],
-  [25, "OZON_COMPENSATION"],
-]);
+/** Shared with ozonAccrualExactSkuFees — do not duplicate type maps. */
+const TYPE_CATEGORY = OZON_ACCRUAL_TYPE_CATEGORY as Map<
+  number,
+  OzonFinancialCategory
+>;
 
 let lastApiCallAt = 0;
 
@@ -343,7 +304,11 @@ function add(map: Map<string, number>, key: string, cents: number) {
 }
 
 function groupKey(component: FeeComponent) {
-  return `${component.date}\u001f${component.unitNumber ?? ""}\u001f${component.sku ?? ""}`;
+  return ozonType71GroupKey({
+    date: component.date,
+    unitNumber: component.unitNumber,
+    sku: component.sku,
+  });
 }
 
 function extractFeeComponents(accrual: UnknownRecord): FeeComponent[] {
@@ -554,7 +519,13 @@ export function mapOzonAccrualByDay(params: {
     type71Groups.set(key, group);
   }
 
-  const type71Category = new Map<string, OzonFinancialCategory>();
+  const type71Category = resolveOzonType71Categories(
+    type71.map((c) => ({
+      accrualId: c.accrualId,
+      ordinal: c.ordinal,
+      groupKey: groupKey(c),
+    })),
+  ) as Map<string, OzonFinancialCategory>;
   const unresolvedType71Groups: Array<{
     key: string;
     accrualIds: number[];
@@ -566,20 +537,13 @@ export function mapOzonAccrualByDay(params: {
   for (const [key, group] of type71Groups) {
     if (group.length === 1) {
       type71SingleGroups += 1;
-      const item = group[0];
-      type71Category.set(`${item.accrualId}:${item.ordinal}`, "OZON_DELIVERY");
       continue;
     }
-
     const distinctIds = new Set(group.map((item) => item.accrualId));
     if (group.length === 2 && distinctIds.size === 2) {
       type71PairedGroups += 1;
-      const ordered = [...group].sort((left, right) => left.accrualId - right.accrualId);
-      type71Category.set(`${ordered[0].accrualId}:${ordered[0].ordinal}`, "OZON_FBO");
-      type71Category.set(`${ordered[1].accrualId}:${ordered[1].ordinal}`, "OZON_DELIVERY");
       continue;
     }
-
     unresolvedType71Groups.push({
       key,
       accrualIds: group.map((item) => item.accrualId),

@@ -2,7 +2,7 @@
   "version": "financial-core-v6",
   "parentVersion": "financial-core-v5",
   "createdAt": "2026-08-20T14:10:07.982Z",
-  "tagName": "financial-core-v6-rev5-1-narrow-delta-2026-08-20",
+  "tagName": "financial-core-v6-rev6-fin-accept-2026-10-27",
   "status": "LOCAL_CANDIDATE_SERVER_VERIFY_REQUIRED",
   "sourceCommit": "1370176bf360184c126fd789fd12eb7873560716",
   "workingTreeDirty": true,
@@ -27,7 +27,8 @@
     "deductionClassification": "ADS_AND_OPERATING_IN_PNL_CREDIT_EXCLUDED_UNKNOWN_FAILS_CLOSED",
     "wbPromotion": "CLASSIFIED_PNL_DEDUCTION_NEVER_SUBTRACTED_TWICE",
     "officialLogisticsPriority": "PRESERVED_FROM_FINANCIAL_CORE_V5",
-    "ozonLogic": "UNCHANGED_FROM_FINANCIAL_CORE_V5"
+    "ozonLogic": "REVISED_FROM_V5_FIN_ACCEPT_EXACT_SKU_FEES_TYPE71_EXVAT_TAX",
+    "wbOrdinaryTax": "USN_ON_EX_VAT_BASE_PLUS_VAT_RATE_OVER_100_PLUS_RATE"
   },
   "sourceSelection": {
     "precedence": [
@@ -45,170 +46,194 @@
     {
       "path": "lib/analytics/profitAnalytics.ts",
       "role": "Канонический расчёт прибыли Wildberries",
-      "sha256": "a29129f7101bdfc844ce3eb2f332480e283bfdfb278290ac601350df5eabaf31",
-      "snapshotSha256": "a29129f7101bdfc844ce3eb2f332480e283bfdfb278290ac601350df5eabaf31",
-      "sizeBytes": 76250
+      "sha256": "07a4f20f1dcba05d40eb01512ad88dad2bab1b67f3406d37fe9ffacb02cfeb30",
+      "snapshotSha256": "07a4f20f1dcba05d40eb01512ad88dad2bab1b67f3406d37fe9ffacb02cfeb30",
+      "sizeBytes": 90945,
+      "activeSha256": "07a4f20f1dcba05d40eb01512ad88dad2bab1b67f3406d37fe9ffacb02cfeb30"
     },
     {
       "path": "lib/analytics/profitAnalyticsOzon.ts",
       "role": "Канонический расчёт прибыли Ozon",
-      "sha256": "7f44458abb0b5086d79f68e3795de2c056f7270fbc06979b9a201d6b2352cef9",
-      "snapshotSha256": "7f44458abb0b5086d79f68e3795de2c056f7270fbc06979b9a201d6b2352cef9",
-      "sizeBytes": 68679
+      "sha256": "e12b23eb2a9326968ffe183bd9b0fc74412d247e09fc22a74ae882b7b49a499c",
+      "snapshotSha256": "e12b23eb2a9326968ffe183bd9b0fc74412d247e09fc22a74ae882b7b49a499c",
+      "sizeBytes": 99652,
+      "activeSha256": "e12b23eb2a9326968ffe183bd9b0fc74412d247e09fc22a74ae882b7b49a499c"
     },
     {
       "path": "lib/analytics/dataReadiness.ts",
       "role": "Определение полноты и финальности данных периода",
       "sha256": "100dcd757defbce1538cf6380fe9bb328e9ce3f751fc834e5c98d81abbd512bc",
       "snapshotSha256": "100dcd757defbce1538cf6380fe9bb328e9ce3f751fc834e5c98d81abbd512bc",
-      "sizeBytes": 18137
+      "sizeBytes": 18137,
+      "activeSha256": "100dcd757defbce1538cf6380fe9bb328e9ce3f751fc834e5c98d81abbd512bc"
     },
     {
       "path": "lib/finance/financeMetrics.ts",
       "role": "ДДС, влияние финансовых операций и выводы собственника",
       "sha256": "ea9d671f620f3af4849577b75d10b5e9636a86b5a5ada34eb4dd687eba3d94f3",
       "snapshotSha256": "ea9d671f620f3af4849577b75d10b5e9636a86b5a5ada34eb4dd687eba3d94f3",
-      "sizeBytes": 12812
+      "sizeBytes": 12812,
+      "activeSha256": "ea9d671f620f3af4849577b75d10b5e9636a86b5a5ada34eb4dd687eba3d94f3"
     },
     {
       "path": "lib/telegram/dailyReport.ts",
       "role": "Единая финансовая сводка Dashboard и Telegram",
       "sha256": "d18e2f487e53d2e24b21fd045139d94091d9a43f009c1b13ce6b84b5a8ab170a",
       "snapshotSha256": "d18e2f487e53d2e24b21fd045139d94091d9a43f009c1b13ce6b84b5a8ab170a",
-      "sizeBytes": 97384
+      "sizeBytes": 97384,
+      "activeSha256": "d18e2f487e53d2e24b21fd045139d94091d9a43f009c1b13ce6b84b5a8ab170a"
     },
     {
       "path": "lib/import/detectReportType.ts",
       "role": "Распознавание типов импортируемых отчётов",
       "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
       "snapshotSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-      "sizeBytes": 0
+      "sizeBytes": 0,
+      "activeSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
     },
     {
       "path": "lib/import/reportDetector.ts",
       "role": "Контракт определения финансовых источников",
       "sha256": "f32adb4dce27e7667778dd4b7cc3b4c6e75a78caaabdae231a80090f5879928d",
       "snapshotSha256": "f32adb4dce27e7667778dd4b7cc3b4c6e75a78caaabdae231a80090f5879928d",
-      "sizeBytes": 14888
+      "sizeBytes": 14888,
+      "activeSha256": "f32adb4dce27e7667778dd4b7cc3b4c6e75a78caaabdae231a80090f5879928d"
     },
     {
       "path": "lib/import/normalizers/productCostNormalizer.ts",
       "role": "Нормализация себестоимости и Excel-дат",
       "sha256": "e5b7db3ca0f2ac37ababec3ace7575b1834533dee21d4122225b77f95e76bba2",
       "snapshotSha256": "e5b7db3ca0f2ac37ababec3ace7575b1834533dee21d4122225b77f95e76bba2",
-      "sizeBytes": 3920
+      "sizeBytes": 3920,
+      "activeSha256": "e5b7db3ca0f2ac37ababec3ace7575b1834533dee21d4122225b77f95e76bba2"
     },
     {
       "path": "lib/import/normalizers/wbSalesNormalizer.ts",
       "role": "Нормализация продаж Wildberries",
       "sha256": "3ceccc2c93e1a6f8f2e63686638eaa4727011bcbe4e2b90e3c5051530aef486e",
       "snapshotSha256": "3ceccc2c93e1a6f8f2e63686638eaa4727011bcbe4e2b90e3c5051530aef486e",
-      "sizeBytes": 10402
+      "sizeBytes": 10402,
+      "activeSha256": "3ceccc2c93e1a6f8f2e63686638eaa4727011bcbe4e2b90e3c5051530aef486e"
     },
     {
       "path": "lib/import/normalizers/wbFinanceNormalizer.ts",
       "role": "Нормализация финансового отчёта Wildberries",
       "sha256": "b8c8d5747bcbf33b2bdb0e8ad4eac3a53dd9c3dcf5971fd8d3df3f59390dd5c9",
       "snapshotSha256": "b8c8d5747bcbf33b2bdb0e8ad4eac3a53dd9c3dcf5971fd8d3df3f59390dd5c9",
-      "sizeBytes": 4653
+      "sizeBytes": 4653,
+      "activeSha256": "b8c8d5747bcbf33b2bdb0e8ad4eac3a53dd9c3dcf5971fd8d3df3f59390dd5c9"
     },
     {
       "path": "lib/import/normalizers/wbAdsNormalizer.ts",
       "role": "Нормализация рекламы Wildberries",
       "sha256": "86f733ac864c5ceccc0a8257904e94b85ecd3183177954cd56edef9dd4fc0e66",
       "snapshotSha256": "86f733ac864c5ceccc0a8257904e94b85ecd3183177954cd56edef9dd4fc0e66",
-      "sizeBytes": 6495
+      "sizeBytes": 6495,
+      "activeSha256": "86f733ac864c5ceccc0a8257904e94b85ecd3183177954cd56edef9dd4fc0e66"
     },
     {
       "path": "lib/import/normalizers/ozonFinanceNormalizer.ts",
       "role": "Нормализация финансового отчёта Ozon",
       "sha256": "1d60270c20875273b6f32c4034c2e0b40e14c795f8302ba00c288e97917d24f4",
       "snapshotSha256": "1d60270c20875273b6f32c4034c2e0b40e14c795f8302ba00c288e97917d24f4",
-      "sizeBytes": 5710
+      "sizeBytes": 5710,
+      "activeSha256": "1d60270c20875273b6f32c4034c2e0b40e14c795f8302ba00c288e97917d24f4"
     },
     {
       "path": "lib/import/normalizers/ozonAdsNormalizer.ts",
       "role": "Нормализация рекламы Ozon",
       "sha256": "e4ec16a9cf29f37c886d205eb898e2007716d1eb810ccb4895e34ffb54c88733",
       "snapshotSha256": "e4ec16a9cf29f37c886d205eb898e2007716d1eb810ccb4895e34ffb54c88733",
-      "sizeBytes": 2607
+      "sizeBytes": 2607,
+      "activeSha256": "e4ec16a9cf29f37c886d205eb898e2007716d1eb810ccb4895e34ffb54c88733"
     },
     {
       "path": "lib/import/normalizers/financeTransactionNormalizer.ts",
       "role": "Нормализация внутренних финансовых операций",
       "sha256": "2d79d46fb4152ed30870f7d28bb30a11f1960ae7b7d6795549dce1230707b3ce",
       "snapshotSha256": "2d79d46fb4152ed30870f7d28bb30a11f1960ae7b7d6795549dce1230707b3ce",
-      "sizeBytes": 10720
+      "sizeBytes": 10720,
+      "activeSha256": "2d79d46fb4152ed30870f7d28bb30a11f1960ae7b7d6795549dce1230707b3ce"
     },
     {
       "path": "lib/analytics/wbFinancialCoreV6.ts",
       "role": "Контракты выручки, сверки удержаний, cash и P&L settlement WB V6",
-      "sha256": "7cd071438e1d5b62cd0abb3e94bf54b3467e1493109bd1a5e0c8e17b7ac62802",
-      "snapshotSha256": "7cd071438e1d5b62cd0abb3e94bf54b3467e1493109bd1a5e0c8e17b7ac62802",
-      "sizeBytes": 7806
+      "sha256": "a32fd7de86301d513a7bcc4119093e4c39dfaa8fce032012599b69a9bd219686",
+      "snapshotSha256": "a32fd7de86301d513a7bcc4119093e4c39dfaa8fce032012599b69a9bd219686",
+      "sizeBytes": 8006,
+      "activeSha256": "a32fd7de86301d513a7bcc4119093e4c39dfaa8fce032012599b69a9bd219686"
     },
     {
       "path": "lib/wb/sourceOwnership.ts",
       "role": "Канонический владелец WB Sales источника по finance reportNumber",
-      "sha256": "ab3edfe446479d7eee22bce3bbee5f0a3c0024119c4b7224ccbec229729c2e16",
-      "snapshotSha256": "ab3edfe446479d7eee22bce3bbee5f0a3c0024119c4b7224ccbec229729c2e16",
-      "sizeBytes": 22704
+      "sha256": "e9ad8f3c580882e4a8363d0aafdf9605f41faf1125a09adb1a5e0e4ed4af40b5",
+      "snapshotSha256": "e9ad8f3c580882e4a8363d0aafdf9605f41faf1125a09adb1a5e0e4ed4af40b5",
+      "sizeBytes": 25040,
+      "activeSha256": "e9ad8f3c580882e4a8363d0aafdf9605f41faf1125a09adb1a5e0e4ed4af40b5"
     },
     {
       "path": "app/profit-wb/page.tsx",
       "role": "Пользовательские определения показателей WB V6",
       "sha256": "d2a5e49dee28744f4ef86283aaec8b23d05299004e850fc9832a2c702b21b7ff",
       "snapshotSha256": "d2a5e49dee28744f4ef86283aaec8b23d05299004e850fc9832a2c702b21b7ff",
-      "sizeBytes": 88301
+      "sizeBytes": 88301,
+      "activeSha256": "d2a5e49dee28744f4ef86283aaec8b23d05299004e850fc9832a2c702b21b7ff"
     },
     {
       "path": "lib/analytics/productCostResolver.ts",
       "role": "Единый детерминированный resolver положительной себестоимости",
-      "sha256": "6dc6adaf82ebeb3a715053dd16740c91fe25c3227096afc4f358ffef6a0000ba",
-      "snapshotSha256": "6dc6adaf82ebeb3a715053dd16740c91fe25c3227096afc4f358ffef6a0000ba",
-      "sizeBytes": 2187
+      "sha256": "a3713686c57e3c59c594d4a67af1d43fbaad944d577ae3fa9fd0ec85b33fa0b9",
+      "snapshotSha256": "a3713686c57e3c59c594d4a67af1d43fbaad944d577ae3fa9fd0ec85b33fa0b9",
+      "sizeBytes": 7138,
+      "activeSha256": "a3713686c57e3c59c594d4a67af1d43fbaad944d577ae3fa9fd0ec85b33fa0b9"
     },
     {
       "path": "lib/analytics/wbFinality.ts",
       "role": "Fail-closed контракт FINAL для stock и planning consumers",
       "sha256": "9db779d6490573236553928876047a4b2d690a002d44fef5f1d96ba3af38e6a9",
       "snapshotSha256": "9db779d6490573236553928876047a4b2d690a002d44fef5f1d96ba3af38e6a9",
-      "sizeBytes": 1811
+      "sizeBytes": 1811,
+      "activeSha256": "9db779d6490573236553928876047a4b2d690a002d44fef5f1d96ba3af38e6a9"
     },
     {
       "path": "lib/analytics/wbSizeAllocation.ts",
       "role": "Signed SALE/RETURN агрегация и reconciliation размеров WB",
       "sha256": "545943b008333284953a9dca091a523f40a796b152a6fd42efa5aa829cca7ef2",
       "snapshotSha256": "545943b008333284953a9dca091a523f40a796b152a6fd42efa5aa829cca7ef2",
-      "sizeBytes": 2945
+      "sizeBytes": 2945,
+      "activeSha256": "545943b008333284953a9dca091a523f40a796b152a6fd42efa5aa829cca7ef2"
     },
     {
       "path": "lib/analytics/costCoverage.ts",
       "role": "Coverage себестоимости на общем положительном resolver",
-      "sha256": "333078b358c7472a30f0475e238a3777649eb458fb2347c7b802fbf4679cb729",
-      "snapshotSha256": "333078b358c7472a30f0475e238a3777649eb458fb2347c7b802fbf4679cb729",
-      "sizeBytes": 12256
+      "sha256": "2aeb76b0a10723f6651a490939a337b49637a30b171732de3ab5a536c58df8e9",
+      "snapshotSha256": "2aeb76b0a10723f6651a490939a337b49637a30b171732de3ab5a536c58df8e9",
+      "sizeBytes": 21610,
+      "activeSha256": "2aeb76b0a10723f6651a490939a337b49637a30b171732de3ab5a536c58df8e9"
     },
     {
       "path": "lib/stocks/stockAbcSnapshots.ts",
       "role": "Запрет WB ABC snapshot из PRELIMINARY аналитики",
       "sha256": "dbfd30746f90334082a394edb60f4b51cf0ce4adb3d51602701066096b89922c",
       "snapshotSha256": "dbfd30746f90334082a394edb60f4b51cf0ce4adb3d51602701066096b89922c",
-      "sizeBytes": 15012
+      "sizeBytes": 15012,
+      "activeSha256": "dbfd30746f90334082a394edb60f4b51cf0ce4adb3d51602701066096b89922c"
     },
     {
       "path": "app/api/stocks/supply-plan/export/route.ts",
       "role": "Запрет supply-plan export из PRELIMINARY WB аналитики",
       "sha256": "5ddeef328d1b27f0e96aac005c5f19c167f7cf28e9d6c1e3f20012c077ede7c2",
       "snapshotSha256": "5ddeef328d1b27f0e96aac005c5f19c167f7cf28e9d6c1e3f20012c077ede7c2",
-      "sizeBytes": 77886
+      "sizeBytes": 77886,
+      "activeSha256": "5ddeef328d1b27f0e96aac005c5f19c167f7cf28e9d6c1e3f20012c077ede7c2"
     },
     {
       "path": "app/api/stocks/production-plan/export/route.ts",
       "role": "Запрет production-plan export из PRELIMINARY WB аналитики",
       "sha256": "5ae9c6c7520f54943702a25a5f3a8d8a6fad26f0ffca0bb73679a61a77e617ea",
       "snapshotSha256": "5ae9c6c7520f54943702a25a5f3a8d8a6fad26f0ffca0bb73679a61a77e617ea",
-      "sizeBytes": 59894
+      "sizeBytes": 59894,
+      "activeSha256": "5ae9c6c7520f54943702a25a5f3a8d8a6fad26f0ffca0bb73679a61a77e617ea"
     }
   ],
   "consumerContracts": [
@@ -313,11 +338,13 @@
       "officialCashSettlement": 1267135.11,
       "canonicalPnlSettlement": 1267135.11,
       "cogs": 649425,
-      "taxes": 156026.57,
+      "taxes": 154737.1,
       "netProfitAfterTax": 461683.54,
       "marginAfterTaxPercent": 10.4369,
       "sourceOwner": "EXACT_FINANCE_COVER_SESSIONS_ALL_ROWS",
-      "sourceProof": "PRIOR_READ_ONLY_SERVER_DIAGNOSTIC"
+      "sourceProof": "PRIOR_READ_ONLY_SERVER_DIAGNOSTIC",
+      "taxesFormula": "USN_EX_VAT_PLUS_VAT_5_105",
+      "taxesPreviousInclusiveUsn": 156026.57
     },
     "2026-08-03..2026-08-09|ИП Лебедева": {
       "economicTurnover": 500617.5,
@@ -380,5 +407,11 @@
     "productionSourceSha256Available": false,
     "officialXlsxAvailable": false,
     "productionAccess": "NONE"
+  },
+  "ozonRevisionTransition": {
+    "parentV5OzonSha256": "7f44458abb0b5086d79f68e3795de2c056f7270fbc06979b9a201d6b2352cef9",
+    "candidateOzonSha256": "e12b23eb2a9326968ffe183bd9b0fc74412d247e09fc22a74ae882b7b49a499c",
+    "reason": "FIN_ACCEPT: exact RAW SKU fees + shared TYPE71 + ordinary USN ex-VAT; historical V5 Ozon snapshot/hash unchanged",
+    "createdAt": "2026-10-27T07:14:25.936Z"
   }
 }

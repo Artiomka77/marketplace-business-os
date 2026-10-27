@@ -1012,12 +1012,28 @@ function FrozenTable({
   );
 }
 
+type AccountResidualBridgeView = {
+  status?: string;
+  skuNetProfit?: number;
+  wbUnallocatedAds?: number;
+  wbStorage?: number;
+  ozonPartnerResidual?: number;
+  marketplaceProfit?: number;
+  financeSignedImpact?: number;
+  businessProfit?: number;
+  observedAccountMarketplaceProfit?: number | null;
+  accountBridgeResidual?: number | null;
+  formula?: string;
+  finality?: string | null;
+} | null;
+
 type InsightsDetailPayload = {
   skuStatus: InsightsPayload["skuStatus"];
   skuStatusReason: string;
   rebuildPending: boolean;
   rebuildDetail: string;
   detailGeneratedAtLabel: string;
+  accountResidualBridge?: AccountResidualBridgeView;
   lossSkuCount: number | null;
   lossCountIsUniqueIdentity: boolean;
   stockAtCost: number | null;
@@ -1050,7 +1066,8 @@ type InsightsDetailPayload = {
   frozenAll: InsightsPayload["frozenAll"];
 };
 
-function mergeDetailIntoPayload(
+/** Exported for FIN_ACCEPT SSR/render proof — same merge the live dashboard applies. */
+export function mergeDetailIntoPayload(
   prev: InsightsPayload,
   detail: InsightsDetailPayload,
 ): InsightsPayload {
@@ -1086,6 +1103,7 @@ function mergeDetailIntoPayload(
     lossAll: detail.lossAll,
     adjustments: detail.adjustments,
     adjustmentSummary: detail.adjustmentSummary,
+    accountResidualBridge: detail.accountResidualBridge ?? null,
     lowMarginPreview: detail.lowMarginPreview,
     lowMarginAll: detail.lowMarginAll,
     frozenPreview: detail.frozenPreview,
@@ -1691,6 +1709,90 @@ export default function InsightsDashboard({ data: initialData }: { data: Insight
             tone="loss"
           />
         </section>
+
+        {(() => {
+          const bridge = (
+            data as InsightsPayload & {
+              accountResidualBridge?: AccountResidualBridgeView;
+            }
+          ).accountResidualBridge;
+          if (!bridge) {
+            return (
+              <section className="rounded-xl border border-slate-200 bg-slate-50/80 px-3 py-2 shadow-sm">
+                <div className="text-xs font-black text-slate-800">
+                  Сверка SKU → кабинет → Finance
+                </div>
+                <div className="text-[10px] text-slate-600">
+                  Недоступна: нет полного набора независимых слоёв (не константа
+                  недели).
+                </div>
+              </section>
+            );
+          }
+          const status = bridge.status ?? "LIVE";
+          const tone =
+            status === "RECONCILED"
+              ? "border-emerald-200 bg-emerald-50/70"
+              : status === "DIVERGED"
+                ? "border-rose-200 bg-rose-50/70"
+                : "border-slate-200 bg-white";
+          return (
+            <section
+              className={`rounded-xl border px-3 py-2 shadow-sm ${tone}`}
+            >
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="text-xs font-black text-slate-900">
+                  Сверка SKU → кабинет → Finance · {status}
+                </div>
+                {bridge.finality ? (
+                  <span className="text-[10px] font-bold text-slate-600">
+                    {bridge.finality}
+                  </span>
+                ) : null}
+              </div>
+              <div className="mt-1.5 grid gap-1.5 sm:grid-cols-2 lg:grid-cols-4">
+                <div className="text-[10px] text-slate-600">
+                  SKU net{" "}
+                  <span className={`font-bold ${moneyClass(bridge.skuNetProfit)}`}>
+                    {formatMoney(bridge.skuNetProfit)}
+                  </span>
+                </div>
+                <div className="text-[10px] text-slate-600">
+                  MP (bridge){" "}
+                  <span
+                    className={`font-bold ${moneyClass(bridge.marketplaceProfit)}`}
+                  >
+                    {formatMoney(bridge.marketplaceProfit)}
+                  </span>
+                </div>
+                <div className="text-[10px] text-slate-600">
+                  MP (кабинет){" "}
+                  <span
+                    className={`font-bold ${moneyClass(bridge.observedAccountMarketplaceProfit)}`}
+                  >
+                    {formatMoney(bridge.observedAccountMarketplaceProfit)}
+                  </span>
+                </div>
+                <div className="text-[10px] text-slate-600">
+                  Finance P&amp;L{" "}
+                  <span
+                    className={`font-bold ${moneyClass(bridge.financeSignedImpact)}`}
+                  >
+                    {formatMoney(bridge.financeSignedImpact)}
+                  </span>
+                </div>
+              </div>
+              <div className="mt-1 text-[10px] text-slate-500">
+                WB ads остаток {formatMoney(bridge.wbUnallocatedAds)} · хранение{" "}
+                {formatMoney(bridge.wbStorage)} · Ozon partner residual{" "}
+                {formatMoney(bridge.ozonPartnerResidual)}
+                {bridge.accountBridgeResidual != null
+                  ? ` · Δ bridge−кабинет ${formatMoney(bridge.accountBridgeResidual)}`
+                  : ""}
+              </div>
+            </section>
+          );
+        })()}
 
         <AdjustmentsStrip
           summary={data.adjustmentSummary}

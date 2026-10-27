@@ -242,8 +242,16 @@ export function buildHybridOzonCogsSourceRows(params: {
     authorityDays: params.authorityDays,
   });
   const fromProducts = productRows.flatMap(mapOzonProductRowToFinanceLike);
+  const productEventIds = new Set(
+    fromProducts
+      .map((row) => String(row.eventId ?? "").trim())
+      .filter(Boolean),
+  );
 
   const fromFinance = params.financeRows.filter((row) => {
+    const eventId = String(row.eventId ?? "").trim();
+    // Same confirmed physical event must not be counted twice (partial + finance).
+    if (eventId && productEventIds.has(eventId)) return false;
     if (isFinanceServiceOrAdRow(row)) return true;
     const company = companyKey(row.companyName);
     const day = utcDay(row.accrualDate ?? null);

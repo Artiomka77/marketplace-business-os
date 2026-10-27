@@ -199,9 +199,19 @@ export function deriveScheduleCloseDate(input: {
   currentDebt: unknown;
   payments: Array<{ paymentDate: Date }>;
   earlyRepaymentDate: Date | null | undefined;
+  /**
+   * Proven contractual/schedule end when debt is already 0.
+   * Stale LoanPayment rows after this boundary must not re-enter P&L
+   * (EXCLUDE_STALE_AFTER_CLOSE). currentDebt=0 alone is NOT enough —
+   * without endDate we keep the max-payment fallback only.
+   */
+  endDate?: Date | null;
 }): Date | null {
   if (input.earlyRepaymentDate) return null;
   if (toAmount(input.currentDebt) > 0.01) return null;
+  if (input.endDate instanceof Date && Number.isFinite(input.endDate.getTime())) {
+    return input.endDate;
+  }
   if (!input.payments.length) return null;
   let max = input.payments[0].paymentDate;
   for (const p of input.payments) {
@@ -376,6 +386,9 @@ export async function getEffectiveFinanceTransactions(
       currentDebt: loan.currentDebt,
       payments,
       earlyRepaymentDate: early,
+      endDate: loan.endDate instanceof Date ? loan.endDate : loan.endDate
+        ? new Date(loan.endDate)
+        : null,
     });
 
     for (const payment of payments) {

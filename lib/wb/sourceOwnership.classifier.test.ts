@@ -68,4 +68,33 @@ assert.equal(merged.length, 2, "same economic sale must not double");
 assert.ok(merged.some((r) => r.id.includes("DAILY")));
 assert.ok(merged.some((r) => r.id === "ops-other"));
 
+// Two distinct DAILY sales with identical money/SKU fingerprint must both remain
+const dailyTwin = { ...daily, id: "real-sale-1" };
+const dailyTwin2 = { ...daily, id: "real-sale-2" };
+const dailyKeep = mergePreliminaryWbSaleRowsByEconomicKey({
+  dailyRows: [dailyTwin, dailyTwin2],
+  operationalRows: [],
+  keyOf: wbPreliminaryEconomicKey,
+});
+assert.equal(dailyKeep.length, 2);
+assert.deepEqual(
+  dailyKeep.map((r) => r.id).sort(),
+  ["real-sale-1", "real-sale-2"],
+);
+
+// Two distinct OPERATIONAL sales with identical fingerprint must both remain
+const opsKeep = mergePreliminaryWbSaleRowsByEconomicKey({
+  dailyRows: [],
+  operationalRows: [
+    { ...daily, id: "sale-1" },
+    { ...daily, id: "sale-2" },
+  ],
+  keyOf: wbPreliminaryEconomicKey,
+});
+assert.equal(opsKeep.length, 2);
+assert.deepEqual(
+  opsKeep.map((r) => r.id).sort(),
+  ["sale-1", "sale-2"],
+);
+
 console.log("sourceOwnership.classifier.test.ts OK");

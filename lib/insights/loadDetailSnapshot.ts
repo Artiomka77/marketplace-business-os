@@ -28,18 +28,25 @@ const STOCK_STALE_DAYS = 7;
 
 import { assessSkuSourceCompleteness } from "@/lib/insights/skuSourceCompleteness";
 import { partitionInsightSkuRow } from "@/lib/insights/insightsSkuPartition";
-import {
-  buildAccountResidualBridge,
-  WEEK_2026_10_19_25_ACCEPTED_BRIDGE,
-  type AccountResidualBridge,
+import type {
+  AccountResidualBridge,
+  LiveAccountResidualBridge,
 } from "@/lib/insights/accountResidualBridge";
-
 export { assessSkuSourceCompleteness };
 export { partitionInsightSkuRow } from "@/lib/insights/insightsSkuPartition";
 export {
   buildAccountResidualBridge,
+  buildLiveAccountResidualBridge,
   WEEK_2026_10_19_25_ACCEPTED_BRIDGE,
 } from "@/lib/insights/accountResidualBridge";
+import { buildLiveAccountResidualBridge } from "@/lib/insights/accountResidualBridge";
+import { buildBridgeLayersFromPeriodTotals } from "@/lib/insights/bridgeLayersFromPeriodTotals";
+import { loadCanonicalInsightsFinanceImpact } from "@/lib/insights/insightsFinanceImpact";
+import {
+  selectCompatibleSkuMetrics,
+  WAVE_B_SKU_FORMULA_FILTER,
+} from "@/lib/insights/selectCompatibleSkuMetrics";
+// buildLiveAccountResidualBridge imported for runtime live layers (not week constants)
 
 function putUnambiguousOwner(
   map: Map<string, string>,
@@ -120,7 +127,7 @@ export type InsightsDetailSnapshot = {
    * Explicit SKU→MP residual (WB unallocated ads/storage, Ozon partner).
    * Not re-added into account profit. Week 19–25.10.2026 uses accepted bridge.
    */
-  accountResidualBridge: AccountResidualBridge | null;
+  accountResidualBridge: AccountResidualBridge | LiveAccountResidualBridge | null;
   problems: {
     uniqueProblemSkuCount: number | null;
     lossSkuCount: number | null;
@@ -217,6 +224,7 @@ export async function loadInsightsDetailSnapshot(params: {
           companyScope: scope,
           dateFrom: dateFromUtc,
           dateTo: dateToUtc,
+          formulaVersion: WAVE_B_SKU_FORMULA_FILTER,
         };
         const n = await prisma.profitSkuPeriodMetric.count({ where });
         total += n;
@@ -225,22 +233,25 @@ export async function loadInsightsDetailSnapshot(params: {
         }
       }
       skuTotalInDb = total;
-      skuRows = mergeSkuRowsById(parts);
+      skuRows = selectCompatibleSkuMetrics(mergeSkuRowsById(parts)).selected;
       skuLoadMode = "PER_COMPANY";
       if (skuTotalInDb === 0) {
         const allWhere = {
           companyScope: "ALL",
           dateFrom: dateFromUtc,
           dateTo: dateToUtc,
+          formulaVersion: WAVE_B_SKU_FORMULA_FILTER,
         };
         skuTotalInDb = await prisma.profitSkuPeriodMetric.count({
           where: allWhere,
         });
         if (skuTotalInDb > 0) {
           skuLoadMode = "ALL_SCOPE";
-          skuRows = await prisma.profitSkuPeriodMetric.findMany({
-            where: allWhere,
-          });
+          skuRows = selectCompatibleSkuMetrics(
+            await prisma.profitSkuPeriodMetric.findMany({
+              where: allWhere,
+            }),
+          ).selected;
         }
       }
     } else {
@@ -248,10 +259,13 @@ export async function loadInsightsDetailSnapshot(params: {
         companyScope: preferredScopes[0],
         dateFrom: dateFromUtc,
         dateTo: dateToUtc,
+        formulaVersion: WAVE_B_SKU_FORMULA_FILTER,
       };
       skuTotalInDb = await prisma.profitSkuPeriodMetric.count({ where });
       if (skuTotalInDb > 0) {
-        skuRows = await prisma.profitSkuPeriodMetric.findMany({ where });
+        skuRows = selectCompatibleSkuMetrics(
+          await prisma.profitSkuPeriodMetric.findMany({ where }),
+        ).selected;
       }
     }
 
@@ -1048,10 +1062,57 @@ export async function loadInsightsDetailSnapshot(params: {
       stockAtCost,
     },
     driverSkuPatches,
-    accountResidualBridge:
-      params.dateFrom === "2026-10-19" && params.dateTo === "2026-10-25"
-        ? buildAccountResidualBridge(WEEK_2026_10_19_25_ACCEPTED_BRIDGE)
-        : null,
+    // Live bridge: residuals = account − already-on-SKU; compare to independent MP.
+    // Never inject WEEK_2026 constants. Never sum raw FinanceTransaction.amount.
+    accountResidualBridge: await (async () => {
+      if (!skuLayerReady || skuProfitTotal == null) return null;
+      try {
+        const scope =
+          selectedCompany === "ALL" ? "ALL" : selectedCompany;
+        const periods = await prisma.profitPeriodMetric.findMany({
+          where: {
+            companyScope: scope,
+            dateFrom: dateFromUtc,
+            dateTo: dayStartUtc(dateTo),
+          },
+          select: { marketplace: true, totals: true, formulaVersion: true, dataMode: true },
+        });
+
+        const financeEnd = new Date(
+          Date.UTC(
+            Number(dateTo.slice(0, 4)),
+            Number(dateTo.slice(5, 7)) - 1,
+            Number(dateTo.slice(8, 10)) + 1,
+          ),
+        );
+        // Same V6 path: effective LoanPayment facts + category catalog.
+        const financeImpact = await loadCanonicalInsightsFinanceImpact({
+          prisma,
+          companyScope: scope,
+          dateFromUtc,
+          dateToExclusive: financeEnd,
+          asOfDate: dayStartUtc(dateTo),
+        });
+        const financeSigned = financeImpact.netProfitImpact;
+
+        const layers = buildBridgeLayersFromPeriodTotals({
+          companyScope: scope,
+          skuNetProfit: skuProfitTotal,
+          periods: periods.map((p) => ({
+            marketplace: String(p.marketplace),
+            formulaVersion: p.formulaVersion,
+            dataMode: p.dataMode,
+            totals: (p.totals ?? {}) as Record<string, unknown>,
+          })),
+          financeSignedImpact: financeSigned,
+          expectedMarketplaces: ["WB", "OZON"],
+        });
+        if (layers.rejectedReason) return null;
+        return buildLiveAccountResidualBridge(layers);
+      } catch {
+        return null;
+      }
+    })(),
     problems: {
       uniqueProblemSkuCount: skuLayerReady
         ? skuTruncated

@@ -1,7 +1,11 @@
 {
   "compilerOptions": {
     "target": "ES2017",
-    "lib": ["dom", "dom.iterable", "esnext"],
+    "lib": [
+      "dom",
+      "dom.iterable",
+      "esnext"
+    ],
     "allowJs": true,
     "skipLibCheck": true,
     "strict": true,
@@ -19,7 +23,9 @@
       }
     ],
     "paths": {
-      "@/*": ["./*"]
+      "@/*": [
+        "./*"
+      ]
     }
   },
   "include": [
@@ -38,6 +44,17 @@
     "**/*.test.ts",
     "**/*.test.tsx",
     "**/*.spec.ts",
-    "**/*.spec.tsx"
+    "**/*.spec.tsx",
+    "scripts/fin_patch/FIN_*_PACK",
+    "scripts/fin_patch/FIN_*_ASSIGNMENT",
+    "scripts/fin_patch/FIN_*_RESULT*",
+    "scripts/fin_patch/FIN_GATE_PACK",
+    "scripts/fin_patch/FIN_RUN_PACK",
+    "scripts/fin_patch/out_*",
+    "scripts/fin_patch/fixtures_fin_run",
+    "scripts/fin_patch/_*.ts",
+    "scripts/fin_patch/_*.mjs",
+    "scripts/fin_patch/fin_accept_*.mjs",
+    "scripts/fin_patch/fin_accept_*.ts"
   ]
 }

@@ -4,6 +4,7 @@ import {
   extractOzonAccrualProductMovements,
   mapMovementsToCogsProductRows,
 } from "@/lib/ozon/ozonAccrualProductMovements";
+import { selectOzonAccrualDayOwners } from "@/lib/ozon/ozonAccrualSessionOwnership";
 
 type CostRecord = {
   id: string;
@@ -318,21 +319,72 @@ export async function getCostCoverageSummary(params: {
         sellerPayout: true,
       },
     }),
-    prisma.ozonFinance.groupBy({
-      by: ["companyName", "vendorCode", "sku"],
-      where: {
-        ...companyFilter,
-        accrualDate: {
-          gte: dateFrom,
-          lte: dateTo,
-        },
-      },
-      _sum: {
-        quantity: true,
-        salesAmount: true,
-        totalAmount: true,
-      },
-    }),
+    // Prefer findMany (day-aware). Fall back to groupBy for harnesses that
+    // only stub groupBy — missing accrualDate must NOT suppress other days.
+    (async () => {
+      const api = prisma.ozonFinance as {
+        findMany?: (args: unknown) => Promise<unknown[]>;
+        groupBy?: (args: unknown) => Promise<unknown[]>;
+      };
+      if (typeof api.findMany === "function") {
+        return api.findMany({
+          where: {
+            ...companyFilter,
+            accrualDate: {
+              gte: dateFrom,
+              lte: dateTo,
+            },
+          },
+          select: {
+            companyName: true,
+            vendorCode: true,
+            sku: true,
+            quantity: true,
+            salesAmount: true,
+            totalAmount: true,
+            accrualDate: true,
+          },
+        });
+      }
+      if (typeof api.groupBy === "function") {
+        const groups = (await api.groupBy({
+          by: ["companyName", "vendorCode", "sku"],
+          where: {
+            ...companyFilter,
+            accrualDate: {
+              gte: dateFrom,
+              lte: dateTo,
+            },
+          },
+          _sum: {
+            quantity: true,
+            salesAmount: true,
+            totalAmount: true,
+          },
+        })) as Array<{
+          companyName?: string | null;
+          vendorCode?: string | null;
+          sku?: string | null;
+          _sum?: {
+            quantity?: unknown;
+            salesAmount?: unknown;
+            totalAmount?: unknown;
+          };
+        }>;
+        return groups.map((g) => ({
+          companyName: g.companyName,
+          vendorCode: g.vendorCode,
+          sku: g.sku,
+          quantity: g._sum?.quantity,
+          salesAmount: g._sum?.salesAmount,
+          totalAmount: g._sum?.totalAmount,
+          accrualDate: null,
+        }));
+      }
+      throw new Error(
+        "costCoverage: ozonFinance.findMany/groupBy unavailable — refuse silent empty",
+      );
+    })(),
     prisma.ozonRealizationRow.findMany({
       where: {
         ...companyFilter,
@@ -361,6 +413,8 @@ export async function getCostCoverageSummary(params: {
       select: {
         id: true,
         companyName: true,
+        status: true,
+        createdAt: true,
         previewJson: true,
       },
     }),
@@ -438,26 +492,32 @@ export async function getCostCoverageSummary(params: {
   const ozonProductRows: OzonMovementAgg[] = [];
   const periodFrom = params.dateFrom.slice(0, 10);
   const periodTo = params.dateTo.slice(0, 10);
-
-  for (const session of ozonAccrualSessions) {
-    const preview =
-      session.previewJson && typeof session.previewJson === "object"
-        ? (session.previewJson as Record<string, unknown>)
-        : null;
-    if (!preview) continue;
-    const sessionFrom = String(preview.dateFrom ?? "").slice(0, 10);
-    const sessionTo = String(preview.dateTo ?? "").slice(0, 10);
-    if (!sessionFrom || !sessionTo) continue;
-    if (sessionTo < periodFrom || sessionFrom > periodTo) continue;
-    const companyName = cleanText(session.companyName) || "Без компании";
+  const owners = selectOzonAccrualDayOwners({
+    sessions: ozonAccrualSessions,
+    dateFrom: periodFrom,
+    dateTo: periodTo,
+  });
+  /** Proven-complete product authority keys: company|YYYY-MM-DD */
+  const completeAuthorityDays = new Set(
+    [...owners.values()]
+      .filter((owner) => owner.complete)
+      .map((owner) => `${owner.companyName}|${owner.day}`),
+  );
+  const seenEvents = new Set<string>();
+  for (const owner of owners.values()) {
+    const rawAccruals = Array.isArray(owner.preview.rawAccruals)
+      ? owner.preview.rawAccruals
+      : [];
     const movements = extractOzonAccrualProductMovements({
-      companyName,
-      sessionId: session.id,
-      rawAccruals: Array.isArray(preview.rawAccruals) ? preview.rawAccruals : [],
-      dateFrom: periodFrom,
-      dateTo: periodTo,
+      companyName: owner.companyName,
+      sessionId: owner.sessionId,
+      rawAccruals,
+      dateFrom: owner.day,
+      dateTo: owner.day,
     });
     for (const row of mapMovementsToCogsProductRows(movements, vendorBySku)) {
+      if (seenEvents.has(row.eventId)) continue;
+      seenEvents.add(row.eventId);
       const quantity =
         Math.abs(row.realizedQty) + Math.abs(row.returnedQty);
       const amount =
@@ -467,7 +527,8 @@ export async function getCostCoverageSummary(params: {
         companyName: row.companyName,
         vendorCode: cleanText(row.vendorCode) || "—",
         sku: cleanText(row.sku) || "—",
-        productName: cleanText(row.vendorCode) || cleanText(row.sku) || "Без названия",
+        productName:
+          cleanText(row.vendorCode) || cleanText(row.sku) || "Без названия",
         quantity,
         amount,
       });
@@ -496,9 +557,8 @@ export async function getCostCoverageSummary(params: {
     }
   }
 
-  const productCompanies = new Set(
-    ozonProductRows.map((row) => cleanText(row.companyName)),
-  );
+  // Finance fallback only for (company, day) without proven-complete product
+  // authority — same universe as COGS hybrid (not company-wide suppress).
   let ozonProductMovementGroups = 0;
   let ozonFinanceFallbackGroups = 0;
 
@@ -537,18 +597,55 @@ export async function getCostCoverageSummary(params: {
     });
   }
 
-  for (const row of ozonFinanceRows) {
+  type FinanceAgg = OzonMovementAgg & { day: string };
+  const financeBySkuDay = new Map<string, FinanceAgg>();
+  for (const row of ozonFinanceRows as Array<{
+    companyName?: string | null;
+    vendorCode?: string | null;
+    sku?: string | null;
+    quantity?: unknown;
+    salesAmount?: unknown;
+    totalAmount?: unknown;
+    accrualDate?: Date | string | null;
+  }>) {
     const companyName = cleanText(row.companyName) || "Без компании";
-    // Finance fallback only for companies without product authority.
-    if (productCompanies.has(companyName)) continue;
+    const day =
+      row.accrualDate instanceof Date
+        ? row.accrualDate.toISOString().slice(0, 10)
+        : String(row.accrualDate ?? "").slice(0, 10);
+    // Suppress finance product sales only for proven-complete company+day.
+    if (day && completeAuthorityDays.has(`${companyName}|${day}`)) continue;
     const vendorCode = cleanText(row.vendorCode);
     const sku = cleanText(row.sku);
-    const quantity = Math.abs(toNumber(row._sum.quantity));
-    const salesAmount = Math.abs(toNumber(row._sum.salesAmount));
-    const totalAmount = Math.abs(toNumber(row._sum.totalAmount));
+    const quantity = Math.abs(toNumber(row.quantity));
+    const salesAmount = Math.abs(toNumber(row.salesAmount));
+    const totalAmount = Math.abs(toNumber(row.totalAmount));
     const amount = salesAmount || totalAmount;
     if (!vendorCode && !sku) continue;
-    if (quantity <= 0 && salesAmount <= 0) continue;
+    if (quantity <= 0 && amount <= 0) continue;
+    // Skip money-only service rows without product sale amount.
+    if (salesAmount === 0 && quantity === 0) continue;
+    const key = `${companyName}|${day}|${vendorCode || "—"}|${sku || "—"}`;
+    const cur = financeBySkuDay.get(key) ?? {
+      companyName,
+      vendorCode: vendorCode || "—",
+      sku: sku || "—",
+      productName: vendorCode || sku || "Без названия",
+      quantity: 0,
+      amount: 0,
+      day,
+    };
+    cur.quantity += quantity;
+    cur.amount += amount;
+    financeBySkuDay.set(key, cur);
+  }
+  for (const row of financeBySkuDay.values()) {
+    const vendorCode = row.vendorCode;
+    const sku = row.sku;
+    const quantity = row.quantity;
+    const amount = row.amount;
+    if ((!vendorCode || vendorCode === "—") && (!sku || sku === "—")) continue;
+    if (quantity <= 0 && amount <= 0) continue;
     ozonFinanceFallbackGroups += 1;
     checkedItemsCount += 1;
     const resolved = resolveOzonCost({ vendorCode, sku });
@@ -556,7 +653,7 @@ export async function getCostCoverageSummary(params: {
     if (!resolved.hasProductMapping) unmappedOzonItemsCount += 1;
     uniquePushMissingItem(missingByKey, {
       marketplace: "OZON",
-      companyName,
+      companyName: row.companyName,
       vendorCode: vendorCode || resolved.displayVendorCode || "—",
       externalId: sku || "—",
       productName:

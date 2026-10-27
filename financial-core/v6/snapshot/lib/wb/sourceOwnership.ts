@@ -323,11 +323,35 @@ export function planWbSourceOwnership(input: {
     const companyFinanceRows = input.financeRows.filter(
       (row) => normalizeCompany(row.companyName) === companyName
     );
-    const financeCover = selectMinimalWbFinanceCover(
+    // Full-week cover fails when trailing days (e.g. 24–25) lack wbFinance.
+    // Keep the longest finance-covered prefix; preliminary only the uncovered suffix.
+    let financeCover = selectMinimalWbFinanceCover(
       companyFinanceRows,
       input.dateFrom,
       input.dateTo
     );
+    let financeCoveredThrough: string | null = null;
+    if (financeCover.length === 0 && requested) {
+      for (
+        let prefixEnd = requested.end;
+        prefixEnd >= requested.start;
+        prefixEnd -= 1
+      ) {
+        const prefixKey = dayKey(prefixEnd);
+        const prefixCover = selectMinimalWbFinanceCover(
+          companyFinanceRows,
+          input.dateFrom,
+          prefixKey
+        );
+        if (prefixCover.length > 0) {
+          financeCover = prefixCover;
+          financeCoveredThrough = prefixKey;
+          break;
+        }
+      }
+    } else if (financeCover.length > 0) {
+      financeCoveredThrough = financeCover[financeCover.length - 1]?.endKey ?? null;
+    }
 
     if (financeCover.length === 0) {
       intervals.push({
@@ -451,6 +475,27 @@ export function planWbSourceOwnership(input: {
         dailyReportCoverageComplete,
         isFinanciallyFinal: false,
         preliminaryReasons: reasons,
+      });
+    }
+
+    if (
+      financeCoveredThrough &&
+      requested &&
+      dayNumber(financeCoveredThrough) < requested.end
+    ) {
+      const prelimFrom = dayKey(dayNumber(financeCoveredThrough) + 1);
+      intervals.push({
+        companyName,
+        dateFrom: prelimFrom,
+        dateTo: input.dateTo,
+        mode: "PRELIMINARY_NO_SOURCE",
+        reportNumbers: [],
+        selectedSessionIds: [],
+        exactCoverageComplete: false,
+        dailyCalendarCoverageComplete: false,
+        dailyReportCoverageComplete: false,
+        isFinanciallyFinal: false,
+        preliminaryReasons: ["FINANCE_PREFIX_ONLY_TRAILING_PRELIMINARY"],
       });
     }
   }

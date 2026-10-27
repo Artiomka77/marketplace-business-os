@@ -13,14 +13,25 @@ import {
   type OzonCogsProductRow,
 } from "@/lib/analytics/ozonCogsHybridSource";
 import {
-  buildOzonAccrualAuthorityDays,
   extractOzonAccrualProductMovements,
   mapMovementsToCogsProductRows,
 } from "@/lib/ozon/ozonAccrualProductMovements";
 import {
+  extractOzonExactSkuFeesFromRaw,
+  mergeOzonExactSkuFeeLedgers,
+  type OzonExactSkuFeeLedger,
+} from "@/lib/ozon/ozonAccrualExactSkuFees";
+import {
   buildCanonicalPositiveCostLookups,
   resolveCanonicalOzonUnitCost,
 } from "@/lib/analytics/productCostResolver";
+import {
+  calculateMarketplaceTax,
+  roundLegalEntityTaxLiability,
+} from "@/lib/finance/marketplaceTax";
+import { selectOzonAccrualDayOwners } from "@/lib/ozon/ozonAccrualSessionOwnership";
+import { mergeOzonCoverageFlags } from "@/lib/analytics/ozonCoverageMerge";
+export { mergeOzonCoverageFlags } from "@/lib/analytics/ozonCoverageMerge";
 
 function toNumber(value: unknown): number {
   if (value === null || value === undefined) return 0;
@@ -73,6 +84,26 @@ function clampRate(value: unknown, allowedRates: number[], fallback: number) {
 function calculateVatTax(revenue: number, vatRate: number) {
   if (vatRate <= 0) return 0;
   return revenue * (vatRate / (100 + vatRate));
+}
+
+/** Ordinary realization: USN on ex-VAT base, VAT via 5/105 of inclusive base. */
+function calculateOrdinaryMarketplaceTaxes(
+  ordinarySalesVatInclusive: number,
+  usnRate: number,
+  vatRate: number,
+) {
+  const breakdown = calculateMarketplaceTax({
+    ordinarySalesVatInclusive,
+    usnRate,
+    vatRate,
+  });
+  return {
+    usnAmount: breakdown.usnAmount,
+    vatAmount: breakdown.vatAmount,
+    totalTax: breakdown.totalTax,
+    usnBaseExVat: breakdown.usnBaseExVat,
+    vatBaseInclusive: breakdown.vatBaseInclusive,
+  };
 }
 
 function isOzonFinanceClickAdOperation(operationType: unknown) {
@@ -717,7 +748,136 @@ function hasOzonCategoryFact(
   );
 }
 
-function applyOzonFinancialCategoryFactsToTotals(
+/**
+ * Select signed net discount points for E=R+B+A.
+ * totalPaidByPoints is the net field (sales − returns). A present 0 is a known
+ * zero, not a missing value — never substitute gross accrued/written-off.
+ */
+export function resolveOzonDiscountPointsAmount(
+  summary: OzonDiscountPointsSummaryRecord | null | undefined,
+): number {
+  if (!summary) return 0;
+
+  const hasOwn = (key: keyof OzonDiscountPointsSummaryRecord) =>
+    Object.prototype.hasOwnProperty.call(summary, key) &&
+    summary[key] !== null &&
+    summary[key] !== undefined;
+
+  if (hasOwn("totalPaidByPoints")) {
+    return toNumber(summary.totalPaidByPoints);
+  }
+
+  // Fallback only when BOTH accrued and written-off are present under the known
+  // sales/returns contract. A lone pointsAccrued without proven net/returns is
+  // missing — not a silent gross substitute.
+  if (hasOwn("pointsAccrued") && hasOwn("pointsWrittenOff")) {
+    return (
+      toNumber(summary.pointsAccrued) - toNumber(summary.pointsWrittenOff)
+    );
+  }
+
+  return Number.NaN;
+}
+
+/**
+ * Split includeInProfit OZON_UNCLASSIFIED_ADJUSTMENT by proven type codes.
+ * TYPE_16 Drop-off → delivery; TYPE_92 complaints / other signed unknowns → other services.
+ * Never drop known signed money because the category name is not on a whitelist.
+ */
+function splitOzonUnclassifiedAdjustmentFacts(
+  facts: OzonFinancialCategoryFactRecord[],
+) {
+  let delivery = 0;
+  let otherServices = 0;
+  let residual = 0;
+
+  for (const fact of facts) {
+    if (fact.category !== "OZON_UNCLASSIFIED_ADJUSTMENT") continue;
+    const amount = toNumber(fact.amount);
+    if (Math.abs(amount) <= 0.005) continue;
+
+    const code = normalizeText(fact.sourceOperationCode);
+    if (code === "type_16" || code.endsWith("_16") || code.includes("type_16")) {
+      delivery += amount;
+      continue;
+    }
+    if (code === "type_92" || code.endsWith("_92") || code.includes("type_92")) {
+      otherServices += amount;
+      continue;
+    }
+    residual += amount;
+  }
+
+  return {
+    delivery,
+    otherServices: otherServices + residual,
+    total: delivery + otherServices + residual,
+  };
+}
+
+/** Optional SKU suffix on sourceServiceName: accrualId:kind:typeId:ordinal[:sku] */
+function skuFromOzonFactServiceName(sourceServiceName: unknown): string | null {
+  const raw = String(sourceServiceName ?? "").trim();
+  if (!raw) return null;
+  const parts = raw.split(":");
+  if (parts.length < 5) return null;
+  const sku = parts.slice(4).join(":").trim();
+  return sku || null;
+}
+
+/**
+ * Fact-based TYPE_16 Drop-off → SKU logistics. Works for legacy
+ * OZON_UNCLASSIFIED_ADJUSTMENT and new-importer OZON_DELIVERY alike, keyed by
+ * event identity (operation code + optional SKU suffix), not category name alone.
+ * Used only when RAW exact ledger is empty to avoid double-count.
+ */
+function applyExactOzonUnclassifiedFeesToRows(
+  rows: OzonProfitAnalyticsRow[],
+  facts: OzonFinancialCategoryFactRecord[],
+) {
+  if (!rows.length || !facts.length) return;
+
+  const bySku = new Map<string, number>();
+  for (const fact of facts) {
+    const cat = String(fact.category ?? "");
+    if (
+      cat !== "OZON_UNCLASSIFIED_ADJUSTMENT" &&
+      cat !== "OZON_DELIVERY"
+    ) {
+      continue;
+    }
+    const code = normalizeText(fact.sourceOperationCode);
+    const isType16 =
+      code === "type_16" || code.endsWith("_16") || code.includes("type_16");
+    if (!isType16) continue;
+    const sku = skuFromOzonFactServiceName(fact.sourceServiceName);
+    if (!sku) continue;
+    const amount = toNumber(fact.amount);
+    if (Math.abs(amount) <= 0.005) continue;
+    const skuKey = normalizeText(sku);
+    bySku.set(skuKey, (bySku.get(skuKey) ?? 0) + amount);
+  }
+
+  if (bySku.size === 0) return;
+
+  for (const row of rows) {
+    const key = normalizeText(row.nmId) || normalizeText(row.vendorCode);
+    if (!key) continue;
+    const matched = bySku.get(key);
+    if (matched == null || Math.abs(matched) <= 0.005) continue;
+    row.logisticsCost += matched;
+    row.deliveryCost = (row.deliveryCost ?? 0) + matched;
+    const rowExt = row as OzonProfitAnalyticsRow & {
+      exactLogisticsAmount?: number;
+      hasExactEconomicComponents?: boolean;
+    };
+    rowExt.exactLogisticsAmount = (rowExt.exactLogisticsAmount ?? 0) + matched;
+    rowExt.hasExactEconomicComponents = true;
+    bySku.delete(key);
+  }
+}
+
+export function applyOzonFinancialCategoryFactsToTotals(
   totals: OzonProfitTotals,
   facts: OzonFinancialCategoryFactRecord[],
 ) {
@@ -742,6 +902,11 @@ function applyOzonFinancialCategoryFactsToTotals(
     "OZON_OTHER_SERVICES",
   );
   const hasCompensationFacts = hasOzonCategoryFact(facts, "OZON_COMPENSATION");
+  const hasUnclassifiedFacts = hasOzonCategoryFact(
+    facts,
+    "OZON_UNCLASSIFIED_ADJUSTMENT",
+  );
+  const unclassified = splitOzonUnclassifiedAdjustmentFacts(facts);
 
   const commission = getOzonCategoryAmount(facts, "OZON_COMMISSION");
   const delivery = getOzonCategoryAmount(facts, "OZON_DELIVERY");
@@ -771,7 +936,14 @@ function applyOzonFinancialCategoryFactsToTotals(
     totals.fboCost = fbo;
   }
 
-  if (hasDeliveryFacts || hasFboFacts) {
+  // Proven TYPE_16 drop-off (and similar) stored as unclassified still enters delivery.
+  if (hasUnclassifiedFacts && Math.abs(unclassified.delivery) > 0.005) {
+    totals.deliveryCost =
+      (hasDeliveryFacts ? totals.deliveryCost : totals.deliveryCost) +
+      unclassified.delivery;
+  }
+
+  if (hasDeliveryFacts || hasFboFacts || Math.abs(unclassified.delivery) > 0.005) {
     totals.logisticsCost = totals.deliveryCost + totals.fboCost;
   }
 
@@ -841,6 +1013,16 @@ function applyOzonFinancialCategoryFactsToTotals(
     totals.otherServicesCost = otherServices;
   }
 
+  // TYPE_92 complaints and other signed unclassified residuals enter other services.
+  if (hasUnclassifiedFacts && Math.abs(unclassified.otherServices) > 0.005) {
+    totals.otherServicesCost =
+      (hasOtherServicesFacts ? totals.otherServicesCost : totals.otherServicesCost) +
+      unclassified.otherServices;
+  }
+
+  (totals as { unclassifiedAdjustmentCost?: number }).unclassifiedAdjustmentCost =
+    unclassified.total;
+
   if (hasCompensationFacts) {
     totals.compensationAmount = compensation;
   }
@@ -850,7 +1032,8 @@ function applyOzonFinancialCategoryFactsToTotals(
   if (
     hasPartnerServicesFacts ||
     hasOtherServicesFacts ||
-    hasCompensationFacts
+    hasCompensationFacts ||
+    hasUnclassifiedFacts
   ) {
     totals.penaltiesAmount = 0;
     totals.deductions =
@@ -862,7 +1045,8 @@ function applyOzonFinancialCategoryFactsToTotals(
   return true;
 }
 
-function calculateOzonGrossExpenses(totals: OzonProfitTotals) {
+export function calculateOzonGrossExpenses(totals: OzonProfitTotals) {
+  // deductions already includes unclassified→otherServices when facts were applied.
   return (
     totals.wbCommission +
     totals.logisticsCost +
@@ -876,18 +1060,144 @@ function calculateOzonNetExpensesAfterDiscountPoints(totals: OzonProfitTotals) {
   return totals.grossOzonExpenses - totals.discountPointsCompensation;
 }
 
+function applyExactSkuFeeLedgerToRows(
+  rows: OzonProfitAnalyticsRow[],
+  exactLedger: OzonExactSkuFeeLedger | null | undefined,
+) {
+  if (!exactLedger || exactLedger.bySku.size === 0) return;
+
+  const byNm = new Map<string, OzonProfitAnalyticsRow>();
+  for (const row of rows) {
+    const key = normalizeText(row.nmId);
+    if (key) byNm.set(key, row);
+  }
+
+  for (const [sku, bucket] of exactLedger.bySku) {
+    const key = normalizeText(sku);
+    let row = byNm.get(key);
+    if (!row) {
+      // Expense-only / source-linked SKU without sales in the hybrid rows.
+      row = {
+        nmId: sku,
+        vendorCode: sku,
+        subject: "",
+        salesQty: 0,
+        returnsQty: 0,
+        netSalesQty: 0,
+        revenue: 0,
+        revenueSharePercent: 0,
+        sellerPayout: 0,
+        wbCommission: 0,
+        logisticsCost: 0,
+        deliveryCost: 0,
+        fboCost: 0,
+        storageCost: 0,
+        acceptanceCost: 0,
+        penaltiesAmount: 0,
+        deductions: 0,
+        paymentServiceCost: 0,
+        adsCost: 0,
+        drrPercent: 0,
+        costPrice: 0,
+        totalCost: 0,
+        marginProfit: 0,
+        marginProfitPercent: 0,
+        taxesAmount: 0,
+        netProfitAfterTax: 0,
+        marginAfterTaxPercent: 0,
+        abcByProfit: "C",
+      };
+      rows.push(row);
+      byNm.set(key, row);
+    }
+
+    const rowExt = row as OzonProfitAnalyticsRow & {
+      exactCommissionAmount?: number;
+      exactLogisticsAmount?: number;
+      exactDeductionsAmount?: number;
+      exactDiscountPointsAmount?: number;
+      exactPartnerProgramsAmount?: number;
+      hasExactEconomicComponents?: boolean;
+    };
+
+    // Prefer RAW exact money over share/zero when present for this SKU.
+    if (Math.abs(bucket.revenue) > 0.005 || row.salesQty + row.returnsQty === 0) {
+      // Keep hybrid/product revenue when already built from movements; only
+      // fill when row has no revenue but RAW has economic components.
+      if (Math.abs(row.revenue) <= 0.005 && Math.abs(bucket.revenue) > 0.005) {
+        row.revenue = bucket.revenue;
+      }
+    }
+    row.wbCommission += bucket.commission;
+    row.logisticsCost += bucket.logistics;
+    row.deliveryCost = (row.deliveryCost ?? 0) + bucket.logistics;
+    const deductionsAdd =
+      bucket.partnerServices + bucket.otherServices - bucket.compensation;
+    row.deductions += deductionsAdd;
+    rowExt.exactCommissionAmount =
+      (rowExt.exactCommissionAmount ?? 0) + bucket.commission;
+    rowExt.exactLogisticsAmount =
+      (rowExt.exactLogisticsAmount ?? 0) + bucket.logistics;
+    rowExt.exactDeductionsAmount =
+      (rowExt.exactDeductionsAmount ?? 0) + deductionsAdd;
+    rowExt.exactDiscountPointsAmount = bucket.discountPoints;
+    rowExt.exactPartnerProgramsAmount = bucket.partnerPrograms;
+    rowExt.hasExactEconomicComponents = true;
+  }
+}
+
 function recalculateOzonRowsFromEconomicModel(
   rows: OzonProfitAnalyticsRow[],
   totals: OzonProfitTotals,
   usnRate: number,
   vatRate: number,
+  financialCategoryFacts: OzonFinancialCategoryFactRecord[] = [],
+  exactLedger: OzonExactSkuFeeLedger | null = null,
 ) {
+  // RAW exact fees first (works for classified TYPE_16 delivery and legacy
+  // unclassified). Fixture sourceServiceName suffix is only a fallback when RAW
+  // exact ledger is empty (do not double-count with RAW).
+  applyExactSkuFeeLedgerToRows(rows, exactLedger);
+  if (!exactLedger || exactLedger.bySku.size === 0) {
+    applyExactOzonUnclassifiedFeesToRows(rows, financialCategoryFacts);
+  }
+
   const positiveRevenueTotal = rows.reduce(
     (sum, row) => sum + Math.max(0, row.revenue),
     0,
   );
 
   const positiveQtyTotal = rows.reduce(
+    (sum, row) => sum + Math.max(0, row.netSalesQty),
+    0,
+  );
+
+  // Residual points/partner only for SKUs without exact components.
+  let exactPointsSum = 0;
+  let exactPartnerSum = 0;
+  for (const row of rows) {
+    const ext = row as OzonProfitAnalyticsRow & {
+      exactDiscountPointsAmount?: number;
+      exactPartnerProgramsAmount?: number;
+      hasExactEconomicComponents?: boolean;
+    };
+    if (ext.hasExactEconomicComponents) {
+      exactPointsSum += Number(ext.exactDiscountPointsAmount ?? 0);
+      exactPartnerSum += Number(ext.exactPartnerProgramsAmount ?? 0);
+    }
+  }
+  const pointsResidual = totals.discountPointsAmount - exactPointsSum;
+  const partnerResidual = totals.partnerProgramsAmount - exactPartnerSum;
+
+  const shareBaseRows = rows.filter((row) => {
+    const ext = row as { hasExactEconomicComponents?: boolean };
+    return !ext.hasExactEconomicComponents;
+  });
+  const shareRevenueTotal = shareBaseRows.reduce(
+    (sum, row) => sum + Math.max(0, row.revenue),
+    0,
+  );
+  const shareQtyTotal = shareBaseRows.reduce(
     (sum, row) => sum + Math.max(0, row.netSalesQty),
     0,
   );
@@ -905,11 +1215,54 @@ function recalculateOzonRowsFromEconomicModel(
             ? 1 / rows.length
             : 0;
 
-    const allocatedDiscountPoints = totals.discountPointsAmount * share;
-    const allocatedPartnerPrograms = totals.partnerProgramsAmount * share;
-    const allocatedAds = adsToAllocate * share;
+    const rowExt = row as OzonProfitAnalyticsRow & {
+      allocatedCommissionAmount?: number;
+      allocatedLogisticsAmount?: number;
+      allocatedDeductionsAmount?: number;
+      allocatedAdsAmount?: number;
+      exactCommissionAmount?: number;
+      exactLogisticsAmount?: number;
+      exactDeductionsAmount?: number;
+      exactDiscountPointsAmount?: number;
+      exactPartnerProgramsAmount?: number;
+      hasExactEconomicComponents?: boolean;
+      profitAttributionStatus?: string;
+    };
 
+    let allocatedDiscountPoints = 0;
+    let allocatedPartnerPrograms = 0;
+    if (rowExt.hasExactEconomicComponents) {
+      allocatedDiscountPoints = Number(rowExt.exactDiscountPointsAmount ?? 0);
+      allocatedPartnerPrograms = Number(rowExt.exactPartnerProgramsAmount ?? 0);
+    } else {
+      const residualShare =
+        shareRevenueTotal > 0
+          ? Math.max(0, row.revenue) / shareRevenueTotal
+          : shareQtyTotal > 0
+            ? Math.max(0, row.netSalesQty) / shareQtyTotal
+            : shareBaseRows.length > 0
+              ? 1 / shareBaseRows.length
+              : 0;
+      allocatedDiscountPoints = pointsResidual * residualShare;
+      allocatedPartnerPrograms = partnerResidual * residualShare;
+    }
+
+    const allocatedAds = adsToAllocate * share;
     row.adsCost += allocatedAds;
+    rowExt.allocatedCommissionAmount = 0;
+    rowExt.allocatedLogisticsAmount = 0;
+    rowExt.allocatedDeductionsAmount = 0;
+    rowExt.allocatedAdsAmount = allocatedAds;
+    rowExt.exactCommissionAmount = rowExt.exactCommissionAmount ?? row.wbCommission;
+    rowExt.exactLogisticsAmount = rowExt.exactLogisticsAmount ?? row.logisticsCost;
+    rowExt.exactDeductionsAmount = rowExt.exactDeductionsAmount ?? row.deductions;
+    rowExt.profitAttributionStatus = rowExt.hasExactEconomicComponents
+      ? Math.abs(allocatedAds) > 0.005
+        ? "EXACT_FEES_PLUS_ADS_SHARE"
+        : "EXACT_RAW_FEES"
+      : Math.abs(allocatedAds) > 0.005
+        ? "ADS_SHARE_PLUS_ACCOUNT_RESIDUAL"
+        : "ACCOUNT_RESIDUAL";
 
     const rowEconomicTurnover =
       row.revenue + allocatedDiscountPoints + allocatedPartnerPrograms;
@@ -921,10 +1274,19 @@ function recalculateOzonRowsFromEconomicModel(
       row.penaltiesAmount +
       row.deductions;
 
-    const usnTax = row.revenue > 0 ? row.revenue * (usnRate / 100) : 0;
-    const vatTax = row.revenue > 0 ? calculateVatTax(row.revenue, vatRate) : 0;
-
-    row.taxesAmount = usnTax + vatTax;
+    // Signed ordinary tax: negative revenue (returns/adjustments) must produce
+    // negative tax so SKU tax reconciles to account tax (not zeroed).
+    const rowTax =
+      Math.abs(row.revenue) > 0.005
+        ? calculateOrdinaryMarketplaceTaxes(row.revenue, usnRate, vatRate)
+        : {
+            totalTax: 0,
+            usnAmount: 0,
+            vatAmount: 0,
+            usnBaseExVat: 0,
+            vatBaseInclusive: 0,
+          };
+    row.taxesAmount = rowTax.totalTax;
     row.marginProfit =
       rowEconomicTurnover - row.totalCost - rowGrossOzonExpenses;
     row.netProfitAfterTax = row.marginProfit - row.taxesAmount;
@@ -949,6 +1311,7 @@ function applyOzonEconomicModel(
   financialCategoryFacts: OzonFinancialCategoryFactRecord[] = [],
   usnRate: number,
   vatRate: number,
+  exactLedger: OzonExactSkuFeeLedger | null = null,
 ) {
   const oldTotalRevenue = result.totals.revenue;
   const hasOzonEconomicActivity = Math.abs(oldTotalRevenue) > 0.005;
@@ -971,10 +1334,16 @@ function applyOzonEconomicModel(
   const partnerProgramsAmount = realizationCoverageComplete
     ? toNumber(realizationSummary?.partnerProgramsAmount)
     : 0;
-  const discountPointsAmount = discountCoverageComplete
-    ? toNumber(discountPointsSummary?.totalPaidByPoints) ||
-      toNumber(discountPointsSummary?.pointsWrittenOff) ||
-      toNumber(discountPointsSummary?.pointsAccrued)
+  // Known net zero must stay zero. `||` treated totalPaidByPoints=0 as missing and
+  // fell through to pointsWrittenOff/pointsAccrued (gross), inflating B/E.
+  // Prefer explicit net when the field is present (including 0); only fall back
+  // when net is absent AND accrued/written-off share one economic meaning.
+  const resolvedDiscountPoints = discountCoverageComplete
+    ? resolveOzonDiscountPointsAmount(discountPointsSummary)
+    : 0;
+  const discountPointsResolved = Number.isFinite(resolvedDiscountPoints);
+  const discountPointsAmount = discountPointsResolved
+    ? Number(resolvedDiscountPoints)
     : 0;
 
   result.totals.taxRevenueSource = realizationCoverageComplete
@@ -982,10 +1351,11 @@ function applyOzonEconomicModel(
     : realizationSummary?.source ?? "MISSING_OZON_ACCRUALS_REPORT";
   result.totals.taxRevenueCoverageComplete = realizationCoverageComplete;
   result.totals.taxRevenueMissingDays = realizationSummary?.missingDays ?? [];
-  result.totals.discountPointsSource = discountCoverageComplete
+  result.totals.discountPointsSource = discountPointsResolved
     ? discountPointsSummary?.source ?? "NONE"
-    : discountPointsSummary?.source ?? "MISSING_OZON_ACCRUALS_REPORT";
-  result.totals.discountPointsCoverageComplete = discountCoverageComplete;
+    : "MISSING_OR_AMBIGUOUS_DISCOUNT_POINTS_CONTRACT";
+  result.totals.discountPointsCoverageComplete =
+    discountCoverageComplete && discountPointsResolved;
   result.totals.discountPointsMissingDays = discountPointsSummary?.missingDays ?? [];
 
   if (taxableRevenue > 0) {
@@ -1039,9 +1409,18 @@ function applyOzonEconomicModel(
     result.totals.productCostCoverageComplete !== false &&
     !result.totals.costCoverageIncomplete;
 
-  result.totals.taxesAmount =
-    result.totals.taxCalculationBase * (usnRate / 100) +
-    calculateVatTax(result.totals.taxCalculationBase, vatRate);
+  const ordinaryTax = calculateOrdinaryMarketplaceTaxes(
+    result.totals.taxCalculationBase,
+    usnRate,
+    vatRate,
+  );
+  result.totals.taxesAmount = roundLegalEntityTaxLiability(ordinaryTax.totalTax);
+  (result.totals as { usnAmount?: number; vatAmount?: number; usnBaseExVat?: number }).usnAmount =
+    ordinaryTax.usnAmount;
+  (result.totals as { usnAmount?: number; vatAmount?: number; usnBaseExVat?: number }).vatAmount =
+    ordinaryTax.vatAmount;
+  (result.totals as { usnAmount?: number; vatAmount?: number; usnBaseExVat?: number }).usnBaseExVat =
+    ordinaryTax.usnBaseExVat;
 
   applyOzonFinancialCategoryFactsToTotals(
     result.totals,
@@ -1066,7 +1445,32 @@ function applyOzonEconomicModel(
     result.totals,
     usnRate,
     vatRate,
+    financialCategoryFacts,
+    exactLedger,
   );
+
+  // Persist residual metadata for loader/UI (known zero is explicit 0).
+  (result.totals as { unallocatedPartnerResidual?: number }).unallocatedPartnerResidual = 0;
+  (result.totals as { unallocatedPartnerPrograms?: number }).unallocatedPartnerPrograms = 0;
+
+  // Partner-tax treatment is unresolved: ordinary USN/VAT still apply to ordinary
+  // base, but FINAL is not allowed while partner affects economic turnover/profit.
+  (result.totals as { partnerTaxPolicy?: string }).partnerTaxPolicy =
+    "POLICY_UNRESOLVED";
+  if (Math.abs(Number(result.totals.partnerProgramsAmount) || 0) > 0.005) {
+    result.totals.netProfitStatus = "PRELIMINARY";
+  }
+
+  // Account identity after allocation: sum(SKU category) + unallocated = account.
+  const sumCommission = result.rows.reduce((s, r) => s + r.wbCommission, 0);
+  const sumLogistics = result.rows.reduce((s, r) => s + r.logisticsCost, 0);
+  const sumDeductions = result.rows.reduce((s, r) => s + r.deductions, 0);
+  (result.totals as { unallocatedCommissionCost?: number }).unallocatedCommissionCost =
+    result.totals.wbCommission - sumCommission;
+  (result.totals as { unallocatedLogisticsCost?: number }).unallocatedLogisticsCost =
+    result.totals.logisticsCost - sumLogistics;
+  (result.totals as { unallocatedDeductionsCost?: number }).unallocatedDeductionsCost =
+    result.totals.deductions - sumDeductions;
 
   result.totals.marginProfitPercent =
     result.totals.expenseShareBase > 0
@@ -1258,36 +1662,74 @@ export function mergeOzonTotals(
     for (const key of keys) {
       result[key] = (toNumber(result[key]) + toNumber(totals[key])) as never;
     }
-
-    result.taxRevenueCoverageComplete =
-      result.taxRevenueCoverageComplete && totals.taxRevenueCoverageComplete;
-    result.discountPointsCoverageComplete =
-      result.discountPointsCoverageComplete && totals.discountPointsCoverageComplete;
-    result.costCoverageIncomplete =
-      Boolean(result.costCoverageIncomplete) ||
-      Boolean(totals.costCoverageIncomplete);
-    result.quantityCoverageComplete =
-      result.quantityCoverageComplete !== false &&
-      totals.quantityCoverageComplete !== false;
-    result.productCostCoverageComplete =
-      result.productCostCoverageComplete !== false &&
-      totals.productCostCoverageComplete !== false;
-    result.taxRevenueMissingDays = Array.from(
-      new Set([...result.taxRevenueMissingDays, ...totals.taxRevenueMissingDays]),
-    );
-    result.discountPointsMissingDays = Array.from(
-      new Set([
-        ...result.discountPointsMissingDays,
-        ...totals.discountPointsMissingDays,
-      ]),
-    );
-    result.quantityMissingDays = Array.from(
-      new Set([
-        ...(result.quantityMissingDays ?? []),
-        ...(totals.quantityMissingDays ?? []),
-      ]),
-    ).sort();
+    (result as { unallocatedCommissionCost?: number }).unallocatedCommissionCost =
+      toNumber(
+        (result as { unallocatedCommissionCost?: number }).unallocatedCommissionCost,
+      ) +
+      toNumber(
+        (totals as { unallocatedCommissionCost?: number }).unallocatedCommissionCost,
+      );
+    (result as { unallocatedLogisticsCost?: number }).unallocatedLogisticsCost =
+      toNumber(
+        (result as { unallocatedLogisticsCost?: number }).unallocatedLogisticsCost,
+      ) +
+      toNumber(
+        (totals as { unallocatedLogisticsCost?: number }).unallocatedLogisticsCost,
+      );
+    (result as { unallocatedDeductionsCost?: number }).unallocatedDeductionsCost =
+      toNumber(
+        (result as { unallocatedDeductionsCost?: number }).unallocatedDeductionsCost,
+      ) +
+      toNumber(
+        (totals as { unallocatedDeductionsCost?: number }).unallocatedDeductionsCost,
+      );
+    (result as { unclassifiedAdjustmentCost?: number }).unclassifiedAdjustmentCost =
+      toNumber(
+        (result as { unclassifiedAdjustmentCost?: number }).unclassifiedAdjustmentCost,
+      ) +
+      toNumber(
+        (totals as { unclassifiedAdjustmentCost?: number }).unclassifiedAdjustmentCost,
+      );
+    (result as { unallocatedPartnerResidual?: number }).unallocatedPartnerResidual =
+      toNumber(
+        (result as { unallocatedPartnerResidual?: number }).unallocatedPartnerResidual,
+      ) +
+      toNumber(
+        (totals as { unallocatedPartnerResidual?: number }).unallocatedPartnerResidual,
+      );
+    (result as { unallocatedPartnerPrograms?: number }).unallocatedPartnerPrograms =
+      toNumber(
+        (result as { unallocatedPartnerPrograms?: number }).unallocatedPartnerPrograms,
+      ) +
+      toNumber(
+        (totals as { unallocatedPartnerPrograms?: number }).unallocatedPartnerPrograms,
+      );
+    // Preserve per-entity tax decomposition for ALL (do not null out on merge).
+    (result as { usnAmount?: number }).usnAmount =
+      toNumber((result as { usnAmount?: number }).usnAmount) +
+      toNumber((totals as { usnAmount?: number }).usnAmount);
+    (result as { vatAmount?: number }).vatAmount =
+      toNumber((result as { vatAmount?: number }).vatAmount) +
+      toNumber((totals as { vatAmount?: number }).vatAmount);
+    (result as { usnBaseExVat?: number }).usnBaseExVat =
+      toNumber((result as { usnBaseExVat?: number }).usnBaseExVat) +
+      toNumber((totals as { usnBaseExVat?: number }).usnBaseExVat);
   }
+
+  const coverage = mergeOzonCoverageFlags(totalsList);
+  result.taxRevenueCoverageComplete = Boolean(coverage.taxRevenueCoverageComplete);
+  result.discountPointsCoverageComplete = Boolean(
+    coverage.discountPointsCoverageComplete,
+  );
+  result.costCoverageIncomplete = Boolean(coverage.costCoverageIncomplete);
+  result.quantityCoverageComplete = Boolean(coverage.quantityCoverageComplete);
+  result.productCostCoverageComplete = Boolean(
+    coverage.productCostCoverageComplete,
+  );
+  result.taxRevenueMissingDays = coverage.taxRevenueMissingDays ?? [];
+  result.discountPointsMissingDays = coverage.discountPointsMissingDays ?? [];
+  result.quantityMissingDays = coverage.quantityMissingDays ?? [];
+  result.cogsCoverageComplete = Boolean(coverage.cogsCoverageComplete);
 
   result.taxRevenueSource = result.taxRevenueCoverageComplete
     ? "MERGED_COMPLETE"
@@ -1299,19 +1741,33 @@ export function mergeOzonTotals(
     ? "FINAL_TAXABLE_REVENUE"
     : "ESTIMATED_ECONOMIC_TURNOVER";
   result.taxesEstimated = !result.taxRevenueCoverageComplete;
-  result.cogsCoverageComplete =
-    result.quantityCoverageComplete !== false &&
-    result.productCostCoverageComplete !== false &&
-    !result.costCoverageIncomplete;
-  if (result.quantityCoverageComplete === false) {
-    result.costCoverageIncomplete = true;
-  }
-  result.netProfitStatus =
+
+  const childPreliminary = totalsList.some(
+    (totals) =>
+      totals.netProfitStatus === "PRELIMINARY" ||
+      (totals as { partnerTaxPolicy?: string }).partnerTaxPolicy ===
+        "POLICY_UNRESOLVED" ||
+      Math.abs(Number(totals.partnerProgramsAmount) || 0) > 0.005,
+  );
+  const coverageAllowsFinal =
     result.taxRevenueCoverageComplete &&
     !result.costCoverageIncomplete &&
-    result.cogsCoverageComplete !== false
-      ? "FINAL"
-      : "PRELIMINARY";
+    result.cogsCoverageComplete !== false;
+
+  // ALL cannot be more final than any child (partner policy / preliminary).
+  result.netProfitStatus =
+    childPreliminary || !coverageAllowsFinal ? "PRELIMINARY" : "FINAL";
+  if (
+    totalsList.some(
+      (totals) =>
+        (totals as { partnerTaxPolicy?: string }).partnerTaxPolicy ===
+        "POLICY_UNRESOLVED",
+    ) ||
+    Math.abs(Number(result.partnerProgramsAmount) || 0) > 0.005
+  ) {
+    (result as { partnerTaxPolicy?: string }).partnerTaxPolicy =
+      "POLICY_UNRESOLVED";
+  }
 
   return finalizeOzonTotals(result);
 }
@@ -1613,6 +2069,7 @@ function calculateRowsAndTotals({
           costByVendorCode: ozonCostLookups.costByVendorCode,
           costByNmId: ozonCostLookups.costByNmId,
           costByVendorFamily: ozonCostLookups.costByVendorFamily,
+          conflictedFamilies: ozonCostLookups.conflictedFamilies,
         }).unitCost ?? 0,
       totalCost: 0,
 
@@ -1643,6 +2100,7 @@ function calculateRowsAndTotals({
           costByVendorCode: ozonCostLookups.costByVendorCode,
           costByNmId: ozonCostLookups.costByNmId,
           costByVendorFamily: ozonCostLookups.costByVendorFamily,
+          conflictedFamilies: ozonCostLookups.conflictedFamilies,
         }).unitCost ?? 0;
     }
 
@@ -1702,11 +2160,11 @@ function calculateRowsAndTotals({
     current.drrPercent =
       current.revenue > 0 ? (current.adsCost / current.revenue) * 100 : 0;
 
-    const usnTax = current.revenue > 0 ? current.revenue * (usnRate / 100) : 0;
-    const vatTax =
-      current.revenue > 0 ? calculateVatTax(current.revenue, vatRate) : 0;
-
-    current.taxesAmount = usnTax + vatTax;
+    const rowTax =
+      Math.abs(current.revenue) > 0.005
+        ? calculateOrdinaryMarketplaceTaxes(current.revenue, usnRate, vatRate)
+        : { totalTax: 0 };
+    current.taxesAmount = rowTax.totalTax;
     current.netProfitAfterTax = current.marginProfit - current.taxesAmount;
 
     current.marginAfterTaxPercent =
@@ -2171,9 +2629,11 @@ async function findOzonProductCogsRowsByPeriod(params?: {
 }): Promise<{
   productRows: OzonCogsProductRow[];
   authorityDays: OzonCogsAuthorityDay[];
+  exactFeeLedger: OzonExactSkuFeeLedger;
 }> {
+  const emptyLedger = mergeOzonExactSkuFeeLedgers([]);
   if (!params?.dateFrom || !params?.dateTo) {
-    return { productRows: [], authorityDays: [] };
+    return { productRows: [], authorityDays: [], exactFeeLedger: emptyLedger };
   }
   const dateFrom = new Date(`${params.dateFrom}T00:00:00.000Z`);
   const dateTo = new Date(`${params.dateTo}T00:00:00.000Z`);
@@ -2235,63 +2695,52 @@ async function findOzonProductCogsRowsByPeriod(params?: {
     if (sku && vendor && !vendorBySku.has(sku)) vendorBySku.set(sku, vendor);
   }
 
+  const owners = selectOzonAccrualDayOwners({
+    sessions,
+    dateFrom: params.dateFrom,
+    dateTo: params.dateTo,
+  });
+
   const productRows: OzonCogsProductRow[] = [];
   const authorityDays: OzonCogsAuthorityDay[] = [];
-  const seenSessionDay = new Set<string>();
+  const emittedEvents = new Set<string>();
+  const feeLedgers: OzonExactSkuFeeLedger[] = [];
+  const feeEventKeys = new Set<string>();
 
-  for (const session of sessions) {
-    const preview =
-      session.previewJson && typeof session.previewJson === "object"
-        ? (session.previewJson as Record<string, unknown>)
-        : null;
-    if (!preview) continue;
-    const sessionFrom = String(preview.dateFrom ?? "").slice(0, 10);
-    const sessionTo = String(preview.dateTo ?? "").slice(0, 10);
-    if (!sessionFrom || !sessionTo) continue;
-    if (sessionTo < params.dateFrom || sessionFrom > params.dateTo) continue;
-
-    const companyName = cleanText(session.companyName);
-    if (!companyName) continue;
-    const rawAccruals = Array.isArray(preview.rawAccruals)
-      ? preview.rawAccruals
-      : [];
-    const requestedDates = Array.isArray(preview.requestedDates)
-      ? preview.requestedDates.map((d) => String(d).slice(0, 10))
-      : sessionFrom === sessionTo
-        ? [sessionFrom]
-        : enumerateUtcDaysInclusive(sessionFrom, sessionTo).filter(
-            (d) => d >= params.dateFrom! && d <= params.dateTo!,
-          );
-
-    const movements = extractOzonAccrualProductMovements({
-      companyName,
-      sessionId: session.id,
-      rawAccruals,
-      dateFrom: params.dateFrom,
-      dateTo: params.dateTo,
+  for (const owner of owners.values()) {
+    authorityDays.push({
+      companyName: owner.companyName,
+      day: owner.day,
+      complete: owner.complete,
+      confirmedZeroProductSales: owner.confirmedZeroProductSales,
     });
-    productRows.push(
-      ...mapMovementsToCogsProductRows(movements, vendorBySku).map((row) => ({
-        ...row,
-        authorityCompleteForDay: true,
-      })),
-    );
 
-    const coverageComplete = preview.coverageComplete !== false;
-    for (const auth of buildOzonAccrualAuthorityDays({
-      companyName,
-      sessionId: session.id,
-      requestedDates: requestedDates.filter(
-        (d) => d >= params.dateFrom! && d <= params.dateTo!,
-      ),
-      movements,
-      coverageComplete,
-    })) {
-      const key = `${auth.companyName}|${auth.day}`;
-      if (seenSessionDay.has(key)) continue;
-      seenSessionDay.add(key);
-      authorityDays.push(auth);
+    const rawAccruals = Array.isArray(owner.preview.rawAccruals)
+      ? owner.preview.rawAccruals
+      : [];
+    const movements = extractOzonAccrualProductMovements({
+      companyName: owner.companyName,
+      sessionId: owner.sessionId,
+      rawAccruals,
+      dateFrom: owner.day,
+      dateTo: owner.day,
+    });
+    for (const row of mapMovementsToCogsProductRows(movements, vendorBySku)) {
+      if (emittedEvents.has(row.eventId)) continue;
+      emittedEvents.add(row.eventId);
+      productRows.push({
+        ...row,
+        authorityCompleteForDay: owner.complete,
+      });
     }
+    feeLedgers.push(
+      extractOzonExactSkuFeesFromRaw({
+        rawAccruals,
+        dateFrom: owner.day,
+        dateTo: owner.day,
+        seenEventKeys: feeEventKeys,
+      }),
+    );
   }
 
   // Secondary: sku-grain realization rows (not day totals).
@@ -2323,7 +2772,11 @@ async function findOzonProductCogsRowsByPeriod(params?: {
     }
   }
 
-  return { productRows, authorityDays };
+  return {
+    productRows,
+    authorityDays,
+    exactFeeLedger: mergeOzonExactSkuFeeLedgers(feeLedgers),
+  };
 }
 
 function applyOzonCogsCoverageFlags(
@@ -2334,17 +2787,30 @@ function applyOzonCogsCoverageFlags(
 ) {
   totals.quantityCoverageComplete = coverage.quantityCoverageComplete;
   totals.quantityMissingDays = coverage.missingProductDays;
-  const costByVendor = buildCostByVendorCode(costs);
+  // Use the resolved row.costPrice (same resolver as COGS), not a vendor-only
+  // map re-check that misses family/nmId/exception matches already on the row.
   let missingCostUnits = 0;
+  const missingCostExamples: Array<{ vendorCode: string; nmId: string; units: number }> = [];
   for (const row of rows) {
-    const key = normalizeText(row.vendorCode);
-    const hasCost = key ? costByVendor.has(key) && (costByVendor.get(key) ?? 0) > 0 : false;
+    const hasCost = toNumber(row.costPrice) > 0;
     const units = Math.abs(toNumber(row.salesQty)) + Math.abs(toNumber(row.returnsQty));
-    if (units > 0 && !hasCost) missingCostUnits += units;
+    if (units > 0 && !hasCost) {
+      missingCostUnits += units;
+      if (missingCostExamples.length < 8) {
+        missingCostExamples.push({
+          vendorCode: row.vendorCode,
+          nmId: row.nmId,
+          units,
+        });
+      }
+    }
   }
+  void costs;
   totals.productCostCoverageComplete = missingCostUnits === 0;
   totals.costCoverageIncomplete =
     coverage.costCoverageIncomplete || missingCostUnits > 0;
+  (totals as { costCoverageMissingExamples?: unknown }).costCoverageMissingExamples =
+    missingCostExamples;
   totals.cogsCoverageComplete =
     totals.quantityCoverageComplete !== false &&
     totals.productCostCoverageComplete !== false &&
@@ -2600,12 +3066,15 @@ export async function getProfitAnalyticsOzon(params?: {
     dateTo: params?.dateTo,
     companyName,
   });
-  const { productRows: productCogsRows, authorityDays: productAuthorityDays } =
-    await findOzonProductCogsRowsByPeriod({
-      dateFrom: params?.dateFrom,
-      dateTo: params?.dateTo,
-      companyName,
-    });
+  const {
+    productRows: productCogsRows,
+    authorityDays: productAuthorityDays,
+    exactFeeLedger: currentExactFeeLedger,
+  } = await findOzonProductCogsRowsByPeriod({
+    dateFrom: params?.dateFrom,
+    dateTo: params?.dateTo,
+    companyName,
+  });
   const periodDays =
     params?.dateFrom && params?.dateTo
       ? enumerateUtcDaysInclusive(params.dateFrom, params.dateTo)
@@ -2672,7 +3141,11 @@ export async function getProfitAnalyticsOzon(params?: {
         dateTo: previousPeriod.dateTo.toISOString().slice(0, 10),
         companyName,
       })
-    : { productRows: [], authorityDays: [] };
+    : {
+        productRows: [],
+        authorityDays: [],
+        exactFeeLedger: mergeOzonExactSkuFeeLedgers([]),
+      };
   const previousFinanceRows = previousPeriod
     ? (buildHybridOzonCogsSourceRows({
         productRows: previousProductCogs.productRows,
@@ -2731,6 +3204,7 @@ export async function getProfitAnalyticsOzon(params?: {
     currentFinancialCategoryFacts,
     usnRate,
     vatRate,
+    currentExactFeeLedger,
   );
   applyOzonCogsCoverageFlags(current.totals, cogsCoverage, costs, current.rows);
 
@@ -2748,6 +3222,7 @@ export async function getProfitAnalyticsOzon(params?: {
     previousFinancialCategoryFacts,
     usnRate,
     vatRate,
+    previousProductCogs.exactFeeLedger ?? null,
   );
 
   const comparison = createOzonComparison(current.totals, previous.totals);

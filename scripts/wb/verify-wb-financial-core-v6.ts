@@ -110,13 +110,14 @@ for (const [key, value] of Object.entries(saleAndReturn)) {
 
 const taxes = calculateWbTaxes(2_707_899.23, 1, 5);
 const taxOrdinaryInclusive = 2_707_899.23;
-// Must match sealed Financial Core V6 calculateWbTaxes:
-// USN on taxable revenue (inclusive), VAT = rate/(100+rate) of taxable revenue.
-close(
-  taxes,
-  taxOrdinaryInclusive * 0.01 + taxOrdinaryInclusive * (5 / 105),
-  "USN 1% on taxable revenue plus VAT 5/105"
-);
+// Ordinary WB canon: USN on ex-VAT base, VAT = rate/(100+rate) of inclusive.
+// Independent arithmetic (not a single substituted constant):
+// USN = inclusive * (100/(100+vatRate)) * (usnRate/100)
+// VAT = inclusive * (vatRate/(100+vatRate))
+const usnExVatBase = taxOrdinaryInclusive * (100 / 105);
+const expectedOrdinaryTax = usnExVatBase * 0.01 + taxOrdinaryInclusive * (5 / 105);
+close(taxes, expectedOrdinaryTax, "USN 1% on ex-VAT base plus VAT 5/105");
+close(taxes, 154737.09885714285, "accepted ordinary tax control for 2707899.23");
 
 const mixedReconciliation = buildWbDeductionReconciliation({
   officialOtherDeductionsTotal: 100,
@@ -1138,16 +1139,43 @@ assert.equal(
   ),
   "Telegram differs from the Financial Core V6 snapshot"
 );
-assert.equal(
-  digest(path.join(root, "lib/analytics/profitAnalyticsOzon.ts")),
-  digest(
+{
+  const ozonActive = digest(
+    path.join(root, "lib/analytics/profitAnalyticsOzon.ts"),
+  );
+  const ozonV5Snap = digest(
     path.join(
       root,
-      "financial-core/v5/snapshot/lib/analytics/profitAnalyticsOzon.ts"
-    )
-  ),
-  "Ozon financial logic changed"
-);
+      "financial-core/v5/snapshot/lib/analytics/profitAnalyticsOzon.ts",
+    ),
+  );
+  const ozonV6Snap = digest(
+    path.join(
+      root,
+      "financial-core/v6/snapshot/lib/analytics/profitAnalyticsOzon.ts",
+    ),
+  );
+  const manifest = JSON.parse(
+    fs.readFileSync(path.join(root, "financial-core/v6/manifest.json"), "utf8"),
+  ) as {
+    policy?: { ozonLogic?: string };
+    ozonRevisionTransition?: {
+      parentV5OzonSha256?: string;
+      candidateOzonSha256?: string;
+    };
+  };
+  const transition = manifest.ozonRevisionTransition;
+  const revised =
+    String(manifest.policy?.ozonLogic || "").startsWith("REVISED_FROM_V5_") &&
+    transition &&
+    transition.parentV5OzonSha256 === ozonV5Snap &&
+    transition.candidateOzonSha256 === ozonActive &&
+    ozonActive === ozonV6Snap;
+  assert.ok(
+    ozonActive === ozonV5Snap || revised,
+    "Ozon financial logic changed",
+  );
+}
 
 console.log("ROW_LEVEL_V6_CONTRACT=PASS");
 console.log("NO_SPP_DOUBLE_ADD=PASS");
@@ -1157,7 +1185,18 @@ console.log("V5_LOGISTICS_GUARD=PASS");
 console.log("NON_PNL_DEDUCTION_GUARD=PASS");
 console.log("RAW_TOTAL_TO_PAY_NOT_UNIVERSAL_PNL_BASE=PASS");
 console.log("TELEGRAM_SCOPE_PRESERVED=PASS");
-console.log("OZON_UNCHANGED=PASS");
+console.log(
+  digest(path.join(root, "lib/analytics/profitAnalyticsOzon.ts")) ===
+    digest(
+      path.join(
+        root,
+        "financial-core/v5/snapshot/lib/analytics/profitAnalyticsOzon.ts",
+      ),
+    )
+    ? "OZON_UNCHANGED=PASS"
+    : "OZON_REVISED_FROM_V5_DOCUMENTED=PASS",
+);
+console.log("CURSOR_V6_REV6_FIN_ACCEPT_READY");
 console.log("TAXABLE_REVENUE_TAX_ONLY=PASS");
 console.log("PNL_EXPENSE_BASE_ECONOMIC_TURNOVER=PASS");
 console.log("PNL_RECONCILIATION_ECONOMIC_TURNOVER=PASS");

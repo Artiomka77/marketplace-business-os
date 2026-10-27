@@ -7,6 +7,21 @@ export type CanonicalProductCostRecord = {
   createdAt?: Date | string | null;
 };
 
+/**
+ * Documented Ozon SKU→cost exceptions (FIN_PATCH / FIN_GATE accepted).
+ * Numeric SKU rows are NOT automatically canonical.
+ */
+export const DOCUMENTED_OZON_SKU_UNIT_COSTS: ReadonlyMap<string, number> =
+  new Map([
+    ["2760136185", 920],
+  ]);
+
+/** Accepted family bases with unanimous static 2026 cost (offer-* variants). */
+export const DOCUMENTED_OZON_FAMILY_UNIT_COSTS: ReadonlyMap<string, number> =
+  new Map([
+    ["1492430240", 1450],
+  ]);
+
 export function normalizeProductCostKey(value: unknown) {
   return String(value ?? "")
     .toLowerCase()
@@ -53,8 +68,7 @@ export function buildCanonicalPositiveCostLookups(
 ) {
   const costByVendorCode = new Map<string, number>();
   const costByNmId = new Map<string, number>();
-  /** vendor base (before first '-') → unit cost when family siblings agree */
-  const costByVendorFamily = new Map<string, number>();
+  const familyPrices = new Map<string, Set<number>>();
 
   for (const cost of [...costs].sort(compareCanonicalProductCosts)) {
     const costPrice = toPositiveProductCost(cost.costPrice);
@@ -69,18 +83,32 @@ export function buildCanonicalPositiveCostLookups(
     if (nmId && !costByNmId.has(nmId)) {
       costByNmId.set(nmId, costPrice);
     }
-    if (vendorCode) {
+    if (vendorCode.includes("-")) {
       const base = vendorCode.split("-")[0] || vendorCode;
-      if (!costByVendorFamily.has(base)) {
-        costByVendorFamily.set(base, costPrice);
-      } else if (costByVendorFamily.get(base) !== costPrice) {
-        // Divergent family sizes — keep first; exact variant still wins above.
-        costByVendorFamily.set(base, costByVendorFamily.get(base)!);
-      }
+      const set = familyPrices.get(base) ?? new Set<number>();
+      set.add(costPrice);
+      familyPrices.set(base, set);
     }
   }
 
-  return { costByVendorCode, costByNmId, costByVendorFamily };
+  /** Only unanimous sibling prices become family fallback. Conflicts → absent. */
+  const costByVendorFamily = new Map<string, number>();
+  const conflictedFamilies = new Set<string>();
+  for (const [base, prices] of familyPrices) {
+    if (prices.size === 1) {
+      costByVendorFamily.set(base, [...prices][0]!);
+    } else {
+      conflictedFamilies.add(base);
+    }
+  }
+  for (const [base, price] of DOCUMENTED_OZON_FAMILY_UNIT_COSTS) {
+    const key = normalizeProductCostKey(base);
+    if (!conflictedFamilies.has(key)) {
+      costByVendorFamily.set(key, price);
+    }
+  }
+
+  return { costByVendorCode, costByNmId, costByVendorFamily, conflictedFamilies };
 }
 
 export function ozonVendorBaseArticle(vendorCode: unknown) {
@@ -89,16 +117,26 @@ export function ozonVendorBaseArticle(vendorCode: unknown) {
   return text.split("-")[0] || text;
 }
 
-/** Telegram/placeholder: vendorCode=numeric SKU and cost 10 — never beats real variant. */
+/** Telegram/placeholder: vendorCode=numeric SKU and cost 10. */
 export function isOzonSkuCostPlaceholder(vendorKey: string, cost: number) {
   return cost === 10 && /^\d+$/.test(vendorKey);
 }
 
+export type OzonUnitCostResolution = {
+  unitCost: number | null;
+  source: string | null;
+  matchedKey: string | null;
+  conflict: string | null;
+};
+
 /**
- * Canonical Ozon unit cost.
- * CANON_EXPLICIT (sku-keyed, non-placeholder) beats offer vendor when both exist
- * (accepted 2760136185=920 over 371584460-*=970). Placeholder sku cost 10 never
- * beats exact size variant (1237829938-164=920).
+ * Canonical Ozon unit cost priority (FIN_RUN):
+ * 1) Documented SKU exception
+ * 2) Documented family rule (e.g. 1492430240*=1450) — beats unapproved exact sibling
+ * 3) Exact offer/vendorCode (non-placeholder)
+ * 4) Unanimous family / base from ProductCost
+ * 5) Non-placeholder sku/nmId lookup
+ * Placeholder 10 alone → UNKNOWN. Conflicted family → UNKNOWN.
  */
 export function resolveCanonicalOzonUnitCost(params: {
   vendorCode?: unknown;
@@ -106,58 +144,95 @@ export function resolveCanonicalOzonUnitCost(params: {
   costByVendorCode: Map<string, number>;
   costByNmId: Map<string, number>;
   costByVendorFamily?: Map<string, number>;
-}): { unitCost: number | null; source: string | null } {
+  conflictedFamilies?: Set<string>;
+}): OzonUnitCostResolution {
   const vendor = normalizeProductCostKey(params.vendorCode);
   const sku = normalizeProductCostKey(params.sku);
-  const { costByVendorCode, costByNmId, costByVendorFamily } = params;
+  const { costByVendorCode, costByNmId, costByVendorFamily, conflictedFamilies } =
+    params;
 
-  if (sku && costByVendorCode.has(sku)) {
-    const skuCost = costByVendorCode.get(sku)!;
-    if (!isOzonSkuCostPlaceholder(sku, skuCost)) {
-      return { unitCost: skuCost, source: "CANON_EXPLICIT" };
-    }
-  }
-  if (sku && costByNmId.has(sku)) {
-    const skuCost = costByNmId.get(sku)!;
-    if (!isOzonSkuCostPlaceholder(sku, skuCost)) {
-      return { unitCost: skuCost, source: "CANON_EXPLICIT" };
-    }
-  }
-
-  if (vendor && costByVendorCode.has(vendor)) {
+  if (sku && DOCUMENTED_OZON_SKU_UNIT_COSTS.has(sku)) {
     return {
-      unitCost: costByVendorCode.get(vendor)!,
-      source: "ProductCost.vendorCode",
+      unitCost: DOCUMENTED_OZON_SKU_UNIT_COSTS.get(sku)!,
+      source: "CANON_EXPLICIT",
+      matchedKey: sku,
+      conflict: null,
     };
   }
 
   const base = ozonVendorBaseArticle(vendor || sku);
-  if (base && costByVendorCode.has(base)) {
+  if (base && DOCUMENTED_OZON_FAMILY_UNIT_COSTS.has(base)) {
     return {
-      unitCost: costByVendorCode.get(base)!,
-      source: "CANON_BASE_EXPLICIT",
+      unitCost: DOCUMENTED_OZON_FAMILY_UNIT_COSTS.get(base)!,
+      source: "CANON_FAMILY_DOCUMENTED",
+      matchedKey: base,
+      conflict: null,
     };
   }
-  if (base && costByNmId.has(base)) {
-    return { unitCost: costByNmId.get(base)!, source: "CANON_BASE_EXPLICIT" };
+
+  if (vendor && costByVendorCode.has(vendor)) {
+    const exact = costByVendorCode.get(vendor)!;
+    if (!isOzonSkuCostPlaceholder(vendor, exact)) {
+      return {
+        unitCost: exact,
+        source: "ProductCost.vendorCode",
+        matchedKey: vendor,
+        conflict: null,
+      };
+    }
+  }
+
+  if (base && conflictedFamilies?.has(base)) {
+    return {
+      unitCost: null,
+      source: null,
+      matchedKey: base,
+      conflict: "FAMILY_SIBLING_COST_CONFLICT",
+    };
+  }
+  if (base && costByVendorCode.has(base)) {
+    const baseCost = costByVendorCode.get(base)!;
+    if (!isOzonSkuCostPlaceholder(base, baseCost)) {
+      return {
+        unitCost: baseCost,
+        source: "CANON_BASE_EXPLICIT",
+        matchedKey: base,
+        conflict: null,
+      };
+    }
   }
   if (base && costByVendorFamily?.has(base)) {
     return {
       unitCost: costByVendorFamily.get(base)!,
       source: "CANON_FAMILY",
+      matchedKey: base,
+      conflict: null,
     };
   }
 
-  // Placeholder sku cost only as last resort (never preferred above).
   if (sku && costByVendorCode.has(sku)) {
-    return {
-      unitCost: costByVendorCode.get(sku)!,
-      source: "ProductCost.vendorCode",
-    };
+    const skuCost = costByVendorCode.get(sku)!;
+    if (!isOzonSkuCostPlaceholder(sku, skuCost)) {
+      return {
+        unitCost: skuCost,
+        source: "ProductCost.vendorCode",
+        matchedKey: sku,
+        conflict: null,
+      };
+    }
   }
   if (sku && costByNmId.has(sku)) {
-    return { unitCost: costByNmId.get(sku)!, source: "ProductCost.nmId" };
+    const skuCost = costByNmId.get(sku)!;
+    if (!isOzonSkuCostPlaceholder(sku, skuCost)) {
+      return {
+        unitCost: skuCost,
+        source: "ProductCost.nmId",
+        matchedKey: sku,
+        conflict: null,
+      };
+    }
   }
 
-  return { unitCost: null, source: null };
+  // Placeholder-only matches are UNKNOWN — never promote coverage.
+  return { unitCost: null, source: null, matchedKey: null, conflict: null };
 }

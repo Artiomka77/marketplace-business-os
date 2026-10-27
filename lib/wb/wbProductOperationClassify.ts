@@ -92,18 +92,25 @@ export function wbPreliminaryEconomicKey(row: {
   ].join("|");
 }
 
+/**
+ * Keep every DAILY row (distinct real sales may share money/SKU fingerprint).
+ * OPERATIONAL rows that share an economic fingerprint with DAILY are treated as
+ * cross-source overlap and suppressed. Distinct OPERATIONAL sales with the same
+ * fingerprint are NOT collapsed — SKU+price+day is not event identity.
+ */
 export function mergePreliminaryWbSaleRowsByEconomicKey<T>(params: {
   dailyRows: T[];
   operationalRows: T[];
   keyOf: (row: T) => string;
 }): T[] {
-  const byEconomic = new Map<string, T>();
-  for (const row of params.dailyRows) {
-    byEconomic.set(params.keyOf(row), row);
-  }
+  const out: T[] = [...params.dailyRows];
+  const claimedByDaily = new Set(
+    params.dailyRows.map((row) => params.keyOf(row)),
+  );
   for (const row of params.operationalRows) {
     const key = params.keyOf(row);
-    if (!byEconomic.has(key)) byEconomic.set(key, row);
+    if (claimedByDaily.has(key)) continue;
+    out.push(row);
   }
-  return Array.from(byEconomic.values());
+  return out;
 }

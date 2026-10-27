@@ -110,6 +110,21 @@ export type InsightsPayload = {
   detailAsync: boolean;
   detailGeneratedAtLabel: string | null;
   sourceGeneratedAtLabel: string | null;
+  /** SKU→account→Finance residual bridge from detail loader (null = unavailable). */
+  accountResidualBridge?: {
+    status?: string;
+    skuNetProfit?: number;
+    wbUnallocatedAds?: number;
+    wbStorage?: number;
+    ozonPartnerResidual?: number;
+    marketplaceProfit?: number;
+    financeSignedImpact?: number;
+    businessProfit?: number;
+    observedAccountMarketplaceProfit?: number | null;
+    accountBridgeResidual?: number | null;
+    formula?: string;
+    finality?: string | null;
+  } | null;
   kpi: {
     /** Canonical WB+Ozon economic turnover (management). Null if incomplete. */
     economicTurnover: number | null;
