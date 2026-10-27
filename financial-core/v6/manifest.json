@@ -46,10 +46,10 @@
     {
       "path": "lib/analytics/profitAnalytics.ts",
       "role": "Канонический расчёт прибыли Wildberries",
-      "sha256": "07a4f20f1dcba05d40eb01512ad88dad2bab1b67f3406d37fe9ffacb02cfeb30",
-      "snapshotSha256": "07a4f20f1dcba05d40eb01512ad88dad2bab1b67f3406d37fe9ffacb02cfeb30",
-      "sizeBytes": 90945,
-      "activeSha256": "07a4f20f1dcba05d40eb01512ad88dad2bab1b67f3406d37fe9ffacb02cfeb30"
+      "sha256": "7203b5759e7ae209f38c70168a727991862daadc5e536a5019f0872e0e333138",
+      "snapshotSha256": "7203b5759e7ae209f38c70168a727991862daadc5e536a5019f0872e0e333138",
+      "sizeBytes": 92672,
+      "activeSha256": "7203b5759e7ae209f38c70168a727991862daadc5e536a5019f0872e0e333138"
     },
     {
       "path": "lib/analytics/profitAnalyticsOzon.ts",

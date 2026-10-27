@@ -1313,6 +1313,13 @@ function calculateRowsAndTotals({
       );
     }
 
+    // Money-only OTHER (e.g. «Добровольная компенсация при возврате»): keep OTHER so
+    // qty/COGS/taxable are not treated as physical sale/return, but carry sellerPayout
+    // into SKU so it matches official WbFinance payout / account residual path.
+    if (!isWbSaleOperation && !isWbReturnOperation && sellerPayout !== 0) {
+      current.sellerPayout += sellerPayout;
+    }
+
     current.logisticsCost += Math.abs(toNumber(wbRow.logisticsCost));
     current.storageCost += Math.abs(toNumber(wbRow.storageCost));
     current.acceptanceCost += Math.abs(toNumber(wbRow.acceptanceCost));
@@ -2517,19 +2524,59 @@ export async function getProfitAnalytics(params?: {
       : null;
 
   // ALL = sum of company-scoped runs (tax rates, ownership, estimates stay per IP).
+  // Scope = business activity in period (WbFinance and/or WbSale), not isActive and
+  // not finance-only. Empty shells stay out; preliminary cabinets with sales stay in.
   if (
     !companyName &&
     params?.dateFrom &&
     params?.dateTo &&
     !params._allAggregated
   ) {
+    const { selectAllScopeCompanyNames } = await import(
+      "@/lib/analytics/allScopeCompanies"
+    );
     const companyRows = await prisma.company.findMany({
       select: { name: true },
       orderBy: { name: "asc" },
     });
-    const names = companyRows
+    const candidateNames = companyRows
       .map((row) => String(row.name ?? "").trim())
       .filter(Boolean);
+    const saleFrom = startOfDay(params.dateFrom);
+    const saleToExclusive = nextDayStart(params.dateTo);
+    const [financeTouch, saleTouch] = await Promise.all([
+      prisma.wbFinance.findMany({
+        where: {
+          ...createWideWbFinanceDateFilter({
+            dateFrom: params.dateFrom,
+            dateTo: params.dateTo,
+          }),
+          ...(candidateNames.length
+            ? { companyName: { in: candidateNames } }
+            : {}),
+        },
+        select: { companyName: true },
+        distinct: ["companyName"],
+      }),
+      prisma.wbSale.findMany({
+        where: {
+          saleDate: {
+            gte: saleFrom,
+            lt: saleToExclusive,
+          },
+          ...(candidateNames.length
+            ? { companyName: { in: candidateNames } }
+            : {}),
+        },
+        select: { companyName: true },
+        distinct: ["companyName"],
+      }),
+    ]);
+    const names = selectAllScopeCompanyNames({
+      candidateNames,
+      financeTouch,
+      saleTouch,
+    });
     if (names.length >= 2) {
       const parts = [];
       for (const name of names) {
