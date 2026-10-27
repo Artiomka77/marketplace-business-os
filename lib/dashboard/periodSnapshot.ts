@@ -170,8 +170,9 @@ export type DashboardSnapshotProfitWb = {
   version: string;
   companyScope: string;
   rows: ProfitAnalyticsResult["rows"];
-  totals: ProfitAnalyticsResult["totals"];
-  comparison: ProfitAnalyticsResult["comparison"];
+  // null = analytics unavailable (unknown ≠ zero); consumers must not treat as 0.
+  totals: ProfitAnalyticsResult["totals"] | null;
+  comparison: ProfitAnalyticsResult["comparison"] | null;
   productMeta: Array<{
     vendorKey: string;
     value: DashboardSnapshotProfitWbProductMeta;
