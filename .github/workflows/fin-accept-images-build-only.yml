@@ -251,10 +251,11 @@ jobs:
           echo "APP_LOGIN_SMOKE_OK user=${APP_USER:-empty}" | tee smoke-logs/app_login_result.txt
 
           # Schema for isolated smoke DB (no production). Prefer db push from worker image.
+          # Prisma 7: pass --url (no --skip-generate on db push).
           docker run --rm --network host --user root \
             -e DATABASE_URL="$SMOKE_DATABASE_URL" \
             --entrypoint npx "${{ steps.tags.outputs.profit }}" \
-            prisma db push --skip-generate --accept-data-loss \
+            prisma db push --accept-data-loss --url "$SMOKE_DATABASE_URL" \
             > smoke-logs/prisma_db_push.txt 2>&1 || {
               echo "prisma db push failed" >&2
               cat smoke-logs/prisma_db_push.txt >&2 || true
