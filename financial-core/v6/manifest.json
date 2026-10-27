@@ -54,10 +54,10 @@
     {
       "path": "lib/analytics/profitAnalyticsOzon.ts",
       "role": "Канонический расчёт прибыли Ozon",
-      "sha256": "4ca524e9632d6eee297de8123c85167d444126c69fd375940bcb1562bff6335f",
-      "snapshotSha256": "4ca524e9632d6eee297de8123c85167d444126c69fd375940bcb1562bff6335f",
-      "sizeBytes": 102942,
-      "activeSha256": "4ca524e9632d6eee297de8123c85167d444126c69fd375940bcb1562bff6335f"
+      "sha256": "5b43db3e67517a4e55de315edca3aa9f57a17cc4de33d98a313713f80089dfc3",
+      "snapshotSha256": "5b43db3e67517a4e55de315edca3aa9f57a17cc4de33d98a313713f80089dfc3",
+      "sizeBytes": 103573,
+      "activeSha256": "5b43db3e67517a4e55de315edca3aa9f57a17cc4de33d98a313713f80089dfc3"
     },
     {
       "path": "lib/analytics/dataReadiness.ts",
@@ -78,10 +78,10 @@
     {
       "path": "lib/telegram/dailyReport.ts",
       "role": "Единая финансовая сводка Dashboard и Telegram",
-      "sha256": "fbde181e84798f7b72fbab48b08e001ef455b9789c2cca5aaba6896c45ee9063",
-      "snapshotSha256": "fbde181e84798f7b72fbab48b08e001ef455b9789c2cca5aaba6896c45ee9063",
-      "sizeBytes": 97423,
-      "activeSha256": "fbde181e84798f7b72fbab48b08e001ef455b9789c2cca5aaba6896c45ee9063"
+      "sha256": "ff1b817a44ceb61362645a7da8060453a048e33f186c16c86ddbd77bb4377d8d",
+      "snapshotSha256": "ff1b817a44ceb61362645a7da8060453a048e33f186c16c86ddbd77bb4377d8d",
+      "sizeBytes": 97976,
+      "activeSha256": "ff1b817a44ceb61362645a7da8060453a048e33f186c16c86ddbd77bb4377d8d"
     },
     {
       "path": "lib/import/detectReportType.ts",

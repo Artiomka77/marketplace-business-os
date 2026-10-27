@@ -231,3 +231,31 @@ test("zero and negative A/B preserved in N", () => {
     115,
   );
 });
+
+test("null gross does not become Number(null)=0 before legacy net path", () => {
+  const resolved = resolveOzonNetExpensesForDisplayForTest({
+    grossOzonExpenses: null,
+    netOzonExpenses: 100,
+    partnerProgramsAmount: 10,
+    netOzonExpensesRepresentation: OZON_NET_EXPENSES_REPRESENTATION_G_MINUS_B_FOR_TEST,
+  });
+  assert.equal(resolved, 90);
+});
+
+test("real zero gross is preserved (not treated as missing)", () => {
+  const resolved = resolveOzonNetExpensesForDisplayForTest({
+    grossOzonExpenses: 0,
+    discountPointsCompensation: 0,
+    partnerProgramsAmount: 0,
+  });
+  assert.equal(resolved, 0);
+});
+
+test("new G_MINUS_B_MINUS_A stored net is not reduced by A again", () => {
+  const resolved = resolveOzonNetExpensesForDisplayForTest({
+    netOzonExpenses: 170_858.17,
+    partnerProgramsAmount: 23_352.69,
+    netOzonExpensesRepresentation: "G_MINUS_B_MINUS_A",
+  });
+  assert.equal(Number(resolved.toFixed(2)), 170_858.17);
+});

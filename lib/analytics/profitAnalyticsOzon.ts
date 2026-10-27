@@ -466,6 +466,8 @@ export type OzonProfitTotals = {
   grossOzonExpenses: number;
   discountPointsCompensation: number;
   netOzonExpenses: number;
+  /** Present on new writes; absent/legacy means treat stored net as G−B. */
+  netOzonExpensesRepresentation?: string | null;
   partnerServicesCost: number;
   otherServicesCost: number;
   compensationAmount: number;
@@ -1093,31 +1095,46 @@ export function resolveOzonNetExpensesForDisplay(totals: {
   netOzonExpenses?: number | null;
   netOzonExpensesRepresentation?: string | null;
 }): number {
-  const g = Number(totals.grossOzonExpenses);
-  const b = Number(
-    totals.discountPointsCompensation ?? totals.discountPointsAmount ?? 0,
-  );
-  const a = Number(totals.partnerProgramsAmount) || 0;
-  if (Number.isFinite(g)) {
-    return g - b - a;
-  }
-  const stored = Number(totals.netOzonExpenses);
+  // Presence checks BEFORE Number(): Number(null)===0 must not look like known gross=0.
+  const gRaw = totals.grossOzonExpenses;
+  const bRaw =
+    totals.discountPointsCompensation ?? totals.discountPointsAmount;
+  const aRaw = totals.partnerProgramsAmount;
+  const storedRaw = totals.netOzonExpenses;
   const rep = totals.netOzonExpensesRepresentation;
+
+  const b =
+    bRaw === null || bRaw === undefined || !Number.isFinite(Number(bRaw))
+      ? 0
+      : Number(bRaw);
+  const a =
+    aRaw === null || aRaw === undefined || !Number.isFinite(Number(aRaw))
+      ? 0
+      : Number(aRaw);
+
+  if (gRaw !== null && gRaw !== undefined && Number.isFinite(Number(gRaw))) {
+    return Number(gRaw) - b - a;
+  }
+
   if (
-    Number.isFinite(stored) &&
-    rep === OZON_NET_EXPENSES_REPRESENTATION_G_MINUS_B_MINUS_A
+    storedRaw !== null &&
+    storedRaw !== undefined &&
+    Number.isFinite(Number(storedRaw))
   ) {
+    const stored = Number(storedRaw);
+    if (rep === OZON_NET_EXPENSES_REPRESENTATION_G_MINUS_B_MINUS_A) {
+      return stored;
+    }
+    if (rep === OZON_NET_EXPENSES_REPRESENTATION_G_MINUS_B || rep == null) {
+      // Legacy stored N was G−B; apply A once for current display without
+      // mutating the stored payload in place.
+      return stored - a;
+    }
     return stored;
   }
-  if (
-    Number.isFinite(stored) &&
-    (rep === OZON_NET_EXPENSES_REPRESENTATION_G_MINUS_B || rep == null)
-  ) {
-    // Legacy stored N was G−B; apply A once for current display without
-    // mutating the stored payload in place.
-    return stored - a;
-  }
-  return Number.isFinite(stored) ? stored : 0;
+
+  // Incomplete/ambiguous payload — not a confirmed numeric zero.
+  return Number.NaN;
 }
 
 function applyExactSkuFeeLedgerToRows(

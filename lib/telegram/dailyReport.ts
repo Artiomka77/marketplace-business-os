@@ -1,7 +1,10 @@
 import { prisma } from "@/lib/prisma";
 import { calculateFinanceMetricsForRows } from "@/lib/finance/financeMetrics";
 import { getProfitAnalytics } from "@/lib/analytics/profitAnalytics";
-import { getProfitAnalyticsOzon } from "@/lib/analytics/profitAnalyticsOzon";
+import {
+  getProfitAnalyticsOzon,
+  resolveOzonNetExpensesForDisplay,
+} from "@/lib/analytics/profitAnalyticsOzon";
 import {
   getDataReadinessSummary,
   type DataReadinessSummary,
@@ -1875,7 +1878,16 @@ async function getOzonMetrics(companyName: string, range: DateRange) {
       ? profitTotals.grossOzonExpenses
       : undefined,
     netOzonExpenses: profitAnalyticsHasOzonData
-      ? profitTotals.netOzonExpenses
+      ? resolveOzonNetExpensesForDisplay({
+          grossOzonExpenses: profitTotals.grossOzonExpenses,
+          discountPointsCompensation: profitTotals.discountPointsCompensation,
+          discountPointsAmount: profitTotals.discountPointsAmount,
+          partnerProgramsAmount: profitTotals.partnerProgramsAmount,
+          netOzonExpenses: profitTotals.netOzonExpenses,
+          netOzonExpensesRepresentation: (
+            profitTotals as { netOzonExpensesRepresentation?: string | null }
+          ).netOzonExpensesRepresentation,
+        })
       : undefined,
     excludedLoansFactoringAmount: profitAnalyticsHasOzonData
       ? profitTotals.excludedLoansFactoringAmount

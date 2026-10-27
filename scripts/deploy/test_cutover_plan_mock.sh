@@ -108,12 +108,29 @@ case "$cmd" in
     fi
     case "$fmt" in
       "{{.Image}}") grep '^image=' "$STATE_DIR/containers/$name" | tail -1 | cut -d= -f2 ;;
+      "{{.Id}}") grep '^id=' "$STATE_DIR/containers/$name" | tail -1 | cut -d= -f2 ;;
       "{{.Config.User}}") grep '^user=' "$STATE_DIR/containers/$name" | tail -1 | cut -d= -f2- ;;
       "{{.HostConfig.NetworkMode}}") grep '^network=' "$STATE_DIR/containers/$name" | tail -1 | cut -d= -f2- ;;
       "{{.Config.WorkingDir}}") grep '^workdir=' "$STATE_DIR/containers/$name" | tail -1 | cut -d= -f2- ;;
       "{{.HostConfig.RestartPolicy.Name}}") grep '^restart=' "$STATE_DIR/containers/$name" | tail -1 | cut -d= -f2- ;;
       "{{json .Config.Entrypoint}}") echo '["docker-entrypoint.sh"]' ;;
       "{{json .Mounts}}") echo '[]' ;;
+      "{{len .Config.Env}}")
+        if [[ -f "$STATE_DIR/env_len_override_$name" ]]; then
+          cat "$STATE_DIR/env_len_override_$name"
+        else
+          echo 3
+        fi
+        ;;
+      "{{range .Config.Env}}{{println .}}{{end}}")
+        if [[ -f "$STATE_DIR/env_len_override_$name" ]] && [[ "$(cat "$STATE_DIR/env_len_override_$name")" == "0" ]]; then
+          :
+        else
+          echo "DATABASE_URL=postgresql://x"
+          echo "NODE_ENV=production"
+          echo "HOSTNAME=mock"
+        fi
+        ;;
       "{{.State.Running}}")
         if grep -q '^running=false' "$STATE_DIR/containers/$name"; then echo false; else echo true; fi
         ;;
@@ -152,6 +169,7 @@ case "$cmd" in
     fi
     {
       echo "image=$expect"
+      echo "id=sha256:new_${name}_$$"
       echo "user=$user"
       echo "network=$network"
       echo "workdir=$workdir"
@@ -192,6 +210,7 @@ seed_containers() {
     fi
     {
       echo "image=sha256:old_$c"
+      echo "id=sha256:cid_old_$c"
       echo "user=$user"
       echo "network=$network"
       echo "workdir=/app"
@@ -313,17 +332,18 @@ case_missing_env_preflight() {
   install_docker_mock
   seed_containers 0
   rm -f "$STATE/env/avorofin-app.env"
+  # Also empty Config.Env: mock returns len via marker file
+  echo 0 >"$STATE/env_len_override_avorofin-app"
   set +e
   bash "$CUTOVER_SRC" switch >"$STATE/out.txt" 2>"$STATE/err.txt"
   ec=$?
   set -e
+  rm -f "$STATE/env_len_override_avorofin-app"
   [[ $ec -ne 0 ]] || fail "expected preflight fail"
   grep -qi 'missing env' "$STATE/err.txt" || fail "expected missing env message"
-  # no mutations: no pre containers
   for c in "${ROLES[@]}"; do
     [[ -f "$STATE/containers/${c}-pre-fa-cutover" ]] && fail "mutated despite preflight"
   done
-  # still old images
   assert_old_images
   log "PASS missing_env_preflight"
 }
@@ -376,6 +396,89 @@ case_interrupt_after_rename() {
   log "PASS interrupt_after_rename"
 }
 
+# R11: partial rollback then NEW process retry must not destroy restored originals.
+case_retry_after_partial_restore() {
+  log "CASE retry_after_partial_restore"
+  install_docker_mock
+  seed_containers 0
+  bash "$CUTOVER_SRC" switch
+  assert_new_images
+  export MOCK_FAIL_START=avorofin-stock-planning-snapshot-worker
+  set +e
+  bash "$CUTOVER_SRC" rollback >"$STATE/out1.txt" 2>"$STATE/err1.txt"
+  first_ec=$?
+  set -e
+  [[ $first_ec -ne 0 ]] || fail "expected first rollback fail"
+  grep -q ROLLBACK_FAILED "$STATE/out1.txt" || fail "expected ROLLBACK_FAILED"
+  [[ "$(cat "$STATE/journal/status")" == "rollback_failed" ]] || fail "status rollback_failed"
+  # APP should already be restored original
+  got=$(grep '^image=' "$STATE/containers/avorofin-app" | tail -1 | cut -d= -f2)
+  [[ "$got" == "sha256:old_avorofin-app" ]] || fail "APP not restored after partial: $got"
+  unset MOCK_FAIL_START
+  # NEW process retry
+  set +e
+  bash "$CUTOVER_SRC" rollback >"$STATE/out2.txt" 2>"$STATE/err2.txt"
+  second_ec=$?
+  set -e
+  [[ $second_ec -eq 0 ]] || fail "retry rollback failed ec=$second_ec err=$(cat "$STATE/err2.txt")"
+  grep -q ROLLBACK_OK "$STATE/out2.txt" || fail "expected ROLLBACK_OK on retry"
+  assert_old_images
+  # APP still present
+  [[ -f "$STATE/containers/avorofin-app" ]] || fail "APP missing after retry"
+  log "PASS retry_after_partial_restore"
+}
+
+# R11: crash after rename (no in-process rollback) → new process recovers.
+case_exit_after_rename_new_process() {
+  log "CASE exit_after_rename_new_process"
+  install_docker_mock
+  seed_containers 0
+  export EXIT_AFTER_RENAME=avorofin-profit-readmodel-worker
+  set +e
+  bash "$CUTOVER_SRC" switch >"$STATE/out.txt" 2>"$STATE/err.txt"
+  ec=$?
+  set -e
+  unset EXIT_AFTER_RENAME
+  [[ $ec -ne 0 ]] || fail "expected exit after rename"
+  grep -q EXIT_AFTER_RENAME "$STATE/err.txt" || fail "missing EXIT_AFTER_RENAME"
+  # Profit should be under backup name; working name absent
+  [[ -f "$STATE/containers/avorofin-profit-readmodel-worker-pre-fa-cutover" ]] || fail "missing backup after rename exit"
+  [[ ! -f "$STATE/containers/avorofin-profit-readmodel-worker" ]] || fail "working name still present"
+  # NEW process rollback restores
+  bash "$CUTOVER_SRC" rollback
+  assert_old_images
+  log "PASS exit_after_rename_new_process"
+}
+
+case_refuse_unknown_original_mismatch() {
+  log "CASE refuse_unknown_original_mismatch"
+  install_docker_mock
+  seed_containers 0
+  bash "$CUTOVER_SRC" switch
+  # Corrupt APP to unknown image under working name (not old, not expect)
+  {
+    echo "image=sha256:UNKNOWN_FOREIGN"
+    echo "id=sha256:foreign"
+    echo "user=nextjs"
+    echo "network=bridge"
+    echo "workdir=/app"
+    echo "restart=unless-stopped"
+    echo "running=true"
+    echo "port=127.0.0.1:3000:3000"
+  } >"$STATE/containers/avorofin-app"
+  set +e
+  bash "$CUTOVER_SRC" rollback >"$STATE/out.txt" 2>"$STATE/err.txt"
+  ec=$?
+  set -e
+  [[ $ec -ne 0 ]] || fail "expected refuse unknown"
+  grep -q ROLLBACK_UNKNOWN_STATE "$STATE/err.txt" || fail "expected ROLLBACK_UNKNOWN_STATE"
+  # Must NOT have deleted the unknown container
+  [[ -f "$STATE/containers/avorofin-app" ]] || fail "destroyed unknown container"
+  got=$(grep '^image=' "$STATE/containers/avorofin-app" | tail -1 | cut -d= -f2)
+  [[ "$got" == "sha256:UNKNOWN_FOREIGN" ]] || fail "mutated unknown image"
+  log "PASS refuse_unknown_original_mismatch"
+}
+
 run_all() {
   case_normal_switch_separate_rollback
   case_bindings_and_root_user
@@ -385,6 +488,9 @@ run_all() {
   case_missing_old_preflight
   case_stop_failure_rollback
   case_interrupt_after_rename
+  case_retry_after_partial_restore
+  case_exit_after_rename_new_process
+  case_refuse_unknown_original_mismatch
   log "ALL_CUTOVER_ACCEPTANCE_PASS"
 }
 

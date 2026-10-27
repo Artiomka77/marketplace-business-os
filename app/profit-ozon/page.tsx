@@ -2,7 +2,10 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 
 import { prisma } from "@/lib/prisma";
-import { getProfitAnalyticsOzon } from "@/lib/analytics/profitAnalyticsOzon";
+import {
+  getProfitAnalyticsOzon,
+  resolveOzonNetExpensesForDisplay,
+} from "@/lib/analytics/profitAnalyticsOzon";
 import { calculateOzonSkuExpenseMagnitude } from "@/lib/analytics/ozonSkuExpenseMagnitude";
 import { applyOzonCanonicalIngestFinality, resolveOzonPeriodFinality } from "@/lib/finance/canonicalPeriodFinality";
 import { loadOzonAccrualDayStatuses } from "@/lib/ozon/accrualDayStatusStore";
@@ -2939,9 +2942,20 @@ async function renderProfitOzonPage({
     totals.grossOzonExpenses ||
     totals.wbCommission + totals.logisticsCost + totals.adsCost + otherDeductions;
   const partnerProgramsAmountDisplay = Number(totals.partnerProgramsAmount) || 0;
-  const netOzonExpenses =
-    totals.netOzonExpenses ??
-    grossOzonExpenses - discountPointsAmount - partnerProgramsAmountDisplay;
+  // Compat: legacy stored N=G−B must become G−B−A for display; never trust
+  // totals.netOzonExpenses alone under the new label. Do not mutate payload.
+  // Keep this block free of TS-only syntax so acceptance probes can eval it.
+  const netOzonExpensesRepresentation =
+    totals.netOzonExpensesRepresentation ?? null;
+  const netOzonExpenses = resolveOzonNetExpensesForDisplay({
+    grossOzonExpenses: totals.grossOzonExpenses,
+    discountPointsCompensation: totals.discountPointsCompensation,
+    discountPointsAmount:
+      totals.discountPointsAmount ?? discountPointsAmount,
+    partnerProgramsAmount: totals.partnerProgramsAmount,
+    netOzonExpenses: totals.netOzonExpenses,
+    netOzonExpensesRepresentation,
+  });
   const taxRevenueCoverageComplete = totals.taxRevenueCoverageComplete !== false;
   const discountPointsCoverageComplete =
     totals.discountPointsCoverageComplete !== false;

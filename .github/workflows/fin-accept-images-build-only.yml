@@ -1,10 +1,10 @@
-name: fin-accept-images-build-only
+﻿name: fin-accept-images-build-only
 
-# BUILD/TEST ONLY — no deploy, no SSH/SCP to MAIN, no production DB.
+# BUILD/TEST ONLY вЂ” no deploy, no SSH/SCP to MAIN, no production DB.
 on:
   push:
     branches:
-      - "build/fin-accept-images-20261027_R10"
+      - "build/fin-accept-images-20261027_R11"
   workflow_dispatch:
 
 permissions:
@@ -12,7 +12,7 @@ permissions:
   actions: read
 
 concurrency:
-  group: fin-accept-images-build-only-20261027_R10
+  group: fin-accept-images-build-only-20261027_R11
   cancel-in-progress: true
 
 jobs:
@@ -36,7 +36,7 @@ jobs:
           --health-retries 20
     env:
       FINANCIAL_SOURCE_COMMIT: bf4f8b5690bdbe417afe7a95cc7beca16c043abc
-      STAMP: "20261027_R10"
+      STAMP: "20261027_R11"
       EXPECT_STOCK_ABC_SHA256: "982bab4f3d0b4e790fc889e7fa3c14dfc116345c4472310e97479cf7166db191"
       NEXT_PUBLIC_SITE_URL: http://72.56.4.62
       NEXT_PUBLIC_SUPABASE_URL: https://rezhzulsjtcvxqofhlyl.supabase.co
@@ -402,7 +402,7 @@ jobs:
             set -e
             st=$(psql "$SMOKE_DATABASE_URL" -Atc "SELECT status FROM \"DashboardPeriodSnapshotJob\" WHERE id='job-stock-r09'")
             if grep -F 'STOCK_PLANNING_JOB_SUCCESS' job-logs/stock_job_stdout.txt && [[ "$st" == "SUCCESS" ]]; then
-              snaps=$(psql "$SMOKE_DATABASE_URL" -Atc "SELECT COUNT(*) FROM \"StockAbcSnapshot\" WHERE \"companyScope\"='ИП Петров'")
+              snaps=$(psql "$SMOKE_DATABASE_URL" -Atc "SELECT COUNT(*) FROM \"StockAbcSnapshot\" WHERE \"companyScope\"='РРџ РџРµС‚СЂРѕРІ'")
               [[ "$snaps" -ge 1 ]]
               echo "STOCK_CONTROLLED_JOB_OK snaps=$snaps" | tee -a job-logs/assertions.txt
             else
@@ -423,7 +423,7 @@ jobs:
               -e V6_READMODEL_WORKER_MODE=oneshot \
               -e V6_READMODEL_DATE_FROM=2026-10-19 \
               -e V6_READMODEL_DATE_TO=2026-10-25 \
-              -e V6_READMODEL_COMPANY_SCOPE="ИП Петров" \
+              -e V6_READMODEL_COMPANY_SCOPE="РРџ РџРµС‚СЂРѕРІ" \
               -e NODE_ENV=production \
               "${{ steps.tags.outputs.v6 }}" \
               > job-logs/v6_pos_oneshot_stdout.txt 2> job-logs/v6_pos_oneshot_stderr.txt
