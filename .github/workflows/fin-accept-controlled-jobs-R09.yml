@@ -1,0 +1,391 @@
+name: fin-accept-controlled-jobs-R09
+
+# Reuses R08 image tarballs (no rebuild). Proves controlled job processing.
+# BUILD/TEST ONLY — no deploy, no MAIN/Telegram mutation.
+on:
+  push:
+    branches:
+      - "build/fin-accept-images-20261027_R09"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: fin-accept-controlled-jobs-20261027_R09
+  cancel-in-progress: true
+
+jobs:
+  controlled-jobs:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: finaccept
+          POSTGRES_PASSWORD: finaccept
+          POSTGRES_DB: finaccept
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U finaccept -d finaccept"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      FINANCIAL_SOURCE_COMMIT: bf4f8b5690bdbe417afe7a95cc7beca16c043abc
+      R08_RUN_ID: "40550845954"
+      R08_STAMP: "20261027_R08"
+      STAMP: "20261027_R09"
+      SMOKE_DATABASE_URL: postgresql://finaccept:finaccept@127.0.0.1:5432/finaccept
+      EXPECT_APP_ID: "sha256:f59ae383a48cfe63a83c6abda05f38ade63d7b9b310641089581582835142435"
+      EXPECT_PROFIT_ID: "sha256:54eef2eef41abf868e7ff21676dc1e983abe964b9786278bc7b2ff390d81922e"
+      EXPECT_V6_ID: "sha256:da4459e088ea5c5ef8e6d32fb4029ad010f19893207cf97640c61c40bcae6dfb"
+      EXPECT_DASH_ID: "sha256:262ffff0ab788550c12346f160d5149e6546563617da3000a8dfe2ae292c261b"
+      EXPECT_STOCK_ID: "sha256:69341f2c32eb8168e09e191409d523bbbde55f51ac6e27fd2a7e6991b36a124d"
+      EXPECT_APP_TAR: "54a1e78f4399477aa7d3521d151df407fbdf2e68328bfbc3d18fd03f93e9362d"
+      EXPECT_PROFIT_TAR: "1413150b07cfe745f9578213094d6c92ac32640ec38bacbf3c66c9b17bfb9d32"
+      EXPECT_V6_TAR: "d24a2a1cf3b0351150ddd3e1c9bcff1bfc3197a90db9ff1efb796748666043e9"
+      EXPECT_DASH_TAR: "ea3226e115e7e25ef8c9d8b8f36310a43bbf3d7ff6327c3f33621e2010be3863"
+      EXPECT_STOCK_TAR: "8a36a1fec30e06a2b08cf58437074ca70c1b492a5d9e28cc72b3e5f011802c74"
+    steps:
+      - name: Checkout R09 branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install psql client
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq postgresql-client
+
+      - name: Prove GitHub-hosted runner
+        run: |
+          set -euo pipefail
+          mkdir -p job-proof job-logs image-meta
+          {
+            echo "RUNNER_GITHUB_HOSTED=YES"
+            echo "ImageOS=${ImageOS:-}"
+            echo "GITHUB_SHA=${GITHUB_SHA}"
+            echo "R08_RUN_ID=${R08_RUN_ID}"
+            echo "FINANCIAL_SOURCE_COMMIT=${FINANCIAL_SOURCE_COMMIT}"
+          } | tee job-proof/runner-proof.txt
+          test "${RUNNER_ENVIRONMENT:-}" != "self-hosted"
+          test -n "${ImageOS:-}"
+          git merge-base --is-ancestor "$FINANCIAL_SOURCE_COMMIT" HEAD
+          echo "financial_ancestor_ok" | tee job-proof/financial-ancestor.txt
+
+      - name: Download R08 image tarballs (no rebuild)
+        uses: actions/download-artifact@v4
+        with:
+          name: fin-accept-image-tarballs-${{ env.R08_STAMP }}
+          path: r08-tarballs
+          github-token: ${{ github.token }}
+          run-id: ${{ env.R08_RUN_ID }}
+
+      - name: Verify tar SHA + docker load + ImageId
+        run: |
+          set -euo pipefail
+          mkdir -p job-proof image-meta
+          TAR_DIR=$(find r08-tarballs -name SHA256SUMS.txt -printf '%h\n' | head -n1)
+          test -n "$TAR_DIR"
+          cd "$TAR_DIR"
+          sha256sum -c SHA256SUMS.txt
+          declare -A EXPECT_TAR=(
+            [app]="$EXPECT_APP_TAR"
+            [profit]="$EXPECT_PROFIT_TAR"
+            [v6]="$EXPECT_V6_TAR"
+            [dashboard]="$EXPECT_DASH_TAR"
+            [stock]="$EXPECT_STOCK_TAR"
+          )
+          declare -A EXPECT_ID=(
+            [app]="$EXPECT_APP_ID"
+            [profit]="$EXPECT_PROFIT_ID"
+            [v6]="$EXPECT_V6_ID"
+            [dashboard]="$EXPECT_DASH_ID"
+            [stock]="$EXPECT_STOCK_ID"
+          )
+          echo '{' > "$GITHUB_WORKSPACE/image-meta/R08_REUSE_MANIFEST.json"
+          first=1
+          for role in app profit v6 dashboard stock; do
+            got=$(sha256sum "${role}.tar.gz" | awk '{print $1}')
+            [[ "$got" == "${EXPECT_TAR[$role]}" ]] || {
+              echo "TAR_SHA_MISMATCH $role got=$got expect=${EXPECT_TAR[$role]}" >&2
+              exit 1
+            }
+            docker load -i "${role}.tar.gz"
+          done
+          # Tags from R08 stamp
+          declare -A TAG=(
+            [app]="avorofin-p0-cogs-app:fin_accept_${R08_STAMP}"
+            [profit]="avorofin-p0-cogs-profit:fin_accept_${R08_STAMP}"
+            [v6]="avorofin-p0-cogs-v6:fin_accept_${R08_STAMP}"
+            [dashboard]="avorofin-p0-cogs-dashboard:fin_accept_${R08_STAMP}"
+            [stock]="avorofin-p0-cogs-stock:fin_accept_${R08_STAMP}"
+          )
+          first=1
+          echo '{' > "$GITHUB_WORKSPACE/image-meta/R08_REUSE_MANIFEST.json"
+          for role in app profit v6 dashboard stock; do
+            id=$(docker image inspect -f '{{.Id}}' "${TAG[$role]}")
+            [[ "$id" == "${EXPECT_ID[$role]}" ]] || {
+              echo "IMAGE_ID_MISMATCH $role got=$id expect=${EXPECT_ID[$role]}" >&2
+              exit 1
+            }
+            echo "$id" > "$GITHUB_WORKSPACE/image-meta/${role}.ImageId.txt"
+            if [[ $first -eq 0 ]]; then echo ',' >> "$GITHUB_WORKSPACE/image-meta/R08_REUSE_MANIFEST.json"; fi
+            first=0
+            printf '"%s":{"tag":"%s","ImageId":"%s","tarSha256":"%s","reusedFromRun":%s}' \
+              "$role" "${TAG[$role]}" "$id" "${EXPECT_TAR[$role]}" "$R08_RUN_ID" \
+              >> "$GITHUB_WORKSPACE/image-meta/R08_REUSE_MANIFEST.json"
+          done
+          echo '}' >> "$GITHUB_WORKSPACE/image-meta/R08_REUSE_MANIFEST.json"
+          echo "R08_IMAGES_REUSED_OK" | tee "$GITHUB_WORKSPACE/job-proof/images_reuse.txt"
+          {
+            echo "TAG_APP=${TAG[app]}"
+            echo "TAG_PROFIT=${TAG[profit]}"
+            echo "TAG_V6=${TAG[v6]}"
+            echo "TAG_DASHBOARD=${TAG[dashboard]}"
+            echo "TAG_STOCK=${TAG[stock]}"
+          } >> "$GITHUB_ENV"
+
+      - name: Prisma schema push (isolated)
+        run: |
+          set -euo pipefail
+          mkdir -p job-logs
+          docker run --rm --network host --user root \
+            -e DATABASE_URL="$SMOKE_DATABASE_URL" \
+            --entrypoint npx "$TAG_PROFIT" \
+            prisma db push --accept-data-loss --url "$SMOKE_DATABASE_URL" \
+            > job-logs/prisma_db_push.txt 2>&1
+          echo "PRISMA_DB_PUSH_OK" | tee job-logs/prisma_db_push_result.txt
+
+      - name: V6 negative oneshot on empty DB (exact fail-closed)
+        run: |
+          set -euo pipefail
+          mkdir -p job-logs
+          set +e
+          timeout 120s docker run --rm --network host --user 0 \
+            -e DATABASE_URL="$SMOKE_DATABASE_URL" \
+            -e V6_READMODEL_TARGET_DATABASE_URL="$SMOKE_DATABASE_URL" \
+            -e V6_READMODEL_WORKER_MODE=oneshot \
+            -e V6_READMODEL_DATE_FROM=2026-10-19 \
+            -e V6_READMODEL_DATE_TO=2026-10-25 \
+            -e NODE_ENV=production \
+            "$TAG_V6" \
+            > job-logs/v6_negative_stdout.txt 2> job-logs/v6_negative_stderr.txt
+          ec=$?
+          set -e
+          echo "v6_negative_exit=$ec" | tee -a job-logs/assertions.txt
+          [[ $ec -ne 0 && $ec -ne 124 ]] || {
+            echo "V6_NEGATIVE_EXPECTED_NONZERO_NON_TIMEOUT" >&2
+            exit 1
+          }
+          if ! grep -F 'D1D5_V2_BUILD_FORBIDDEN:D6_UNSAFE_NO_WB_INTERVALS' \
+            job-logs/v6_negative_stdout.txt job-logs/v6_negative_stderr.txt >/dev/null; then
+            echo "V6_NEGATIVE_MISSING_EXACT_REASON" >&2
+            cat job-logs/v6_negative_stdout.txt >&2 || true
+            cat job-logs/v6_negative_stderr.txt >&2 || true
+            exit 1
+          fi
+          # Broad regex alone is not enough — require exact reason above.
+          if grep -E 'D1D5_V2_BUILD_FORBIDDEN:' job-logs/v6_negative_stdout.txt job-logs/v6_negative_stderr.txt \
+            | grep -v 'D6_UNSAFE_NO_WB_INTERVALS' >/dev/null; then
+            echo "V6_NEGATIVE_UNEXPECTED_FORBIDDEN_VARIANT" >&2
+            exit 1
+          fi
+          # No SUCCESS snapshot rows for V6 formula on empty
+          rows=$(psql "$SMOKE_DATABASE_URL" -Atc \
+            "SELECT COUNT(*) FROM \"DashboardPeriodSnapshot\" WHERE \"formulaVersion\"='FINANCIAL_CORE_V6_PERIOD_READMODEL_V2'")
+          [[ "$rows" == "0" ]] || { echo "V6_NEGATIVE_WROTE_SNAPSHOT rows=$rows" >&2; exit 1; }
+          echo "V6_NEGATIVE_EXACT_FAIL_CLOSED_OK" | tee -a job-logs/assertions.txt
+
+      - name: Seed controlled fixtures + jobs
+        run: |
+          set -euo pipefail
+          psql "$SMOKE_DATABASE_URL" -v ON_ERROR_STOP=1 -f scripts/fin_accept/seed_controlled_jobs.sql \
+            | tee job-logs/seed.txt
+          psql "$SMOKE_DATABASE_URL" -Atc \
+            "SELECT id, status, \"formulaVersion\" FROM \"DashboardPeriodSnapshotJob\" ORDER BY id" \
+            | tee job-logs/jobs_before.txt
+
+      - name: Profit queue-once processes jobs
+        run: |
+          set -euo pipefail
+          set +e
+          timeout 180s docker run --rm --network host --user 0 \
+            -e DATABASE_URL="$SMOKE_DATABASE_URL" \
+            -e NODE_ENV=production \
+            -e WAVE_B_PROFIT_WORKER_MODE=queue-once \
+            -e WAVE_B_PROFIT_WORKER_MAX_JOBS=2 \
+            "$TAG_PROFIT" \
+            > job-logs/profit_stdout.txt 2> job-logs/profit_stderr.txt
+          ec=$?
+          set -e
+          echo "profit_exit=$ec" | tee -a job-logs/assertions.txt
+          [[ $ec -ne 124 ]] || { echo "profit_TIMEOUT" >&2; exit 1; }
+          grep -F 'wave_b_profit_worker_start' job-logs/profit_stdout.txt >/dev/null
+          grep -F 'wave_b_profit_job_success' job-logs/profit_stdout.txt >/dev/null \
+            || { cat job-logs/profit_stdout.txt; cat job-logs/profit_stderr.txt; exit 1; }
+          # idle alone is not success
+          if grep -F 'wave_b_profit_idle' job-logs/profit_stdout.txt >/dev/null \
+            && ! grep -F 'wave_b_profit_job_success' job-logs/profit_stdout.txt >/dev/null; then
+            echo "profit_IDLE_WITHOUT_JOB" >&2; exit 1
+          fi
+          wb=$(psql "$SMOKE_DATABASE_URL" -Atc "SELECT status FROM \"DashboardPeriodSnapshotJob\" WHERE id='job-profit-wb-r09'")
+          oz=$(psql "$SMOKE_DATABASE_URL" -Atc "SELECT status FROM \"DashboardPeriodSnapshotJob\" WHERE id='job-profit-ozon-r09'")
+          [[ "$wb" == "SUCCESS" && "$oz" == "SUCCESS" ]] || {
+            echo "profit_JOB_STATUS wb=$wb oz=$oz" >&2; exit 1
+          }
+          metrics=$(psql "$SMOKE_DATABASE_URL" -Atc "SELECT COUNT(*) FROM \"ProfitPeriodMetric\" WHERE \"companyScope\"='ИП Петров'")
+          [[ "$metrics" -ge 1 ]] || { echo "profit_NO_METRIC_ROWS" >&2; exit 1; }
+          echo "PROFIT_CONTROLLED_JOB_OK job=job-profit-wb-r09,job-profit-ozon-r09 metrics=$metrics" \
+            | tee -a job-logs/assertions.txt
+
+      - name: Dashboard V4 once processes job
+        run: |
+          set -euo pipefail
+          set +e
+          timeout 180s docker run --rm --network host --user 0 \
+            -e DATABASE_URL="$SMOKE_DATABASE_URL" \
+            -e NODE_ENV=production \
+            -e DASHBOARD_SNAPSHOT_WORKER_MODE=once \
+            -e DASHBOARD_SNAPSHOT_FORMULA_VERSIONS=FINANCIAL_CORE_V4_PERIOD_SNAPSHOT_V1 \
+            "$TAG_DASHBOARD" \
+            > job-logs/dashboard_stdout.txt 2> job-logs/dashboard_stderr.txt
+          ec=$?
+          set -e
+          echo "dashboard_exit=$ec" | tee -a job-logs/assertions.txt
+          [[ $ec -ne 124 ]] || { echo "dashboard_TIMEOUT" >&2; exit 1; }
+          grep -F 'WORKER_START' job-logs/dashboard_stdout.txt >/dev/null
+          grep -F 'SNAPSHOT_JOB_SUCCESS' job-logs/dashboard_stdout.txt >/dev/null \
+            || { cat job-logs/dashboard_stdout.txt; cat job-logs/dashboard_stderr.txt; exit 1; }
+          st=$(psql "$SMOKE_DATABASE_URL" -Atc "SELECT status FROM \"DashboardPeriodSnapshotJob\" WHERE id='job-dash-v4-r09'")
+          [[ "$st" == "SUCCESS" ]] || { echo "dashboard_JOB_STATUS=$st" >&2; exit 1; }
+          snap=$(psql "$SMOKE_DATABASE_URL" -Atc \
+            "SELECT COUNT(*) FROM \"DashboardPeriodSnapshot\" WHERE \"formulaVersion\"='FINANCIAL_CORE_V4_PERIOD_SNAPSHOT_V1' AND \"companyScope\"='ИП Петров'")
+          [[ "$snap" -ge 1 ]] || { echo "dashboard_NO_SNAPSHOT" >&2; exit 1; }
+          echo "DASHBOARD_CONTROLLED_JOB_OK job=job-dash-v4-r09 snap=$snap" | tee -a job-logs/assertions.txt
+
+      - name: Stock once processes STOCK_PLANNING_SNAPSHOT_V3 job
+        run: |
+          set -euo pipefail
+          set +e
+          timeout 240s docker run --rm --network host --user 0 \
+            -e DATABASE_URL="$SMOKE_DATABASE_URL" \
+            -e NODE_ENV=production \
+            -e DASHBOARD_SNAPSHOT_WORKER_MODE=once \
+            -e DASHBOARD_SNAPSHOT_FORMULA_VERSIONS=STOCK_PLANNING_SNAPSHOT_V3 \
+            "$TAG_STOCK" \
+            > job-logs/stock_stdout.txt 2> job-logs/stock_stderr.txt
+          ec=$?
+          set -e
+          echo "stock_exit=$ec" | tee -a job-logs/assertions.txt
+          [[ $ec -ne 124 ]] || { echo "stock_TIMEOUT" >&2; exit 1; }
+          grep -F 'WORKER_START' job-logs/stock_stdout.txt >/dev/null
+          st=$(psql "$SMOKE_DATABASE_URL" -Atc "SELECT status FROM \"DashboardPeriodSnapshotJob\" WHERE id='job-stock-r09'")
+          err=$(psql "$SMOKE_DATABASE_URL" -Atc "SELECT COALESCE(\"lastError\",'') FROM \"DashboardPeriodSnapshotJob\" WHERE id='job-stock-r09'")
+          if grep -F 'STOCK_PLANNING_JOB_SUCCESS' job-logs/stock_stdout.txt >/dev/null && [[ "$st" == "SUCCESS" ]]; then
+            snaps=$(psql "$SMOKE_DATABASE_URL" -Atc \
+              "SELECT COUNT(*) FROM \"StockAbcSnapshot\" WHERE \"companyScope\"='ИП Петров'")
+            [[ "$snaps" -ge 1 ]] || { echo "stock_SUCCESS_BUT_NO_SNAPSHOT" >&2; exit 1; }
+            echo "STOCK_CONTROLLED_JOB_OK job=job-stock-r09 status=SUCCESS snaps=$snaps" \
+              | tee -a job-logs/assertions.txt
+          else
+            # Fail closed with claimed job is acceptable only if SUCCESS path failed; surface as incomplete.
+            echo "STOCK_JOB_NOT_SUCCESS status=$st lastError=${err:0:200}" | tee -a job-logs/assertions.txt
+            cat job-logs/stock_stdout.txt
+            cat job-logs/stock_stderr.txt
+            # Require that a job was at least claimed/processed (not idle start-stop)
+            grep -E 'SNAPSHOT_JOB_STARTED|STOCK_PLANNING_JOB_SUCCESS|SNAPSHOT_JOB_ERROR' job-logs/stock_stdout.txt >/dev/null \
+              || { echo "stock_NO_JOB_PROCESSING" >&2; exit 1; }
+            echo "STOCK_CONTROLLED_JOB_INCOMPLETE" >&2
+            exit 1
+          fi
+
+      - name: V6 queue-once positive with seeded WB ownership
+        run: |
+          set -euo pipefail
+          set +e
+          timeout 240s docker run --rm --network host --user 0 \
+            -e DATABASE_URL="$SMOKE_DATABASE_URL" \
+            -e V6_READMODEL_TARGET_DATABASE_URL="$SMOKE_DATABASE_URL" \
+            -e V6_READMODEL_WORKER_MODE=queue-once \
+            -e V6_READMODEL_WORKER_MAX_JOBS=1 \
+            -e NODE_ENV=production \
+            "$TAG_V6" \
+            > job-logs/v6_positive_stdout.txt 2> job-logs/v6_positive_stderr.txt
+          ec=$?
+          set -e
+          echo "v6_positive_exit=$ec" | tee -a job-logs/assertions.txt
+          [[ $ec -ne 124 ]] || { echo "v6_positive_TIMEOUT" >&2; exit 1; }
+          grep -F 'v6_period_readmodel_worker_start' job-logs/v6_positive_stdout.txt >/dev/null
+          st=$(psql "$SMOKE_DATABASE_URL" -Atc "SELECT status FROM \"DashboardPeriodSnapshotJob\" WHERE id='job-v6-r09'")
+          if grep -F 'v6_queue_job_success' job-logs/v6_positive_stdout.txt >/dev/null \
+            || grep -F 'v6_period_readmodel_worker_done' job-logs/v6_positive_stdout.txt >/dev/null; then
+            true
+          else
+            # Also accept SUCCESS status from DB after queue process
+            [[ "$st" == "SUCCESS" ]] || {
+              echo "V6_POSITIVE_FAILED status=$st" >&2
+              cat job-logs/v6_positive_stdout.txt
+              cat job-logs/v6_positive_stderr.txt
+              exit 1
+            }
+          fi
+          [[ "$st" == "SUCCESS" ]] || {
+            echo "V6_POSITIVE_JOB_STATUS=$st" >&2
+            cat job-logs/v6_positive_stdout.txt
+            cat job-logs/v6_positive_stderr.txt
+            exit 1
+          }
+          snaps=$(psql "$SMOKE_DATABASE_URL" -Atc \
+            "SELECT COUNT(*) FROM \"DashboardPeriodSnapshot\" WHERE \"formulaVersion\"='FINANCIAL_CORE_V6_PERIOD_READMODEL_V2'")
+          [[ "$snaps" -ge 1 ]] || { echo "V6_POSITIVE_NO_SNAPSHOT" >&2; exit 1; }
+          echo "V6_POSITIVE_CONTROLLED_JOB_OK job=job-v6-r09 snaps=$snaps" | tee -a job-logs/assertions.txt
+
+      - name: Write role summary
+        if: always()
+        run: |
+          set -euo pipefail
+          mkdir -p job-proof
+          {
+            echo '{'
+            echo '"stamp":"'"$STAMP"'",'
+            echo '"r08RunId":'"$R08_RUN_ID"','
+            echo '"buildSourceCommitR08":"f98690e1049bff3d4cca24e498c885340f651cb9",'
+            echo '"workflowCommit":"'"$GITHUB_SHA"'",'
+            echo '"financialSourceCommit":"'"$FINANCIAL_SOURCE_COMMIT"'",'
+            echo '"imagesReused":true,'
+            echo '"roles":{'
+            for pair in \
+              "app|$EXPECT_APP_ID|n/a|n/a" \
+              "profit|$EXPECT_PROFIT_ID|job-profit-wb-r09,job-profit-ozon-r09|see assertions" \
+              "v6|$EXPECT_V6_ID|job-v6-r09|see assertions" \
+              "dashboard|$EXPECT_DASH_ID|job-dash-v4-r09|see assertions" \
+              "stock|$EXPECT_STOCK_ID|job-stock-r09|see assertions"
+            do
+              role=${pair%%|*}; rest=${pair#*|}; id=${rest%%|*}; rest2=${rest#*|}; job=${rest2%%|*}; note=${rest2#*|}
+              echo "\"$role\":{\"ImageId\":\"$id\",\"jobIds\":\"$job\",\"note\":\"$note\"},"
+            done | sed '$ s/,$//'
+            echo '}'
+            echo '}'
+          } | tee job-proof/ROLE_JOB_SUMMARY.json
+          psql "$SMOKE_DATABASE_URL" -c \
+            "SELECT id, status, \"formulaVersion\", LEFT(COALESCE(\"lastError\",''),120) AS err FROM \"DashboardPeriodSnapshotJob\" ORDER BY id" \
+            | tee job-proof/jobs_after.txt || true
+          echo "CONTROLLED_JOBS_SUMMARY_WRITTEN"
+
+      - name: Upload controlled-job evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fin-accept-controlled-jobs-${{ env.STAMP }}
+          path: |
+            job-proof/
+            job-logs/
+            image-meta/
+            scripts/fin_accept/seed_controlled_jobs.sql
+            scripts/deploy/cutover_five_roles.sh
+            scripts/deploy/test_cutover_plan_mock.sh
+          if-no-files-found: error

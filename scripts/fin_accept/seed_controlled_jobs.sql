@@ -1,0 +1,158 @@
+-- R09 controlled-job fixtures for isolated Postgres (NOT production).
+-- Single company only so ALL-scope D1D5 does not fail on unstaged peers.
+-- Period: 2026-10-19 .. 2026-10-25
+
+BEGIN;
+
+DELETE FROM "DashboardPeriodSnapshotJob"
+ WHERE "dateFrom" = TIMESTAMPTZ '2026-10-19 00:00:00+00'
+   AND "dateTo"   = TIMESTAMPTZ '2026-10-25 00:00:00+00';
+
+INSERT INTO "Company" ("id", "name", "taxSystem", "usnRate", "vatRate", "isActive", "createdAt", "updatedAt")
+VALUES ('seed-company-petrov', 'ИП Петров', 'УСН Доходы', 1, 5, true, NOW(), NOW())
+ON CONFLICT ("id") DO NOTHING;
+
+INSERT INTO "WbFinance" (
+  "id", "companyName", "reportNumber", "dateFrom", "dateTo", "createdAt"
+) VALUES (
+  'seed-wb-finance-1',
+  'ИП Петров',
+  '37024220261019',
+  TIMESTAMPTZ '2026-10-19 00:00:00+00',
+  TIMESTAMPTZ '2026-10-25 00:00:00+00',
+  NOW()
+) ON CONFLICT ("id") DO NOTHING;
+
+INSERT INTO "ImportSession" (
+  "id", "fileName", "reportType", "marketplace", "companyName", "rowsCount", "status", "createdAt"
+) VALUES (
+  'seed-wb-sales-1',
+  'WB weekly 37024220261019 2026-10-19 - 2026-10-25',
+  'WB_SALES',
+  'WB',
+  'ИП Петров',
+  1,
+  'SUCCESS',
+  NOW()
+) ON CONFLICT ("id") DO NOTHING;
+
+INSERT INTO "WbSale" (
+  "id", "importSessionId", "companyName", "reportNumber", "saleDate",
+  "quantity", "retailPriceWithDiscount", "wbRealizedAmount", "sellerPayout",
+  "paymentReason", "documentType", "vendorCode", "nmId", "createdAt"
+) VALUES (
+  'seed-wb-sale-1',
+  'seed-wb-sales-1',
+  'ИП Петров',
+  '37024220261019',
+  TIMESTAMPTZ '2026-10-20 12:00:00+00',
+  1,
+  1000,
+  1000,
+  800,
+  'Продажа',
+  'Продажа',
+  'SEED-SKU-1',
+  '1000001',
+  NOW()
+) ON CONFLICT ("id") DO NOTHING;
+
+INSERT INTO "ProductCost" (
+  "id", "vendorCode", "nmId", "costPrice", "name", "costDate", "createdAt"
+) VALUES (
+  'seed-pc-1', 'SEED-SKU-1', '1000001', 200, 'Seed SKU', TIMESTAMPTZ '2026-01-01 00:00:00+00', NOW()
+) ON CONFLICT ("id") DO NOTHING;
+
+INSERT INTO "MarketplaceDailyOrderStat" (
+  "id", "companyName", "marketplace", "orderDate", "ordersQty", "ordersAmount", "source", "createdAt", "updatedAt"
+) VALUES (
+  'seed-mdos-1', 'ИП Петров', 'WB', TIMESTAMPTZ '2026-10-19 00:00:00+00', 1, 1000, 'SEED', NOW(), NOW()
+) ON CONFLICT ("id") DO NOTHING;
+
+-- Ozon day finality matrix for stock (single company, 7 days)
+INSERT INTO "ImportSession" (
+  "id", "fileName", "reportType", "marketplace", "companyName", "rowsCount", "status", "createdAt"
+) VALUES (
+  'seed-ozon-day-sess', 'ozon accrual seed', 'OZON_ACCRUAL', 'OZON', 'ИП Петров', 1, 'SUCCESS', NOW()
+) ON CONFLICT ("id") DO NOTHING;
+
+INSERT INTO "OzonAccrualDayStatus" (
+  "id", "companyName", "date", "importSessionId", "dataMode",
+  "coverageComplete", "quarantineCount", "missingEvidence", "phase", "createdAt", "updatedAt"
+)
+SELECT
+  'seed-ozon-day-' || d::text,
+  'ИП Петров',
+  d::text,
+  'seed-ozon-day-sess',
+  'FINAL',
+  true,
+  0,
+  '[]'::jsonb,
+  'CANONICAL',
+  NOW(),
+  NOW()
+FROM generate_series(DATE '2026-10-19', DATE '2026-10-25', INTERVAL '1 day') AS d
+ON CONFLICT ("companyName", "date") DO UPDATE SET
+  "dataMode" = EXCLUDED."dataMode",
+  "coverageComplete" = EXCLUDED."coverageComplete",
+  "quarantineCount" = EXCLUDED."quarantineCount",
+  "missingEvidence" = EXCLUDED."missingEvidence",
+  "phase" = EXCLUDED."phase",
+  "updatedAt" = NOW();
+
+-- Controlled jobs (PENDING)
+INSERT INTO "DashboardPeriodSnapshotJob" (
+  "id", "companyScope", "dateFrom", "dateTo", "formulaVersion",
+  "status", "priority", "attempts", "maxAttempts", "createdAt", "updatedAt"
+) VALUES
+(
+  'job-profit-wb-r09',
+  'ИП Петров',
+  TIMESTAMPTZ '2026-10-19 00:00:00+00',
+  TIMESTAMPTZ '2026-10-25 00:00:00+00',
+  'FINANCIAL_CORE_V6_PROFIT_WB_READMODEL_V1',
+  'PENDING', 10, 0, 3, NOW(), NOW()
+),
+(
+  'job-profit-ozon-r09',
+  'ИП Петров',
+  TIMESTAMPTZ '2026-10-19 00:00:00+00',
+  TIMESTAMPTZ '2026-10-25 00:00:00+00',
+  'FINANCIAL_CORE_V6_PROFIT_OZON_READMODEL_V1',
+  'PENDING', 10, 0, 3, NOW(), NOW()
+),
+(
+  'job-dash-v4-r09',
+  'ИП Петров',
+  TIMESTAMPTZ '2026-10-19 00:00:00+00',
+  TIMESTAMPTZ '2026-10-25 00:00:00+00',
+  'FINANCIAL_CORE_V4_PERIOD_SNAPSHOT_V1',
+  'PENDING', 10, 0, 3, NOW(), NOW()
+),
+(
+  'job-stock-r09',
+  'ИП Петров',
+  TIMESTAMPTZ '2026-10-19 00:00:00+00',
+  TIMESTAMPTZ '2026-10-25 00:00:00+00',
+  'STOCK_PLANNING_SNAPSHOT_V3',
+  'PENDING', 10, 0, 3, NOW(), NOW()
+),
+(
+  'job-v6-r09',
+  'ALL',
+  TIMESTAMPTZ '2026-10-19 00:00:00+00',
+  TIMESTAMPTZ '2026-10-25 00:00:00+00',
+  'FINANCIAL_CORE_V6_PERIOD_READMODEL_V2',
+  'PENDING', 10, 0, 3, NOW(), NOW()
+)
+ON CONFLICT ("id") DO UPDATE SET
+  "status" = 'PENDING',
+  "attempts" = 0,
+  "lockedAt" = NULL,
+  "lockedBy" = NULL,
+  "lastError" = NULL,
+  "finishedAt" = NULL,
+  "updatedAt" = NOW();
+
+COMMIT;
