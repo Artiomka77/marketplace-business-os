@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 
 import { getDashboardDailyAnalytics } from "@/lib/analytics/dashboardDailyAnalytics";
-import { getProfitAnalytics, isProfitAnalyticsUnavailable } from "@/lib/analytics/profitAnalytics";
+import { getProfitAnalytics } from "@/lib/analytics/profitAnalytics";
 import { getProfitAnalyticsOzon } from "@/lib/analytics/profitAnalyticsOzon";
 import { calculateFinanceMetricsForRows } from "@/lib/finance/financeMetrics";
 import { prisma } from "@/lib/prisma";
@@ -10,6 +10,32 @@ import {
   marketplaceManagementRevenue,
   snapshotCombinedProfit,
 } from "@/lib/dashboard/managementRevenue";
+
+/**
+ * Compatibility helper for FIN_ACCEPT build: MAIN periodSnapshot expected
+ * isProfitAnalyticsUnavailable from an older profitAnalytics export. Candidate
+ * bf4f8b5 does not export it — keep glue local; do not alter financial formulas.
+ */
+function isProfitAnalyticsUnavailable(
+  analytics: Awaited<ReturnType<typeof getProfitAnalytics>> | null | undefined,
+): boolean {
+  if (!analytics) return true;
+  const anyAnalytics = analytics as {
+    status?: string;
+    totals?: { financialUnavailable?: boolean } | null;
+    financialUnavailable?: boolean;
+  };
+  if (anyAnalytics.financialUnavailable === true) return true;
+  if (anyAnalytics.totals?.financialUnavailable === true) return true;
+  if (
+    typeof anyAnalytics.status === "string" &&
+    anyAnalytics.status.length > 0 &&
+    anyAnalytics.status !== "SUCCESS"
+  ) {
+    return true;
+  }
+  return false;
+}
 
 export const DASHBOARD_PERIOD_SNAPSHOT_FORMULA_VERSION =
   "FINANCIAL_CORE_V4_PERIOD_SNAPSHOT_V1";
