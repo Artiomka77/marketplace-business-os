@@ -579,6 +579,7 @@ async function executeJob(job: ClaimedJob) {
         snapshotJobClaim(job)
       );
 
+    const snapshotNow = new Date();
     await tx.dashboardPeriodSnapshot.upsert({
       where: {
         companyScope_dateFrom_dateTo_formulaVersion: {
@@ -589,6 +590,7 @@ async function executeJob(job: ClaimedJob) {
         },
       },
       create: {
+        id: randomUUID(),
         companyScope: job.companyScope,
         dateFrom: job.dateFrom,
         dateTo: job.dateTo,
@@ -599,6 +601,8 @@ async function executeJob(job: ClaimedJob) {
         coverageStatus: result.coverageStatus,
         rowsCount: result.rowsCount,
         calculationMs: result.calculationMs,
+        generatedAt: snapshotNow,
+        updatedAt: snapshotNow,
       },
       update: {
         payload: result.payload as Prisma.InputJsonValue,
@@ -607,7 +611,8 @@ async function executeJob(job: ClaimedJob) {
         coverageStatus: result.coverageStatus,
         rowsCount: result.rowsCount,
         calculationMs: result.calculationMs,
-        generatedAt: new Date(),
+        generatedAt: snapshotNow,
+        updatedAt: snapshotNow,
       },
     });
 
