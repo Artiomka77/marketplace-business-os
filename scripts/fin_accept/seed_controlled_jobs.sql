@@ -95,6 +95,34 @@ INSERT INTO "ImportSession" (
   "status" = 'SUCCESS',
   "reportType" = EXCLUDED."reportType";
 
+-- Day-status matrix required by stock overlay (resolveOzonPeriodFinality).
+-- Without these rows overlay forces PRELIMINARY even when bare analytics is FINAL.
+INSERT INTO "OzonAccrualDayStatus" (
+  "id", "companyName", "date", "importSessionId", "dataMode",
+  "coverageComplete", "quarantineCount", "missingEvidence", "phase", "createdAt", "updatedAt"
+)
+SELECT
+  'seed-ozon-day-' || to_char(d::date, 'YYYYMMDD'),
+  'ИП Петров',
+  to_char(d::date, 'YYYY-MM-DD'),
+  'seed-ozon-accrual-zero-week',
+  'FINAL',
+  true,
+  0,
+  '[]'::jsonb,
+  'CANONICAL',
+  NOW(),
+  NOW()
+FROM generate_series(DATE '2026-10-19', DATE '2026-10-25', INTERVAL '1 day') AS d
+ON CONFLICT ("companyName", "date") DO UPDATE SET
+  "dataMode" = 'FINAL',
+  "coverageComplete" = true,
+  "quarantineCount" = 0,
+  "missingEvidence" = '[]'::jsonb,
+  "phase" = 'CANONICAL',
+  "importSessionId" = EXCLUDED."importSessionId",
+  "updatedAt" = NOW();
+
 -- Controlled jobs (PENDING)
 INSERT INTO "DashboardPeriodSnapshotJob" (
   "id", "companyScope", "dateFrom", "dateTo", "formulaVersion",
