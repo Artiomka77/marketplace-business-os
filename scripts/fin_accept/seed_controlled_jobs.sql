@@ -69,10 +69,31 @@ INSERT INTO "MarketplaceDailyOrderStat" (
   'seed-mdos-1', 'ИП Петров', 'WB', TIMESTAMPTZ '2026-10-19 00:00:00+00', 1, 1000, 'SEED', NOW(), NOW()
 ) ON CONFLICT ("id") DO NOTHING;
 
--- Stock fixture: no Ozon accrual sessions/day-status for this company.
--- Empty Ozon activity → realizationCoverageComplete=true and no false
--- costCoverageIncomplete from incomplete accrual owners. WB FINAL stack above
--- is the stock planning product signal; Ozon leg must not be PRELIMINARY-by-A.
+-- Stock/Ozon COGS coverage: proven-complete zero-sales accrual ownership for
+-- each day so quantityCoverageComplete=true (costCoverageIncomplete=false).
+-- reportType must be OZON_ACCRUAL_BY_DAY_API (see findOzonProductCogsRowsByPeriod).
+INSERT INTO "ImportSession" (
+  "id", "fileName", "reportType", "marketplace", "companyName", "rowsCount", "status", "previewJson", "createdAt"
+) VALUES (
+  'seed-ozon-accrual-zero-week',
+  'ozon accrual by day zero fixture R10',
+  'OZON_ACCRUAL_BY_DAY_API',
+  'OZON',
+  'ИП Петров',
+  0,
+  'SUCCESS',
+  '{
+    "dateFrom":"2026-10-19",
+    "dateTo":"2026-10-25",
+    "requestedDates":["2026-10-19","2026-10-20","2026-10-21","2026-10-22","2026-10-23","2026-10-24","2026-10-25"],
+    "coverageComplete":true,
+    "rawAccruals":[]
+  }'::jsonb,
+  NOW()
+) ON CONFLICT ("id") DO UPDATE SET
+  "previewJson" = EXCLUDED."previewJson",
+  "status" = 'SUCCESS',
+  "reportType" = EXCLUDED."reportType";
 
 -- Controlled jobs (PENDING)
 INSERT INTO "DashboardPeriodSnapshotJob" (
