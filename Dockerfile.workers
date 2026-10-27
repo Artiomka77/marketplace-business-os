@@ -1,4 +1,4 @@
-# FIN_ACCEPT worker images — build/test ONLY (GitHub Actions).
+# FIN_ACCEPT worker images вЂ” build/test ONLY (GitHub Actions).
 # Adapted from reviewer templates/Dockerfile.workers.
 # Full source runtime + tsx (devDependency but required at worker runtime).
 # Do not prune --omit=dev. Do not copy .env / production data.
@@ -17,9 +17,11 @@ RUN apt-get update \
 COPY package.json package-lock.json ./
 RUN npm ci --include=dev
 COPY . .
-# Schema generation only — no DB connection/migration.
+# Schema generation only вЂ” no DB connection/migration.
 RUN DATABASE_URL=postgresql://build:build@127.0.0.1:5432/build npx prisma generate
 RUN npm run financial-core:verify
+# MAIN worker runtime stockAbc (prepare/persist APIs); still dynamic-imports candidate analytics.
+COPY overlays/fin-accept/stockAbcSnapshots.runtime.ts lib/stocks/stockAbcSnapshots.ts
 RUN node -e "require.resolve('tsx'); require.resolve('@prisma/client'); require.resolve('@prisma/adapter-pg'); require.resolve('pg')"
 ENV NODE_ENV=production
 USER node
