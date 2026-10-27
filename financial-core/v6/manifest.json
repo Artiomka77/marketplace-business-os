@@ -410,8 +410,8 @@
   },
   "ozonRevisionTransition": {
     "parentV5OzonSha256": "7f44458abb0b5086d79f68e3795de2c056f7270fbc06979b9a201d6b2352cef9",
-    "candidateOzonSha256": "4ca524e9632d6eee297de8123c85167d444126c69fd375940bcb1562bff6335f",
-    "reason": "FIN_ACCEPT R10: N=G-B-A owner-confirmed partner programs like discount points; profit E-G-K-T unchanged; POLICY_UNRESOLVED removed for A; historical V5 Ozon snapshot/hash unchanged",
-    "createdAt": "2026-10-27T18:50:00.000Z"
+    "candidateOzonSha256": "5b43db3e67517a4e55de315edca3aa9f57a17cc4de33d98a313713f80089dfc3",
+    "reason": "FIN_ACCEPT R11: resolveOzonNetExpensesForDisplay null-safe + page/telegram consumers; N=G-B-A unchanged; V5 Ozon hash unchanged",
+    "createdAt": "2026-10-27T20:30:00.000Z"
   }
 }
