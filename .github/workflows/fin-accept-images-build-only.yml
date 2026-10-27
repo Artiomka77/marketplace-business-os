@@ -1,0 +1,230 @@
+name: fin-accept-images-build-only
+
+# BUILD/TEST ONLY — no deploy, no SSH/SCP to MAIN, no production DB.
+on:
+  push:
+    branches:
+      - "build/fin-accept-images-20261027_154900"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: fin-accept-images-build-only-20261027_154900
+  cancel-in-progress: true
+
+jobs:
+  build-images:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    env:
+      FINANCIAL_SOURCE_COMMIT: bf4f8b5690bdbe417afe7a95cc7beca16c043abc
+      STAMP: "20261027_154900"
+      # Public build settings taken from live APP NEXT_PUBLIC_* (public by design).
+      NEXT_PUBLIC_SITE_URL: http://72.56.4.62
+      NEXT_PUBLIC_SUPABASE_URL: https://rezhzulsjtcvxqofhlyl.supabase.co
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: sb_publishable_C_GNkiB2FEemxEYd1VTtTA_hRLfSupT
+      NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: sb_publishable_C_GNkiB2FEemxEYd1VTtTA_hRLfSupT
+    steps:
+      - name: Checkout build branch
+        uses: actions/checkout@v4
+
+      - name: Prove GitHub-hosted runner
+        run: |
+          set -euo pipefail
+          {
+            echo "RUNNER_GITHUB_HOSTED=YES"
+            echo "RUNNER_SELF_HOSTED=NO"
+            echo "ImageOS=${ImageOS:-}"
+            echo "RUNNER_NAME=${RUNNER_NAME:-}"
+            echo "RUNNER_OS=${RUNNER_OS:-}"
+            echo "RUNNER_ENVIRONMENT=${RUNNER_ENVIRONMENT:-}"
+            echo "GITHUB_SHA=${GITHUB_SHA}"
+            echo "FINANCIAL_SOURCE_COMMIT=${FINANCIAL_SOURCE_COMMIT}"
+            hostname
+            uname -a
+          } | tee runner-proof.txt
+          test "${RUNNER_ENVIRONMENT:-}" != "self-hosted"
+          test -n "${ImageOS:-}"
+
+      - name: Fail-closed source gates
+        run: |
+          set -euo pipefail
+          test -f Dockerfile
+          test -f Dockerfile.workers
+          test -f package.json
+          test -f package-lock.json
+          test -f next.config.ts
+          grep -q 'output: "standalone"' next.config.ts
+          test -f scripts/dashboard/runProfitReadModelWorker.ts
+          test -f scripts/dashboard/runV6PeriodReadModelWorker.ts
+          test -f scripts/dashboard/runDashboardPeriodSnapshotWorker.ts
+          test -f lib/dashboard/periodSnapshot.ts
+          test -f lib/stocks/stockAbcSnapshots.ts
+          test -f lib/analytics/profitAnalytics.ts
+          test -f lib/analytics/profitAnalyticsOzon.ts
+          test -f lib/finance/effectiveFinanceTransactions.ts
+          test -f financial-core/v6/manifest.json
+          # Ensure ancestor financial candidate is reachable from this commit.
+          git merge-base --is-ancestor "$FINANCIAL_SOURCE_COMMIT" HEAD
+          echo "financial_ancestor_ok" | tee financial-ancestor.txt
+
+      - name: Set image tags
+        id: tags
+        run: |
+          set -euo pipefail
+          echo "app=avorofin-p0-cogs-app:fin_accept_${STAMP}" >> "$GITHUB_OUTPUT"
+          echo "profit=avorofin-p0-cogs-profit:fin_accept_${STAMP}" >> "$GITHUB_OUTPUT"
+          echo "v6=avorofin-p0-cogs-v6:fin_accept_${STAMP}" >> "$GITHUB_OUTPUT"
+          echo "dashboard=avorofin-p0-cogs-dashboard:fin_accept_${STAMP}" >> "$GITHUB_OUTPUT"
+          echo "stock=avorofin-p0-cogs-stock:fin_accept_${STAMP}" >> "$GITHUB_OUTPUT"
+
+      - name: Build APP standalone image
+        run: |
+          set -euo pipefail
+          docker build \
+            --target runner \
+            --build-arg NEXT_PUBLIC_SITE_URL="$NEXT_PUBLIC_SITE_URL" \
+            --build-arg NEXT_PUBLIC_SUPABASE_URL="$NEXT_PUBLIC_SUPABASE_URL" \
+            --build-arg NEXT_PUBLIC_SUPABASE_ANON_KEY="$NEXT_PUBLIC_SUPABASE_ANON_KEY" \
+            --build-arg NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY="$NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY" \
+            --label "avorofin.fin_accept=1" \
+            --label "avorofin.runtime=app" \
+            --label "avorofin.financialSourceCommit=${FINANCIAL_SOURCE_COMMIT}" \
+            --label "avorofin.buildSourceCommit=${GITHUB_SHA}" \
+            -t "${{ steps.tags.outputs.app }}" \
+            -f Dockerfile \
+            . | tee DOCKER_BUILD_APP.txt
+
+      - name: Build worker images (profit/v6/dashboard/stock)
+        run: |
+          set -euo pipefail
+          common=(
+            --build-arg "SOURCE_REVISION=${GITHUB_SHA}"
+            --build-arg "FINANCIAL_SOURCE_COMMIT=${FINANCIAL_SOURCE_COMMIT}"
+            --label "avorofin.fin_accept=1"
+            --label "avorofin.financialSourceCommit=${FINANCIAL_SOURCE_COMMIT}"
+            --label "avorofin.buildSourceCommit=${GITHUB_SHA}"
+            -f Dockerfile.workers
+          )
+          docker build --target profit "${common[@]}" -t "${{ steps.tags.outputs.profit }}" . | tee DOCKER_BUILD_PROFIT.txt
+          docker build --target v6 "${common[@]}" -t "${{ steps.tags.outputs.v6 }}" . | tee DOCKER_BUILD_V6.txt
+          docker build --target dashboard "${common[@]}" -t "${{ steps.tags.outputs.dashboard }}" . | tee DOCKER_BUILD_DASHBOARD.txt
+          docker build --target stock "${common[@]}" -t "${{ steps.tags.outputs.stock }}" . | tee DOCKER_BUILD_STOCK.txt
+
+      - name: Inspect + offline runtime checks
+        run: |
+          set -euo pipefail
+          mkdir -p image-meta
+          for pair in \
+            "app|${{ steps.tags.outputs.app }}" \
+            "profit|${{ steps.tags.outputs.profit }}" \
+            "v6|${{ steps.tags.outputs.v6 }}" \
+            "dashboard|${{ steps.tags.outputs.dashboard }}" \
+            "stock|${{ steps.tags.outputs.stock }}"
+          do
+            role="${pair%%|*}"
+            tag="${pair##*|}"
+            docker image inspect "$tag" > "image-meta/${role}.inspect.json"
+            docker image inspect -f '{{.Id}}' "$tag" | tee "image-meta/${role}.ImageId.txt"
+            docker image inspect -f '{{json .RepoDigests}}' "$tag" | tee "image-meta/${role}.RepoDigests.json"
+            docker image inspect -f '{{.Os}}/{{.Architecture}}' "$tag" | tee "image-meta/${role}.platform.txt"
+            docker image inspect -f '{{json .Config.Cmd}}' "$tag" | tee "image-meta/${role}.Cmd.json"
+            docker image inspect -f '{{json .Config.Entrypoint}}' "$tag" | tee "image-meta/${role}.Entrypoint.json"
+            echo "$tag" > "image-meta/${role}.tag.txt"
+          done
+
+          # APP: standalone server.js present; no prod DB.
+          docker run --rm --entrypoint node "${{ steps.tags.outputs.app }}" -e \
+            "const fs=require('fs'); fs.accessSync('server.js'); console.log('APP_SERVER_JS_OK')"
+
+          # Workers: resolve tsx/prisma + import changed analytics modules offline (no DATABASE_URL).
+          for tag in \
+            "${{ steps.tags.outputs.profit }}" \
+            "${{ steps.tags.outputs.v6 }}" \
+            "${{ steps.tags.outputs.dashboard }}" \
+            "${{ steps.tags.outputs.stock }}"
+          do
+            docker run --rm --user root --entrypoint node "$tag" --import tsx -e "
+              import { createRequire } from 'node:module';
+              const require = createRequire(import.meta.url);
+              require.resolve('tsx');
+              require.resolve('@prisma/client');
+              require.resolve('@prisma/adapter-pg');
+              require.resolve('pg');
+              const a = await import('./lib/analytics/profitAnalytics.ts');
+              const o = await import('./lib/analytics/profitAnalyticsOzon.ts');
+              const f = await import('./lib/finance/effectiveFinanceTransactions.ts');
+              if (typeof a.getProfitAnalytics !== 'function') throw new Error('missing getProfitAnalytics');
+              if (typeof o.getProfitAnalyticsOzon !== 'function') throw new Error('missing getProfitAnalyticsOzon');
+              if (typeof f.getEffectiveFinanceTransactions !== 'function') throw new Error('missing getEffectiveFinanceTransactions');
+              console.log('WORKER_OFFLINE_IMPORT_OK');
+            "
+          done
+
+          # Confirm worker CMDs match MAIN entrypoints.
+          docker image inspect -f '{{json .Config.Cmd}}' "${{ steps.tags.outputs.profit }}" | grep -q runProfitReadModelWorker.ts
+          docker image inspect -f '{{json .Config.Cmd}}' "${{ steps.tags.outputs.v6 }}" | grep -q runV6PeriodReadModelWorker.ts
+          docker image inspect -f '{{json .Config.Cmd}}' "${{ steps.tags.outputs.dashboard }}" | grep -q runDashboardPeriodSnapshotWorker.ts
+          docker image inspect -f '{{json .Config.Cmd}}' "${{ steps.tags.outputs.stock }}" | grep -q runDashboardPeriodSnapshotWorker.ts
+
+      - name: docker save + sha256 artifacts
+        run: |
+          set -euo pipefail
+          mkdir -p image-tarballs
+          summarize=image-meta/ARTIFACTS_MANIFEST.json
+          echo '{' > "$summarize.tmp"
+          first=1
+          for pair in \
+            "app|${{ steps.tags.outputs.app }}" \
+            "profit|${{ steps.tags.outputs.profit }}" \
+            "v6|${{ steps.tags.outputs.v6 }}" \
+            "dashboard|${{ steps.tags.outputs.dashboard }}" \
+            "stock|${{ steps.tags.outputs.stock }}"
+          do
+            role="${pair%%|*}"
+            tag="${pair##*|}"
+            out="image-tarballs/${role}.tar.gz"
+            docker save "$tag" | gzip -c > "$out"
+            sha=$(sha256sum "$out" | awk '{print $1}')
+            size=$(wc -c < "$out" | tr -d ' ')
+            id=$(cat "image-meta/${role}.ImageId.txt")
+            platform=$(cat "image-meta/${role}.platform.txt")
+            echo "$sha  ${role}.tar.gz" >> image-tarballs/SHA256SUMS.txt
+            if [ "$first" -eq 0 ]; then echo ',' >> "$summarize.tmp"; fi
+            first=0
+            printf '"%s":{"tag":"%s","ImageId":"%s","tarSha256":"%s","tarBytes":%s,"platform":"%s","RepoDigest":null,"RepoDigestStatus":"NOT_PUSHED_TO_REGISTRY"}' \
+              "$role" "$tag" "$id" "$sha" "$size" "$platform" >> "$summarize.tmp"
+          done
+          echo '}' >> "$summarize.tmp"
+          mv "$summarize.tmp" "$summarize"
+          {
+            echo "financialSourceCommit=${FINANCIAL_SOURCE_COMMIT}"
+            echo "buildSourceCommit=${GITHUB_SHA}"
+            echo "run_id=${GITHUB_RUN_ID}"
+            echo "run_url=https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          } | tee image-meta/BUILD_IDENTITY.txt
+          cat "$summarize"
+
+      - name: Upload image metadata (small)
+        uses: actions/upload-artifact@v4
+        with:
+          name: fin-accept-image-meta-${{ env.STAMP }}
+          path: |
+            runner-proof.txt
+            financial-ancestor.txt
+            image-meta/
+            DOCKER_BUILD_*.txt
+          if-no-files-found: error
+
+      - name: Upload image tarballs
+        uses: actions/upload-artifact@v4
+        with:
+          name: fin-accept-image-tarballs-${{ env.STAMP }}
+          path: |
+            image-tarballs/
+          if-no-files-found: error
+          retention-days: 14

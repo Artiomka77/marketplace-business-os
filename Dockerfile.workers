@@ -1,0 +1,47 @@
+# FIN_ACCEPT worker images — build/test ONLY (GitHub Actions).
+# Adapted from reviewer templates/Dockerfile.workers.
+# Full source runtime + tsx (devDependency but required at worker runtime).
+# Do not prune --omit=dev. Do not copy .env / production data.
+ARG NODE_BASE=node:24-bookworm-slim
+FROM ${NODE_BASE} AS worker-base
+WORKDIR /app
+ARG SOURCE_REVISION=unknown
+ARG FINANCIAL_SOURCE_COMMIT=unknown
+LABEL org.opencontainers.image.revision=${SOURCE_REVISION}
+LABEL avorofin.financialSourceCommit=${FINANCIAL_SOURCE_COMMIT}
+LABEL avorofin.buildSourceCommit=${SOURCE_REVISION}
+ENV NEXT_TELEMETRY_DISABLED=1
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates openssl \
+    && rm -rf /var/lib/apt/lists/*
+COPY package.json package-lock.json ./
+RUN npm ci --include=dev
+COPY . .
+# Schema generation only — no DB connection/migration.
+RUN DATABASE_URL=postgresql://build:build@127.0.0.1:5432/build npx prisma generate
+RUN npm run financial-core:verify
+RUN node -e "require.resolve('tsx'); require.resolve('@prisma/client'); require.resolve('@prisma/adapter-pg'); require.resolve('pg')"
+ENV NODE_ENV=production
+USER node
+
+FROM worker-base AS profit
+RUN test -r scripts/dashboard/runProfitReadModelWorker.ts
+LABEL avorofin.runtime=profit-readmodel
+CMD ["node", "--import", "tsx", "scripts/dashboard/runProfitReadModelWorker.ts"]
+
+FROM worker-base AS v6
+RUN test -r scripts/dashboard/runV6PeriodReadModelWorker.ts
+LABEL avorofin.runtime=v6-period
+CMD ["node", "--import", "tsx", "scripts/dashboard/runV6PeriodReadModelWorker.ts"]
+
+FROM worker-base AS dashboard
+RUN test -r scripts/dashboard/runDashboardPeriodSnapshotWorker.ts
+RUN test -r lib/dashboard/periodSnapshot.ts
+LABEL avorofin.runtime=dashboard-period
+CMD ["node", "--import", "tsx", "scripts/dashboard/runDashboardPeriodSnapshotWorker.ts"]
+
+FROM worker-base AS stock
+RUN test -r scripts/dashboard/runDashboardPeriodSnapshotWorker.ts
+RUN test -r lib/stocks/stockAbcSnapshots.ts
+LABEL avorofin.runtime=stock-planning
+CMD ["node", "--import", "tsx", "scripts/dashboard/runDashboardPeriodSnapshotWorker.ts"]

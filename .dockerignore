@@ -22,3 +22,19 @@ Thumbs.db
 *.local
 
 server-logs
+
+# Build context hygiene for FIN_ACCEPT image builds (no secrets / fixtures dumps)
+**/.env
+**/*.pem
+**/*.key
+**/FIN_ACCEPT_RESULT_*
+**/FIN_ACCEPT_ASSIGNMENT*
+scripts/fin_patch/out_*
+scripts/fin_patch/fixtures_*
+*.zip
+*.tar
+*.tar.gz
+coverage
+.turbo
+.vscode
+.cursor
