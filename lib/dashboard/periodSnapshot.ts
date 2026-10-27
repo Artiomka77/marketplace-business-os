@@ -37,6 +37,15 @@ function isProfitAnalyticsUnavailable(
   return false;
 }
 
+/** Daily-report marketplace rows may carry optional availability without typed export. */
+function isMarketplaceFinancialUnavailable(metrics: unknown): boolean {
+  return (
+    !!metrics &&
+    typeof metrics === "object" &&
+    (metrics as { financialUnavailable?: boolean }).financialUnavailable === true
+  );
+}
+
 export const DASHBOARD_PERIOD_SNAPSHOT_FORMULA_VERSION =
   "FINANCIAL_CORE_V4_PERIOD_SNAPSHOT_V1";
 
@@ -2001,12 +2010,17 @@ export async function buildDashboardPeriodSnapshotPayload(params: {
       wbRevenue == null || ozonRevenue == null ? null : wbRevenue + ozonRevenue;
     const financeImpact = companyReport.finance.netProfitImpact;
     const personalExpenses = companyReport.finance.ownerWithdrawals;
+    const wbFinancialUnavailable = isMarketplaceFinancialUnavailable(
+      companyReport.wb,
+    );
+    const ozonFinancialUnavailable = isMarketplaceFinancialUnavailable(
+      companyReport.ozon,
+    );
     const partialFinancial =
-      companyReport.wb.financialUnavailable === true ||
-      companyReport.ozon.financialUnavailable === true;
+      wbFinancialUnavailable || ozonFinancialUnavailable;
     const combinedProfit = snapshotCombinedProfit({
-      wbFinancialUnavailable: companyReport.wb.financialUnavailable === true,
-      ozonFinancialUnavailable: companyReport.ozon.financialUnavailable === true,
+      wbFinancialUnavailable,
+      ozonFinancialUnavailable,
       wbNet: wbNetProfitAfterTax,
       ozonNet: ozonNetProfitAfterTax,
       financeImpact,
