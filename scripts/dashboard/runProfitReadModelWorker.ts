@@ -27,6 +27,8 @@ const pollMs = Math.max(
 const workerMode = String(
   process.env.WAVE_B_PROFIT_WORKER_MODE ?? "queue-once"
 ).toLowerCase();
+/** Graceful stop: SIGTERM/SIGINT. Not drain-as-claim-gate. */
+let stopping = false;
 /** Stale RUNNING reclaim — dead worker left lock forever (MISS_NO_ROW permanent). */
 const staleRunningMs = Math.max(
   5 * 60_000,
@@ -96,7 +98,9 @@ async function reclaimStaleRunning(
 async function claimOne(
   prisma: ReturnType<typeof createWaveBProfitTargetPrismaClient>
 ): Promise<ClaimedJob | null> {
+  if (stopping) return null;
   await reclaimStaleRunning(prisma);
+  if (stopping) return null;
   return prisma.$transaction(async (tx) => {
     const rows = await tx.$queryRaw<ClaimedJob[]>`
       SELECT
@@ -169,6 +173,29 @@ async function processJob(
     dateTo,
     prisma: computePrisma,
   });
+
+  // Forced stop mid-flight: do NOT invent SUCCESS. Leave RUNNING for stale reclaim.
+  if (stopping) {
+    await prisma.dashboardPeriodSnapshotJob.update({
+      where: { id: job.id },
+      data: {
+        status: "RUNNING",
+        lastError: "INTERRUPTED_BY_STOP",
+        updatedAt: new Date(),
+      },
+    });
+    console.log(
+      JSON.stringify({
+        event: "wave_b_profit_job_interrupted_by_stop",
+        jobId: job.id,
+        marketplace,
+        companyScope: job.companyScope,
+        dateFrom,
+        dateTo,
+      })
+    );
+    return;
+  }
 
   await prisma.dashboardPeriodSnapshotJob.update({
     where: { id: job.id },
@@ -283,22 +310,50 @@ async function main() {
     })
   );
 
+  process.on("SIGTERM", () => {
+    stopping = true;
+    console.log(
+      JSON.stringify({
+        event: "wave_b_profit_worker_shutdown_signal",
+        signal: "SIGTERM",
+        workerId,
+      })
+    );
+  });
+  process.on("SIGINT", () => {
+    stopping = true;
+    console.log(
+      JSON.stringify({
+        event: "wave_b_profit_worker_shutdown_signal",
+        signal: "SIGINT",
+        workerId,
+      })
+    );
+  });
+
   try {
     if (workerMode === "oneshot" || workerMode === "queue-once") {
       const max = Number(process.env.WAVE_B_PROFIT_WORKER_MAX_JOBS ?? "1") || 1;
-      for (let i = 0; i < max; i++) {
+      for (let i = 0; i < max && !stopping; i++) {
         const did = await runOnce(prisma);
         if (!did) break;
       }
       return;
     }
 
-    for (;;) {
+    while (!stopping) {
       const did = await runOnce(prisma);
       if (!did) await sleep(pollMs);
     }
   } finally {
     await disconnectWaveBProfitTargetPrismaClient();
+    console.log(
+      JSON.stringify({
+        event: "wave_b_profit_worker_stopped",
+        workerId,
+        stopping,
+      })
+    );
   }
 }
 

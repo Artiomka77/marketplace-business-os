@@ -114,12 +114,20 @@ case "$cmd" in
       "{{.Config.WorkingDir}}") grep '^workdir=' "$STATE_DIR/containers/$name" | tail -1 | cut -d= -f2- ;;
       "{{.HostConfig.RestartPolicy.Name}}") grep '^restart=' "$STATE_DIR/containers/$name" | tail -1 | cut -d= -f2- ;;
       "{{json .Config.Entrypoint}}") echo '["docker-entrypoint.sh"]' ;;
+      "{{json .Config.Cmd}}")
+        case "$name" in
+          avorofin-app) echo '["node","server.js"]' ;;
+          avorofin-profit-readmodel-worker) echo '["node","--import","tsx","scripts/dashboard/runProfitReadModelWorker.ts"]' ;;
+          avorofin-v6-period-readmodel-worker) echo '["node","--import","tsx","scripts/dashboard/runV6PeriodReadModelWorker.ts"]' ;;
+          *) echo '["node","--import","tsx","scripts/dashboard/runDashboardPeriodSnapshotWorker.ts"]' ;;
+        esac
+        ;;
       "{{json .Mounts}}") echo '[]' ;;
       "{{len .Config.Env}}")
         if [[ -f "$STATE_DIR/env_len_override_$name" ]]; then
           cat "$STATE_DIR/env_len_override_$name"
         else
-          echo 3
+          echo 6
         fi
         ;;
       "{{range .Config.Env}}{{println .}}{{end}}")
@@ -129,6 +137,10 @@ case "$cmd" in
           echo "DATABASE_URL=postgresql://x"
           echo "NODE_ENV=production"
           echo "HOSTNAME=mock"
+          echo "WAVE_B_PROFIT_WORKER_MODE=queue-once"
+          echo "V6_READMODEL_WORKER_MODE=queue-once"
+          echo "V6_READMODEL_TARGET_DATABASE_URL=postgresql://x"
+          echo "DASHBOARD_SNAPSHOT_WORKER_MODE=continuous"
         fi
         ;;
       "{{.State.Running}}")
@@ -471,12 +483,139 @@ case_refuse_unknown_original_mismatch() {
   ec=$?
   set -e
   [[ $ec -ne 0 ]] || fail "expected refuse unknown"
-  grep -q ROLLBACK_UNKNOWN_STATE "$STATE/err.txt" || fail "expected ROLLBACK_UNKNOWN_STATE"
+  grep -Eq 'ROLLBACK_UNKNOWN_STATE|ROLLBACK_ORIGINAL_UNAVAILABLE' "$STATE/err.txt" || fail "expected refuse"
   # Must NOT have deleted the unknown container
   [[ -f "$STATE/containers/avorofin-app" ]] || fail "destroyed unknown container"
   got=$(grep '^image=' "$STATE/containers/avorofin-app" | tail -1 | cut -d= -f2)
   [[ "$got" == "sha256:UNKNOWN_FOREIGN" ]] || fail "mutated unknown image"
   log "PASS refuse_unknown_original_mismatch"
+}
+
+case_missing_backup_refuses_without_destroy() {
+  log "CASE missing_backup_refuses_without_destroy"
+  install_docker_mock
+  seed_containers 0
+  bash "$CUTOVER_SRC" switch
+  local app_id
+  app_id=$(grep '^id=' "$STATE/containers/avorofin-app" | tail -1 | cut -d= -f2)
+  rm -f "$STATE/containers/avorofin-app-pre-fa-cutover"
+  set +e
+  bash "$CUTOVER_SRC" rollback >"$STATE/out.txt" 2>"$STATE/err.txt"
+  ec=$?
+  set -e
+  [[ $ec -ne 0 ]] || fail "expected rollback fail"
+  grep -q ROLLBACK_ORIGINAL_UNAVAILABLE "$STATE/err.txt" || fail "expected ORIGINAL_UNAVAILABLE"
+  [[ -f "$STATE/containers/avorofin-app" ]] || fail "destroyed working APP"
+  got=$(grep '^id=' "$STATE/containers/avorofin-app" | tail -1 | cut -d= -f2)
+  [[ "$got" == "$app_id" ]] || fail "APP id changed after refuse"
+  log "PASS missing_backup_refuses_without_destroy"
+}
+
+case_foreign_same_new_image_refuses() {
+  log "CASE foreign_same_new_image_refuses"
+  install_docker_mock
+  seed_containers 0
+  bash "$CUTOVER_SRC" switch
+  # Same EXPECT ImageId, different container ID — not this transaction's replacement.
+  sed -i 's/^id=.*/id=sha256:foreign_same_new_image/' "$STATE/containers/avorofin-app"
+  set +e
+  bash "$CUTOVER_SRC" rollback >"$STATE/out.txt" 2>"$STATE/err.txt"
+  ec=$?
+  set -e
+  [[ $ec -ne 0 ]] || fail "expected refuse"
+  grep -Eq 'ROLLBACK_UNKNOWN_STATE|ROLLBACK_ORIGINAL_UNAVAILABLE' "$STATE/err.txt" || fail "expected refuse msg"
+  [[ -f "$STATE/containers/avorofin-app" ]] || fail "destroyed foreign APP"
+  got=$(grep '^id=' "$STATE/containers/avorofin-app" | tail -1 | cut -d= -f2)
+  [[ "$got" == "sha256:foreign_same_new_image" ]] || fail "foreign id mutated"
+  log "PASS foreign_same_new_image_refuses"
+}
+
+case_foreign_same_old_image_refuses() {
+  log "CASE foreign_same_old_image_refuses"
+  install_docker_mock
+  seed_containers 0
+  bash "$CUTOVER_SRC" switch
+  sed -i 's/^id=.*/id=sha256:foreign_same_old_image/;s/^image=.*/image=sha256:old_avorofin-app/' "$STATE/containers/avorofin-app"
+  set +e
+  bash "$CUTOVER_SRC" rollback >"$STATE/out.txt" 2>"$STATE/err.txt"
+  ec=$?
+  set -e
+  [[ $ec -ne 0 ]] || fail "expected refuse"
+  grep -Eq 'ROLLBACK_UNKNOWN_STATE|ROLLBACK_ORIGINAL_UNAVAILABLE|ROLLBACK_CONTAINER_ID_MISMATCH' "$STATE/err.txt" || fail "expected refuse"
+  # Real original must remain under backup; foreign under working not accepted as restored.
+  [[ -f "$STATE/containers/avorofin-app-pre-fa-cutover" ]] || fail "lost real backup"
+  bak=$(grep '^id=' "$STATE/containers/avorofin-app-pre-fa-cutover" | tail -1 | cut -d= -f2)
+  [[ "$bak" == "sha256:cid_old_avorofin-app" ]] || fail "backup id wrong"
+  got=$(grep '^id=' "$STATE/containers/avorofin-app" | tail -1 | cut -d= -f2)
+  [[ "$got" == "sha256:foreign_same_old_image" ]] || fail "foreign destroyed"
+  log "PASS foreign_same_old_image_refuses"
+}
+
+case_crash_before_record_new_process() {
+  log "CASE crash_before_record_new_process"
+  install_docker_mock
+  seed_containers 0
+  # Inject kill immediately after rename mv in mock docker.
+  local mock="$STATE/bins/docker"
+  node -e '
+const fs=require("fs");
+const p=process.argv[1];
+let s=fs.readFileSync(p,"utf8");
+const target="    mv \"$STATE_DIR/containers/$old\" \"$STATE_DIR/containers/$new\"\n";
+if(!s.includes(target)) throw new Error("rename target missing");
+if(!s.includes("MOCK_KILL_ON_RENAME")) {
+  s=s.replace(target, target+"    if [[ \"${MOCK_KILL_ON_RENAME:-}\" == \"$old\" ]]; then kill -KILL \"$PPID\"; fi\n");
+  fs.writeFileSync(p,s);
+}
+' "$mock"
+  export MOCK_KILL_ON_RENAME=avorofin-profit-readmodel-worker
+  set +e
+  bash "$CUTOVER_SRC" switch
+  ec=$?
+  set -e
+  unset MOCK_KILL_ON_RENAME
+  [[ $ec -ne 0 ]] || fail "expected crash exit"
+  [[ -f "$STATE/containers/avorofin-profit-readmodel-worker-pre-fa-cutover" ]] || fail "missing backup after crash"
+  bash "$CUTOVER_SRC" rollback
+  assert_old_images
+  for c in "${ROLES[@]}"; do
+    got=$(grep '^id=' "$STATE/containers/$c" | tail -1 | cut -d= -f2)
+    [[ "$got" == "sha256:cid_old_$c" ]] || fail "$c id=$got"
+  done
+  log "PASS crash_before_record_new_process"
+}
+
+case_crash_before_record_changed_suffix() {
+  log "CASE crash_before_record_changed_suffix"
+  install_docker_mock
+  seed_containers 0
+  local mock="$STATE/bins/docker"
+  node -e '
+const fs=require("fs");
+const p=process.argv[1];
+let s=fs.readFileSync(p,"utf8");
+const target="    mv \"$STATE_DIR/containers/$old\" \"$STATE_DIR/containers/$new\"\n";
+if(!s.includes(target)) throw new Error("rename target missing");
+if(!s.includes("MOCK_KILL_ON_RENAME")) {
+  s=s.replace(target, target+"    if [[ \"${MOCK_KILL_ON_RENAME:-}\" == \"$old\" ]]; then kill -KILL \"$PPID\"; fi\n");
+  fs.writeFileSync(p,s);
+}
+' "$mock"
+  export MOCK_KILL_ON_RENAME=avorofin-profit-readmodel-worker
+  set +e
+  bash "$CUTOVER_SRC" switch
+  set -e
+  unset MOCK_KILL_ON_RENAME
+  export CUTOVER_PRE_SUFFIX=changed-in-new-shell
+  bash "$CUTOVER_SRC" rollback
+  unset CUTOVER_PRE_SUFFIX
+  export CUTOVER_PRE_SUFFIX=pre-fa-cutover
+  assert_old_images
+  for c in "${ROLES[@]}"; do
+    got=$(grep '^id=' "$STATE/containers/$c" | tail -1 | cut -d= -f2)
+    [[ "$got" == "sha256:cid_old_$c" ]] || fail "$c id=$got after changed suffix"
+  done
+  log "PASS crash_before_record_changed_suffix"
 }
 
 run_all() {
@@ -491,6 +630,11 @@ run_all() {
   case_retry_after_partial_restore
   case_exit_after_rename_new_process
   case_refuse_unknown_original_mismatch
+  case_missing_backup_refuses_without_destroy
+  case_foreign_same_new_image_refuses
+  case_foreign_same_old_image_refuses
+  case_crash_before_record_new_process
+  case_crash_before_record_changed_suffix
   log "ALL_CUTOVER_ACCEPTANCE_PASS"
 }
 

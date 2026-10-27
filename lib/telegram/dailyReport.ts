@@ -85,6 +85,15 @@ type MarketplaceDailyMetrics = {
     | "ESTIMATED_ECONOMIC_TURNOVER";
   taxesEstimated?: boolean;
   netProfitStatus?: "FINAL" | "PRELIMINARY";
+  /** True when product COGS coverage for the period is incomplete. */
+  costCoverageIncomplete?: boolean;
+  /** SKU examples missing product cost (vendorCode/nmId/units). */
+  costCoverageMissingExamples?: Array<{
+    vendorCode?: string | null;
+    nmId?: string | null;
+    units?: number;
+  }>;
+  costCoverageMissingSkuCount?: number;
 };
 
 type CompanyDailyReport = {
@@ -1915,6 +1924,25 @@ async function getOzonMetrics(companyName: string, range: DateRange) {
     netProfitStatus: profitAnalyticsHasOzonData
       ? profitTotals.netProfitStatus
       : undefined,
+    costCoverageIncomplete: profitAnalyticsHasOzonData
+      ? Boolean(profitTotals.costCoverageIncomplete)
+      : undefined,
+    costCoverageMissingExamples: profitAnalyticsHasOzonData
+      ? (
+          (profitTotals as { costCoverageMissingExamples?: Array<{
+            vendorCode?: string | null;
+            nmId?: string | null;
+            units?: number;
+          }> }).costCoverageMissingExamples ?? []
+        ).slice(0, 8)
+      : undefined,
+    costCoverageMissingSkuCount: profitAnalyticsHasOzonData
+      ? Number(
+          (
+            profitTotals as { costCoverageMissingExamples?: unknown[] }
+          ).costCoverageMissingExamples?.length ?? 0,
+        )
+      : undefined,
   };
 }
 
@@ -2195,8 +2223,21 @@ export async function buildDailyReport(params?: {
       }),
     ]);
 
+    // Incomplete/NaN marketplace profit must not become a trusted numeric 0 in
+    // the summary, and must not poison the summed impact into a false total.
+    const wbProfit = Number.isFinite(wb.netProfitAfterTax)
+      ? wb.netProfitAfterTax
+      : null;
+    const ozonProfit = Number.isFinite(ozon.netProfitAfterTax)
+      ? ozon.netProfitAfterTax
+      : null;
+    const financeImpact = Number.isFinite(finance.netProfitImpact)
+      ? finance.netProfitImpact
+      : null;
     const realNetProfit =
-      wb.netProfitAfterTax + ozon.netProfitAfterTax + finance.netProfitImpact;
+      wbProfit == null || ozonProfit == null || financeImpact == null
+        ? Number.NaN
+        : wbProfit + ozonProfit + financeImpact;
 
     const financeForReport = {
       ...finance,
@@ -2216,7 +2257,13 @@ export async function buildDailyReport(params?: {
     report.totals.cashIncome += finance.cashIncome;
     report.totals.cashOutflow += finance.cashOutflow;
     report.totals.netCashFlow += finance.netCashFlow;
-    report.totals.netProfitImpact += realNetProfit;
+    if (Number.isFinite(realNetProfit)) {
+      report.totals.netProfitImpact += realNetProfit;
+    } else {
+      report.warnings.push(
+        `${company.name}: прибыль периода н/д (неполные данные MP/Finance) — не включена в сумму сводки как 0`,
+      );
+    }
     report.totals.ownerWithdrawals += finance.ownerWithdrawals;
   }
 
@@ -2826,10 +2873,34 @@ function marketplaceLine(label: string, metrics: MarketplaceDailyMetrics) {
   lines.push(marketplaceAdLine(metrics));
 
   if (metrics.marketplace === "OZON" && metrics.netOzonExpenses !== undefined) {
+    const netText = Number.isFinite(metrics.netOzonExpenses)
+      ? formatMoney(metrics.netOzonExpenses)
+      : "н/д";
     lines.push(
-      metrics.discountPointsCoverageComplete === false
-        ? `Расходы Ozon по загруженным данным: ${formatMoney(metrics.netOzonExpenses)}`
-        : `Чистые расходы Ozon после баллов и программ партнёров: ${formatMoney(metrics.netOzonExpenses)}`
+      !Number.isFinite(metrics.netOzonExpenses)
+        ? `Чистые расходы Ozon: н/д (неполные данные расходов)`
+        : metrics.discountPointsCoverageComplete === false
+          ? `Расходы Ozon по загруженным данным: ${netText}`
+          : `Чистые расходы Ozon после баллов и программ партнёров: ${netText}`
+    );
+  }
+
+  if (metrics.marketplace === "OZON" && metrics.costCoverageIncomplete) {
+    const n = metrics.costCoverageMissingSkuCount ?? 0;
+    const examples = (metrics.costCoverageMissingExamples ?? [])
+      .slice(0, 5)
+      .map((ex) => {
+        const code = cleanText(ex.vendorCode) || cleanText(ex.nmId) || "?";
+        const units = Number.isFinite(Number(ex.units)) ? ` ×${ex.units}` : "";
+        return `${code}${units}`;
+      })
+      .filter(Boolean);
+    lines.push(
+      n > 0
+        ? `Себестоимость Ozon предварительная: нет COGS у ${n} SKU${
+            examples.length ? ` (пример: ${examples.join(", ")})` : ""
+          }`
+        : "Себестоимость Ozon предварительная: покрытие COGS неполное",
     );
   }
 
@@ -3022,7 +3093,24 @@ function compactMarketplaceBlock(
   if (taxableLine) lines.push(taxableLine);
 
   lines.push(marketplaceAdLine(metrics));
-  lines.push(`${profitLabel}: ${formatSignedMoney(metrics.netProfitAfterTax)}`);
+  const profitText = Number.isFinite(metrics.netProfitAfterTax)
+    ? formatSignedMoney(metrics.netProfitAfterTax)
+    : "н/д";
+  const profitSuffix =
+    metrics.marketplace === "OZON" &&
+    (metrics.netProfitStatus === "PRELIMINARY" || metrics.costCoverageIncomplete)
+      ? " (предварительно)"
+      : "";
+  lines.push(`${profitLabel}: ${profitText}${profitSuffix}`);
+  if (
+    metrics.marketplace === "OZON" &&
+    metrics.costCoverageIncomplete &&
+    (metrics.costCoverageMissingSkuCount ?? 0) > 0
+  ) {
+    lines.push(
+      `Нет COGS: ${metrics.costCoverageMissingSkuCount} SKU — прибыль/маржа помечены предварительными; остальные показатели сохранены`,
+    );
+  }
   lines.push(
     `ДРР: от экон. оборота ${formatPercent(metrics.drrByEconomicTurnover)}`
   );

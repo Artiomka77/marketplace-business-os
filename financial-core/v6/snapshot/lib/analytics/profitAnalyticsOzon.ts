@@ -1086,7 +1086,113 @@ export function calculateOzonNetExpensesAfterDiscountPoints(
   );
 }
 
-/** Resolve display net from components; refuse legacy-net − A double subtraction. */
+export type OzonNetExpensesResolution = {
+  /** Finite number when known; null when incomplete/unknown (never invent 0). */
+  value: number | null;
+  complete: boolean;
+  reason: string | null;
+  source:
+    | "components_g_b_a"
+    | "stored_new_net"
+    | "stored_legacy_minus_a"
+    | "incomplete"
+    | "known_zero";
+};
+
+function isPresentNumber(v: unknown): v is number {
+  return v !== null && v !== undefined && Number.isFinite(Number(v));
+}
+
+/**
+ * Resolve display net with completeness. Full G/B/A → G−B−A; versioned new NET
+ * usable as-is; incomplete/unknown → value null (not confirmed zero).
+ */
+export function resolveOzonNetExpensesForDisplayDetailed(totals: {
+  grossOzonExpenses?: number | null;
+  discountPointsCompensation?: number | null;
+  discountPointsAmount?: number | null;
+  partnerProgramsAmount?: number | null;
+  netOzonExpenses?: number | null;
+  netOzonExpensesRepresentation?: string | null;
+}): OzonNetExpensesResolution {
+  const gRaw = totals.grossOzonExpenses;
+  const bRaw =
+    totals.discountPointsCompensation ?? totals.discountPointsAmount;
+  const aRaw = totals.partnerProgramsAmount;
+  const storedRaw = totals.netOzonExpenses;
+  const rep = totals.netOzonExpensesRepresentation;
+
+  const gPresent = isPresentNumber(gRaw);
+  const bPresent = isPresentNumber(bRaw);
+  const aPresent = isPresentNumber(aRaw);
+  const storedPresent = isPresentNumber(storedRaw);
+
+  // Full primary components (A may be real zero) → canonical N.
+  if (gPresent && bPresent && aPresent) {
+    const value = Number(gRaw) - Number(bRaw) - Number(aRaw);
+    return {
+      value,
+      complete: true,
+      reason: null,
+      source: value === 0 ? "known_zero" : "components_g_b_a",
+    };
+  }
+
+  // Versioned new NET: trust stored without inventing missing A.
+  if (
+    storedPresent &&
+    rep === OZON_NET_EXPENSES_REPRESENTATION_G_MINUS_B_MINUS_A
+  ) {
+    const value = Number(storedRaw);
+    return {
+      value,
+      complete: true,
+      reason: null,
+      source: value === 0 ? "known_zero" : "stored_new_net",
+    };
+  }
+
+  // Legacy G−B stored: apply A once only when A is present.
+  if (
+    storedPresent &&
+    (rep === OZON_NET_EXPENSES_REPRESENTATION_G_MINUS_B || rep == null)
+  ) {
+    if (!aPresent) {
+      return {
+        value: null,
+        complete: false,
+        reason: "LEGACY_NET_MISSING_PARTNER_PROGRAMS_AMOUNT",
+        source: "incomplete",
+      };
+    }
+    return {
+      value: Number(storedRaw) - Number(aRaw),
+      complete: true,
+      reason: null,
+      source: "stored_legacy_minus_a",
+    };
+  }
+
+  if (rep != null &&
+      rep !== OZON_NET_EXPENSES_REPRESENTATION_G_MINUS_B &&
+      rep !== OZON_NET_EXPENSES_REPRESENTATION_G_MINUS_B_MINUS_A) {
+    return {
+      value: null,
+      complete: false,
+      reason: "UNKNOWN_NET_OZON_EXPENSES_REPRESENTATION",
+      source: "incomplete",
+    };
+  }
+
+  return {
+    value: null,
+    complete: false,
+    reason: "INCOMPLETE_OZON_NET_EXPENSES_COMPONENTS",
+    source: "incomplete",
+  };
+}
+
+/** Resolve display net; NaN means incomplete (not confirmed zero). */
 export function resolveOzonNetExpensesForDisplay(totals: {
   grossOzonExpenses?: number | null;
   discountPointsCompensation?: number | null;
@@ -1095,46 +1201,8 @@ export function resolveOzonNetExpensesForDisplay(totals: {
   netOzonExpenses?: number | null;
   netOzonExpensesRepresentation?: string | null;
 }): number {
-  // Presence checks BEFORE Number(): Number(null)===0 must not look like known gross=0.
-  const gRaw = totals.grossOzonExpenses;
-  const bRaw =
-    totals.discountPointsCompensation ?? totals.discountPointsAmount;
-  const aRaw = totals.partnerProgramsAmount;
-  const storedRaw = totals.netOzonExpenses;
-  const rep = totals.netOzonExpensesRepresentation;
-
-  const b =
-    bRaw === null || bRaw === undefined || !Number.isFinite(Number(bRaw))
-      ? 0
-      : Number(bRaw);
-  const a =
-    aRaw === null || aRaw === undefined || !Number.isFinite(Number(aRaw))
-      ? 0
-      : Number(aRaw);
-
-  if (gRaw !== null && gRaw !== undefined && Number.isFinite(Number(gRaw))) {
-    return Number(gRaw) - b - a;
-  }
-
-  if (
-    storedRaw !== null &&
-    storedRaw !== undefined &&
-    Number.isFinite(Number(storedRaw))
-  ) {
-    const stored = Number(storedRaw);
-    if (rep === OZON_NET_EXPENSES_REPRESENTATION_G_MINUS_B_MINUS_A) {
-      return stored;
-    }
-    if (rep === OZON_NET_EXPENSES_REPRESENTATION_G_MINUS_B || rep == null) {
-      // Legacy stored N was G−B; apply A once for current display without
-      // mutating the stored payload in place.
-      return stored - a;
-    }
-    return stored;
-  }
-
-  // Incomplete/ambiguous payload — not a confirmed numeric zero.
-  return Number.NaN;
+  const r = resolveOzonNetExpensesForDisplayDetailed(totals);
+  return r.value == null ? Number.NaN : r.value;
 }
 
 function applyExactSkuFeeLedgerToRows(

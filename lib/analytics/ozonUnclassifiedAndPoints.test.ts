@@ -259,3 +259,18 @@ test("new G_MINUS_B_MINUS_A stored net is not reduced by A again", () => {
   });
   assert.equal(Number(resolved.toFixed(2)), 170_858.17);
 });
+
+test("incomplete missing gross/net yields non-finite not confirmed zero", () => {
+  const resolved = resolveOzonNetExpensesForDisplayForTest({});
+  assert.equal(Number.isFinite(resolved), false);
+});
+
+test("new stored NET with missing A uses stored not invent A=0", () => {
+  const resolved = resolveOzonNetExpensesForDisplayForTest({
+    grossOzonExpenses: 1000,
+    discountPointsAmount: 200,
+    netOzonExpenses: 700,
+    netOzonExpensesRepresentation: "G_MINUS_B_MINUS_A",
+  });
+  assert.equal(resolved, 700);
+});

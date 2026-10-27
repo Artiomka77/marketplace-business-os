@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Unified 5-role cutover/rollback (FIN_ACCEPT R11).
+# Unified 5-role cutover/rollback (FIN_ACCEPT R12).
 # Journal is transaction-scoped and NEVER wiped by rollback.
 # Init of journal files happens only for a NEW switch after preflight.
-# Rollback is identity-aware and resumable after partial restore / crash.
+# Rollback proves original/replacement by container ID + ImageId; backup_name from journal.
 set -euo pipefail
 
 JOURNAL_DIR="${CUTOVER_JOURNAL_DIR:-/tmp/avorofin_cutover_journal}"
@@ -135,8 +135,21 @@ switched_roles_reverse() {
     "$JOURNAL_DIR/switched_roles.txt"
 }
 
+backup_name_for_role() {
+  local role=$1
+  local from_meta journal_suffix
+  from_meta=$(read_role_meta "$role" backup_name)
+  if [[ -n "$from_meta" ]]; then
+    echo "$from_meta"
+    return 0
+  fi
+  journal_suffix=$(cat "$JOURNAL_DIR/pre_suffix" 2>/dev/null || true)
+  [[ -n "$journal_suffix" ]] || journal_suffix="$PRE_SUFFIX"
+  echo "${role}-${journal_suffix}"
+}
+
 roles_needing_rollback_reverse() {
-  local role pre old_id img
+  local role pre old_id old_cid img cid
   declare -A seen=()
   local list=()
   while IFS= read -r role; do
@@ -144,14 +157,17 @@ roles_needing_rollback_reverse() {
     list+=("$role")
     seen["$role"]=1
   done < <(switched_roles_reverse)
+  # Discover rename-without-journal using persisted backup_name + exact old container ID.
   for role in "${ROLES[@]}"; do
     [[ -n "${seen[$role]:-}" ]] && continue
-    pre="${role}-${PRE_SUFFIX}"
     old_id=$(cat "$JOURNAL_DIR/${role}.old_image_id" 2>/dev/null || true)
-    [[ -n "$old_id" ]] || continue
+    old_cid=$(cat "$JOURNAL_DIR/${role}.old_container_id" 2>/dev/null || true)
+    [[ -n "$old_id" && -n "$old_cid" ]] || continue
+    pre=$(backup_name_for_role "$role")
     if docker inspect "$pre" >/dev/null 2>&1; then
-      img=$(docker inspect -f '{{.Image}}' "$pre" 2>/dev/null || true)
-      if [[ "$img" == "$old_id" ]]; then
+      img=$(container_image "$pre")
+      cid=$(container_id "$pre")
+      if [[ "$img" == "$old_id" && "$cid" == "$old_cid" ]]; then
         record_switched "$role"
         list=("$role" "${list[@]}")
         seen["$role"]=1
@@ -171,7 +187,7 @@ roles_needing_rollback_reverse() {
 capture_runtime() {
   local role=$1
   local out="$JOURNAL_DIR/${role}.runtime_before.json"
-  local image user net workdir restart entrypoint mounts ports cid
+  local image user net workdir restart entrypoint cmd mounts ports cid
   image=$(docker inspect -f '{{.Image}}' "$role")
   cid=$(docker inspect -f '{{.Id}}' "$role")
   user=$(docker inspect -f '{{.Config.User}}' "$role")
@@ -179,6 +195,7 @@ capture_runtime() {
   workdir=$(docker inspect -f '{{.Config.WorkingDir}}' "$role")
   restart=$(docker inspect -f '{{.HostConfig.RestartPolicy.Name}}' "$role")
   entrypoint=$(docker inspect -f '{{json .Config.Entrypoint}}' "$role")
+  cmd=$(docker inspect -f '{{json .Config.Cmd}}' "$role")
   mounts=$(docker inspect -f '{{json .Mounts}}' "$role")
   ports=$(docker port "$role" 2>/dev/null || true)
   {
@@ -190,6 +207,7 @@ capture_runtime() {
     echo "workdir=$workdir"
     echo "restart=$restart"
     echo "entrypoint=$entrypoint"
+    echo "cmd=$cmd"
     echo "mounts=$mounts"
     echo "ports_begin"
     printf '%s\n' "$ports"
@@ -236,8 +254,26 @@ container_running() {
   docker inspect -f '{{.State.Running}}' "$1" 2>/dev/null || echo false
 }
 
+require_env_keys_present() {
+  # Compare required KEY presence only; never print secret values.
+  local role=$1
+  shift
+  local key line found
+  local env_blob
+  env_blob=$(docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' "$role" 2>/dev/null || true)
+  for key in "$@"; do
+    found=0
+    while IFS= read -r line; do
+      [[ "$line" == "${key}="* ]] && found=1 && break
+    done <<<"$env_blob"
+    if [[ "$found" -ne 1 ]]; then
+      die "preflight env KEY missing $role key=$key (MATCH/MISMATCH=MISMATCH)"
+    fi
+  done
+}
+
 preflight_switch() {
-  local role img_var exp_var img expect envf env_count
+  local role img_var exp_var img expect envf env_count entrypoint mounts cmd workdir
   for role in "${ROLES[@]}"; do
     docker inspect "$role" >/dev/null 2>&1 || die "preflight missing container $role"
   done
@@ -261,6 +297,30 @@ preflight_switch() {
       env_count=$(docker inspect -f '{{len .Config.Env}}' "$role" 2>/dev/null || echo 0)
       [[ "$env_count" -ge 1 ]] || die "preflight missing env file for $role under ${ENV_DIR}/env/${role}.env and empty Config.Env"
     fi
+    # Substantial runtime params: refuse unsupported differences before mutation.
+    entrypoint=$(docker inspect -f '{{json .Config.Entrypoint}}' "$role")
+    mounts=$(docker inspect -f '{{json .Mounts}}' "$role")
+    cmd=$(docker inspect -f '{{json .Config.Cmd}}' "$role")
+    workdir=$(docker inspect -f '{{.Config.WorkingDir}}' "$role")
+    [[ "$entrypoint" == '["docker-entrypoint.sh"]' || "$entrypoint" == 'null' ]] || \
+      die "preflight unsupported entrypoint $role got=$entrypoint"
+    [[ "$mounts" == '[]' ]] || die "preflight unsupported mounts $role got=$mounts"
+    [[ "$workdir" == "/app" ]] || die "preflight unsupported workdir $role got=$workdir"
+    case "$role" in
+      avorofin-app)
+        [[ "$cmd" == '["node","server.js"]' ]] || die "preflight unsupported cmd $role got=$cmd"
+        require_env_keys_present "$role" DATABASE_URL NODE_ENV
+        ;;
+      avorofin-profit-readmodel-worker)
+        require_env_keys_present "$role" DATABASE_URL WAVE_B_PROFIT_WORKER_MODE
+        ;;
+      avorofin-v6-period-readmodel-worker)
+        require_env_keys_present "$role" DATABASE_URL V6_READMODEL_WORKER_MODE V6_READMODEL_TARGET_DATABASE_URL
+        ;;
+      avorofin-dashboard-period-snapshot-worker|avorofin-stock-planning-snapshot-worker)
+        require_env_keys_present "$role" DATABASE_URL DASHBOARD_SNAPSHOT_WORKER_MODE
+        ;;
+    esac
     if docker inspect "${role}-${PRE_SUFFIX}" >/dev/null 2>&1; then
       die "preflight conflict: ${role}-${PRE_SUFFIX} already exists"
     fi
@@ -282,6 +342,7 @@ init_journal_for_new_switch() {
     "$JOURNAL_DIR"/*.old_container_id \
     "$JOURNAL_DIR"/*.role_meta \
     "$JOURNAL_DIR"/*.env.captured
+  printf '%s\n' "$PRE_SUFFIX" >"$JOURNAL_DIR/pre_suffix"
   set_status "switching"
   for c in "${ROLES[@]}"; do
     : >"$JOURNAL_DIR/preexist_${c}"
@@ -423,9 +484,10 @@ ensure_running() {
 
 verify_restored_role() {
   local role=$1
-  local old_id want
+  local old_id old_cid want got_id
   old_id=$(cat "$JOURNAL_DIR/${role}.old_image_id" 2>/dev/null || true)
-  [[ -n "$old_id" ]] || {
+  old_cid=$(cat "$JOURNAL_DIR/${role}.old_container_id" 2>/dev/null || true)
+  [[ -n "$old_id" && -n "$old_cid" ]] || {
     echo "ROLLBACK_MISSING_OLD_ID $role" >&2
     return 5
   }
@@ -434,8 +496,13 @@ verify_restored_role() {
     return 5
   }
   want=$(container_image "$role")
+  got_id=$(container_id "$role")
   [[ "$want" == "$old_id" ]] || {
     echo "ROLLBACK_IMAGE_MISMATCH $role got=$want expect_old=$old_id" >&2
+    return 5
+  }
+  [[ "$got_id" == "$old_cid" ]] || {
+    echo "ROLLBACK_CONTAINER_ID_MISMATCH $role got=$got_id expect_old=$old_cid" >&2
     return 5
   }
   local st
@@ -444,20 +511,73 @@ verify_restored_role() {
     echo "ROLLBACK_NOT_RUNNING $role" >&2
     return 5
   }
+  # Substantial runtime params must match captured baseline.
+  local want_net want_wd want_user
+  want_net=$(read_runtime_field "$role" network)
+  want_wd=$(read_runtime_field "$role" workdir)
+  want_user=$(read_runtime_field "$role" user)
+  local got_net got_wd got_user
+  got_net=$(docker inspect -f '{{.HostConfig.NetworkMode}}' "$role")
+  got_wd=$(docker inspect -f '{{.Config.WorkingDir}}' "$role")
+  got_user=$(docker inspect -f '{{.Config.User}}' "$role")
+  [[ "$got_net" == "$want_net" ]] || {
+    echo "ROLLBACK_RUNTIME_MISMATCH $role network got=$got_net want=$want_net" >&2
+    return 5
+  }
+  [[ "$got_wd" == "$want_wd" ]] || {
+    echo "ROLLBACK_RUNTIME_MISMATCH $role workdir got=$got_wd want=$want_wd" >&2
+    return 5
+  }
+  [[ "$got_user" == "$want_user" ]] || {
+    echo "ROLLBACK_RUNTIME_MISMATCH $role user got=$got_user want=$want_user" >&2
+    return 5
+  }
   return 0
 }
 
-# Identity-aware single-role restore. Never delete a proven original.
+# Locate original by exact old_container_id + old_image_id under working or backup name.
+locate_original() {
+  # sets ORIG_WHERE=working|backup|missing
+  local role=$1
+  local pre=$2 old_id=$3 old_cid=$4
+  local img cid
+  ORIG_WHERE="missing"
+  if docker inspect "$role" >/dev/null 2>&1; then
+    img=$(container_image "$role")
+    cid=$(container_id "$role")
+    if [[ "$img" == "$old_id" && "$cid" == "$old_cid" ]]; then
+      ORIG_WHERE="working"
+      return 0
+    fi
+  fi
+  if docker inspect "$pre" >/dev/null 2>&1; then
+    img=$(container_image "$pre")
+    cid=$(container_id "$pre")
+    if [[ "$img" == "$old_id" && "$cid" == "$old_cid" ]]; then
+      ORIG_WHERE="backup"
+      return 0
+    fi
+  fi
+  return 0
+}
+
+# Identity-aware single-role restore. Never delete without proven original available.
 rollback_one_role() {
   local role=$1
-  local pre old_id expect_new cur_img cur_id pre_img restored
-  pre=$(read_role_meta "$role" backup_name)
-  [[ -n "$pre" ]] || pre="${role}-${PRE_SUFFIX}"
+  local pre old_id old_cid expect_new cur_img cur_id repl_id restored
+  pre=$(backup_name_for_role "$role")
   old_id=$(cat "$JOURNAL_DIR/${role}.old_image_id" 2>/dev/null || true)
+  old_cid=$(cat "$JOURNAL_DIR/${role}.old_container_id" 2>/dev/null || true)
   expect_new=$(expect_image_for_role "$role")
+  repl_id=$(read_role_meta "$role" replacement_container_id)
   restored=$(read_role_meta "$role" restored)
 
   append_stage "$role" "rollback_begin"
+
+  if [[ -z "$old_id" || -z "$old_cid" ]]; then
+    echo "ROLLBACK_MISSING_OLD_IDENTITY $role" >&2
+    return 5
+  fi
 
   if [[ "$restored" == "1" ]]; then
     if verify_restored_role "$role"; then
@@ -466,26 +586,31 @@ rollback_one_role() {
     fi
   fi
 
+  local ORIG_WHERE
+  locate_original "$role" "$pre" "$old_id" "$old_cid"
+
+  if [[ "$ORIG_WHERE" == "working" ]]; then
+    if ! ensure_running "$role"; then
+      echo "ROLLBACK_START_FAILED $role" >&2
+      return 5
+    fi
+    if ! verify_restored_role "$role"; then return 5; fi
+    write_role_meta "$role" "restored=1" "phase=rollback_restored"
+    append_stage "$role" "rollback_restored_inplace"
+    return 0
+  fi
+
+  if [[ "$ORIG_WHERE" == "missing" ]]; then
+    # Refuse BEFORE destroying any working container.
+    echo "ROLLBACK_ORIGINAL_UNAVAILABLE $role (no matching old_container_id under working/backup)" >&2
+    return 5
+  fi
+
+  # Original is under backup. Remove working only if it is the recorded replacement Id.
   if docker inspect "$role" >/dev/null 2>&1; then
     cur_img=$(container_image "$role")
     cur_id=$(container_id "$role")
-    local repl_id is_replacement=0
-    repl_id=$(read_role_meta "$role" replacement_container_id)
-    if [[ -n "$old_id" && "$cur_img" == "$old_id" ]]; then
-      if ! ensure_running "$role"; then
-        echo "ROLLBACK_START_FAILED $role" >&2
-        return 5
-      fi
-      if ! verify_restored_role "$role"; then return 5; fi
-      write_role_meta "$role" "restored=1" "phase=rollback_restored"
-      append_stage "$role" "rollback_restored_inplace"
-      return 0
-    fi
-    # Proven replacement from this transaction only (ImageId and/or recorded Id).
-    # Do NOT treat "not old" alone as removable — unknown foreign must refuse.
-    if [[ -n "$expect_new" && "$cur_img" == "$expect_new" ]]; then is_replacement=1; fi
-    if [[ -n "$repl_id" && -n "$cur_id" && "$cur_id" == "$repl_id" ]]; then is_replacement=1; fi
-    if [[ "$is_replacement" -eq 1 ]]; then
+    if [[ -n "$repl_id" && -n "$cur_id" && "$cur_id" == "$repl_id" ]]; then
       if ! docker stop "$role"; then
         echo "ROLLBACK_STOP_NEW_FAILED $role" >&2
         return 5
@@ -496,30 +621,18 @@ rollback_one_role() {
       fi
       append_stage "$role" "rollback_removed_replacement"
     else
-      echo "ROLLBACK_UNKNOWN_STATE $role image=$cur_img old=$old_id expect_new=$expect_new id=$cur_id" >&2
+      echo "ROLLBACK_UNKNOWN_STATE $role image=$cur_img id=$cur_id repl_id=$repl_id expect_new=$expect_new" >&2
       return 5
     fi
   fi
 
-  if docker inspect "$pre" >/dev/null 2>&1; then
-    pre_img=$(container_image "$pre")
-    if [[ -n "$old_id" && "$pre_img" != "$old_id" ]]; then
-      echo "ROLLBACK_BACKUP_IMAGE_MISMATCH $role backup=$pre_img expect_old=$old_id" >&2
-      return 5
-    fi
-    if ! docker rename "$pre" "$role"; then
-      echo "ROLLBACK_RENAME_FAILED $role" >&2
-      return 5
-    fi
-    if ! docker start "$role"; then
-      echo "ROLLBACK_START_FAILED $role" >&2
-      return 5
-    fi
-  else
-    if ! docker inspect "$role" >/dev/null 2>&1; then
-      echo "ROLLBACK_MISSING_PRE $role" >&2
-      return 5
-    fi
+  if ! docker rename "$pre" "$role"; then
+    echo "ROLLBACK_RENAME_FAILED $role" >&2
+    return 5
+  fi
+  if ! docker start "$role"; then
+    echo "ROLLBACK_START_FAILED $role" >&2
+    return 5
   fi
 
   if ! verify_restored_role "$role"; then return 5; fi

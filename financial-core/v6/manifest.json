@@ -54,10 +54,10 @@
     {
       "path": "lib/analytics/profitAnalyticsOzon.ts",
       "role": "Канонический расчёт прибыли Ozon",
-      "sha256": "5b43db3e67517a4e55de315edca3aa9f57a17cc4de33d98a313713f80089dfc3",
-      "snapshotSha256": "5b43db3e67517a4e55de315edca3aa9f57a17cc4de33d98a313713f80089dfc3",
-      "sizeBytes": 103573,
-      "activeSha256": "5b43db3e67517a4e55de315edca3aa9f57a17cc4de33d98a313713f80089dfc3"
+      "sha256": "c436cde4d13f536e5d1bf15ead2dd90bc8e3d769767bf8bbde33f91a4dab4035",
+      "snapshotSha256": "c436cde4d13f536e5d1bf15ead2dd90bc8e3d769767bf8bbde33f91a4dab4035",
+      "sizeBytes": 105385,
+      "activeSha256": "c436cde4d13f536e5d1bf15ead2dd90bc8e3d769767bf8bbde33f91a4dab4035"
     },
     {
       "path": "lib/analytics/dataReadiness.ts",
@@ -78,10 +78,10 @@
     {
       "path": "lib/telegram/dailyReport.ts",
       "role": "Единая финансовая сводка Dashboard и Telegram",
-      "sha256": "ff1b817a44ceb61362645a7da8060453a048e33f186c16c86ddbd77bb4377d8d",
-      "snapshotSha256": "ff1b817a44ceb61362645a7da8060453a048e33f186c16c86ddbd77bb4377d8d",
-      "sizeBytes": 97976,
-      "activeSha256": "ff1b817a44ceb61362645a7da8060453a048e33f186c16c86ddbd77bb4377d8d"
+      "sha256": "41e4b0887c3757285973f38fb073ade71debbe2f5ed1232f6d439bc1993b965c",
+      "snapshotSha256": "41e4b0887c3757285973f38fb073ade71debbe2f5ed1232f6d439bc1993b965c",
+      "sizeBytes": 101534,
+      "activeSha256": "41e4b0887c3757285973f38fb073ade71debbe2f5ed1232f6d439bc1993b965c"
     },
     {
       "path": "lib/import/detectReportType.ts",
@@ -410,8 +410,8 @@
   },
   "ozonRevisionTransition": {
     "parentV5OzonSha256": "7f44458abb0b5086d79f68e3795de2c056f7270fbc06979b9a201d6b2352cef9",
-    "candidateOzonSha256": "5b43db3e67517a4e55de315edca3aa9f57a17cc4de33d98a313713f80089dfc3",
-    "reason": "FIN_ACCEPT R11: resolveOzonNetExpensesForDisplay null-safe + page/telegram consumers; N=G-B-A unchanged; V5 Ozon hash unchanged",
-    "createdAt": "2026-10-27T20:30:00.000Z"
+    "candidateOzonSha256": "c436cde4d13f536e5d1bf15ead2dd90bc8e3d769767bf8bbde33f91a4dab4035",
+    "reason": "FIN_ACCEPT R12: incomplete Ozon net display contract (н/д, stored new NET without inventing A=0); dailyReport COGS-incomplete preliminary; N=G-B-A unchanged; V5 Ozon hash unchanged",
+    "createdAt": "2026-10-27T21:30:00.000Z"
   }
 }

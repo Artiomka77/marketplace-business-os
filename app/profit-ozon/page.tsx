@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import {
   getProfitAnalyticsOzon,
   resolveOzonNetExpensesForDisplay,
+  resolveOzonNetExpensesForDisplayDetailed,
 } from "@/lib/analytics/profitAnalyticsOzon";
 import { calculateOzonSkuExpenseMagnitude } from "@/lib/analytics/ozonSkuExpenseMagnitude";
 import { applyOzonCanonicalIngestFinality, resolveOzonPeriodFinality } from "@/lib/finance/canonicalPeriodFinality";
@@ -209,6 +210,12 @@ function formatMoney(value: number) {
     currency: "RUB",
     maximumFractionDigits: 0,
   }).format(Number.isFinite(value) ? value : 0);
+}
+
+/** Ozon net expenses: incomplete → «н/д», never false confirmed zero. */
+function formatOzonNetExpensesMoney(value: number) {
+  if (!Number.isFinite(value)) return "н/д";
+  return formatMoney(value);
 }
 
 function formatCompactMoney(value: number) {
@@ -2947,7 +2954,7 @@ async function renderProfitOzonPage({
   // Keep this block free of TS-only syntax so acceptance probes can eval it.
   const netOzonExpensesRepresentation =
     totals.netOzonExpensesRepresentation ?? null;
-  const netOzonExpenses = resolveOzonNetExpensesForDisplay({
+  const netOzonExpensesResolution = resolveOzonNetExpensesForDisplayDetailed({
     grossOzonExpenses: totals.grossOzonExpenses,
     discountPointsCompensation: totals.discountPointsCompensation,
     discountPointsAmount:
@@ -2956,18 +2963,25 @@ async function renderProfitOzonPage({
     netOzonExpenses: totals.netOzonExpenses,
     netOzonExpensesRepresentation,
   });
+  const netOzonExpenses =
+    netOzonExpensesResolution.value == null
+      ? Number.NaN
+      : netOzonExpensesResolution.value;
+  const netOzonExpensesComplete = netOzonExpensesResolution.complete === true;
   const taxRevenueCoverageComplete = totals.taxRevenueCoverageComplete !== false;
   const discountPointsCoverageComplete =
     totals.discountPointsCoverageComplete !== false;
   const missingTaxRevenueDays = totals.taxRevenueMissingDays ?? [];
   const missingDiscountPointsDays = totals.discountPointsMissingDays ?? [];
   const hasOzonEconomicSourceWarning =
-    !taxRevenueCoverageComplete || !discountPointsCoverageComplete;
-  const costCoverageIncomplete = Boolean(
-    (totals as { costCoverageIncomplete?: boolean }).costCoverageIncomplete,
-  );
+    !taxRevenueCoverageComplete ||
+    !discountPointsCoverageComplete ||
+    !netOzonExpensesComplete;
+  const costCoverageIncomplete = Boolean(totals.costCoverageIncomplete);
   const isPreliminaryOzonProfit =
-    totals.netProfitStatus === "PRELIMINARY" || costCoverageIncomplete;
+    totals.netProfitStatus === "PRELIMINARY" ||
+    costCoverageIncomplete ||
+    !netOzonExpensesComplete;
 
   const accountPartnerResidual = Number(
     (totals as { unallocatedPartnerResidual?: number }).unallocatedPartnerResidual ?? 0,
@@ -3222,17 +3236,24 @@ async function renderProfitOzonPage({
 
           <KpiCard
             title="Чистые расходы Ozon"
-            value={formatMoney(netOzonExpenses)}
+            value={formatOzonNetExpensesMoney(netOzonExpenses)}
             helper={
               <div className="space-y-1 leading-tight">
                 <div>после баллов и программ партнёров</div>
                 <div className="text-[11px] text-slate-400">
                   {formatMoney(grossOzonExpenses)} − {formatMoney(discountPointsAmount)} −{" "}
                   {formatMoney(partnerProgramsAmountDisplay)}
+                  {!netOzonExpensesComplete
+                    ? ` · н/д (${netOzonExpensesResolution.reason || "incomplete"})`
+                    : ""}
                 </div>
               </div>
             }
-            delta={comparison.netOzonExpenses.diffPercent}
+            delta={
+              Number.isFinite(netOzonExpenses)
+                ? comparison.netOzonExpenses.diffPercent
+                : undefined
+            }
             inverseDelta
             sparkTone="orange"
             sparkPoints={[18, 17, 16, 14, 13, 12, 11, 10]}
@@ -3350,7 +3371,7 @@ async function renderProfitOzonPage({
                     Валовые расходы {formatMoney(grossOzonExpenses)} уменьшены баллами{" "}
                     {formatMoney(discountPointsAmount)} и программами партнёров{" "}
                     {formatMoney(partnerProgramsAmountDisplay)}. Чистые расходы Ozon (G−B−A):{" "}
-                    {formatMoney(netOzonExpenses)}. Программы партнёров не прибавляются к прибыли
+                    {formatOzonNetExpensesMoney(netOzonExpenses)}. Программы партнёров не прибавляются к прибыли
                     повторно.
                   </div>
                 </div>
