@@ -115,6 +115,9 @@ type WbSalesDetailedRow = {
   rebill_logistic_cost?: number | string;
   loyaltyDiscountCompensation?: number | string;
   loyalty_discount_compensation?: number | string;
+  /** finance-api alias for loyalty discount compensation */
+  cashbackDiscount?: number | string;
+  cashback_discount?: number | string;
   loyaltyParticipationCost?: number | string;
   loyalty_participation_cost?: number | string;
   loyaltyPointsAmount?: number | string;
@@ -381,7 +384,11 @@ function mapWbSalesApiRows(rows: WbSalesDetailedRow[]) {
 
     "Корректировка вознаграждения Вайлдберриз": "",
     "Компенсация скидки по программе лояльности":
-      row.loyaltyDiscountCompensation ?? row.loyalty_discount_compensation ?? "",
+      row.loyaltyDiscountCompensation ??
+      row.loyalty_discount_compensation ??
+      row.cashbackDiscount ??
+      row.cashback_discount ??
+      "",
     "Стоимость участия в программе лояльности":
       row.loyaltyParticipationCost ?? row.loyalty_participation_cost ?? "",
     "Сумма баллов, удержанных по программе лояльности":

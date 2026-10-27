@@ -159,7 +159,9 @@ function mapWbSalesApiRows(rows: WbSalesDetailedRow[]) {
       ),
       "Компенсация скидки по программе лояльности": get(
         "loyaltyDiscountCompensation",
-        "loyalty_discount_compensation"
+        "loyalty_discount_compensation",
+        "cashbackDiscount",
+        "cashback_discount"
       ),
       "Стоимость участия в программе лояльности": get(
         "loyaltyParticipationCost",

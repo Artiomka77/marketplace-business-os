@@ -4,7 +4,7 @@ name: fin-accept-images-build-only
 on:
   push:
     branches:
-      - "build/fin-accept-images-20261027_180500"
+      - "build/fin-accept-images-20261027_R08"
   workflow_dispatch:
 
 permissions:
@@ -12,7 +12,7 @@ permissions:
   actions: read
 
 concurrency:
-  group: fin-accept-images-build-only-20261027_180500
+  group: fin-accept-images-build-only-20261027_R08
   cancel-in-progress: true
 
 jobs:
@@ -36,7 +36,7 @@ jobs:
           --health-retries 20
     env:
       FINANCIAL_SOURCE_COMMIT: bf4f8b5690bdbe417afe7a95cc7beca16c043abc
-      STAMP: "20261027_180500"
+      STAMP: "20261027_R08"
       EXPECT_STOCK_ABC_SHA256: "982bab4f3d0b4e790fc889e7fa3c14dfc116345c4472310e97479cf7166db191"
       NEXT_PUBLIC_SITE_URL: http://72.56.4.62
       NEXT_PUBLIC_SUPABASE_URL: https://rezhzulsjtcvxqofhlyl.supabase.co
@@ -186,7 +186,7 @@ jobs:
           do
             docker run --rm --user node \
               -e "EXPECT_STOCK_ABC_SHA256=${EXPECT_STOCK_ABC_SHA256}" \
-              --entrypoint node "$tag" --import tsx -e "
+              --entrypoint node "$tag" --input-type=module --import tsx -e "
               import { createRequire } from 'node:module';
               import fs from 'node:fs';
               import crypto from 'node:crypto';
@@ -250,42 +250,91 @@ jobs:
           fi
           echo "APP_LOGIN_SMOKE_OK user=${APP_USER:-empty}" | tee smoke-logs/app_login_result.txt
 
-          smoke_worker() {
-            local role="$1" tag="$2" formulas="${3:-}"
+          # Schema for isolated smoke DB (no production). Prefer db push from worker image.
+          docker run --rm --network host --user root \
+            -e DATABASE_URL="$SMOKE_DATABASE_URL" \
+            --entrypoint npx "${{ steps.tags.outputs.profit }}" \
+            prisma db push --skip-generate --accept-data-loss \
+            > smoke-logs/prisma_db_push.txt 2>&1 || {
+              echo "prisma db push failed" >&2
+              cat smoke-logs/prisma_db_push.txt >&2 || true
+              exit 1
+            }
+          echo "PRISMA_DB_PUSH_OK" | tee smoke-logs/prisma_db_push_result.txt
+
+          require_marker() {
+            local role="$1" marker="$2"
+            if ! grep -F "$marker" "smoke-logs/${role}_stdout.txt" "smoke-logs/${role}_stderr.txt" >/dev/null 2>&1; then
+              echo "${role}_MISSING_MARKER $marker" >&2
+              cat "smoke-logs/${role}_stdout.txt" >&2 || true
+              cat "smoke-logs/${role}_stderr.txt" >&2 || true
+              return 1
+            fi
+            echo "${role}_MARKER_OK $marker" | tee -a smoke-logs/worker_exits.txt
+          }
+
+          # Profit: real MODE from entrypoint. Timeout/idle alone do not pass.
+          PROFIT_USER=$(docker image inspect -f '{{.Config.User}}' "${{ steps.tags.outputs.profit }}")
+          PROFIT_USER_ARGS=()
+          if [ -n "$PROFIT_USER" ]; then PROFIT_USER_ARGS=(--user "$PROFIT_USER"); fi
+          set +e
+          timeout 90s docker run --rm --network host "${PROFIT_USER_ARGS[@]}" \
+            -e DATABASE_URL="$SMOKE_DATABASE_URL" \
+            -e NODE_ENV=production \
+            -e WAVE_B_PROFIT_WORKER_MODE=queue-once \
+            -e WAVE_B_PROFIT_WORKER_MAX_JOBS=1 \
+            "${{ steps.tags.outputs.profit }}" \
+            > smoke-logs/profit_stdout.txt 2> smoke-logs/profit_stderr.txt
+          profit_ec=$?
+          set -e
+          echo "profit_exit=$profit_ec user=${PROFIT_USER:-empty}" | tee -a smoke-logs/worker_exits.txt
+          if [ "$profit_ec" -eq 124 ]; then echo "profit_TIMEOUT_NOT_ACCEPTABLE" >&2; exit 1; fi
+          require_marker profit 'wave_b_profit_worker_start'
+          require_marker profit '"mode":"queue-once"'
+
+          # V6: oneshot + target URL (required by entrypoint).
+          V6_USER=$(docker image inspect -f '{{.Config.User}}' "${{ steps.tags.outputs.v6 }}")
+          V6_USER_ARGS=()
+          if [ -n "$V6_USER" ]; then V6_USER_ARGS=(--user "$V6_USER"); fi
+          set +e
+          timeout 120s docker run --rm --network host "${V6_USER_ARGS[@]}" \
+            -e DATABASE_URL="$SMOKE_DATABASE_URL" \
+            -e V6_READMODEL_TARGET_DATABASE_URL="$SMOKE_DATABASE_URL" \
+            -e V6_READMODEL_WORKER_MODE=oneshot \
+            -e V6_READMODEL_DATE_FROM=2026-10-19 \
+            -e V6_READMODEL_DATE_TO=2026-10-25 \
+            -e NODE_ENV=production \
+            "${{ steps.tags.outputs.v6 }}" \
+            > smoke-logs/v6_stdout.txt 2> smoke-logs/v6_stderr.txt
+          v6_ec=$?
+          set -e
+          echo "v6_exit=$v6_ec user=${V6_USER:-empty}" | tee -a smoke-logs/worker_exits.txt
+          if [ "$v6_ec" -eq 124 ]; then echo "v6_TIMEOUT_NOT_ACCEPTABLE" >&2; exit 1; fi
+          require_marker v6 'v6_period_readmodel_worker_start'
+          require_marker v6 'v6_period_readmodel_worker_done'
+
+          smoke_dashboard_once() {
+            local role="$1" tag="$2" formulas="$3"
             local cfg_user user_flag=()
             cfg_user=$(docker image inspect -f '{{.Config.User}}' "$tag")
             if [ -n "$cfg_user" ]; then user_flag=(--user "$cfg_user"); fi
             set +e
-            timeout 45s docker run --rm --network host "${user_flag[@]}" \
+            timeout 90s docker run --rm --network host "${user_flag[@]}" \
               -e DATABASE_URL="$SMOKE_DATABASE_URL" \
               -e NODE_ENV=production \
+              -e DASHBOARD_SNAPSHOT_WORKER_MODE=once \
               -e DASHBOARD_SNAPSHOT_FORMULA_VERSIONS="$formulas" \
-              -e DASHBOARD_SNAPSHOT_MODE=once \
-              -e PROFIT_READMODEL_MODE=once \
-              -e V6_PERIOD_READMODEL_MODE=once \
               "$tag" > "smoke-logs/${role}_stdout.txt" 2> "smoke-logs/${role}_stderr.txt"
             local ec=$?
             set -e
             echo "${role}_exit=$ec user=${cfg_user:-empty}" | tee -a smoke-logs/worker_exits.txt
-            if [ "$ec" -eq 124 ]; then
-              echo "${role}_STARTED_TIMEOUT_OK" | tee -a smoke-logs/worker_exits.txt
-              return 0
-            fi
-            if grep -Eiq 'runProfitReadModelWorker|runV6PeriodReadModelWorker|runDashboardPeriodSnapshotWorker|STOCK_PLANNING|PRELIMINARY|Prisma|DATABASE|listening|started|boot|Cannot|Error' \
-              "smoke-logs/${role}_stdout.txt" "smoke-logs/${role}_stderr.txt"; then
-              echo "${role}_ENTRYPOINT_EVIDENCE_OK" | tee -a smoke-logs/worker_exits.txt
-              return 0
-            fi
-            echo "${role}_SMOKE_FAILED" >&2
-            cat "smoke-logs/${role}_stdout.txt" >&2 || true
-            cat "smoke-logs/${role}_stderr.txt" >&2 || true
-            return 1
+            if [ "$ec" -eq 124 ]; then echo "${role}_TIMEOUT_NOT_ACCEPTABLE" >&2; return 1; fi
+            require_marker "$role" 'WORKER_START'
+            require_marker "$role" 'WORKER_STOPPED'
           }
 
-          smoke_worker profit "${{ steps.tags.outputs.profit }}" ""
-          smoke_worker v6 "${{ steps.tags.outputs.v6 }}" ""
-          smoke_worker dashboard "${{ steps.tags.outputs.dashboard }}" "FINANCIAL_CORE_V4_PERIOD_SNAPSHOT_V1"
-          smoke_worker stock "${{ steps.tags.outputs.stock }}" "STOCK_PLANNING_SNAPSHOT_V3"
+          smoke_dashboard_once dashboard "${{ steps.tags.outputs.dashboard }}" "FINANCIAL_CORE_V4_PERIOD_SNAPSHOT_V1"
+          smoke_dashboard_once stock "${{ steps.tags.outputs.stock }}" "STOCK_PLANNING_SNAPSHOT_V3"
           echo "ALL_WORKER_ENTRYPOINT_SMOKE_OK" | tee smoke-logs/workers_result.txt
 
       - name: docker save + sha256 artifacts
