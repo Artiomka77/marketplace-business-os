@@ -1,6 +1,6 @@
-﻿name: fin-accept-images-build-only
+name: fin-accept-images-build-only
 
-# BUILD/TEST ONLY вЂ” no deploy, no SSH/SCP to MAIN, no production DB.
+# BUILD/TEST ONLY — no deploy, no SSH/SCP to MAIN, no production DB.
 on:
   push:
     branches:
@@ -402,7 +402,7 @@ jobs:
             set -e
             st=$(psql "$SMOKE_DATABASE_URL" -Atc "SELECT status FROM \"DashboardPeriodSnapshotJob\" WHERE id='job-stock-r09'")
             if grep -F 'STOCK_PLANNING_JOB_SUCCESS' job-logs/stock_job_stdout.txt && [[ "$st" == "SUCCESS" ]]; then
-              snaps=$(psql "$SMOKE_DATABASE_URL" -Atc "SELECT COUNT(*) FROM \"StockAbcSnapshot\" WHERE \"companyScope\"='РРџ РџРµС‚СЂРѕРІ'")
+              snaps=$(psql "$SMOKE_DATABASE_URL" -Atc "SELECT COUNT(*) FROM \"StockAbcSnapshot\" WHERE \"companyScope\"='ИП Петров'")
               [[ "$snaps" -ge 1 ]]
               echo "STOCK_CONTROLLED_JOB_OK snaps=$snaps" | tee -a job-logs/assertions.txt
             else
@@ -423,7 +423,7 @@ jobs:
               -e V6_READMODEL_WORKER_MODE=oneshot \
               -e V6_READMODEL_DATE_FROM=2026-10-19 \
               -e V6_READMODEL_DATE_TO=2026-10-25 \
-              -e V6_READMODEL_COMPANY_SCOPE="РРџ РџРµС‚СЂРѕРІ" \
+              -e V6_READMODEL_COMPANY_SCOPE="ИП Петров" \
               -e NODE_ENV=production \
               "${{ steps.tags.outputs.v6 }}" \
               > job-logs/v6_pos_oneshot_stdout.txt 2> job-logs/v6_pos_oneshot_stderr.txt
