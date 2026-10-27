@@ -4,7 +4,7 @@ name: fin-accept-images-build-only
 on:
   push:
     branches:
-      - "build/fin-accept-images-20261027_154900"
+      - "build/fin-accept-images-20261027_180500"
   workflow_dispatch:
 
 permissions:
@@ -12,7 +12,7 @@ permissions:
   actions: read
 
 concurrency:
-  group: fin-accept-images-build-only-20261027_154900
+  group: fin-accept-images-build-only-20261027_180500
   cancel-in-progress: true
 
 jobs:
@@ -20,19 +20,34 @@ jobs:
     if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     timeout-minutes: 180
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: finaccept
+          POSTGRES_PASSWORD: finaccept
+          POSTGRES_DB: finaccept
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U finaccept -d finaccept"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
     env:
       FINANCIAL_SOURCE_COMMIT: bf4f8b5690bdbe417afe7a95cc7beca16c043abc
-      STAMP: "20261027_154900"
-      # Public build settings taken from live APP NEXT_PUBLIC_* (public by design).
+      STAMP: "20261027_180500"
+      EXPECT_STOCK_ABC_SHA256: "982bab4f3d0b4e790fc889e7fa3c14dfc116345c4472310e97479cf7166db191"
       NEXT_PUBLIC_SITE_URL: http://72.56.4.62
       NEXT_PUBLIC_SUPABASE_URL: https://rezhzulsjtcvxqofhlyl.supabase.co
       NEXT_PUBLIC_SUPABASE_ANON_KEY: sb_publishable_C_GNkiB2FEemxEYd1VTtTA_hRLfSupT
       NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: sb_publishable_C_GNkiB2FEemxEYd1VTtTA_hRLfSupT
+      # Job service publishes 5432 on the runner; smoke containers use host network.
+      SMOKE_DATABASE_URL: postgresql://finaccept:finaccept@127.0.0.1:5432/finaccept
     steps:
       - name: Checkout build branch
         uses: actions/checkout@v4
         with:
-          # Need full ancestry so financialSourceCommit bf4f8b5 is reachable.
           fetch-depth: 0
 
       - name: Prove GitHub-hosted runner
@@ -71,9 +86,27 @@ jobs:
           test -f lib/analytics/profitAnalyticsOzon.ts
           test -f lib/finance/effectiveFinanceTransactions.ts
           test -f financial-core/v6/manifest.json
-          # Ensure ancestor financial candidate is reachable from this commit.
+          test ! -f Dockerfile.dockerignore
+          if grep -n 'COPY overlays/fin-accept/stockAbcSnapshots' Dockerfile.workers; then
+            echo "FORBIDDEN: post-verify stockAbc overlay still present" >&2
+            exit 1
+          fi
           git merge-base --is-ancestor "$FINANCIAL_SOURCE_COMMIT" HEAD
           echo "financial_ancestor_ok" | tee financial-ancestor.txt
+          node -e "
+            const fs=require('fs'); const crypto=require('crypto');
+            const b=fs.readFileSync('lib/stocks/stockAbcSnapshots.ts');
+            const h=crypto.createHash('sha256').update(b).digest('hex');
+            const man=JSON.parse(fs.readFileSync('financial-core/v6/manifest.json','utf8'));
+            const e=man.protectedFiles.find(f=>f.path==='lib/stocks/stockAbcSnapshots.ts');
+            if(!e) throw new Error('manifest missing stockAbc');
+            if(h!==process.env.EXPECT_STOCK_ABC_SHA256) throw new Error('tree hash mismatch '+h);
+            if(e.activeSha256!==h || e.snapshotSha256!==h) throw new Error('manifest hash drift');
+            const snap=fs.readFileSync('financial-core/v6/snapshot/lib/stocks/stockAbcSnapshots.ts');
+            const hs=crypto.createHash('sha256').update(snap).digest('hex');
+            if(hs!==h) throw new Error('snapshot!=active');
+            console.log('STOCK_ABC_HASH_OK', h);
+          "
 
       - name: Set image tags
         id: tags
@@ -88,7 +121,7 @@ jobs:
       - name: Build APP standalone image
         run: |
           set -euo pipefail
-          docker build \
+          docker build --progress=plain \
             --target runner \
             --build-arg NEXT_PUBLIC_SITE_URL="$NEXT_PUBLIC_SITE_URL" \
             --build-arg NEXT_PUBLIC_SUPABASE_URL="$NEXT_PUBLIC_SUPABASE_URL" \
@@ -100,12 +133,13 @@ jobs:
             --label "avorofin.buildSourceCommit=${GITHUB_SHA}" \
             -t "${{ steps.tags.outputs.app }}" \
             -f Dockerfile \
-            . | tee DOCKER_BUILD_APP.txt
+            . 2>&1 | tee DOCKER_BUILD_APP.txt
 
       - name: Build worker images (profit/v6/dashboard/stock)
         run: |
           set -euo pipefail
           common=(
+            --progress=plain
             --build-arg "SOURCE_REVISION=${GITHUB_SHA}"
             --build-arg "FINANCIAL_SOURCE_COMMIT=${FINANCIAL_SOURCE_COMMIT}"
             --label "avorofin.fin_accept=1"
@@ -113,15 +147,15 @@ jobs:
             --label "avorofin.buildSourceCommit=${GITHUB_SHA}"
             -f Dockerfile.workers
           )
-          docker build --target profit "${common[@]}" -t "${{ steps.tags.outputs.profit }}" . | tee DOCKER_BUILD_PROFIT.txt
-          docker build --target v6 "${common[@]}" -t "${{ steps.tags.outputs.v6 }}" . | tee DOCKER_BUILD_V6.txt
-          docker build --target dashboard "${common[@]}" -t "${{ steps.tags.outputs.dashboard }}" . | tee DOCKER_BUILD_DASHBOARD.txt
-          docker build --target stock "${common[@]}" -t "${{ steps.tags.outputs.stock }}" . | tee DOCKER_BUILD_STOCK.txt
+          docker build --target profit "${common[@]}" -t "${{ steps.tags.outputs.profit }}" . 2>&1 | tee DOCKER_BUILD_PROFIT.txt
+          docker build --target v6 "${common[@]}" -t "${{ steps.tags.outputs.v6 }}" . 2>&1 | tee DOCKER_BUILD_V6.txt
+          docker build --target dashboard "${common[@]}" -t "${{ steps.tags.outputs.dashboard }}" . 2>&1 | tee DOCKER_BUILD_DASHBOARD.txt
+          docker build --target stock "${common[@]}" -t "${{ steps.tags.outputs.stock }}" . 2>&1 | tee DOCKER_BUILD_STOCK.txt
 
-      - name: Inspect + offline runtime checks
+      - name: Inspect + protected hash + offline imports
         run: |
           set -euo pipefail
-          mkdir -p image-meta
+          mkdir -p image-meta smoke-logs
           for pair in \
             "app|${{ steps.tags.outputs.app }}" \
             "profit|${{ steps.tags.outputs.profit }}" \
@@ -137,22 +171,25 @@ jobs:
             docker image inspect -f '{{.Os}}/{{.Architecture}}' "$tag" | tee "image-meta/${role}.platform.txt"
             docker image inspect -f '{{json .Config.Cmd}}' "$tag" | tee "image-meta/${role}.Cmd.json"
             docker image inspect -f '{{json .Config.Entrypoint}}' "$tag" | tee "image-meta/${role}.Entrypoint.json"
+            docker image inspect -f '{{json .Config.User}}' "$tag" | tee "image-meta/${role}.User.json"
             echo "$tag" > "image-meta/${role}.tag.txt"
           done
 
-          # APP: standalone server.js present; no prod DB.
           docker run --rm --entrypoint node "${{ steps.tags.outputs.app }}" -e \
             "const fs=require('fs'); fs.accessSync('server.js'); console.log('APP_SERVER_JS_OK')"
 
-          # Workers: resolve tsx/prisma + import changed analytics modules offline (no DATABASE_URL).
           for tag in \
             "${{ steps.tags.outputs.profit }}" \
             "${{ steps.tags.outputs.v6 }}" \
             "${{ steps.tags.outputs.dashboard }}" \
             "${{ steps.tags.outputs.stock }}"
           do
-            docker run --rm --user root --entrypoint node "$tag" --import tsx -e "
+            docker run --rm --user node \
+              -e "EXPECT_STOCK_ABC_SHA256=${EXPECT_STOCK_ABC_SHA256}" \
+              --entrypoint node "$tag" --import tsx -e "
               import { createRequire } from 'node:module';
+              import fs from 'node:fs';
+              import crypto from 'node:crypto';
               const require = createRequire(import.meta.url);
               require.resolve('tsx');
               require.resolve('@prisma/client');
@@ -161,18 +198,95 @@ jobs:
               const a = await import('./lib/analytics/profitAnalytics.ts');
               const o = await import('./lib/analytics/profitAnalyticsOzon.ts');
               const f = await import('./lib/finance/effectiveFinanceTransactions.ts');
+              const s = await import('./lib/stocks/stockAbcSnapshots.ts');
+              await import('./lib/dashboard/periodSnapshot.ts');
               if (typeof a.getProfitAnalytics !== 'function') throw new Error('missing getProfitAnalytics');
               if (typeof o.getProfitAnalyticsOzon !== 'function') throw new Error('missing getProfitAnalyticsOzon');
               if (typeof f.getEffectiveFinanceTransactions !== 'function') throw new Error('missing getEffectiveFinanceTransactions');
-              console.log('WORKER_OFFLINE_IMPORT_OK');
+              if (typeof s.prepareStockAbcSnapshot !== 'function') throw new Error('missing prepareStockAbcSnapshot');
+              if (typeof s.persistPreparedStockAbcSnapshot !== 'function') throw new Error('missing persistPreparedStockAbcSnapshot');
+              const buf = fs.readFileSync('lib/stocks/stockAbcSnapshots.ts');
+              const h = crypto.createHash('sha256').update(buf).digest('hex');
+              if (h !== process.env.EXPECT_STOCK_ABC_SHA256) throw new Error('image stockAbc hash '+h);
+              console.log('WORKER_OFFLINE_IMPORT_AND_HASH_OK', h);
             "
           done
 
-          # Confirm worker CMDs match MAIN entrypoints.
           docker image inspect -f '{{json .Config.Cmd}}' "${{ steps.tags.outputs.profit }}" | grep -q runProfitReadModelWorker.ts
           docker image inspect -f '{{json .Config.Cmd}}' "${{ steps.tags.outputs.v6 }}" | grep -q runV6PeriodReadModelWorker.ts
           docker image inspect -f '{{json .Config.Cmd}}' "${{ steps.tags.outputs.dashboard }}" | grep -q runDashboardPeriodSnapshotWorker.ts
           docker image inspect -f '{{json .Config.Cmd}}' "${{ steps.tags.outputs.stock }}" | grep -q runDashboardPeriodSnapshotWorker.ts
+
+      - name: Real entrypoint smoke (isolated DB, no prod)
+        run: |
+          set -euo pipefail
+          mkdir -p smoke-logs
+
+          # APP: real server.js as image Config.User; isolated DB on host-published service port.
+          APP_USER=$(docker image inspect -f '{{.Config.User}}' "${{ steps.tags.outputs.app }}")
+          APP_USER_ARGS=()
+          if [ -n "$APP_USER" ]; then APP_USER_ARGS=(--user "$APP_USER"); fi
+          docker run -d --name fa-smoke-app --network host \
+            "${APP_USER_ARGS[@]}" \
+            -e DATABASE_URL="$SMOKE_DATABASE_URL" \
+            -e NODE_ENV=production \
+            "${{ steps.tags.outputs.app }}"
+          ok=0
+          for i in $(seq 1 60); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:3000/login || true)
+            echo "try=$i code=$code" | tee -a smoke-logs/app_login.txt
+            if [ "$code" = "200" ] || [ "$code" = "302" ] || [ "$code" = "307" ] || [ "$code" = "401" ] || [ "$code" = "403" ]; then
+              ok=1
+              break
+            fi
+            sleep 2
+          done
+          docker logs fa-smoke-app > smoke-logs/app_server.log 2>&1 || true
+          docker stop fa-smoke-app >/dev/null || true
+          docker rm fa-smoke-app >/dev/null || true
+          if [ "$ok" != "1" ]; then
+            echo "APP /login smoke failed" >&2
+            exit 1
+          fi
+          echo "APP_LOGIN_SMOKE_OK user=${APP_USER:-empty}" | tee smoke-logs/app_login_result.txt
+
+          smoke_worker() {
+            local role="$1" tag="$2" formulas="${3:-}"
+            local cfg_user user_flag=()
+            cfg_user=$(docker image inspect -f '{{.Config.User}}' "$tag")
+            if [ -n "$cfg_user" ]; then user_flag=(--user "$cfg_user"); fi
+            set +e
+            timeout 45s docker run --rm --network host "${user_flag[@]}" \
+              -e DATABASE_URL="$SMOKE_DATABASE_URL" \
+              -e NODE_ENV=production \
+              -e DASHBOARD_SNAPSHOT_FORMULA_VERSIONS="$formulas" \
+              -e DASHBOARD_SNAPSHOT_MODE=once \
+              -e PROFIT_READMODEL_MODE=once \
+              -e V6_PERIOD_READMODEL_MODE=once \
+              "$tag" > "smoke-logs/${role}_stdout.txt" 2> "smoke-logs/${role}_stderr.txt"
+            local ec=$?
+            set -e
+            echo "${role}_exit=$ec user=${cfg_user:-empty}" | tee -a smoke-logs/worker_exits.txt
+            if [ "$ec" -eq 124 ]; then
+              echo "${role}_STARTED_TIMEOUT_OK" | tee -a smoke-logs/worker_exits.txt
+              return 0
+            fi
+            if grep -Eiq 'runProfitReadModelWorker|runV6PeriodReadModelWorker|runDashboardPeriodSnapshotWorker|STOCK_PLANNING|PRELIMINARY|Prisma|DATABASE|listening|started|boot|Cannot|Error' \
+              "smoke-logs/${role}_stdout.txt" "smoke-logs/${role}_stderr.txt"; then
+              echo "${role}_ENTRYPOINT_EVIDENCE_OK" | tee -a smoke-logs/worker_exits.txt
+              return 0
+            fi
+            echo "${role}_SMOKE_FAILED" >&2
+            cat "smoke-logs/${role}_stdout.txt" >&2 || true
+            cat "smoke-logs/${role}_stderr.txt" >&2 || true
+            return 1
+          }
+
+          smoke_worker profit "${{ steps.tags.outputs.profit }}" ""
+          smoke_worker v6 "${{ steps.tags.outputs.v6 }}" ""
+          smoke_worker dashboard "${{ steps.tags.outputs.dashboard }}" "FINANCIAL_CORE_V4_PERIOD_SNAPSHOT_V1"
+          smoke_worker stock "${{ steps.tags.outputs.stock }}" "STOCK_PLANNING_SNAPSHOT_V3"
+          echo "ALL_WORKER_ENTRYPOINT_SMOKE_OK" | tee smoke-logs/workers_result.txt
 
       - name: docker save + sha256 artifacts
         run: |
@@ -209,6 +323,7 @@ jobs:
             echo "buildSourceCommit=${GITHUB_SHA}"
             echo "run_id=${GITHUB_RUN_ID}"
             echo "run_url=https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+            echo "stockAbcSha256=${EXPECT_STOCK_ABC_SHA256}"
           } | tee image-meta/BUILD_IDENTITY.txt
           cat "$summarize"
 
@@ -220,7 +335,9 @@ jobs:
             runner-proof.txt
             financial-ancestor.txt
             image-meta/
+            smoke-logs/
             DOCKER_BUILD_*.txt
+            docs/fin-accept/STOCK_ABC_V6_INTEGRATION.md
           if-no-files-found: error
 
       - name: Upload image tarballs

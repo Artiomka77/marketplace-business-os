@@ -213,11 +213,11 @@
     },
     {
       "path": "lib/stocks/stockAbcSnapshots.ts",
-      "role": "Запрет WB ABC snapshot из PRELIMINARY аналитики",
-      "sha256": "dbfd30746f90334082a394edb60f4b51cf0ce4adb3d51602701066096b89922c",
-      "snapshotSha256": "dbfd30746f90334082a394edb60f4b51cf0ce4adb3d51602701066096b89922c",
-      "sizeBytes": 15012,
-      "activeSha256": "dbfd30746f90334082a394edb60f4b51cf0ce4adb3d51602701066096b89922c"
+      "role": "Stock planning snapshot prepare/persist + PRELIMINARY WB/Ozon guards (FIN_ACCEPT worker runtime; aligned with MAIN APIs)",
+      "sha256": "982bab4f3d0b4e790fc889e7fa3c14dfc116345c4472310e97479cf7166db191",
+      "snapshotSha256": "982bab4f3d0b4e790fc889e7fa3c14dfc116345c4472310e97479cf7166db191",
+      "sizeBytes": 38892,
+      "activeSha256": "982bab4f3d0b4e790fc889e7fa3c14dfc116345c4472310e97479cf7166db191"
     },
     {
       "path": "app/api/stocks/supply-plan/export/route.ts",

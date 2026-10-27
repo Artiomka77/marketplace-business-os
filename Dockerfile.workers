@@ -21,8 +21,6 @@ COPY . .
 ENV DATABASE_URL=postgresql://build:build@127.0.0.1:5432/build
 RUN npx prisma generate
 RUN npm run financial-core:verify
-# MAIN worker runtime stockAbc (prepare/persist APIs); still dynamic-imports candidate analytics.
-COPY overlays/fin-accept/stockAbcSnapshots.runtime.ts lib/stocks/stockAbcSnapshots.ts
 RUN node -e "require.resolve('tsx'); require.resolve('@prisma/client'); require.resolve('@prisma/adapter-pg'); require.resolve('pg')"
 ENV NODE_ENV=production
 # Clear build-only dummy URL from final worker image env.
