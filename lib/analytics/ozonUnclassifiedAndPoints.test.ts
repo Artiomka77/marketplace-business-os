@@ -4,7 +4,10 @@ import test from "node:test";
 import {
   applyOzonFinancialCategoryFactsToTotalsForTest,
   calculateOzonGrossExpensesForTest,
+  calculateOzonNetExpensesAfterDiscountPointsForTest,
+  resolveOzonNetExpensesForDisplayForTest,
   resolveOzonDiscountPointsAmountForTest,
+  OZON_NET_EXPENSES_REPRESENTATION_G_MINUS_B_FOR_TEST,
 } from "@/lib/analytics/profitAnalyticsOzon.testExports";
 
 test("known zero net points stays zero (no fallback to accrued/writtenOff)", () => {
@@ -157,4 +160,74 @@ test("excluded / empty category does not invent expense", () => {
   ]);
   const after = calculateOzonGrossExpensesForTest(totals);
   assert.equal(after, before);
+});
+
+test("N = G − B − A for Petrov week control; profit identity holds", () => {
+  const G = 6_441_866.62;
+  const B = 6_247_655.76;
+  const A = 23_352.69;
+  const R = 2_310_201.55;
+  const K = 1_141_195.0;
+  const T = 132_011.52;
+  const E = R + B + A;
+  const N = calculateOzonNetExpensesAfterDiscountPointsForTest({
+    grossOzonExpenses: G,
+    discountPointsCompensation: B,
+    partnerProgramsAmount: A,
+  });
+  assert.equal(Number(N.toFixed(2)), 170_858.17);
+  const profitViaEG = E - G - K - T;
+  const profitViaRN = R - N - K - T;
+  assert.equal(Number(profitViaEG.toFixed(2)), 866_136.86);
+  assert.equal(Number(profitViaRN.toFixed(2)), 866_136.86);
+  // Forbidden double-count forms must differ from accepted profit
+  assert.notEqual(Number((R + A - N - K - T).toFixed(2)), 866_136.86);
+  assert.notEqual(Number((E - N - K - T).toFixed(2)), 866_136.86);
+});
+
+test("ALL N = G − B − A control", () => {
+  const N = calculateOzonNetExpensesAfterDiscountPointsForTest({
+    grossOzonExpenses: 6_515_114.7,
+    discountPointsCompensation: 6_317_501.64,
+    partnerProgramsAmount: 23_664.42,
+  });
+  assert.equal(Number(N.toFixed(2)), 173_948.64);
+});
+
+test("legacy stored G−B net is not silently treated as G−B−A", () => {
+  const legacyNet = 194_210.86; // G−B only
+  const A = 23_352.69;
+  const fromLegacy = resolveOzonNetExpensesForDisplayForTest({
+    netOzonExpenses: legacyNet,
+    partnerProgramsAmount: A,
+    netOzonExpensesRepresentation: OZON_NET_EXPENSES_REPRESENTATION_G_MINUS_B_FOR_TEST,
+  });
+  assert.equal(Number(fromLegacy.toFixed(2)), 170_858.17);
+  const fromComponents = resolveOzonNetExpensesForDisplayForTest({
+    grossOzonExpenses: 6_441_866.62,
+    discountPointsCompensation: 6_247_655.76,
+    partnerProgramsAmount: A,
+    netOzonExpenses: legacyNet,
+    netOzonExpensesRepresentation: OZON_NET_EXPENSES_REPRESENTATION_G_MINUS_B_FOR_TEST,
+  });
+  assert.equal(Number(fromComponents.toFixed(2)), 170_858.17);
+});
+
+test("zero and negative A/B preserved in N", () => {
+  assert.equal(
+    calculateOzonNetExpensesAfterDiscountPointsForTest({
+      grossOzonExpenses: 100,
+      discountPointsCompensation: 0,
+      partnerProgramsAmount: 0,
+    }),
+    100,
+  );
+  assert.equal(
+    calculateOzonNetExpensesAfterDiscountPointsForTest({
+      grossOzonExpenses: 100,
+      discountPointsCompensation: -10,
+      partnerProgramsAmount: -5,
+    }),
+    115,
+  );
 });

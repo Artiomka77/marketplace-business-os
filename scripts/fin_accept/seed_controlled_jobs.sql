@@ -69,37 +69,10 @@ INSERT INTO "MarketplaceDailyOrderStat" (
   'seed-mdos-1', 'ИП Петров', 'WB', TIMESTAMPTZ '2026-10-19 00:00:00+00', 1, 1000, 'SEED', NOW(), NOW()
 ) ON CONFLICT ("id") DO NOTHING;
 
--- Ozon day finality matrix for stock (single company, 7 days)
-INSERT INTO "ImportSession" (
-  "id", "fileName", "reportType", "marketplace", "companyName", "rowsCount", "status", "createdAt"
-) VALUES (
-  'seed-ozon-day-sess', 'ozon accrual seed', 'OZON_ACCRUAL', 'OZON', 'ИП Петров', 1, 'SUCCESS', NOW()
-) ON CONFLICT ("id") DO NOTHING;
-
-INSERT INTO "OzonAccrualDayStatus" (
-  "id", "companyName", "date", "importSessionId", "dataMode",
-  "coverageComplete", "quarantineCount", "missingEvidence", "phase", "createdAt", "updatedAt"
-)
-SELECT
-  'seed-ozon-day-' || d::text,
-  'ИП Петров',
-  d::text,
-  'seed-ozon-day-sess',
-  'FINAL',
-  true,
-  0,
-  '[]'::jsonb,
-  'CANONICAL',
-  NOW(),
-  NOW()
-FROM generate_series(DATE '2026-10-19', DATE '2026-10-25', INTERVAL '1 day') AS d
-ON CONFLICT ("companyName", "date") DO UPDATE SET
-  "dataMode" = EXCLUDED."dataMode",
-  "coverageComplete" = EXCLUDED."coverageComplete",
-  "quarantineCount" = EXCLUDED."quarantineCount",
-  "missingEvidence" = EXCLUDED."missingEvidence",
-  "phase" = EXCLUDED."phase",
-  "updatedAt" = NOW();
+-- Stock fixture: no Ozon accrual sessions/day-status for this company.
+-- Empty Ozon activity → realizationCoverageComplete=true and no false
+-- costCoverageIncomplete from incomplete accrual owners. WB FINAL stack above
+-- is the stock planning product signal; Ozon leg must not be PRELIMINARY-by-A.
 
 -- Controlled jobs (PENDING)
 INSERT INTO "DashboardPeriodSnapshotJob" (

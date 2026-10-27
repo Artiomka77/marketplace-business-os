@@ -27,7 +27,7 @@
     "deductionClassification": "ADS_AND_OPERATING_IN_PNL_CREDIT_EXCLUDED_UNKNOWN_FAILS_CLOSED",
     "wbPromotion": "CLASSIFIED_PNL_DEDUCTION_NEVER_SUBTRACTED_TWICE",
     "officialLogisticsPriority": "PRESERVED_FROM_FINANCIAL_CORE_V5",
-    "ozonLogic": "REVISED_FROM_V5_FIN_ACCEPT_EXACT_SKU_FEES_TYPE71_EXVAT_TAX",
+    "ozonLogic": "REVISED_FROM_V5_FIN_ACCEPT_NET_EXPENSES_G_MINUS_B_MINUS_A_OWNER_CONFIRMED",
     "wbOrdinaryTax": "USN_ON_EX_VAT_BASE_PLUS_VAT_RATE_OVER_100_PLUS_RATE"
   },
   "sourceSelection": {
@@ -54,10 +54,10 @@
     {
       "path": "lib/analytics/profitAnalyticsOzon.ts",
       "role": "Канонический расчёт прибыли Ozon",
-      "sha256": "e12b23eb2a9326968ffe183bd9b0fc74412d247e09fc22a74ae882b7b49a499c",
-      "snapshotSha256": "e12b23eb2a9326968ffe183bd9b0fc74412d247e09fc22a74ae882b7b49a499c",
-      "sizeBytes": 99652,
-      "activeSha256": "e12b23eb2a9326968ffe183bd9b0fc74412d247e09fc22a74ae882b7b49a499c"
+      "sha256": "4ca524e9632d6eee297de8123c85167d444126c69fd375940bcb1562bff6335f",
+      "snapshotSha256": "4ca524e9632d6eee297de8123c85167d444126c69fd375940bcb1562bff6335f",
+      "sizeBytes": 102942,
+      "activeSha256": "4ca524e9632d6eee297de8123c85167d444126c69fd375940bcb1562bff6335f"
     },
     {
       "path": "lib/analytics/dataReadiness.ts",
@@ -78,10 +78,10 @@
     {
       "path": "lib/telegram/dailyReport.ts",
       "role": "Единая финансовая сводка Dashboard и Telegram",
-      "sha256": "d18e2f487e53d2e24b21fd045139d94091d9a43f009c1b13ce6b84b5a8ab170a",
-      "snapshotSha256": "d18e2f487e53d2e24b21fd045139d94091d9a43f009c1b13ce6b84b5a8ab170a",
-      "sizeBytes": 97384,
-      "activeSha256": "d18e2f487e53d2e24b21fd045139d94091d9a43f009c1b13ce6b84b5a8ab170a"
+      "sha256": "fbde181e84798f7b72fbab48b08e001ef455b9789c2cca5aaba6896c45ee9063",
+      "snapshotSha256": "fbde181e84798f7b72fbab48b08e001ef455b9789c2cca5aaba6896c45ee9063",
+      "sizeBytes": 97423,
+      "activeSha256": "fbde181e84798f7b72fbab48b08e001ef455b9789c2cca5aaba6896c45ee9063"
     },
     {
       "path": "lib/import/detectReportType.ts",
@@ -410,8 +410,8 @@
   },
   "ozonRevisionTransition": {
     "parentV5OzonSha256": "7f44458abb0b5086d79f68e3795de2c056f7270fbc06979b9a201d6b2352cef9",
-    "candidateOzonSha256": "e12b23eb2a9326968ffe183bd9b0fc74412d247e09fc22a74ae882b7b49a499c",
-    "reason": "FIN_ACCEPT: exact RAW SKU fees + shared TYPE71 + ordinary USN ex-VAT; historical V5 Ozon snapshot/hash unchanged",
-    "createdAt": "2026-10-27T07:14:25.936Z"
+    "candidateOzonSha256": "4ca524e9632d6eee297de8123c85167d444126c69fd375940bcb1562bff6335f",
+    "reason": "FIN_ACCEPT R10: N=G-B-A owner-confirmed partner programs like discount points; profit E-G-K-T unchanged; POLICY_UNRESOLVED removed for A; historical V5 Ozon snapshot/hash unchanged",
+    "createdAt": "2026-10-27T18:50:00.000Z"
   }
 }

@@ -2938,8 +2938,10 @@ async function renderProfitOzonPage({
   const grossOzonExpenses =
     totals.grossOzonExpenses ||
     totals.wbCommission + totals.logisticsCost + totals.adsCost + otherDeductions;
+  const partnerProgramsAmountDisplay = Number(totals.partnerProgramsAmount) || 0;
   const netOzonExpenses =
-    totals.netOzonExpenses ?? grossOzonExpenses - discountPointsAmount;
+    totals.netOzonExpenses ??
+    grossOzonExpenses - discountPointsAmount - partnerProgramsAmountDisplay;
   const taxRevenueCoverageComplete = totals.taxRevenueCoverageComplete !== false;
   const discountPointsCoverageComplete =
     totals.discountPointsCoverageComplete !== false;
@@ -3209,9 +3211,10 @@ async function renderProfitOzonPage({
             value={formatMoney(netOzonExpenses)}
             helper={
               <div className="space-y-1 leading-tight">
-                <div>после вычета баллов за скидки</div>
+                <div>после баллов и программ партнёров</div>
                 <div className="text-[11px] text-slate-400">
-                  {formatMoney(grossOzonExpenses)} − {formatMoney(discountPointsAmount)}
+                  {formatMoney(grossOzonExpenses)} − {formatMoney(discountPointsAmount)} −{" "}
+                  {formatMoney(partnerProgramsAmountDisplay)}
                 </div>
               </div>
             }
@@ -3330,8 +3333,11 @@ async function renderProfitOzonPage({
                   </div>
 
                   <div className="mt-3 rounded-2xl bg-emerald-50 px-3 py-3 text-xs font-bold leading-5 text-emerald-700 ring-1 ring-emerald-100">
-                    Из этой суммы Ozon компенсировал баллами за скидки {formatMoney(discountPointsAmount)}.
-                    Чистые расходы Ozon после вычета баллов: {formatMoney(netOzonExpenses)}.
+                    Валовые расходы {formatMoney(grossOzonExpenses)} уменьшены баллами{" "}
+                    {formatMoney(discountPointsAmount)} и программами партнёров{" "}
+                    {formatMoney(partnerProgramsAmountDisplay)}. Чистые расходы Ozon (G−B−A):{" "}
+                    {formatMoney(netOzonExpenses)}. Программы партнёров не прибавляются к прибыли
+                    повторно.
                   </div>
                 </div>
 

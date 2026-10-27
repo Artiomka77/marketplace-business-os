@@ -3,9 +3,8 @@ name: fin-accept-controlled-jobs-R09
 # Reuses R08 image tarballs (no rebuild). Proves controlled job processing.
 # BUILD/TEST ONLY — no deploy, no MAIN/Telegram mutation.
 on:
-  push:
-    branches:
-      - "build/fin-accept-images-20261027_R09"
+  # Disabled for R10: images rebuilt in fin-accept-images-build-only on R10 branch.
+  # Keep file as historical R09 evidence path; do not auto-trigger.
   workflow_dispatch:
 
 permissions:

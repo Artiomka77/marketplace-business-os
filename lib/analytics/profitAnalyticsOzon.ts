@@ -1056,8 +1056,68 @@ export function calculateOzonGrossExpenses(totals: OzonProfitTotals) {
   );
 }
 
-function calculateOzonNetExpensesAfterDiscountPoints(totals: OzonProfitTotals) {
-  return totals.grossOzonExpenses - totals.discountPointsCompensation;
+/** Managerial net Ozon service expenses after discount points AND partner programs. */
+export const OZON_NET_EXPENSES_REPRESENTATION_G_MINUS_B_MINUS_A =
+  "G_MINUS_B_MINUS_A" as const;
+/** Legacy representation (points only). Never silently treat as G−B−A. */
+export const OZON_NET_EXPENSES_REPRESENTATION_G_MINUS_B =
+  "G_MINUS_B" as const;
+/** Owner-confirmed managerial treatment of partner programs (= discount points). */
+export const OZON_PARTNER_POLICY_OWNER_CONFIRMED_SAME_AS_DISCOUNT_POINTS =
+  "OWNER_CONFIRMED_SAME_AS_DISCOUNT_POINTS" as const;
+
+/**
+ * N = G − B − A. Profit stays E−G−K−T = R−N−K−T.
+ * Do not use R+A−N or E−N (double-count). Recompute from components; never
+ * subtract A again from a legacy stored net that was already G−B.
+ */
+export function calculateOzonNetExpensesAfterDiscountPoints(
+  totals: Pick<
+    OzonProfitTotals,
+    "grossOzonExpenses" | "discountPointsCompensation" | "partnerProgramsAmount"
+  >,
+) {
+  return (
+    totals.grossOzonExpenses -
+    totals.discountPointsCompensation -
+    (Number(totals.partnerProgramsAmount) || 0)
+  );
+}
+
+/** Resolve display net from components; refuse legacy-net − A double subtraction. */
+export function resolveOzonNetExpensesForDisplay(totals: {
+  grossOzonExpenses?: number | null;
+  discountPointsCompensation?: number | null;
+  discountPointsAmount?: number | null;
+  partnerProgramsAmount?: number | null;
+  netOzonExpenses?: number | null;
+  netOzonExpensesRepresentation?: string | null;
+}): number {
+  const g = Number(totals.grossOzonExpenses);
+  const b = Number(
+    totals.discountPointsCompensation ?? totals.discountPointsAmount ?? 0,
+  );
+  const a = Number(totals.partnerProgramsAmount) || 0;
+  if (Number.isFinite(g)) {
+    return g - b - a;
+  }
+  const stored = Number(totals.netOzonExpenses);
+  const rep = totals.netOzonExpensesRepresentation;
+  if (
+    Number.isFinite(stored) &&
+    rep === OZON_NET_EXPENSES_REPRESENTATION_G_MINUS_B_MINUS_A
+  ) {
+    return stored;
+  }
+  if (
+    Number.isFinite(stored) &&
+    (rep === OZON_NET_EXPENSES_REPRESENTATION_G_MINUS_B || rep == null)
+  ) {
+    // Legacy stored N was G−B; apply A once for current display without
+    // mutating the stored payload in place.
+    return stored - a;
+  }
+  return Number.isFinite(stored) ? stored : 0;
 }
 
 function applyExactSkuFeeLedgerToRows(
@@ -1431,7 +1491,10 @@ function applyOzonEconomicModel(
   result.totals.netOzonExpenses = calculateOzonNetExpensesAfterDiscountPoints(
     result.totals,
   );
+  (result.totals as { netOzonExpensesRepresentation?: string }).netOzonExpensesRepresentation =
+    OZON_NET_EXPENSES_REPRESENTATION_G_MINUS_B_MINUS_A;
 
+  // Profit uses G (not N): E − K − G − T ≡ R − N − K − T when N = G − B − A.
   result.totals.marginProfit =
     result.totals.economicTurnover -
     result.totals.totalCost -
@@ -1453,13 +1516,18 @@ function applyOzonEconomicModel(
   (result.totals as { unallocatedPartnerResidual?: number }).unallocatedPartnerResidual = 0;
   (result.totals as { unallocatedPartnerPrograms?: number }).unallocatedPartnerPrograms = 0;
 
-  // Partner-tax treatment is unresolved: ordinary USN/VAT still apply to ordinary
-  // base, but FINAL is not allowed while partner affects economic turnover/profit.
+  // Owner-confirmed managerial policy: A reduces Ozon service expenses like B.
+  // Ordinary USN/VAT mapper unchanged; A/B not added to ordinary taxable base here.
+  // Not a FNS/legal certification — provenance is owner confirmation only.
   (result.totals as { partnerTaxPolicy?: string }).partnerTaxPolicy =
-    "POLICY_UNRESOLVED";
-  if (Math.abs(Number(result.totals.partnerProgramsAmount) || 0) > 0.005) {
-    result.totals.netProfitStatus = "PRELIMINARY";
-  }
+    OZON_PARTNER_POLICY_OWNER_CONFIRMED_SAME_AS_DISCOUNT_POINTS;
+  (result.totals as { partnerPolicyProvenance?: string }).partnerPolicyProvenance =
+    "OWNER_DIRECT_INSTRUCTION_20261027";
+  (result.totals as { partnerTaxLegallyCertified?: boolean }).partnerTaxLegallyCertified =
+    false;
+  (result.totals as { partnerTaxDocumentFound?: boolean }).partnerTaxDocumentFound =
+    false;
+  // Do NOT force PRELIMINARY solely because A ≠ 0. Other coverage/COGS reasons remain.
 
   // Account identity after allocation: sum(SKU category) + unallocated = account.
   const sumCommission = result.rows.reduce((s, r) => s + r.wbCommission, 0);
@@ -1587,6 +1655,8 @@ function finalizeOzonTotals(totals: OzonProfitTotals) {
   totals.grossOzonExpenses = calculateOzonGrossExpenses(totals);
 
   totals.netOzonExpenses = calculateOzonNetExpensesAfterDiscountPoints(totals);
+  (totals as { netOzonExpensesRepresentation?: string }).netOzonExpensesRepresentation =
+    OZON_NET_EXPENSES_REPRESENTATION_G_MINUS_B_MINUS_A;
 
   totals.marginProfit =
     totals.economicTurnover - totals.totalCost - totals.grossOzonExpenses;
@@ -1743,30 +1813,35 @@ export function mergeOzonTotals(
   result.taxesEstimated = !result.taxRevenueCoverageComplete;
 
   const childPreliminary = totalsList.some(
-    (totals) =>
-      totals.netProfitStatus === "PRELIMINARY" ||
-      (totals as { partnerTaxPolicy?: string }).partnerTaxPolicy ===
-        "POLICY_UNRESOLVED" ||
-      Math.abs(Number(totals.partnerProgramsAmount) || 0) > 0.005,
+    (totals) => totals.netProfitStatus === "PRELIMINARY",
   );
   const coverageAllowsFinal =
     result.taxRevenueCoverageComplete &&
     !result.costCoverageIncomplete &&
     result.cogsCoverageComplete !== false;
 
-  // ALL cannot be more final than any child (partner policy / preliminary).
+  // ALL cannot be more final than any child (coverage / COGS / other real reasons).
+  // Non-zero partner programs alone do not force PRELIMINARY after owner confirmation.
   result.netProfitStatus =
     childPreliminary || !coverageAllowsFinal ? "PRELIMINARY" : "FINAL";
-  if (
-    totalsList.some(
-      (totals) =>
-        (totals as { partnerTaxPolicy?: string }).partnerTaxPolicy ===
-        "POLICY_UNRESOLVED",
-    ) ||
-    Math.abs(Number(result.partnerProgramsAmount) || 0) > 0.005
-  ) {
+
+  const anyUnresolved = totalsList.some(
+    (totals) =>
+      (totals as { partnerTaxPolicy?: string }).partnerTaxPolicy ===
+      "POLICY_UNRESOLVED",
+  );
+  if (anyUnresolved) {
     (result as { partnerTaxPolicy?: string }).partnerTaxPolicy =
       "POLICY_UNRESOLVED";
+  } else {
+    (result as { partnerTaxPolicy?: string }).partnerTaxPolicy =
+      OZON_PARTNER_POLICY_OWNER_CONFIRMED_SAME_AS_DISCOUNT_POINTS;
+    (result as { partnerPolicyProvenance?: string }).partnerPolicyProvenance =
+      "OWNER_DIRECT_INSTRUCTION_20261027";
+    (result as { partnerTaxLegallyCertified?: boolean }).partnerTaxLegallyCertified =
+      false;
+    (result as { partnerTaxDocumentFound?: boolean }).partnerTaxDocumentFound =
+      false;
   }
 
   return finalizeOzonTotals(result);

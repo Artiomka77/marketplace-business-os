@@ -2817,7 +2817,7 @@ function marketplaceLine(label: string, metrics: MarketplaceDailyMetrics) {
     lines.push(
       metrics.discountPointsCoverageComplete === false
         ? `Расходы Ozon по загруженным данным: ${formatMoney(metrics.netOzonExpenses)}`
-        : `Чистые расходы Ozon после баллов: ${formatMoney(metrics.netOzonExpenses)}`
+        : `Чистые расходы Ozon после баллов и программ партнёров: ${formatMoney(metrics.netOzonExpenses)}`
     );
   }
 

@@ -4,7 +4,7 @@ name: fin-accept-images-build-only
 on:
   push:
     branches:
-      - "build/fin-accept-images-20261027_R08"
+      - "build/fin-accept-images-20261027_R10"
   workflow_dispatch:
 
 permissions:
@@ -12,7 +12,7 @@ permissions:
   actions: read
 
 concurrency:
-  group: fin-accept-images-build-only-20261027_R08
+  group: fin-accept-images-build-only-20261027_R10
   cancel-in-progress: true
 
 jobs:
@@ -36,7 +36,7 @@ jobs:
           --health-retries 20
     env:
       FINANCIAL_SOURCE_COMMIT: bf4f8b5690bdbe417afe7a95cc7beca16c043abc
-      STAMP: "20261027_R08"
+      STAMP: "20261027_R10"
       EXPECT_STOCK_ABC_SHA256: "982bab4f3d0b4e790fc889e7fa3c14dfc116345c4472310e97479cf7166db191"
       NEXT_PUBLIC_SITE_URL: http://72.56.4.62
       NEXT_PUBLIC_SUPABASE_URL: https://rezhzulsjtcvxqofhlyl.supabase.co
@@ -316,10 +316,11 @@ jobs:
           # (D6_UNSAFE_NO_WB_EVENTS). Timeout/idle alone are not accepted.
           if grep -F 'v6_period_readmodel_worker_done' smoke-logs/v6_stdout.txt smoke-logs/v6_stderr.txt >/dev/null 2>&1; then
             echo 'v6_MARKER_OK v6_period_readmodel_worker_done' | tee -a smoke-logs/worker_exits.txt
-          elif grep -E 'D1D5_V2_BUILD_FORBIDDEN|D6_UNSAFE_NO_WB_EVENTS' smoke-logs/v6_stdout.txt smoke-logs/v6_stderr.txt >/dev/null 2>&1; then
-            echo 'v6_MARKER_OK controlled_fail_closed_oneshot' | tee -a smoke-logs/worker_exits.txt
+          elif grep -F 'D1D5_V2_BUILD_FORBIDDEN:D6_UNSAFE_NO_WB_INTERVALS' smoke-logs/v6_stdout.txt smoke-logs/v6_stderr.txt >/dev/null 2>&1; then
+            echo 'v6_MARKER_OK controlled_fail_closed_oneshot_exact_D6_UNSAFE_NO_WB_INTERVALS' | tee -a smoke-logs/worker_exits.txt
+            [[ "$v6_ec" -ne 0 ]] || { echo 'v6_NEGATIVE_EXPECTED_NONZERO' >&2; exit 1; }
           else
-            echo 'v6_MISSING_CONTROLLED_ONESHOT_RESULT' >&2
+            echo 'v6_MISSING_EXACT_FAIL_CLOSED_REASON' >&2
             cat smoke-logs/v6_stdout.txt >&2 || true
             cat smoke-logs/v6_stderr.txt >&2 || true
             exit 1
@@ -348,6 +349,94 @@ jobs:
           smoke_dashboard_once dashboard "${{ steps.tags.outputs.dashboard }}" "FINANCIAL_CORE_V4_PERIOD_SNAPSHOT_V1"
           smoke_dashboard_once stock "${{ steps.tags.outputs.stock }}" "STOCK_PLANNING_SNAPSHOT_V3"
           echo "ALL_WORKER_ENTRYPOINT_SMOKE_OK" | tee smoke-logs/workers_result.txt
+
+      - name: Install psql for controlled jobs
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq postgresql-client
+
+      - name: Controlled jobs on freshly built images
+        run: |
+          set -euo pipefail
+          mkdir -p job-logs
+          # Truncate leftover smoke DB job noise; re-push schema already done
+          psql "$SMOKE_DATABASE_URL" -v ON_ERROR_STOP=1 -f scripts/fin_accept/seed_controlled_jobs.sql | tee job-logs/seed.txt
+
+          run_profit() {
+            set +e
+            timeout 180s docker run --rm --network host --user 0 \
+              -e DATABASE_URL="$SMOKE_DATABASE_URL" -e NODE_ENV=production \
+              -e WAVE_B_PROFIT_WORKER_MODE=queue-once -e WAVE_B_PROFIT_WORKER_MAX_JOBS=2 \
+              "${{ steps.tags.outputs.profit }}" \
+              > job-logs/profit_job_stdout.txt 2> job-logs/profit_job_stderr.txt
+            echo "profit_job_exit=$?" | tee -a job-logs/assertions.txt
+            set -e
+            grep -F 'wave_b_profit_job_success' job-logs/profit_job_stdout.txt
+            wb=$(psql "$SMOKE_DATABASE_URL" -Atc "SELECT status FROM \"DashboardPeriodSnapshotJob\" WHERE id='job-profit-wb-r09'")
+            oz=$(psql "$SMOKE_DATABASE_URL" -Atc "SELECT status FROM \"DashboardPeriodSnapshotJob\" WHERE id='job-profit-ozon-r09'")
+            [[ "$wb" == "SUCCESS" && "$oz" == "SUCCESS" ]]
+            echo "PROFIT_CONTROLLED_JOB_OK" | tee -a job-logs/assertions.txt
+          }
+          run_dash() {
+            set +e
+            timeout 180s docker run --rm --network host --user 0 \
+              -e DATABASE_URL="$SMOKE_DATABASE_URL" -e NODE_ENV=production \
+              -e DASHBOARD_SNAPSHOT_WORKER_MODE=once \
+              -e DASHBOARD_SNAPSHOT_FORMULA_VERSIONS=FINANCIAL_CORE_V4_PERIOD_SNAPSHOT_V1 \
+              "${{ steps.tags.outputs.dashboard }}" \
+              > job-logs/dash_job_stdout.txt 2> job-logs/dash_job_stderr.txt
+            echo "dash_job_exit=$?" | tee -a job-logs/assertions.txt
+            set -e
+            grep -F 'SNAPSHOT_JOB_SUCCESS' job-logs/dash_job_stdout.txt
+            st=$(psql "$SMOKE_DATABASE_URL" -Atc "SELECT status FROM \"DashboardPeriodSnapshotJob\" WHERE id='job-dash-v4-r09'")
+            [[ "$st" == "SUCCESS" ]]
+            echo "DASHBOARD_CONTROLLED_JOB_OK" | tee -a job-logs/assertions.txt
+          }
+          run_stock() {
+            set +e
+            timeout 240s docker run --rm --network host --user 0 \
+              -e DATABASE_URL="$SMOKE_DATABASE_URL" -e NODE_ENV=production \
+              -e DASHBOARD_SNAPSHOT_WORKER_MODE=once \
+              -e DASHBOARD_SNAPSHOT_FORMULA_VERSIONS=STOCK_PLANNING_SNAPSHOT_V3 \
+              "${{ steps.tags.outputs.stock }}" \
+              > job-logs/stock_job_stdout.txt 2> job-logs/stock_job_stderr.txt
+            echo "stock_job_exit=$?" | tee -a job-logs/assertions.txt
+            set -e
+            st=$(psql "$SMOKE_DATABASE_URL" -Atc "SELECT status FROM \"DashboardPeriodSnapshotJob\" WHERE id='job-stock-r09'")
+            if grep -F 'STOCK_PLANNING_JOB_SUCCESS' job-logs/stock_job_stdout.txt && [[ "$st" == "SUCCESS" ]]; then
+              snaps=$(psql "$SMOKE_DATABASE_URL" -Atc "SELECT COUNT(*) FROM \"StockAbcSnapshot\" WHERE \"companyScope\"='ИП Петров'")
+              [[ "$snaps" -ge 1 ]]
+              echo "STOCK_CONTROLLED_JOB_OK snaps=$snaps" | tee -a job-logs/assertions.txt
+            else
+              err=$(psql "$SMOKE_DATABASE_URL" -Atc "SELECT COALESCE(\"lastError\",'') FROM \"DashboardPeriodSnapshotJob\" WHERE id='job-stock-r09'")
+              echo "STOCK_JOB_STATUS=$st err=${err:0:240}" | tee -a job-logs/assertions.txt
+              cat job-logs/stock_job_stdout.txt
+              cat job-logs/stock_job_stderr.txt
+              grep -E 'SNAPSHOT_JOB_STARTED|SNAPSHOT_JOB_ERROR|STOCK_PLANNING_JOB_SUCCESS' job-logs/stock_job_stdout.txt
+              exit 1
+            fi
+          }
+          run_v6_pos() {
+            set +e
+            timeout 240s docker run --rm --network host --user 0 \
+              -e DATABASE_URL="$SMOKE_DATABASE_URL" \
+              -e V6_READMODEL_TARGET_DATABASE_URL="$SMOKE_DATABASE_URL" \
+              -e V6_READMODEL_WORKER_MODE=queue-once \
+              -e V6_READMODEL_WORKER_MAX_JOBS=1 \
+              -e NODE_ENV=production \
+              "${{ steps.tags.outputs.v6 }}" \
+              > job-logs/v6_pos_stdout.txt 2> job-logs/v6_pos_stderr.txt
+            echo "v6_pos_exit=$?" | tee -a job-logs/assertions.txt
+            set -e
+            st=$(psql "$SMOKE_DATABASE_URL" -Atc "SELECT status FROM \"DashboardPeriodSnapshotJob\" WHERE id='job-v6-r09'")
+            [[ "$st" == "SUCCESS" ]] || { cat job-logs/v6_pos_stdout.txt; cat job-logs/v6_pos_stderr.txt; exit 1; }
+            snaps=$(psql "$SMOKE_DATABASE_URL" -Atc "SELECT COUNT(*) FROM \"DashboardPeriodSnapshot\" WHERE \"formulaVersion\"='FINANCIAL_CORE_V6_PERIOD_READMODEL_V2'")
+            [[ "$snaps" -ge 1 ]]
+            echo "V6_POSITIVE_CONTROLLED_JOB_OK snaps=$snaps" | tee -a job-logs/assertions.txt
+          }
+          run_profit
+          run_dash
+          run_stock
+          run_v6_pos
+          echo "ALL_CONTROLLED_JOBS_OK" | tee job-logs/controlled_jobs_result.txt
 
       - name: docker save + sha256 artifacts
         run: |
@@ -397,8 +486,10 @@ jobs:
             financial-ancestor.txt
             image-meta/
             smoke-logs/
+            job-logs/
             DOCKER_BUILD_*.txt
             docs/fin-accept/STOCK_ABC_V6_INTEGRATION.md
+            scripts/fin_accept/seed_controlled_jobs.sql
           if-no-files-found: error
 
       - name: Upload image tarballs
