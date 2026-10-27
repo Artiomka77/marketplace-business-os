@@ -410,15 +410,20 @@ async function seedStockPlanningWarmups() {
       continue;
     }
 
+    const now = new Date();
     await prisma.dashboardPeriodSnapshotJob.upsert({
       where: {
         companyScope_dateFrom_dateTo_formulaVersion: key,
       },
       create: {
+        id: randomUUID(),
         ...key,
         status: "PENDING",
         priority: companyScope === "ALL" ? 7_900 : 7_800,
+        attempts: 0,
         maxAttempts: 3,
+        createdAt: now,
+        updatedAt: now,
       },
       update: {
         status: "PENDING",
@@ -431,6 +436,7 @@ async function seedStockPlanningWarmups() {
         startedAt: null,
         finishedAt: null,
         lastError: null,
+        updatedAt: now,
       },
     });
 
