@@ -415,6 +415,28 @@ jobs:
             fi
           }
           run_v6_pos() {
+            # 1) Positive oneshot on seeded WB ownership (produceV6 path).
+            set +e
+            timeout 240s docker run --rm --network host --user 0 \
+              -e DATABASE_URL="$SMOKE_DATABASE_URL" \
+              -e V6_READMODEL_TARGET_DATABASE_URL="$SMOKE_DATABASE_URL" \
+              -e V6_READMODEL_WORKER_MODE=oneshot \
+              -e V6_READMODEL_DATE_FROM=2026-10-19 \
+              -e V6_READMODEL_DATE_TO=2026-10-25 \
+              -e V6_READMODEL_COMPANY_SCOPE="ИП Петров" \
+              -e NODE_ENV=production \
+              "${{ steps.tags.outputs.v6 }}" \
+              > job-logs/v6_pos_oneshot_stdout.txt 2> job-logs/v6_pos_oneshot_stderr.txt
+            echo "v6_pos_oneshot_exit=$?" | tee -a job-logs/assertions.txt
+            set -e
+            grep -F 'v6_period_readmodel_worker_done' job-logs/v6_pos_oneshot_stdout.txt \
+              || { echo 'V6_POSITIVE_ONESHOT_MISSING_DONE'; cat job-logs/v6_pos_oneshot_stdout.txt; cat job-logs/v6_pos_oneshot_stderr.txt; exit 1; }
+            # 2) Real queue claim/process of seeded job (same produce path).
+            psql "$SMOKE_DATABASE_URL" -v ON_ERROR_STOP=1 -c \
+              "UPDATE \"DashboardPeriodSnapshotJob\" SET status='PENDING', attempts=0, \"lockedAt\"=NULL, \"lockedBy\"=NULL, \"lastError\"=NULL, \"finishedAt\"=NULL, \"nextAttemptAt\"=NULL, \"updatedAt\"=NOW() WHERE id='job-v6-r09';"
+            psql "$SMOKE_DATABASE_URL" -c \
+              "SELECT id, status, \"formulaVersion\", \"companyScope\" FROM \"DashboardPeriodSnapshotJob\" WHERE id='job-v6-r09';" \
+              | tee -a job-logs/assertions.txt
             set +e
             timeout 240s docker run --rm --network host --user 0 \
               -e DATABASE_URL="$SMOKE_DATABASE_URL" \
@@ -424,10 +446,14 @@ jobs:
               -e NODE_ENV=production \
               "${{ steps.tags.outputs.v6 }}" \
               > job-logs/v6_pos_stdout.txt 2> job-logs/v6_pos_stderr.txt
-            echo "v6_pos_exit=$?" | tee -a job-logs/assertions.txt
+            echo "v6_pos_queue_exit=$?" | tee -a job-logs/assertions.txt
             set -e
+            cat job-logs/v6_pos_stdout.txt | tee -a job-logs/assertions.txt || true
+            cat job-logs/v6_pos_stderr.txt | tee -a job-logs/assertions.txt || true
             st=$(psql "$SMOKE_DATABASE_URL" -Atc "SELECT status FROM \"DashboardPeriodSnapshotJob\" WHERE id='job-v6-r09'")
-            [[ "$st" == "SUCCESS" ]] || { cat job-logs/v6_pos_stdout.txt; cat job-logs/v6_pos_stderr.txt; exit 1; }
+            err=$(psql "$SMOKE_DATABASE_URL" -Atc "SELECT COALESCE(\"lastError\",'') FROM \"DashboardPeriodSnapshotJob\" WHERE id='job-v6-r09'")
+            echo "v6_job_status=$st err=${err:0:300}" | tee -a job-logs/assertions.txt
+            [[ "$st" == "SUCCESS" ]] || exit 1
             snaps=$(psql "$SMOKE_DATABASE_URL" -Atc "SELECT COUNT(*) FROM \"DashboardPeriodSnapshot\" WHERE \"formulaVersion\"='FINANCIAL_CORE_V6_PERIOD_READMODEL_V2'")
             [[ "$snaps" -ge 1 ]]
             echo "V6_POSITIVE_CONTROLLED_JOB_OK snaps=$snaps" | tee -a job-logs/assertions.txt
@@ -439,6 +465,7 @@ jobs:
           echo "ALL_CONTROLLED_JOBS_OK" | tee job-logs/controlled_jobs_result.txt
 
       - name: docker save + sha256 artifacts
+        if: always()
         run: |
           set -euo pipefail
           mkdir -p image-tarballs
@@ -478,6 +505,7 @@ jobs:
           cat "$summarize"
 
       - name: Upload image metadata (small)
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: fin-accept-image-meta-${{ env.STAMP }}
@@ -493,6 +521,7 @@ jobs:
           if-no-files-found: error
 
       - name: Upload image tarballs
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: fin-accept-image-tarballs-${{ env.STAMP }}
