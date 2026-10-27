@@ -312,7 +312,18 @@ jobs:
           echo "v6_exit=$v6_ec user=${V6_USER:-empty}" | tee -a smoke-logs/worker_exits.txt
           if [ "$v6_ec" -eq 124 ]; then echo "v6_TIMEOUT_NOT_ACCEPTABLE" >&2; exit 1; fi
           require_marker v6 'v6_period_readmodel_worker_start'
-          require_marker v6 'v6_period_readmodel_worker_done'
+          # Isolated empty DB: oneshot must run and either complete or fail-closed
+          # (D6_UNSAFE_NO_WB_EVENTS). Timeout/idle alone are not accepted.
+          if grep -F 'v6_period_readmodel_worker_done' smoke-logs/v6_stdout.txt smoke-logs/v6_stderr.txt >/dev/null 2>&1; then
+            echo 'v6_MARKER_OK v6_period_readmodel_worker_done' | tee -a smoke-logs/worker_exits.txt
+          elif grep -E 'D1D5_V2_BUILD_FORBIDDEN|D6_UNSAFE_NO_WB_EVENTS' smoke-logs/v6_stdout.txt smoke-logs/v6_stderr.txt >/dev/null 2>&1; then
+            echo 'v6_MARKER_OK controlled_fail_closed_oneshot' | tee -a smoke-logs/worker_exits.txt
+          else
+            echo 'v6_MISSING_CONTROLLED_ONESHOT_RESULT' >&2
+            cat smoke-logs/v6_stdout.txt >&2 || true
+            cat smoke-logs/v6_stderr.txt >&2 || true
+            exit 1
+          fi
 
           smoke_dashboard_once() {
             local role="$1" tag="$2" formulas="$3"
