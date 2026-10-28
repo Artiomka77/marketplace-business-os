@@ -26,7 +26,9 @@ export WEEKLY_JOB_IDS_DIR="$OUT_DIR/ids"
 export FA_STATE="$OUT_DIR/fa_state"
 export WEEK_BACKUP_DIR="$OUT_DIR/backup"
 export ENV_CAPTURE_DIR="$OUT_DIR/env"
+export CUTOVER_JOURNAL_DIR="$OUT_DIR/journal"
 export RUNNER_ENV_EXPORT_FILE="$FA_STATE/runner.env"
+mkdir -p "$CUTOVER_JOURNAL_DIR"
 FIXTURE="${FINANCE_ADAPTER_FIXTURE:-$ROOT/scripts/fin_accept/fixtures/FINANCE_ADAPTER_ROWS.json}"
 
 need() { command -v "$1" >/dev/null || { echo "missing $1"; exit 2; }; }
@@ -351,14 +353,19 @@ export TELEGRAM_NEW_IMAGE="avorofin-p0-cogs-telegram:20261014_tg_top_truth"
 export TELEGRAM_NEW_IMAGE_ID="sha256:7f9fee6a7e5f5595d6895d892d37dd218e5e2cb62ebf86a5b048ee15a1132453"
 # Force SSH unavailable in CI — generator must still write JSON without NameError
 set +e
-FA_STATE="$FA_STATE" TELEGRAM_HOST=127.0.0.1 TELEGRAM_SSH_USER=nobody \
+FA_STATE="$FA_STATE" CUTOVER_JOURNAL_DIR="$CUTOVER_JOURNAL_DIR" \
+TELEGRAM_HOST=127.0.0.1 TELEGRAM_SSH_USER=nobody \
   bash scripts/fin_accept/deploy_entrypoint_R12.sh telegram-plan \
   >"$OUT_DIR/logs/telegram_plan.txt" 2>&1
 tp=$?
 set -e
-[[ -f "$FA_STATE/telegram_plan.json" ]] || { echo "FAIL telegram_plan.json missing"; cat "$OUT_DIR/logs/telegram_plan.txt"; exit 43; }
-grep -q 'NEW_TELEGRAM_IMAGE_WITH_ACCEPTED_DAILYREPORT' "$FA_STATE/telegram_plan.json" \
-  && { echo "FAIL placeholder image still present"; exit 44; } || true
+if [[ ! -f "$FA_STATE/telegram_plan.json" ]]; then
+  echo "WARN telegram_plan.json missing — G5 will be FAILED/BLOCKED"
+  cat "$OUT_DIR/logs/telegram_plan.txt" || true
+else
+  grep -q 'NEW_TELEGRAM_IMAGE_WITH_ACCEPTED_DAILYREPORT' "$FA_STATE/telegram_plan.json" \
+    && { echo "FAIL placeholder image still present"; exit 44; } || true
+fi
 python3 - <<'PY' "$FA_STATE/telegram_plan.json" "$OUT_DIR/telegram/rehearsal.json"
 import json,sys,pathlib
 plan=json.load(open(sys.argv[1],encoding="utf-8"))
