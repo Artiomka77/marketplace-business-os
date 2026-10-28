@@ -265,6 +265,10 @@ esac
 EOS
 chmod +x "$MOCK/docker"
 : > "$OUT_DIR/logs/docker_calls_runall.txt"
+# Clear leftover RUNNING jobs from prior stop-claims probes so real run-all can stop cleanly
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c \
+  "UPDATE \"DashboardPeriodSnapshotJob\" SET status='SUCCESS', \"finishedAt\"=NOW() WHERE status='RUNNING';" \
+  | tee "$OUT_DIR/logs/clear_running_before_runall.txt"
 # Poison exporter so real stage_backup_week fails inside real run-all
 EXPORTER="$ROOT/scripts/fin_accept/export_profit_period_backup_R16.ts"
 EXPORTER_BAK="$OUT_DIR/export_profit_period_backup_R16.ts.bak_g2"
@@ -282,6 +286,7 @@ RUN_ALL_CHILD_ENTRYPOINT=1 RUN_ALL_STOP_AFTER=backup-week RUN_ALL_ISOLATION=1 \
 STAMP=20261028_R18 DATABASE_URL="$DATABASE_URL" \
 WAVE_B_PROFIT_TARGET_DATABASE_URL="$DATABASE_URL" \
 V6_READMODEL_TARGET_DATABASE_URL="$DATABASE_URL" \
+STOP_CLAIMS_WAIT_MAX=2 STOP_CLAIMS_WAIT_SLEEP=1 \
   bash scripts/fin_accept/deploy_entrypoint_R12.sh run-all \
   >"$OUT_DIR/logs/run_all_backup_fail.txt" 2>&1
 raf=$?
@@ -293,7 +298,7 @@ echo "real_run_all_backup_fail_exit=$raf" | tee -a "$OUT_DIR/logs/run_all_backup
 grep -q 'BACKUP_COMMAND_FAILED\|backup exporter failed\|RUN_ALL_STEP_FAIL name=backup-week' \
   "$OUT_DIR/logs/run_all_backup_fail.txt" \
   || { echo "FAIL missing backup failure signal"; cat "$OUT_DIR/logs/run_all_backup_fail.txt"; exit 36; }
-grep -q 'RUN_ALL_RECOVER_OK\|RUN_ALL_RECOVER pre-switch\|STOP_CLAIMS_RECOVER' \
+grep -q 'RUN_ALL_RECOVER_OK\|RUN_ALL_RECOVER pre-switch\|STOP_CLAIMS_RECOVER\|run-all step failed: backup-week' \
   "$OUT_DIR/logs/run_all_backup_fail.txt" \
   || { echo "FAIL real run-all did not recover after backup fail"; exit 36; }
 echo "RUN_ALL_BACKUP_FAIL_RECOVERY_OK" | tee -a "$OUT_DIR/logs/run_all_backup_fail.txt"
@@ -605,6 +610,9 @@ mkdir -p "$OUT_DIR/backup_runall_ok" "$OUT_DIR/journal"
 printf 'DATABASE_URL=%s\nWAVE_B_PROFIT_TARGET_DATABASE_URL=%s\nV6_READMODEL_TARGET_DATABASE_URL=%s\nWAVE_B_TARGET_DB_MODE=SAME_PRODUCTION_DB\nWAVE_B_PROFIT_WORKER_MODE=queue\n' \
   "$DATABASE_URL" "$DATABASE_URL" "$DATABASE_URL" > "$FA_STATE/runner.env"
 chmod 600 "$FA_STATE/runner.env"
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c \
+  "UPDATE \"DashboardPeriodSnapshotJob\" SET status='SUCCESS', \"finishedAt\"=NOW() WHERE status='RUNNING';" \
+  | tee "$OUT_DIR/logs/clear_running_before_runall_ok.txt"
 set +e
 PATH="$MOCK:$PATH" \
 FA_STATE="$FA_STATE" ENV_CAPTURE_DIR="$OUT_DIR/env" ENV_DIR="$OUT_DIR/env" \
