@@ -331,7 +331,7 @@ wait_running_zero() {
     set +e
     n="$(psql "$url" -Atc "$sql" 2>/tmp/psql_wait_${label}.err)"
     rc=$?
-    set -e
+    set +e
     if [[ "$rc" -ne 0 ]]; then
       echo "WAIT_$label PSQL_ERROR exit=$rc" >&2
       cat /tmp/psql_wait_${label}.err >&2 || true
@@ -343,7 +343,9 @@ wait_running_zero() {
       return 2
     fi
     echo "WAIT_$label RUNNING_COUNT=$n"
-    [[ "$n" == "0" ]] && return 0
+    if [[ "$n" == "0" ]]; then
+      return 0
+    fi
     sleep "$sleep_s"
     i=$((i+1))
   done
@@ -385,13 +387,16 @@ container_is_running() {
   set +e
   st="$(docker inspect -f '{{.State.Running}}' "$cname" 2>/tmp/docker_inspect_${cname}.err)"
   rc=$?
-  set -e
+  set +e
   if [[ "$rc" -ne 0 ]]; then
     echo "DOCKER_INSPECT_ERROR container=$cname exit=$rc" >&2
     cat /tmp/docker_inspect_${cname}.err >&2 || true
     return 2
   fi
-  [[ "$st" == "true" ]]
+  if [[ "$st" == "true" ]]; then
+    return 0
+  fi
+  return 1
 }
 
 stage_stop_claims() {

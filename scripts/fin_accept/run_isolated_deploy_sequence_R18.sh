@@ -126,7 +126,11 @@ set -e
 echo "stop_claims_psql_fail_exit=$spf" | tee -a "$OUT_DIR/logs/stop_claims_psql_fail.txt"
 [[ "$spf" -ne 0 ]] || { echo "FAIL expected stop fail on psql error"; exit 33; }
 grep -q 'PSQL_ERROR\|psql/query error\|STOP_CLAIMS_FAIL\|FATAL' "$OUT_DIR/logs/stop_claims_psql_fail.txt" \
-  || { echo "FAIL missing psql error signal"; exit 34; }
+  || { echo "FAIL missing psql error signal"; cat "$OUT_DIR/logs/stop_claims_psql_fail.txt"; exit 34; }
+# Recovery must be attempted on psql error (not silent exit)
+grep -q 'STOP_CLAIMS_FAIL\|STOP_CLAIMS_RECOVER_ALL\|RECOVERED_RUNNING\|start avorofin-' \
+  "$OUT_DIR/logs/stop_claims_psql_fail.txt" "$OUT_DIR/logs/docker_calls.txt" \
+  || { echo "FAIL psql error did not trigger recover"; exit 34; }
 
 # Multi-role recovery (working psql)
 rm -f "$MOCK/psql"
