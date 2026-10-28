@@ -39,3 +39,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+# Disposable primary stand - never publish to public source tree
+scripts/fin_accept/fixtures/primary_c01/
+*.primary_c01.tar*

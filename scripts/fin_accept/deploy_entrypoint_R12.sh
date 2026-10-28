@@ -309,6 +309,12 @@ PY
 
 stage_backup_week() {
   need node
+  if [[ -z "${DATABASE_URL:-}" ]]; then
+    local envf="${RUNNER_ENV_EXPORT_FILE:-$FA_STATE/runner.env}"
+    [[ -f "$envf" ]] || envf="$ENV_DIR/profit.captured.env"
+    [[ -f "$envf" ]] || die "DATABASE_URL required — run load-runner-env first"
+    eval "$(python3 "$ROOT/scripts/fin_accept/safe_load_env_R18.py" "$envf" --print-exports)"
+  fi
   : "${DATABASE_URL:?DATABASE_URL required for backup}"
   mkdir -p "$BACKUP_DIR"
   node --import tsx "$ROOT/scripts/fin_accept/export_profit_period_backup_R16.ts" "$BACKUP_DIR" \
@@ -655,6 +661,7 @@ PY
 }
 
 # Single controlling runner — keeps env in-process; recovers ALL roles on fail before switch.
+# Note: `die` uses `exit` and bypasses ERR traps — every step is wrapped explicitly.
 stage_run_all() {
   local switched=0
   local writers_stopped=0
@@ -663,30 +670,50 @@ stage_run_all() {
       echo "RUN_ALL_RECOVER pre-switch — restoring touched workers" >&2
       local state_file="$FA_STATE/stop_claims_prestate.json"
       local touched_file="$FA_STATE/stop_claims_touched.txt"
-      restore_all_touched "$state_file" "$touched_file" || true
+      if ! restore_all_touched "$state_file" "$touched_file"; then
+        echo "FATAL: restore_all_touched failed during run-all recovery" >&2
+        return 1
+      fi
+      echo "RUN_ALL_RECOVER_OK"
+    fi
+    return 0
+  }
+  run_step() {
+    local name="$1"
+    shift
+    echo "RUN_ALL_STEP $name"
+    set +e
+    "$@"
+    local rc=$?
+    set -e
+    if [[ "$rc" -ne 0 ]]; then
+      echo "RUN_ALL_STEP_FAIL name=$name exit=$rc" >&2
+      if ! recover_pre_switch; then
+        die "run-all step failed: $name (exit=$rc) AND recovery failed"
+      fi
+      die "run-all step failed: $name (exit=$rc); pre-switch services restored"
     fi
   }
-  trap 'recover_pre_switch' ERR
 
-  stage_preflight_artifacts
-  stage_capture_env
-  stage_load_runner_env profit
-  stage_runtime_preflight
-  stage_compare_env profit
-  stage_compare_env v6
-  stage_compare_env dashboard
+  run_step preflight-artifacts stage_preflight_artifacts
+  run_step capture-env stage_capture_env
+  run_step load-runner-env stage_load_runner_env profit
+  # Ensure env survives into subsequent steps of THIS process (declare -gx)
+  run_step runtime-preflight stage_runtime_preflight
+  run_step compare-env-profit stage_compare_env profit
+  run_step compare-env-v6 stage_compare_env v6
+  run_step compare-env-dashboard stage_compare_env dashboard
 
   # Quiesce writers BEFORE consistent derived backup
-  stage_stop_claims
+  run_step stop-claims stage_stop_claims
   writers_stopped=1
-  stage_backup_week
+  run_step backup-week stage_backup_week
 
-  stage_switch
+  run_step switch stage_switch
   switched=1
-  trap - ERR
 
-  stage_weekly
-  stage_verify_week
+  run_step weekly stage_weekly
+  run_step verify-week stage_verify_week
   echo "RUN_ALL_MAIN_OK"
 }
 

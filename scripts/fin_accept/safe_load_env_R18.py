@@ -58,12 +58,12 @@ def main() -> int:
         return 3
 
     if mode == "--print-exports":
-        # Emit bash-safe assignments via printf %q equivalent for data bytes.
-        for k, v in vals.items():
-            # Use $'...' only via python→os.environ path; for bash, emit declare -x with %q
-            import shlex
+        # Emit GLOBAL exports. `declare -x` inside a bash function is local to that
+        # function and disappears on return — use `declare -gx` / export instead.
+        import shlex
 
-            print(f"declare -x {k}={shlex.quote(v)}")
+        for k, v in vals.items():
+            print(f"declare -gx {k}={shlex.quote(v)}")
         print(
             "SAFE_ENV_LOADED keys="
             + ",".join(sorted(vals))

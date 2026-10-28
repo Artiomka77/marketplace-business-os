@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
   actions: read
 
 concurrency:
@@ -18,7 +18,7 @@ jobs:
   isolated-sequence:
     if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 120
     services:
       postgres:
         image: postgres:16-alpine
@@ -39,7 +39,9 @@ jobs:
       V6_READMODEL_TARGET_DATABASE_URL: postgresql://finaccept:finaccept@127.0.0.1:5432/finaccept
       WAVE_B_TARGET_DB_MODE: SAME_PRODUCTION_DB
       WEEKLY_REQUIRE_SAME_TARGETS: "1"
+      PRIMARY_STAND_DISPOSABLE_OK: "1"
       R18_ISOLATION_OUT: ${{ github.workspace }}/R18_isolation_out
+      PRIMARY_C01_ROOT: ${{ github.workspace }}/scripts/fin_accept/fixtures/primary_c01
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -53,6 +55,24 @@ jobs:
           npx prisma generate
       - name: Install psql
         run: sudo apt-get update && sudo apt-get install -y postgresql-client
+      - name: Fetch disposable primary stand (draft release asset; not in public tree)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p scripts/fin_accept/fixtures
+          if gh release download fin-close-c01-primary-stand \
+              --pattern 'primary_c01.tar.gz' \
+              --dir /tmp 2>/tmp/primary_dl.err; then
+            tar -xzf /tmp/primary_c01.tar.gz -C scripts/fin_accept/fixtures
+            test -d scripts/fin_accept/fixtures/primary_c01/normalized_weekly
+            echo "PRIMARY_STAND_FETCHED"
+            find scripts/fin_accept/fixtures/primary_c01 -type f | wc -l
+          else
+            echo "PRIMARY_STAND_FETCH_FAILED"
+            cat /tmp/primary_dl.err || true
+            echo "G3 will be BLOCKED without primary"
+          fi
       - name: LF + exec
         run: |
           set -euo pipefail

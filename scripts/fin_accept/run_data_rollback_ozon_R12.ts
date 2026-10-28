@@ -9,7 +9,9 @@
  * - Missing required sku file (when backup_dir) → hard fail (≠ empty array)
  * - Rejects corrupt backup: PPM row present in snapshot but inventory hadRow=false
  * - Validates SKU scope/MP/formula/dates before write
- * - Restores V6/Dashboard DashboardPeriodSnapshot when snapshot files present
+ * - Requires inventory + v6 + dashboard snapshot files in backup_dir (empty [] OK;
+ *   missing file ≠ empty — hard fail)
+ * - Restores V6/Dashboard and deletes in-scope week rows absent from those backups
  * Does NOT touch COGS/Finance/loans/primary marketplace tables.
  */
 import assert from "node:assert/strict";
@@ -106,9 +108,13 @@ function resolveInputs(input: string): {
     const wbPath = path.join(input, "wb_profit_period_snapshot.json");
     const wb = fs.existsSync(wbPath) ? loadJson<SnapshotRow[]>(wbPath) : [];
     const invPath = path.join(input, "backup_inventory.json");
-    const inventory = fs.existsSync(invPath)
-      ? loadJson<InventoryRow[]>(invPath)
-      : [];
+    if (!fs.existsSync(invPath)) {
+      throw new Error(
+        "MISSING_INVENTORY_FILE — backup_inventory.json required in backup_dir",
+      );
+    }
+    const inventory = loadJson<InventoryRow[]>(invPath);
+    assert.ok(Array.isArray(inventory), "inventory must be an array");
     const skuPath = path.join(input, "sku_profit_period_snapshot.json");
     if (!fs.existsSync(skuPath)) {
       throw new Error(
@@ -119,8 +125,20 @@ function resolveInputs(input: string): {
     assert.ok(Array.isArray(sku), "sku snapshot must be an array");
     const v6Path = path.join(input, "v6_period_snapshot.json");
     const dashPath = path.join(input, "dashboard_period_snapshot.json");
-    const v6 = fs.existsSync(v6Path) ? loadJson<DashRow[]>(v6Path) : [];
-    const dashboard = fs.existsSync(dashPath) ? loadJson<DashRow[]>(dashPath) : [];
+    if (!fs.existsSync(v6Path)) {
+      throw new Error(
+        "MISSING_V6_SNAPSHOT_FILE — v6_period_snapshot.json required (use [] if none)",
+      );
+    }
+    if (!fs.existsSync(dashPath)) {
+      throw new Error(
+        "MISSING_DASHBOARD_SNAPSHOT_FILE — dashboard_period_snapshot.json required (use [] if none)",
+      );
+    }
+    const v6 = loadJson<DashRow[]>(v6Path);
+    const dashboard = loadJson<DashRow[]>(dashPath);
+    assert.ok(Array.isArray(v6), "v6 snapshot must be an array");
+    assert.ok(Array.isArray(dashboard), "dashboard snapshot must be an array");
     return {
       ozon,
       wb,
@@ -369,6 +387,7 @@ async function main() {
   let skuDeleted = 0;
   let skuCreated = 0;
   let dashRestored = 0;
+  let dashDeletedAbsent = 0;
 
   await client.$transaction(async (tx) => {
     // 1) Delete in-scope rows that were absent at backup time
@@ -462,10 +481,39 @@ async function main() {
       }
     }
 
-    // 4) V6 / Dashboard dependent snapshots (exact scoped restore when present)
+    // 4) V6 / Dashboard: upsert rows present in backup, then delete in-scope
+    // week+formula rows that were absent at backup (post-backup appearance → gone).
+    const keepDash = new Set(
+      [...v6, ...dashboard].map(
+        (r) => `${r.companyScope}|${r.formulaVersion}`,
+      ),
+    );
     for (const r of [...v6, ...dashboard]) {
       await upsertDash(tx, r);
       dashRestored += 1;
+    }
+    if (backupDir) {
+      for (const formulaVersion of [V6_FORMULA, DASH_FORMULA]) {
+        for (const companyScope of CANONICAL_PROFIT_COMPANY_SCOPES) {
+          const k = `${companyScope}|${formulaVersion}`;
+          if (keepDash.has(k)) continue;
+          const key = {
+            companyScope,
+            dateFrom: new Date(`${DATE_FROM}T00:00:00.000Z`),
+            dateTo: new Date(`${DATE_TO}T00:00:00.000Z`),
+            formulaVersion,
+          };
+          const existing = await tx.dashboardPeriodSnapshot.findUnique({
+            where: { companyScope_dateFrom_dateTo_formulaVersion: key },
+          });
+          if (existing) {
+            await tx.dashboardPeriodSnapshot.delete({
+              where: { companyScope_dateFrom_dateTo_formulaVersion: key },
+            });
+            dashDeletedAbsent += 1;
+          }
+        }
+      }
     }
   });
 
@@ -480,6 +528,7 @@ async function main() {
     skuDeleted,
     skuCreated,
     dashRestored,
+    dashDeletedAbsent,
     cogsFinanceUntouched: true,
     staleAfterMsExact: true,
     scopeFormulaValidated: true,
