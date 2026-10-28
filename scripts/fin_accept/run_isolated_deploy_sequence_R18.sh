@@ -683,7 +683,14 @@ echo "RUN_ALL_REAL_BACKUP_OK" | tee -a "$OUT_DIR/logs/run_all_real_backup_ok.txt
 
 # ---------- G2c: post-switch recovery (weekly fail → stop NEW → data-rollback → cutover rollback) ----------
 echo "=== G2c post-switch recovery on weekly failure ==="
-# Re-boot roles so pre-state is running OLD/NEW as switch would leave them
+# Clear leftover cutover rename leftovers / journal from successful G2b switch
+for c in avorofin-app avorofin-profit-readmodel-worker avorofin-v6-period-readmodel-worker \
+         avorofin-dashboard-period-snapshot-worker avorofin-stock-planning-snapshot-worker; do
+  docker rm -f "$c" "${c}-pre-fa-cutover" >/dev/null 2>&1 || true
+done
+rm -rf "$OUT_DIR/journal"/* 2>/dev/null || true
+mkdir -p "$OUT_DIR/journal"
+# Re-boot roles so pre-state is running for a fresh switch
 export FA_STATE IMAGE_STAMP=20261028_R15 R15_IMAGE_TARBALLS="${R15_IMAGE_TARBALLS:-/tmp/r15_image_tarballs}"
 bash scripts/fin_accept/iso_boot_main_roles_R18.sh >"$OUT_DIR/logs/iso_boot_before_post_switch.txt" 2>&1
 # Capture predeploy journal before intentional fail path
@@ -772,8 +779,8 @@ set -e
 cp -f "$WEEKLY_BAK" "$WEEKLY_SH"
 echo "real_run_all_post_switch_exit=$rapost" | tee -a "$OUT_DIR/logs/run_all_post_switch_recover.txt"
 [[ "$rapost" -ne 0 ]] || { echo "FAIL expected non-zero on post-switch weekly fail"; exit 36; }
-grep -q 'WEEKLY_COMMAND_FAILED\|RUN_ALL_STEP_FAIL name=weekly' "$OUT_DIR/logs/run_all_post_switch_recover.txt" \
-  || { echo "FAIL missing weekly failure signal"; tail -80 "$OUT_DIR/logs/run_all_post_switch_recover.txt"; exit 36; }
+grep -qE 'WEEKLY_COMMAND_FAILED|RUN_ALL_STEP_FAIL name=weekly' "$OUT_DIR/logs/run_all_post_switch_recover.txt" \
+  || { echo "FAIL missing weekly failure signal"; tail -120 "$OUT_DIR/logs/run_all_post_switch_recover.txt"; exit 36; }
 grep -q 'POST_SWITCH_WRITERS_STOPPED' "$OUT_DIR/logs/run_all_post_switch_recover.txt" \
   || { echo "FAIL writers not stopped before data restore"; exit 36; }
 grep -q 'RUN_ALL_POST_SWITCH_RECOVER_OK' "$OUT_DIR/logs/run_all_post_switch_recover.txt" \
