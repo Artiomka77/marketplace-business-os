@@ -34,7 +34,12 @@ fi
 load_gz() {
   local tar="$1"
   [[ -f "$tar" ]] || { echo "missing $tar"; return 1; }
-  gzip -dc "$tar" | docker load | tee -a "$OUT/logs/telegram_image_load.txt"
+  # Accept gzip or plain docker-save tar
+  if gzip -t "$tar" >/dev/null 2>&1; then
+    gzip -dc "$tar" | docker load | tee -a "$OUT/logs/telegram_image_load.txt"
+  else
+    docker load -i "$tar" | tee -a "$OUT/logs/telegram_image_load.txt"
+  fi
 }
 
 : "${NEW_TAR:?TELEGRAM_APP_TAR required (accepted R15 portable)}"
