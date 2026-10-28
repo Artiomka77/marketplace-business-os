@@ -41,108 +41,9 @@ TRUNCATE "ProfitPeriodMetric" CASCADE;
 TRUNCATE "ProfitSkuPeriodMetric" CASCADE;
 SQL
 
-node --import tsx <<'TS' | tee "$OUT_DIR/logs/seed_metrics.txt"
-import { prisma } from "@/lib/prisma";
-import {
-  FINANCIAL_CORE_V6_PROFIT_OZON_READMODEL_V1,
-  FINANCIAL_CORE_V6_PROFIT_WB_READMODEL_V1,
-} from "@/lib/profitReadModel/contract";
-
-const dateFrom = new Date("2026-10-19T00:00:00.000Z");
-const dateTo = new Date("2026-10-25T00:00:00.000Z");
-
-const canon = {
-  "ИП Петров": { ozon: 866136.86, wb: 150408.0, n: 170858.17, g: 200000, b: 10000, a: 19141.83 },
-  "ИП Лебедева": { ozon: 16327.25, wb: -1160.77, n: 3090.47, g: 5000, b: 1000, a: 909.53 },
-  ALL: { ozon: 882464.11, wb: 149247.23, n: 173948.64, g: 205000, b: 11000, a: 20051.36 },
-} as const;
-
-async function upsert(
-  companyScope: string,
-  marketplace: "OZON" | "WB",
-  formulaVersion: string,
-  netProfitAfterTax: number,
-  extra: Record<string, unknown> = {},
-) {
-  const totals =
-    marketplace === "OZON"
-      ? {
-          netProfitAfterTax,
-          netOzonExpenses: (canon as any)[companyScope].n,
-          grossOzonExpenses: (canon as any)[companyScope].g,
-          discountPointsCompensation: (canon as any)[companyScope].b,
-          discountPointsAmount: 0,
-          partnerProgramsAmount: (canon as any)[companyScope].a,
-          netOzonExpensesRepresentation: "N=G-B-A",
-          ...extra,
-        }
-      : { netProfitAfterTax, ...extra };
-  const payloadChecksum = `cs-${companyScope}-${marketplace}`;
-  const meta = {
-    companyScope,
-    marketplace,
-    payloadChecksum,
-    sourceFingerprint: `fp-${companyScope}-${marketplace}`,
-    weekPresentationStatus: "FINAL",
-  };
-  const analyticsPayload = { totals };
-  await prisma.profitPeriodMetric.upsert({
-    where: {
-      companyScope_marketplace_dateFrom_dateTo_formulaVersion: {
-        companyScope,
-        marketplace,
-        dateFrom,
-        dateTo,
-        formulaVersion,
-      },
-    },
-    create: {
-      companyScope,
-      marketplace,
-      dateFrom,
-      dateTo,
-      formulaVersion,
-      dataMode: "FINAL",
-      coverageStatus: "COMPLETE",
-      sourceFingerprint: meta.sourceFingerprint,
-      payloadChecksum,
-      totals,
-      meta,
-      analyticsPayload,
-      generatedAt: new Date("2026-10-26T12:00:00.000Z"),
-      staleAfterMs: null,
-    },
-    update: {
-      dataMode: "FINAL",
-      coverageStatus: "COMPLETE",
-      sourceFingerprint: meta.sourceFingerprint,
-      payloadChecksum,
-      totals,
-      meta,
-      analyticsPayload,
-      generatedAt: new Date("2026-10-26T12:00:00.000Z"),
-      staleAfterMs: null,
-    },
-  });
-}
-
-for (const scope of Object.keys(canon) as (keyof typeof canon)[]) {
-  await upsert(scope, "OZON", FINANCIAL_CORE_V6_PROFIT_OZON_READMODEL_V1, canon[scope].ozon);
-  await upsert(scope, "WB", FINANCIAL_CORE_V6_PROFIT_WB_READMODEL_V1, canon[scope].wb);
-}
-console.log("SEED_METRICS_OK");
-await prisma.$disconnect();
-TS
-
-# Finance tables may be empty — verify finance will be 0; for isolation we stub finance path
-# by setting VERIFY to allow finance 0? No — canon expects finance. Seed minimal finance categories+tx.
-node --import tsx <<'TS' | tee "$OUT_DIR/logs/seed_finance.txt"
-import { prisma } from "@/lib/prisma";
-// Finance numeric canon is accepted from R15; isolation DB has empty finance → verify_hit may fail numbers.
-// Consumer HIT/checksum/FINAL gates are proven separately below.
-console.log("SEED_FINANCE_SKIPPED_EMPTY_ISOLATION_DB");
-await prisma.$disconnect();
-TS
+node --import tsx scripts/fin_accept/seed_isolation_metrics_R16.ts \
+  | tee "$OUT_DIR/logs/seed_metrics.txt"
+echo "SEED_FINANCE_SKIPPED_EMPTY_ISOLATION_DB" | tee "$OUT_DIR/logs/seed_finance.txt"
 
 echo "=== BLOCK1: enqueue profit + wait stage ==="
 export WEEKLY_STAGE=profit
@@ -222,20 +123,8 @@ vh=$?
 set -e
 echo "verify_hit_exit=$vh" | tee -a "$OUT_DIR/logs/verify_hit.txt"
 # Consumer path must not PASS bad checksum — mutate and expect fail
-node --import tsx <<'TS' | tee "$OUT_DIR/logs/mutate_bad_checksum.txt"
-import { prisma } from "@/lib/prisma";
-import { FINANCIAL_CORE_V6_PROFIT_OZON_READMODEL_V1 } from "@/lib/profitReadModel/contract";
-const row = await prisma.profitPeriodMetric.findFirst({
-  where: { companyScope: "ALL", marketplace: "OZON", formulaVersion: FINANCIAL_CORE_V6_PROFIT_OZON_READMODEL_V1 },
-});
-if (!row) throw new Error("missing ALL OZON");
-await prisma.profitPeriodMetric.update({
-  where: { id: row.id },
-  data: { meta: { ...(row.meta as object), payloadChecksum: "WRONG" } as never },
-});
-console.log("MUTATED_BAD_CHECKSUM");
-await prisma.$disconnect();
-TS
+node --import tsx scripts/fin_accept/iso_mutate_helpers_R16.ts bad_checksum \
+  | tee "$OUT_DIR/logs/mutate_bad_checksum.txt"
 set +e
 node --import tsx scripts/fin_accept/verify_week_consumer_R12.ts "$OUT_DIR/verify_bad_checksum.json" \
   >"$OUT_DIR/logs/verify_bad_checksum.txt" 2>&1
@@ -243,34 +132,12 @@ vbad=$?
 set -e
 echo "verify_bad_checksum_exit=$vbad" | tee -a "$OUT_DIR/logs/verify_bad_checksum.txt"
 [[ "$vbad" -ne 0 ]] || { echo "FAIL bad checksum must not PASS"; exit 13; }
-# restore checksum for later
-node --import tsx <<'TS'
-import { prisma } from "@/lib/prisma";
-import { FINANCIAL_CORE_V6_PROFIT_OZON_READMODEL_V1 } from "@/lib/profitReadModel/contract";
-const row = await prisma.profitPeriodMetric.findFirst({
-  where: { companyScope: "ALL", marketplace: "OZON", formulaVersion: FINANCIAL_CORE_V6_PROFIT_OZON_READMODEL_V1 },
-});
-await prisma.profitPeriodMetric.update({
-  where: { id: row!.id },
-  data: { meta: { ...(row!.meta as object), payloadChecksum: row!.payloadChecksum } as never },
-});
-await prisma.$disconnect();
-TS
+node --import tsx scripts/fin_accept/iso_mutate_helpers_R16.ts restore_checksum \
+  | tee "$OUT_DIR/logs/restore_checksum.txt"
 
 echo "=== BLOCK2: PRELIMINARY/PARTIAL must fail acceptance ==="
-node --import tsx <<'TS'
-import { prisma } from "@/lib/prisma";
-import { FINANCIAL_CORE_V6_PROFIT_WB_READMODEL_V1 } from "@/lib/profitReadModel/contract";
-const row = await prisma.profitPeriodMetric.findFirst({
-  where: { companyScope: "ALL", marketplace: "WB", formulaVersion: FINANCIAL_CORE_V6_PROFIT_WB_READMODEL_V1 },
-});
-await prisma.profitPeriodMetric.update({
-  where: { id: row!.id },
-  data: { dataMode: "PRELIMINARY", coverageStatus: "PARTIAL", generatedAt: new Date("2020-01-01T00:00:00.000Z") },
-});
-console.log("MUTATED_PRELIMINARY");
-await prisma.$disconnect();
-TS
+node --import tsx scripts/fin_accept/iso_mutate_helpers_R16.ts prelim \
+  | tee "$OUT_DIR/logs/mutate_prelim.txt"
 set +e
 node --import tsx scripts/fin_accept/verify_week_consumer_R12.ts "$OUT_DIR/verify_prelim.json" \
   >"$OUT_DIR/logs/verify_prelim.txt" 2>&1
@@ -278,44 +145,14 @@ vp=$?
 set -e
 echo "verify_prelim_exit=$vp" | tee -a "$OUT_DIR/logs/verify_prelim.txt"
 [[ "$vp" -ne 0 ]] || { echo "FAIL preliminary must not PASS"; exit 14; }
-# restore FINAL
-node --import tsx <<'TS'
-import { prisma } from "@/lib/prisma";
-import { FINANCIAL_CORE_V6_PROFIT_WB_READMODEL_V1 } from "@/lib/profitReadModel/contract";
-const row = await prisma.profitPeriodMetric.findFirst({
-  where: { companyScope: "ALL", marketplace: "WB", formulaVersion: FINANCIAL_CORE_V6_PROFIT_WB_READMODEL_V1 },
-});
-await prisma.profitPeriodMetric.update({
-  where: { id: row!.id },
-  data: { dataMode: "FINAL", coverageStatus: "COMPLETE", generatedAt: new Date("2026-10-26T12:00:00.000Z") },
-});
-await prisma.$disconnect();
-TS
+node --import tsx scripts/fin_accept/iso_mutate_helpers_R16.ts restore_final \
+  | tee "$OUT_DIR/logs/restore_final.txt"
 
 echo "=== BLOCK3: export → mutate → restore → consumer ==="
 node --import tsx scripts/fin_accept/export_profit_period_backup_R16.ts "$OUT_DIR/backup" \
   | tee "$OUT_DIR/logs/backup_export.txt"
-# mutate Ozon ALL totals
-node --import tsx <<'TS'
-import { prisma } from "@/lib/prisma";
-import { FINANCIAL_CORE_V6_PROFIT_OZON_READMODEL_V1 } from "@/lib/profitReadModel/contract";
-const row = await prisma.profitPeriodMetric.findFirst({
-  where: { companyScope: "ALL", marketplace: "OZON", formulaVersion: FINANCIAL_CORE_V6_PROFIT_OZON_READMODEL_V1 },
-});
-const totals = { ...(row!.totals as object), netProfitAfterTax: 1, netOzonExpenses: 1 };
-await prisma.profitPeriodMetric.update({
-  where: { id: row!.id },
-  data: {
-    totals: totals as never,
-    analyticsPayload: { totals } as never,
-    payloadChecksum: "mutated",
-    meta: { ...(row!.meta as object), payloadChecksum: "mutated" } as never,
-    staleAfterMs: 999,
-  },
-});
-console.log("MUTATED_AFTER_BACKUP");
-await prisma.$disconnect();
-TS
+node --import tsx scripts/fin_accept/iso_mutate_helpers_R16.ts mutate_after_backup \
+  | tee "$OUT_DIR/logs/mutate_after_backup.txt"
 node --import tsx scripts/fin_accept/run_data_rollback_ozon_R12.ts \
   "$OUT_DIR/backup/ozon_profit_period_snapshot.json" | tee "$OUT_DIR/logs/restore_ok.txt"
 # prove staleAfterMs null restored
