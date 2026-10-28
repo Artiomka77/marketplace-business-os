@@ -28,9 +28,19 @@ if (!process.env.DATABASE_URL) {
   process.exit(2);
 }
 
-async function enqueueFormula(formulaVersion: string) {
+type EnqueueRow = {
+  companyScope: string;
+  formulaVersion: string;
+  jobId: string;
+  action: string;
+  created: boolean;
+  expectedId: string;
+  idMatchesBuilder: boolean;
+};
+
+async function enqueueFormula(formulaVersion: string): Promise<EnqueueRow[]> {
   const repository = createPrismaProfitReadModelRepository(prisma);
-  const rows: Array<Record<string, unknown>> = [];
+  const rows: EnqueueRow[] = [];
   for (const companyScope of CANONICAL_PROFIT_COMPANY_SCOPES) {
     const expectedId = buildDashboardPeriodSnapshotJobId({
       companyScope,

@@ -131,8 +131,21 @@ async function loadFinanceImpact(companyScope: string): Promise<number> {
   return Number(metrics.netProfitImpact);
 }
 
+type CaseRow = {
+  companyScope: string;
+  displayN: number;
+  ozonProfit: number;
+  wbProfit: number;
+  finance: number;
+  business: number;
+  expected: (typeof EXPECT)[keyof typeof EXPECT];
+  consumerSource: string;
+  ozonChecksum: unknown;
+  wbChecksum: unknown;
+};
+
 async function main() {
-  const cases: Array<Record<string, unknown>> = [];
+  const cases: CaseRow[] = [];
   const failures: string[] = [];
 
   for (const companyScope of Object.keys(EXPECT) as Array<keyof typeof EXPECT>) {
