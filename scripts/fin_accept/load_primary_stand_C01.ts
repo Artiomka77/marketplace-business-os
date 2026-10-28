@@ -434,6 +434,97 @@ async function main() {
     });
   }
 
+  // Ozon /by-day RAW sessions — required for Ozon FINAL (product-grain COGS authority)
+  const ozonPrimaryDir = path.join(root, "WEEK_FINAL/raw/ozon_primary");
+  if (fs.existsSync(ozonPrimaryDir)) {
+    const sessionFiles = fs
+      .readdirSync(ozonPrimaryDir)
+      .filter((f) => f.startsWith("raw_session_") && f.endsWith(".json"));
+    let ozonSessions = 0;
+    for (const file of sessionFiles) {
+      const payload = JSON.parse(
+        fs.readFileSync(path.join(ozonPrimaryDir, file), "utf8"),
+      ) as {
+        meta?: Record<string, unknown>;
+        rawAccruals?: unknown[];
+        rawAccrualCount?: number;
+      };
+      const meta = payload.meta || {};
+      const id = String(meta.sessionId || file.replace(/^raw_session_/, "").replace(/_accruals\.json$/, ""));
+      const companyName = String(meta.company || meta.companyName || "");
+      const dateFrom = String(meta.dateFrom || "").slice(0, 10);
+      const dateTo = String(meta.dateTo || dateFrom).slice(0, 10);
+      const rawAccruals = Array.isArray(payload.rawAccruals)
+        ? payload.rawAccruals
+        : [];
+      const pagesByDay =
+        meta.pagesByDay && typeof meta.pagesByDay === "object"
+          ? meta.pagesByDay
+          : null;
+      const requestedDates = Array.isArray(meta.requestedDates)
+        ? meta.requestedDates
+        : dateFrom
+          ? [dateFrom]
+          : [];
+      let coverageComplete = meta.coverageComplete === true;
+      if (!coverageComplete && pagesByDay && requestedDates.length) {
+        coverageComplete = requestedDates.every(
+          (d) => Number((pagesByDay as Record<string, unknown>)[String(d)]) > 0,
+        );
+      }
+      if (!companyName || !dateFrom) {
+        console.log(`SKIP ozon session ${file} missing company/date`);
+        continue;
+      }
+      const previewJson = {
+        phase: "RAW",
+        endpoint: "/v1/finance/accrual/by-day",
+        dateFrom,
+        dateTo,
+        payloadSha256: meta.payloadSha256 ?? null,
+        pagesByDay,
+        rawAccruals,
+        requestedDates,
+        coverageComplete,
+        rawAccrualCount: rawAccruals.length,
+        sourceFile: file,
+      };
+      const exists = await prisma.importSession.findUnique({ where: { id } });
+      if (exists) {
+        await prisma.importSession.update({
+          where: { id },
+          data: {
+            fileName: `Ozon Accrual /by-day API ${companyName} ${dateFrom} - ${dateTo}`,
+            reportType: "OZON_ACCRUAL_BY_DAY_API",
+            marketplace: "OZON",
+            companyName,
+            rowsCount: rawAccruals.length,
+            previewJson: previewJson as object,
+            status: "SUCCESS",
+          } as never,
+        });
+      } else {
+        await prisma.importSession.create({
+          data: {
+            id,
+            fileName: `Ozon Accrual /by-day API ${companyName} ${dateFrom} - ${dateTo}`,
+            reportType: "OZON_ACCRUAL_BY_DAY_API",
+            marketplace: "OZON",
+            companyName,
+            rowsCount: rawAccruals.length,
+            previewJson: previewJson as object,
+            status: "SUCCESS",
+            createdAt: d(meta.createdAt) ?? new Date(),
+          } as never,
+        });
+      }
+      // Seed OzonProduct sku→vendor from movements when extract aliases exist
+      ozonSessions += 1;
+    }
+    counts.ozonAccrualByDaySessions = ozonSessions;
+    console.log(`LOADED ozonAccrualByDaySessions=${ozonSessions}`);
+  }
+
   // Ozon SKU alias map from extract when present (exact company+sku)
   const skuPath = path.join(root, "WEEK_FINAL/raw/extract/21_OZON_SKU.json");
   if (fs.existsSync(skuPath)) {
@@ -443,6 +534,7 @@ async function main() {
         unknown
       >[];
       let alias = 0;
+      let products = 0;
       for (const r of skuRows) {
         const companyName = String(r.company ?? r.companyName ?? "");
         const ozonSku = String(r.sku ?? "");
@@ -465,8 +557,19 @@ async function main() {
           },
         });
         alias += 1;
+        // OzonProduct used by COGS vendorBySku lookup
+        await prisma.ozonProduct.create({
+          data: {
+            companyName,
+            sku: ozonSku,
+            vendorCode,
+            productName: null,
+          } as never,
+        }).catch(() => undefined);
+        products += 1;
       }
       counts.ozonSpecialSkuAlias = alias;
+      counts.ozonProduct = products;
     } catch (e) {
       console.log("SKIP ozonSpecialSkuAlias", e instanceof Error ? e.message : e);
     }
