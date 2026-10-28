@@ -147,6 +147,35 @@ if (isoDir && fs.existsSync(isoDir)) {
         reasons.push("G3_DISQUALIFIED g3_status.txt is not VERIFIED");
       }
     }
+    // Positive verify outcome required (not merely a non-empty file)
+    const verifyJsonPath = path.join(isoDir, "verify_hit_real.json");
+    if (fs.existsSync(verifyReal)) {
+      const vtxt = fs.readFileSync(verifyReal, "utf8");
+      if (
+        /VERIFY_WEEK_CONSUMER_.*FAIL|verify_hit_real_exit=1/.test(vtxt) ||
+        !/VERIFY_WEEK_CONSUMER_.*PASS|verify_hit_real_exit=0/.test(vtxt)
+      ) {
+        reasons.push("G3_DISQUALIFIED verify_hit_real.txt is not PASS");
+      }
+    }
+    if (fs.existsSync(verifyJsonPath)) {
+      try {
+        const vj = JSON.parse(fs.readFileSync(verifyJsonPath, "utf8")) as {
+          ok?: boolean;
+          failures?: unknown[];
+        };
+        if (vj.ok !== true) {
+          reasons.push("G3_DISQUALIFIED verify_hit_real.json ok!==true");
+        }
+        if (Array.isArray(vj.failures) && vj.failures.length > 0) {
+          reasons.push("G3_DISQUALIFIED verify_hit_real.json has failures");
+        }
+      } catch {
+        reasons.push("G3_DISQUALIFIED verify_hit_real.json unreadable");
+      }
+    } else {
+      reasons.push("G3_DISQUALIFIED missing verify_hit_real.json");
+    }
     if (g3.proofType === "fixture_compute" || g3.proofType === "sql_success") {
       reasons.push(`G3_DISQUALIFIED proofType=${g3.proofType}`);
     }
@@ -157,8 +186,76 @@ if (isoDir && fs.existsSync(isoDir)) {
     }
   }
 
-  // Without isoDir, READY cannot be claimed on evidence names alone when caller
-  // passed readyForDeploy — still require isoDir for a true READY verdict.
+  const g4 = byId.get("G4");
+  if (g4 && g4.status === "VERIFIED") {
+    const verifyAfter = path.join(logsDir, "verify_after_restore.txt");
+    const restorePcm = path.join(logsDir, "restore_v6_pcm.txt");
+    if (!fs.existsSync(verifyAfter) || !nonEmptyFile(verifyAfter)) {
+      reasons.push("G4_DISQUALIFIED missing verify_after_restore.txt");
+    } else {
+      const t = fs.readFileSync(verifyAfter, "utf8");
+      if (
+        /VERIFY_WEEK_CONSUMER_.*FAIL|verify_after_restore_exit=1/.test(t) ||
+        !/VERIFY_WEEK_CONSUMER_.*PASS|verify_after_restore_exit=0/.test(t)
+      ) {
+        reasons.push("G4_DISQUALIFIED verify_after_restore is not PASS");
+      }
+    }
+    if (!fs.existsSync(restorePcm) || !nonEmptyFile(restorePcm)) {
+      reasons.push("G4_DISQUALIFIED missing restore_v6_pcm.txt (PeriodCompanyMarketplaceMetric)");
+    } else {
+      const t = fs.readFileSync(restorePcm, "utf8");
+      if (!/DATA_ROLLBACK_LIVE_R18_OK|pcmRestored/.test(t)) {
+        reasons.push("G4_DISQUALIFIED restore_v6_pcm.txt without PCM restore proof");
+      }
+      if (!/PeriodCompanyMarketplaceMetric|pcm_fingerprint_match|PCM_RESTORE_OK/.test(t)) {
+        reasons.push("G4_DISQUALIFIED restore_v6_pcm.txt missing PCM table/fingerprint proof");
+      }
+    }
+  }
+
+  const g5 = byId.get("G5");
+  if (g5 && g5.status === "VERIFIED") {
+    const tgSum = path.join(isoDir, "telegram/REHEARSAL_SUMMARY.json");
+    if (!fs.existsSync(tgSum)) {
+      reasons.push("G5_DISQUALIFIED missing telegram/REHEARSAL_SUMMARY.json");
+    } else {
+      try {
+        const s = JSON.parse(fs.readFileSync(tgSum, "utf8")) as {
+          ok?: boolean;
+          mockUsed?: boolean;
+          stubServer?: boolean;
+          dailyReportRouteOk?: boolean;
+          webhookRouteOk?: boolean;
+          autoRecoveryOnBadHealth?: boolean;
+          imageIdObserved?: string;
+        };
+        if (s.ok !== true) reasons.push("G5_DISQUALIFIED REHEARSAL_SUMMARY ok!==true");
+        if (s.mockUsed === true) reasons.push("G5_DISQUALIFIED mockUsed=true");
+        if (s.stubServer === true) {
+          reasons.push("G5_DISQUALIFIED stubServer=true (HTTP stub is not Telegram app)");
+        }
+        if (s.webhookRouteOk !== true) {
+          reasons.push("G5_DISQUALIFIED webhookRouteOk!==true");
+        }
+        if (s.dailyReportRouteOk !== true) {
+          reasons.push("G5_DISQUALIFIED dailyReportRouteOk!==true");
+        }
+        if (s.autoRecoveryOnBadHealth !== true) {
+          reasons.push("G5_DISQUALIFIED autoRecoveryOnBadHealth!==true");
+        }
+        if (
+          !s.imageIdObserved ||
+          String(s.imageIdObserved).includes("1bb80d6b") ||
+          String(s.imageIdObserved).includes("deadbeef")
+        ) {
+          reasons.push("G5_DISQUALIFIED stub/forbidden ImageId");
+        }
+      } catch {
+        reasons.push("G5_DISQUALIFIED REHEARSAL_SUMMARY unreadable");
+      }
+    }
+  }
 }
 
 if (!isoDir) {

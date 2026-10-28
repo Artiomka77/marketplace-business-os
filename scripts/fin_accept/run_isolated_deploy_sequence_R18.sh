@@ -13,6 +13,21 @@ fi
 if ! echo "$DATABASE_URL" | grep -Eiq 'finaccept|127\.0\.0\.1|localhost|@postgres:'; then
   echo "REFUSE: DATABASE_URL is not a recognized disposable stand"; exit 3
 fi
+# Parsed DB identity must match the disposable stand we are about to mutate
+python3 - <<'PY' "$DATABASE_URL"
+import sys, urllib.parse
+u = urllib.parse.urlparse(sys.argv[1])
+host = (u.hostname or "").lower()
+db = (u.path or "").lstrip("/").split("?")[0]
+user = u.username or ""
+ok_host = host in ("127.0.0.1", "localhost", "postgres") or "finaccept" in host
+ok_db = "finaccept" in db.lower() or db in ("postgres", "finaccept")
+ok_user = "finaccept" in user.lower() or user in ("postgres", "finaccept")
+print(f"DISPOSABLE_IDENTITY host={host} db={db} user={user} ok_host={ok_host} ok_db={ok_db}")
+if not (ok_host and (ok_db or ok_user)):
+  raise SystemExit("REFUSE: parsed DATABASE_URL identity is not disposable finaccept stand")
+print("DISPOSABLE_IDENTITY_OK")
+PY
 export WAVE_B_PROFIT_TARGET_DATABASE_URL="${WAVE_B_PROFIT_TARGET_DATABASE_URL:-$DATABASE_URL}"
 export V6_READMODEL_TARGET_DATABASE_URL="${V6_READMODEL_TARGET_DATABASE_URL:-$DATABASE_URL}"
 export WAVE_B_TARGET_DB_MODE="${WAVE_B_TARGET_DB_MODE:-SAME_PRODUCTION_DB}"
@@ -27,6 +42,14 @@ export PRIMARY_STAND_DISPOSABLE_OK=1
 OUT_DIR="${R18_ISOLATION_OUT:-$ROOT/R18_isolation_out}"
 rm -rf "$OUT_DIR"
 mkdir -p "$OUT_DIR"/{ids,backup,env,logs,fa_state,mockbin,telegram}
+python3 - <<'PY' "$DATABASE_URL" "$OUT_DIR/logs/disposable_identity.txt"
+import sys, urllib.parse, pathlib
+u = urllib.parse.urlparse(sys.argv[1])
+pathlib.Path(sys.argv[2]).write_text(
+  f"host={u.hostname}\ndb={(u.path or '').lstrip('/')}\nuser={u.username}\nDISPOSABLE_IDENTITY_OK\n",
+  encoding="utf-8",
+)
+PY
 export WEEKLY_JOB_IDS_DIR="$OUT_DIR/ids"
 export FA_STATE="$OUT_DIR/fa_state"
 export WEEK_BACKUP_DIR="$OUT_DIR/backup"
@@ -224,86 +247,56 @@ grep -q 'STOP_CLAIMS_RECOVER_ALL\|RESTARTED start avorofin-profit\|start avorofi
   "$OUT_DIR/logs/stop_claims_multi.txt" "$OUT_DIR/logs/docker_calls.txt" \
   || { echo "FAIL recover all"; exit 36; }
 
-# G2 run-all: backup failure after stop must call recovery (explicit die path covered by run_step)
-echo "=== G2 run-all recovery on backup failure ==="
-python3 - <<'PY' "$OUT_DIR/logs/run_all_backup_fail.txt" "$ROOT" "$FA_STATE" "$OUT_DIR"
-import pathlib, subprocess, os, sys, textwrap
-out_log, root, fa, out = map(pathlib.Path, sys.argv[1:])
-script = out/"run_all_probe.sh"
-body = textwrap.dedent(f'''
-set -euo pipefail
-ROOT="{root}"
-FA_STATE="{fa}"
-ENV_DIR="{out}/env"
-BACKUP_DIR="{out}/backup_runall_probe"
-JOURNAL_DIR="{out}/journal"
-mkdir -p "$FA_STATE" "$ENV_DIR" "$BACKUP_DIR" "$JOURNAL_DIR"
-# Minimal definitions from entrypoint
-source <(awk 'BEGIN{{p=1}} /^stage=\"\\$\\{{1:-\\}}\"/{{p=0}} p' "$ROOT/scripts/fin_accept/deploy_entrypoint_R12.sh")
-stage_preflight_artifacts() {{ :; }}
-stage_capture_env() {{ :; }}
-stage_load_runner_env() {{ :; }}
-stage_runtime_preflight() {{ :; }}
-stage_compare_env() {{ :; }}
-stage_stop_claims() {{
-  echo WRITERS_STOPPED
-  echo -e "avorofin-profit\\navorofin-v6" > "$FA_STATE/stop_claims_touched.txt"
-  echo '{{"avorofin-profit":"running"}}' > "$FA_STATE/stop_claims_prestate.json"
-}}
-restore_all_touched() {{ echo RECOVERY_CALLED; return 0; }}
-stage_switch() {{ echo SWITCH_CALLED; }}
-stage_weekly() {{ :; }}
-stage_verify_week() {{ :; }}
-stage_backup_week() {{ echo BACKUP_COMMAND_FAILED; return 1; }}
-stage_run_all
-''')
-script.write_text(body.replace('\\n','\n'), encoding='utf-8')
-# The awk source approach is fragile on Windows runners — use inline copy of stage_run_all only
-probe = out/"run_all_probe2.sh"
-probe.write_text(textwrap.dedent(f'''
+# G2 run-all: REAL entrypoint stage_run_all — backup failure must recover (not inlined probe)
+echo "=== G2 real run-all recovery on backup failure ==="
+# Mock docker so stop-claims treats writers as missing/stopped
+cat > "$MOCK/docker" <<'EOS'
 #!/usr/bin/env bash
-set -euo pipefail
-ROOT="{root}"
-FA_STATE="{fa}"
-die() {{ echo "DIE: $*" >&2; exit 1; }}
-writers_stopped=0
-switched=0
-restore_all_touched() {{ echo RECOVERY_CALLED; echo RUN_ALL_RECOVER_OK; return 0; }}
-recover_pre_switch() {{
-  if [[ "$writers_stopped" -eq 1 && "$switched" -eq 0 ]]; then
-    echo "RUN_ALL_RECOVER pre-switch" >&2
-    restore_all_touched || return 1
-    echo "RUN_ALL_RECOVER_OK"
-  fi
-  return 0
-}}
-run_step() {{
-  local name="$1"; shift
-  echo "RUN_ALL_STEP $name"
-  set +e; "$@"; local rc=$?; set -e
-  if [[ "$rc" -ne 0 ]]; then
-    echo "RUN_ALL_STEP_FAIL name=$name exit=$rc" >&2
-    if ! recover_pre_switch; then die "recovery failed"; fi
-    die "run-all step failed: $name (exit=$rc); pre-switch services restored"
-  fi
-}}
-stage_stop_claims() {{ echo WRITERS_STOPPED; }}
-stage_backup_week() {{ echo BACKUP_COMMAND_FAILED; return 1; }}
-run_step stop-claims stage_stop_claims
-writers_stopped=1
-run_step backup-week stage_backup_week
-'''), encoding='utf-8')
-r = subprocess.run(['bash', str(probe)], capture_output=True, text=True)
-text = r.stdout + r.stderr
-assert r.returncode != 0, 'expected non-zero'
-assert 'BACKUP_COMMAND_FAILED' in text or 'RUN_ALL_STEP_FAIL' in text
-assert 'RECOVERY_CALLED' in text or 'RUN_ALL_RECOVER_OK' in text
-text = text + '\nRUN_ALL_BACKUP_FAIL_RECOVERY_OK\n'
-out_log.write_text(text, encoding='utf-8')
-print(text)
-PY
-grep -q 'RUN_ALL_BACKUP_FAIL_RECOVERY_OK' "$OUT_DIR/logs/run_all_backup_fail.txt" \
-  || { echo "FAIL run-all recovery probe"; cat "$OUT_DIR/logs/run_all_backup_fail.txt"; exit 36; }
+echo "docker $*" >> "$(dirname "$0")/../logs/docker_calls_runall.txt"
+cmd="$1"; shift || true
+case "$cmd" in
+  inspect)
+    if [[ "$*" == *State.Status* ]]; then echo missing; exit 0; fi
+    if [[ "$*" == *State.Running* ]]; then echo false; exit 0; fi
+    exit 0 ;;
+  kill|stop|start) exit 0 ;;
+  *) exit 0 ;;
+esac
+EOS
+chmod +x "$MOCK/docker"
+: > "$OUT_DIR/logs/docker_calls_runall.txt"
+# Poison exporter so real stage_backup_week fails inside real run-all
+EXPORTER="$ROOT/scripts/fin_accept/export_profit_period_backup_R16.ts"
+EXPORTER_BAK="$OUT_DIR/export_profit_period_backup_R16.ts.bak_g2"
+cp -f "$EXPORTER" "$EXPORTER_BAK"
+cat > "$EXPORTER" <<'EOS'
+console.error("BACKUP_COMMAND_FAILED intentional isolation poison");
+process.exit(7);
+EOS
+set +e
+PATH="$MOCK:$PATH" \
+FA_STATE="$FA_STATE" ENV_CAPTURE_DIR="$OUT_DIR/env" ENV_DIR="$OUT_DIR/env" \
+WEEK_BACKUP_DIR="$OUT_DIR/backup_runall_fail" CUTOVER_JOURNAL_DIR="$OUT_DIR/journal" \
+RUNNER_ENV_EXPORT_FILE="$FA_STATE/runner.env" \
+RUN_ALL_CHILD_ENTRYPOINT=1 RUN_ALL_STOP_AFTER=backup-week RUN_ALL_ISOLATION=1 \
+STAMP=20261028_R18 DATABASE_URL="$DATABASE_URL" \
+WAVE_B_PROFIT_TARGET_DATABASE_URL="$DATABASE_URL" \
+V6_READMODEL_TARGET_DATABASE_URL="$DATABASE_URL" \
+  bash scripts/fin_accept/deploy_entrypoint_R12.sh run-all \
+  >"$OUT_DIR/logs/run_all_backup_fail.txt" 2>&1
+raf=$?
+set -e
+# restore exporter immediately
+cp -f "$EXPORTER_BAK" "$EXPORTER"
+echo "real_run_all_backup_fail_exit=$raf" | tee -a "$OUT_DIR/logs/run_all_backup_fail.txt"
+[[ "$raf" -ne 0 ]] || { echo "FAIL expected real run-all non-zero on backup fail"; exit 36; }
+grep -q 'BACKUP_COMMAND_FAILED\|backup exporter failed\|RUN_ALL_STEP_FAIL name=backup-week' \
+  "$OUT_DIR/logs/run_all_backup_fail.txt" \
+  || { echo "FAIL missing backup failure signal"; cat "$OUT_DIR/logs/run_all_backup_fail.txt"; exit 36; }
+grep -q 'RUN_ALL_RECOVER_OK\|RUN_ALL_RECOVER pre-switch\|STOP_CLAIMS_RECOVER' \
+  "$OUT_DIR/logs/run_all_backup_fail.txt" \
+  || { echo "FAIL real run-all did not recover after backup fail"; exit 36; }
+echo "RUN_ALL_BACKUP_FAIL_RECOVERY_OK" | tee -a "$OUT_DIR/logs/run_all_backup_fail.txt"
 
 # ---------- G3: enqueue + REAL worker scripts (no SQL SUCCESS, no fixture-canon for VERIFIED) ----------
 echo "=== G3 enqueue + real worker scripts ==="
@@ -532,30 +525,121 @@ left="$(psql "$DATABASE_URL" -Atc "SELECT count(*) FROM \"ProfitSkuPeriodMetric\
 echo "post_backup_sku_after_restore=$left" | tee "$OUT_DIR/logs/sku_cleared.txt"
 [[ "$left" == "0" ]] || { echo "FAIL empty SKU[] did not clear"; exit 41; }
 
-# Full restore of good backup2 + consumer
+# Missing PCM file must hard-fail
+cp -a "$OUT_DIR/backup_sku" "$OUT_DIR/backup_missing_pcm"
+rm -f "$OUT_DIR/backup_missing_pcm/v6_pcm_snapshot.json"
+set +e
+node --import tsx scripts/fin_accept/run_data_rollback_ozon_R12.ts "$OUT_DIR/backup_missing_pcm" \
+  >"$OUT_DIR/logs/restore_missing_pcm.txt" 2>&1
+rc_miss_pcm=$?
+set -e
+[[ "$rc_miss_pcm" -ne 0 ]] || { echo "FAIL missing pcm file should reject"; exit 40; }
+grep -q 'MISSING_V6_PCM_SNAPSHOT_FILE' "$OUT_DIR/logs/restore_missing_pcm.txt"
+
+# Full restore of good backup2 + consumer + PCM fingerprint proof
 node --import tsx scripts/fin_accept/iso_drain_workers_R18.ts all | tee "$OUT_DIR/logs/drain_all_final.txt"
-# Re-load finance (untouched) and re-verify — first re-drain profit for fingerprints
 node --import tsx scripts/fin_accept/export_profit_period_backup_R16.ts "$OUT_DIR/backup2" \
   | tee "$OUT_DIR/logs/backup2.txt"
+[[ -f "$OUT_DIR/backup2/v6_pcm_snapshot.json" ]] || { echo "FAIL backup2 missing v6_pcm"; exit 40; }
+pcm_before="$(psql "$DATABASE_URL" -Atc "SELECT coalesce(string_agg(\"payloadChecksum\",',' ORDER BY \"companyScope\",marketplace),'') FROM \"PeriodCompanyMarketplaceMetric\" WHERE \"formulaVersion\"='FINANCIAL_CORE_V6_PERIOD_READMODEL_V2' AND \"dateFrom\"='2026-10-19' AND \"dateTo\"='2026-10-25'")"
+echo "pcm_checksums_before_mutate=$pcm_before" | tee "$OUT_DIR/logs/restore_v6_pcm.txt"
+# Mutate real V6 producer rows after backup
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 <<'SQL' | tee -a "$OUT_DIR/logs/restore_v6_pcm.txt"
+UPDATE "PeriodCompanyMarketplaceMetric"
+SET "payloadChecksum" = 'MUTATED_AFTER_BACKUP_PCM',
+    payload = jsonb_set(coalesce(payload,'{}'::jsonb), '{mutated}', 'true'::jsonb),
+    "updatedAt" = NOW()
+WHERE "formulaVersion"='FINANCIAL_CORE_V6_PERIOD_READMODEL_V2'
+  AND "dateFrom"='2026-10-19' AND "dateTo"='2026-10-25';
+SQL
 node --import tsx scripts/fin_accept/iso_mutate_helpers_R16.ts mutate_after_backup \
   | tee "$OUT_DIR/logs/mutate_after_backup.txt"
 node --import tsx scripts/fin_accept/run_data_rollback_ozon_R12.ts "$OUT_DIR/backup2" \
-  | tee "$OUT_DIR/logs/restore_ok.txt"
+  | tee "$OUT_DIR/logs/restore_ok.txt" | tee -a "$OUT_DIR/logs/restore_v6_pcm.txt"
+grep -q 'DATA_ROLLBACK_LIVE_R18_OK' "$OUT_DIR/logs/restore_ok.txt" \
+  || { echo "FAIL restore_ok marker"; exit 40; }
+grep -q 'pcmRestored' "$OUT_DIR/logs/restore_ok.txt" \
+  || { echo "FAIL pcmRestored missing in restore output"; exit 40; }
+pcm_after="$(psql "$DATABASE_URL" -Atc "SELECT coalesce(string_agg(\"payloadChecksum\",',' ORDER BY \"companyScope\",marketplace),'') FROM \"PeriodCompanyMarketplaceMetric\" WHERE \"formulaVersion\"='FINANCIAL_CORE_V6_PERIOD_READMODEL_V2' AND \"dateFrom\"='2026-10-19' AND \"dateTo\"='2026-10-25'")"
+echo "pcm_checksums_after_restore=$pcm_after" | tee -a "$OUT_DIR/logs/restore_v6_pcm.txt"
+mut_left="$(psql "$DATABASE_URL" -Atc "SELECT count(*) FROM \"PeriodCompanyMarketplaceMetric\" WHERE \"payloadChecksum\"='MUTATED_AFTER_BACKUP_PCM'")"
+echo "mutated_pcm_rows_left=$mut_left" | tee -a "$OUT_DIR/logs/restore_v6_pcm.txt"
+[[ "$mut_left" == "0" ]] || { echo "FAIL PCM mutation survived restore"; exit 40; }
+# Fingerprints in DB must match backup snapshot
+python3 - <<'PY' "$OUT_DIR/backup2/v6_pcm_snapshot.json" "$DATABASE_URL" "$OUT_DIR/logs/restore_v6_pcm.txt"
+import json,sys,subprocess,pathlib
+snap=json.load(open(sys.argv[1],encoding="utf-8"))
+want={(r["companyScope"],r["marketplace"]): r["payloadChecksum"] for r in snap}
+url=sys.argv[2]
+q='''SELECT "companyScope",marketplace,"payloadChecksum" FROM "PeriodCompanyMarketplaceMetric"
+ WHERE "formulaVersion"='FINANCIAL_CORE_V6_PERIOD_READMODEL_V2'
+   AND "dateFrom"='2026-10-19' AND "dateTo"='2026-10-25' '''
+out=subprocess.check_output(["psql",url,"-Atc",q], text=True)
+got={}
+for line in out.splitlines():
+  if not line.strip(): continue
+  scope, mp, chk = line.split("|")
+  got[(scope, mp)] = chk
+for k,w in want.items():
+  if got.get(k) != w:
+    raise SystemExit(f"pcm_fingerprint_mismatch {k} want={w} got={got.get(k)}")
+pathlib.Path(sys.argv[3]).open("a",encoding="utf-8").write(
+  f"pcm_fingerprint_match keys={len(want)}\nPeriodCompanyMarketplaceMetric restored\nPCM_RESTORE_OK\n"
+)
+print("PCM_RESTORE_OK", len(want))
+PY
+
 set +e
 node --import tsx scripts/fin_accept/verify_week_consumer_R12.ts "$OUT_DIR/verify_after_restore.json" \
   >"$OUT_DIR/logs/verify_after_restore.txt" 2>&1
 vr=$?
 set -e
 echo "verify_after_restore_exit=$vr" | tee -a "$OUT_DIR/logs/verify_after_restore.txt"
-if [[ "$vr" -ne 0 ]]; then
-  echo "WARN verify after restore failed — recorded in G4 (continuing to acceptance write)"
-  tail -40 "$OUT_DIR/logs/verify_after_restore.txt" | tee -a "$OUT_DIR/logs/verify_after_restore.txt" || true
-fi
+[[ "$vr" -eq 0 ]] || { echo "FAIL verify after restore (mandatory for G4)"; tail -80 "$OUT_DIR/logs/verify_after_restore.txt"; exit 42; }
+grep -q 'VERIFY_WEEK_CONSUMER' "$OUT_DIR/logs/verify_after_restore.txt" || true
 
-# ---------- G5: real docker candidate → concrete plan → replay (no sends) ----------
-echo "=== G5 telegram real docker rehearsal + concrete plan ==="
-unset TELEGRAM_NEW_IMAGE TELEGRAM_NEW_IMAGE_ID || true
+# ---------- G2b: real run-all through backup-week on disposable stand (fresh backup + PCM files) ----------
+echo "=== G2b real run-all child-entrypoint through backup-week ==="
+mkdir -p "$OUT_DIR/backup_runall_ok" "$OUT_DIR/journal"
+# Refresh runner.env for cutover roles after G4 mutations
+printf 'DATABASE_URL=%s\nWAVE_B_PROFIT_TARGET_DATABASE_URL=%s\nV6_READMODEL_TARGET_DATABASE_URL=%s\nWAVE_B_TARGET_DB_MODE=SAME_PRODUCTION_DB\nWAVE_B_PROFIT_WORKER_MODE=queue\n' \
+  "$DATABASE_URL" "$DATABASE_URL" "$DATABASE_URL" > "$FA_STATE/runner.env"
+chmod 600 "$FA_STATE/runner.env"
 set +e
+PATH="$MOCK:$PATH" \
+FA_STATE="$FA_STATE" ENV_CAPTURE_DIR="$OUT_DIR/env" ENV_DIR="$OUT_DIR/env" \
+WEEK_BACKUP_DIR="$OUT_DIR/backup_runall_ok" CUTOVER_JOURNAL_DIR="$OUT_DIR/journal" \
+RUNNER_ENV_EXPORT_FILE="$FA_STATE/runner.env" \
+RUN_ALL_CHILD_ENTRYPOINT=1 RUN_ALL_STOP_AFTER=backup-week RUN_ALL_ISOLATION=1 \
+STAMP=20261028_R18 DATABASE_URL="$DATABASE_URL" \
+WAVE_B_PROFIT_TARGET_DATABASE_URL="$DATABASE_URL" \
+V6_READMODEL_TARGET_DATABASE_URL="$DATABASE_URL" \
+BACKUP_RUN_STAMP="iso_runall_$(date -u +%Y%m%dT%H%M%SZ)" \
+  bash scripts/fin_accept/deploy_entrypoint_R12.sh run-all \
+  >"$OUT_DIR/logs/run_all_real_backup_ok.txt" 2>&1
+rao=$?
+set -e
+echo "real_run_all_backup_ok_exit=$rao" | tee -a "$OUT_DIR/logs/run_all_real_backup_ok.txt"
+[[ "$rao" -eq 0 ]] || { echo "FAIL real run-all through backup"; tail -80 "$OUT_DIR/logs/run_all_real_backup_ok.txt"; exit 36; }
+grep -q 'RUN_ALL_MAIN_OK' "$OUT_DIR/logs/run_all_real_backup_ok.txt"
+grep -q 'BACKUP_WEEK_OK' "$OUT_DIR/logs/run_all_real_backup_ok.txt"
+[[ -f "$OUT_DIR/backup_runall_ok/v6_pcm_snapshot.json" ]]
+[[ -f "$OUT_DIR/backup_runall_ok/EXPORT_OK.marker" ]]
+echo "RUN_ALL_REAL_BACKUP_OK" | tee -a "$OUT_DIR/logs/run_all_real_backup_ok.txt"
+
+# ---------- G5: real Next app image (R15 tar) → routes → OLD≠NEW rollback ----------
+echo "=== G5 telegram real docker rehearsal + concrete plan ==="
+unset TELEGRAM_NEW_IMAGE TELEGRAM_NEW_IMAGE_ID TELEGRAM_OLD_IMAGE TELEGRAM_OLD_IMAGE_ID || true
+if [[ -n "${TELEGRAM_APP_TAR:-}" && -f "${TELEGRAM_APP_TAR}" ]]; then
+  export TELEGRAM_APP_TAR
+  echo "TELEGRAM_APP_TAR=$TELEGRAM_APP_TAR" | tee "$OUT_DIR/logs/telegram_image_source.txt"
+elif [[ -f /tmp/r15_image_tarballs/image-tarballs/app.tar.gz ]]; then
+  export TELEGRAM_APP_TAR=/tmp/r15_image_tarballs/image-tarballs/app.tar.gz
+elif [[ -f /tmp/r15_image_tarballs/app.tar.gz ]]; then
+  export TELEGRAM_APP_TAR=/tmp/r15_image_tarballs/app.tar.gz
+fi
+set +e
+DATABASE_URL="$DATABASE_URL" \
 bash scripts/fin_accept/telegram_rehearsal_R18.sh "$OUT_DIR/telegram" \
   >"$OUT_DIR/logs/telegram_rehearsal.txt" 2>&1
 tg_rc=$?
@@ -563,22 +647,23 @@ set -e
 cat "$OUT_DIR/logs/telegram_rehearsal.txt" || true
 tg_reh=1
 tg_mock=0
+tg_stub=0
 if grep -q 'TELEGRAM_REHEARSAL_R18_OK' "$OUT_DIR/logs/telegram_rehearsal.txt"; then
   tg_reh=0
 fi
-if [[ -f "$OUT_DIR/telegram/REHEARSAL_SUMMARY.json" ]] && grep -q '"mockUsed": true' "$OUT_DIR/telegram/REHEARSAL_SUMMARY.json"; then
-  tg_mock=1
-  tg_reh=1
-fi
 if [[ -f "$OUT_DIR/telegram/REHEARSAL_SUMMARY.json" ]]; then
-  export TELEGRAM_NEW_IMAGE="$(python3 -c "import json;print(json.load(open(r'$OUT_DIR/telegram/REHEARSAL_SUMMARY.json')).get('imageIdExpected','') and 'avorofin-p0-cogs-telegram:c01_isolation_local')")"
+  grep -q '"mockUsed": true' "$OUT_DIR/telegram/REHEARSAL_SUMMARY.json" && tg_mock=1 && tg_reh=1
+  grep -q '"stubServer": true' "$OUT_DIR/telegram/REHEARSAL_SUMMARY.json" && tg_stub=1 && tg_reh=1
+  grep -q '"webhookRouteOk": true' "$OUT_DIR/telegram/REHEARSAL_SUMMARY.json" || tg_reh=1
+  grep -q '"dailyReportRouteOk": true' "$OUT_DIR/telegram/REHEARSAL_SUMMARY.json" || tg_reh=1
+  export TELEGRAM_NEW_IMAGE="$(python3 -c "import json;s=json.load(open(r'$OUT_DIR/telegram/REHEARSAL_SUMMARY.json'));print(s.get('newImage') or '')")"
   export TELEGRAM_NEW_IMAGE_ID="$(python3 -c "import json;s=json.load(open(r'$OUT_DIR/telegram/REHEARSAL_SUMMARY.json'));print(s.get('imageIdObserved') or s.get('imageIdExpected') or '')")"
-  # Prefer observed tag from build log if present
-  if docker image inspect avorofin-p0-cogs-telegram:c01_isolation_local >/dev/null 2>&1; then
-    export TELEGRAM_NEW_IMAGE="avorofin-p0-cogs-telegram:c01_isolation_local"
-    export TELEGRAM_NEW_IMAGE_ID="$(docker image inspect -f '{{.Id}}' "$TELEGRAM_NEW_IMAGE")"
-  fi
 fi
+if [[ -z "${TELEGRAM_NEW_IMAGE:-}" ]] && docker image inspect avorofin-p0-cogs-app:fin_accept_20261028_R15 >/dev/null 2>&1; then
+  export TELEGRAM_NEW_IMAGE="avorofin-p0-cogs-app:fin_accept_20261028_R15"
+  export TELEGRAM_NEW_IMAGE_ID="$(docker image inspect -f '{{.Id}}' "$TELEGRAM_NEW_IMAGE")"
+fi
+[[ "$tg_stub" -eq 0 ]] || { echo "FAIL stub telegram image used"; exit 44; }
 set +e
 FA_STATE="$FA_STATE" CUTOVER_JOURNAL_DIR="$CUTOVER_JOURNAL_DIR" \
 TELEGRAM_HOST=64.188.63.133 TELEGRAM_SSH_USER=root \
@@ -639,12 +724,18 @@ import json, pathlib
 out = pathlib.Path("$OUT_DIR")
 g3_status = "$g3_status"
 g3_blocked_reason = """$g3_blocked_reason"""
-g1_ok = ($ed == 0 and $rp == 0 and $wre == 0 and (out/"logs"/"g1_effective_env.txt").exists())
+g1_ok = ($ed == 0 and $rp == 0 and $wre == 0 and (out/"logs"/"g1_effective_env.txt").exists()
+         and (out/"logs"/"disposable_identity.txt").exists())
 g2_ok = ($spf != 0 and $sc != 0 and (out/"logs"/"run_all_backup_fail.txt").exists()
-         and "RUN_ALL_BACKUP_FAIL_RECOVERY_OK" in (out/"logs"/"run_all_backup_fail.txt").read_text(encoding="utf-8", errors="replace"))
+         and "RUN_ALL_BACKUP_FAIL_RECOVERY_OK" in (out/"logs"/"run_all_backup_fail.txt").read_text(encoding="utf-8", errors="replace")
+         and (out/"logs"/"run_all_real_backup_ok.txt").exists()
+         and "RUN_ALL_REAL_BACKUP_OK" in (out/"logs"/"run_all_real_backup_ok.txt").read_text(encoding="utf-8", errors="replace"))
 g4_ok = ($rc_corrupt != 0 and "$gone" == "0" and "$left" == "0"
-         and "$v6gone" == "0" and $rc_miss_v6 != 0)
-g5_ok = ($tg_reh == 0) and (out/"fa_state"/"telegram_plan.json").exists() and ($tg_mock == 0)
+         and "$v6gone" == "0" and $rc_miss_v6 != 0 and $rc_miss_pcm != 0
+         and $vr == 0
+         and (out/"logs"/"restore_v6_pcm.txt").exists()
+         and "PCM_RESTORE_OK" in (out/"logs"/"restore_v6_pcm.txt").read_text(encoding="utf-8", errors="replace"))
+g5_ok = ($tg_reh == 0) and (out/"fa_state"/"telegram_plan.json").exists() and ($tg_mock == 0) and ($tg_stub == 0)
 g6_status = "VERIFIED" if (g1_ok and g2_ok and g3_status == "VERIFIED" and g4_ok and g5_ok) else "BLOCKED"
 
 def gate(gid, desc, ok, evidence, proof, blocked_reason=None):
@@ -668,19 +759,19 @@ doc = {
          ["logs/env_dollar.txt","logs/runtime_preflight_cross_proc.txt","logs/g1_effective_env.txt","logs/with_runner_env.txt","logs/env_runtime_match.txt"],
          "safe_load_env_R18+with_runner_env+backup_week_autoload"),
     gate("G2", "MAIN run-all stop/recovery + SQL/docker failure paths", g2_ok,
-         ["logs/stop_claims_psql_fail.txt","logs/stop_claims_multi.txt","logs/run_all_backup_fail.txt","logs/docker_calls.txt"],
-         "run_all_run_step_recovery+stop_claims"),
+         ["logs/stop_claims_psql_fail.txt","logs/stop_claims_multi.txt","logs/run_all_backup_fail.txt","logs/run_all_real_backup_ok.txt","logs/docker_calls.txt","logs/disposable_identity.txt"],
+         "real_run_all_child_entrypoint+stop_claims"),
     gate("G3", "Real workers 6/3/3 + consumers with primary+Finance", g3_status=="VERIFIED",
-         ["logs/load_primary.txt","logs/enqueue_profit.txt","logs/real_worker_profit.txt","logs/real_worker_v6.txt","logs/real_worker_dashboard.txt","logs/verify_hit_real.txt","logs/g3_matrix.txt","logs/g3_status.txt"],
+         ["logs/load_primary.txt","logs/enqueue_profit.txt","logs/real_worker_profit.txt","logs/real_worker_v6.txt","logs/real_worker_dashboard.txt","logs/verify_hit_real.txt","verify_hit_real.json","logs/g3_matrix.txt","logs/g3_status.txt"],
          "real_worker_scripts",
          blocked_reason=g3_blocked_reason or "G3 consumers not FINAL/COMPLETE"),
-    gate("G4", "Scoped rollback PPM/SKU/V6/Dashboard incl. absent dependents", g4_ok,
-         ["logs/restore_corrupt.txt","logs/restore_absent.txt","logs/restore_v6_absent.txt","logs/restore_missing_v6.txt","logs/restore_empty_sku.txt","logs/verify_after_restore.txt","backup/"],
-         "real_db_restore_scripts"),
-    gate("G5", "Telegram concrete runtime update/rollback rehearsal (no sends)", g5_ok,
-         ["fa_state/telegram_plan.json","logs/telegram_rehearsal.txt","telegram/REHEARSAL_SUMMARY.json","logs/g5_status.txt"],
-         "telegram_plan+real_docker_rehearsal",
-         blocked_reason=("mock rehearsal or docker/dailyReport proof failed" if not g5_ok else None)),
+    gate("G4", "Scoped rollback PPM/SKU/V6 PCM/Dashboard incl. absent dependents", g4_ok,
+         ["logs/restore_corrupt.txt","logs/restore_absent.txt","logs/restore_v6_absent.txt","logs/restore_missing_v6.txt","logs/restore_missing_pcm.txt","logs/restore_empty_sku.txt","logs/restore_v6_pcm.txt","logs/verify_after_restore.txt","backup2/v6_pcm_snapshot.json"],
+         "real_db_restore_pcm+consumers"),
+    gate("G5", "Telegram concrete Next app update/rollback rehearsal (no sends)", g5_ok,
+         ["fa_state/telegram_plan.json","logs/telegram_rehearsal.txt","telegram/REHEARSAL_SUMMARY.json","telegram/logs/webhook_route.json","telegram/logs/daily_report_route.json","logs/g5_status.txt"],
+         "telegram_plan+real_next_app_routes",
+         blocked_reason=("mock/stub rehearsal or route/rollback proof failed" if not g5_ok else None)),
     gate("G6", "One executable reproducible release bundle", g6_status=="VERIFIED",
          ["CLOSE_ACCEPTANCE.json","SUMMARY.json","ASSERT_REPORT.json"],
          "assert_close_acceptance_R18",

@@ -182,9 +182,81 @@ async function main() {
     generatedAt: s.generatedAt.toISOString(),
   }));
 
-  // Dependent V6 / Dashboard snapshots (exact scoped restore)
+  // Real V6 read-model tables (producer writes these — not DashboardPeriodSnapshot V6)
   const V6_FV = "FINANCIAL_CORE_V6_PERIOD_READMODEL_V2";
   const DASH_FV = "FINANCIAL_CORE_V4_PERIOD_SNAPSHOT_V1";
+  const pcmRows = await client.periodCompanyMarketplaceMetric.findMany({
+    where: {
+      dateFrom: new Date(`${dateFrom}T00:00:00.000Z`),
+      dateTo: new Date(`${dateTo}T00:00:00.000Z`),
+      formulaVersion: V6_FV,
+      companyScope: { in: [...CANONICAL_PROFIT_COMPANY_SCOPES] },
+    },
+  });
+  const pcmSnap = pcmRows.map((r) => ({
+    table: "PeriodCompanyMarketplaceMetric",
+    companyScope: r.companyScope,
+    marketplace: r.marketplace,
+    dateFrom: isoDate(r.dateFrom),
+    dateTo: isoDate(r.dateTo),
+    formulaVersion: r.formulaVersion,
+    dataMode: r.dataMode,
+    coverageStatus: r.coverageStatus,
+    sourceFingerprint: r.sourceFingerprint,
+    payloadChecksum: r.payloadChecksum,
+    payload: r.payload,
+    meta: r.meta,
+    generatedAt: r.generatedAt.toISOString(),
+  }));
+  const pcmInventory: Array<Record<string, unknown>> = [];
+  for (const r of pcmSnap) {
+    pcmInventory.push({
+      key: `${r.companyScope}|${r.marketplace}|${r.formulaVersion}`,
+      companyScope: r.companyScope,
+      marketplace: r.marketplace,
+      formulaVersion: r.formulaVersion,
+      hadRow: true,
+    });
+  }
+  for (const scope of CANONICAL_PROFIT_COMPANY_SCOPES) {
+    const key = `${scope}|ALL|${V6_FV}`;
+    if (!pcmInventory.some((i) => i.key === key)) {
+      pcmInventory.push({
+        key,
+        companyScope: scope,
+        marketplace: "ALL",
+        formulaVersion: V6_FV,
+        hadRow: false,
+        note: "absent_before_rebuild",
+      });
+    }
+  }
+
+  const dailyRows = await client.dailyCompanyMarketplaceMetric.findMany({
+    where: {
+      businessDate: {
+        gte: new Date(`${dateFrom}T00:00:00.000Z`),
+        lte: new Date(`${dateTo}T00:00:00.000Z`),
+      },
+      formulaVersion: V6_FV,
+      companyScope: { in: [...CANONICAL_PROFIT_COMPANY_SCOPES] },
+    },
+  });
+  const dailySnap = dailyRows.map((r) => ({
+    table: "DailyCompanyMarketplaceMetric",
+    companyScope: r.companyScope,
+    marketplace: r.marketplace,
+    businessDate: isoDate(r.businessDate),
+    formulaVersion: r.formulaVersion,
+    dataMode: r.dataMode,
+    coverageStatus: r.coverageStatus,
+    sourceFingerprint: r.sourceFingerprint,
+    payloadChecksum: r.payloadChecksum,
+    payload: r.payload,
+    generatedAt: r.generatedAt.toISOString(),
+  }));
+
+  // Legacy DashboardPeriodSnapshot (V4 dashboard + optional V6-formula dash rows)
   const dashRows = await client.dashboardPeriodSnapshot.findMany({
     where: {
       dateFrom: new Date(`${dateFrom}T00:00:00.000Z`),
@@ -193,7 +265,7 @@ async function main() {
       companyScope: { in: [...CANONICAL_PROFIT_COMPANY_SCOPES] },
     },
   });
-  const v6Snap = dashRows
+  const v6DashSnap = dashRows
     .filter((r) => r.formulaVersion === V6_FV)
     .map((r) => ({
       companyScope: r.companyScope,
@@ -228,34 +300,47 @@ async function main() {
   const wbPath = path.join(outDir, "wb_profit_period_snapshot.json");
   const skuPath = path.join(outDir, "sku_profit_period_snapshot.json");
   const invPath = path.join(outDir, "backup_inventory.json");
+  const v6PcmPath = path.join(outDir, "v6_pcm_snapshot.json");
+  const v6PcmInvPath = path.join(outDir, "v6_pcm_inventory.json");
+  const v6DailyPath = path.join(outDir, "v6_daily_snapshot.json");
   const v6Path = path.join(outDir, "v6_period_snapshot.json");
   const dashPath = path.join(outDir, "dashboard_period_snapshot.json");
   const metaPath = path.join(outDir, "backup_meta.json");
+  const runStamp = process.env.BACKUP_RUN_STAMP || new Date().toISOString();
   fs.writeFileSync(ozonPath, JSON.stringify(ozonSnap, null, 2) + "\n");
   fs.writeFileSync(wbPath, JSON.stringify(wbSnap, null, 2) + "\n");
   fs.writeFileSync(skuPath, JSON.stringify(skuSnap, null, 2) + "\n");
   fs.writeFileSync(invPath, JSON.stringify(inventory, null, 2) + "\n");
-  fs.writeFileSync(v6Path, JSON.stringify(v6Snap, null, 2) + "\n");
+  fs.writeFileSync(v6PcmPath, JSON.stringify(pcmSnap, null, 2) + "\n");
+  fs.writeFileSync(v6PcmInvPath, JSON.stringify(pcmInventory, null, 2) + "\n");
+  fs.writeFileSync(v6DailyPath, JSON.stringify(dailySnap, null, 2) + "\n");
+  fs.writeFileSync(v6Path, JSON.stringify(v6DashSnap, null, 2) + "\n");
   fs.writeFileSync(dashPath, JSON.stringify(dashSnap, null, 2) + "\n");
   const meta = {
     dateFrom,
     dateTo,
     exportedAt: new Date().toISOString(),
+    backupRunStamp: runStamp,
     ozonRows: ozonSnap.length,
     wbRows: wbSnap.length,
     skuRows: skuSnap.length,
-    v6Rows: v6Snap.length,
+    v6PcmRows: pcmSnap.length,
+    v6DailyRows: dailySnap.length,
+    v6DashboardRows: v6DashSnap.length,
     dashboardRows: dashSnap.length,
     ozonPath,
     wbPath,
     skuPath,
     invPath,
+    v6PcmPath,
+    v6PcmInvPath,
+    v6DailyPath,
     v6Path,
     dashPath,
     restoreCommand: `WEEK_BACKUP_DIR=${outDir} bash scripts/fin_accept/deploy_entrypoint_R12.sh data-rollback`,
     cogsFinanceUntouched: true,
     dependentRecordsNote:
-      "PPM+SKU+V6+Dashboard exact scoped restore. Empty SKU[] clears SKUs in scope. Inventory hadRow=false keys deleted. Corrupt inventory/PPM contradiction rejected.",
+      "PPM+SKU+PeriodCompanyMarketplaceMetric+DailyCompanyMarketplaceMetric+Dashboard exact scoped restore. Empty SKU[] clears SKUs. Inventory hadRow=false keys deleted.",
   };
   fs.writeFileSync(metaPath, JSON.stringify(meta, null, 2) + "\n");
   console.log(JSON.stringify(meta, null, 2));

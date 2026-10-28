@@ -9,9 +9,10 @@
  * - Missing required sku file (when backup_dir) → hard fail (≠ empty array)
  * - Rejects corrupt backup: PPM row present in snapshot but inventory hadRow=false
  * - Validates SKU scope/MP/formula/dates before write
- * - Requires inventory + v6 + dashboard snapshot files in backup_dir (empty [] OK;
- *   missing file ≠ empty — hard fail)
- * - Restores V6/Dashboard and deletes in-scope week rows absent from those backups
+ * - Requires inventory + v6_pcm + v6_daily + v6 + dashboard files in backup_dir
+ *   (empty [] OK; missing file ≠ empty — hard fail)
+ * - Restores PeriodCompanyMarketplaceMetric + DailyCompanyMarketplaceMetric (real V6)
+ *   and DashboardPeriodSnapshot; deletes in-scope rows absent at backup
  * Does NOT touch COGS/Finance/loans/primary marketplace tables.
  */
 import assert from "node:assert/strict";
@@ -90,6 +91,34 @@ function loadJson<T>(p: string): T {
   return JSON.parse(fs.readFileSync(p, "utf8")) as T;
 }
 
+type PcmRow = {
+  companyScope: string;
+  marketplace: string;
+  dateFrom: string;
+  dateTo: string;
+  formulaVersion: string;
+  dataMode: string;
+  coverageStatus: string;
+  sourceFingerprint: string;
+  payloadChecksum: string;
+  payload: unknown;
+  meta: unknown;
+  generatedAt?: string;
+};
+
+type DailyRow = {
+  companyScope: string;
+  marketplace: string;
+  businessDate: string;
+  formulaVersion: string;
+  dataMode: string;
+  coverageStatus: string;
+  sourceFingerprint: string;
+  payloadChecksum: string;
+  payload: unknown;
+  generatedAt?: string;
+};
+
 function resolveInputs(input: string): {
   ozon: SnapshotRow[];
   wb: SnapshotRow[];
@@ -98,6 +127,9 @@ function resolveInputs(input: string): {
   skuFilePresent: boolean;
   v6: DashRow[];
   dashboard: DashRow[];
+  pcm: PcmRow[];
+  pcmInventory: InventoryRow[];
+  daily: DailyRow[];
   backupDir: string | null;
 } {
   const st = fs.statSync(input);
@@ -125,6 +157,9 @@ function resolveInputs(input: string): {
     assert.ok(Array.isArray(sku), "sku snapshot must be an array");
     const v6Path = path.join(input, "v6_period_snapshot.json");
     const dashPath = path.join(input, "dashboard_period_snapshot.json");
+    const pcmPath = path.join(input, "v6_pcm_snapshot.json");
+    const pcmInvPath = path.join(input, "v6_pcm_inventory.json");
+    const dailyPath = path.join(input, "v6_daily_snapshot.json");
     if (!fs.existsSync(v6Path)) {
       throw new Error(
         "MISSING_V6_SNAPSHOT_FILE — v6_period_snapshot.json required (use [] if none)",
@@ -135,10 +170,31 @@ function resolveInputs(input: string): {
         "MISSING_DASHBOARD_SNAPSHOT_FILE — dashboard_period_snapshot.json required (use [] if none)",
       );
     }
+    if (!fs.existsSync(pcmPath)) {
+      throw new Error(
+        "MISSING_V6_PCM_SNAPSHOT_FILE — v6_pcm_snapshot.json required (PeriodCompanyMarketplaceMetric)",
+      );
+    }
+    if (!fs.existsSync(pcmInvPath)) {
+      throw new Error(
+        "MISSING_V6_PCM_INVENTORY_FILE — v6_pcm_inventory.json required",
+      );
+    }
+    if (!fs.existsSync(dailyPath)) {
+      throw new Error(
+        "MISSING_V6_DAILY_SNAPSHOT_FILE — v6_daily_snapshot.json required (use [] if none)",
+      );
+    }
     const v6 = loadJson<DashRow[]>(v6Path);
     const dashboard = loadJson<DashRow[]>(dashPath);
+    const pcm = loadJson<PcmRow[]>(pcmPath);
+    const pcmInventory = loadJson<InventoryRow[]>(pcmInvPath);
+    const daily = loadJson<DailyRow[]>(dailyPath);
     assert.ok(Array.isArray(v6), "v6 snapshot must be an array");
     assert.ok(Array.isArray(dashboard), "dashboard snapshot must be an array");
+    assert.ok(Array.isArray(pcm), "v6 pcm snapshot must be an array");
+    assert.ok(Array.isArray(pcmInventory), "v6 pcm inventory must be an array");
+    assert.ok(Array.isArray(daily), "v6 daily snapshot must be an array");
     return {
       ozon,
       wb,
@@ -147,6 +203,9 @@ function resolveInputs(input: string): {
       skuFilePresent: true,
       v6,
       dashboard,
+      pcm,
+      pcmInventory,
+      daily,
       backupDir: input,
     };
   }
@@ -158,6 +217,9 @@ function resolveInputs(input: string): {
     skuFilePresent: false,
     v6: [],
     dashboard: [],
+    pcm: [],
+    pcmInventory: [],
+    daily: [],
     backupDir: null,
   };
 }
@@ -340,6 +402,74 @@ async function upsertDash(
   }
 }
 
+async function upsertPcm(
+  tx: Parameters<Parameters<typeof prisma.$transaction>[0]>[0],
+  r: PcmRow,
+) {
+  const key = {
+    companyScope: r.companyScope,
+    marketplace: r.marketplace,
+    dateFrom: new Date(`${r.dateFrom}T00:00:00.000Z`),
+    dateTo: new Date(`${r.dateTo}T00:00:00.000Z`),
+    formulaVersion: r.formulaVersion,
+  };
+  const existing = await tx.periodCompanyMarketplaceMetric.findUnique({
+    where: { companyScope_marketplace_dateFrom_dateTo_formulaVersion: key },
+  });
+  const data = {
+    dataMode: r.dataMode,
+    coverageStatus: r.coverageStatus,
+    sourceFingerprint: r.sourceFingerprint,
+    payloadChecksum: r.payloadChecksum,
+    payload: r.payload as object,
+    meta: r.meta as object,
+    generatedAt: r.generatedAt ? new Date(r.generatedAt) : new Date(),
+  };
+  if (!existing) {
+    await tx.periodCompanyMarketplaceMetric.create({
+      data: { ...key, ...data } as never,
+    });
+  } else {
+    await tx.periodCompanyMarketplaceMetric.update({
+      where: { companyScope_marketplace_dateFrom_dateTo_formulaVersion: key },
+      data: data as never,
+    });
+  }
+}
+
+async function upsertDaily(
+  tx: Parameters<Parameters<typeof prisma.$transaction>[0]>[0],
+  r: DailyRow,
+) {
+  const key = {
+    companyScope: r.companyScope,
+    marketplace: r.marketplace,
+    businessDate: new Date(`${r.businessDate}T00:00:00.000Z`),
+    formulaVersion: r.formulaVersion,
+  };
+  const existing = await tx.dailyCompanyMarketplaceMetric.findUnique({
+    where: { companyScope_marketplace_businessDate_formulaVersion: key },
+  });
+  const data = {
+    dataMode: r.dataMode,
+    coverageStatus: r.coverageStatus,
+    sourceFingerprint: r.sourceFingerprint,
+    payloadChecksum: r.payloadChecksum,
+    payload: r.payload as object,
+    generatedAt: r.generatedAt ? new Date(r.generatedAt) : new Date(),
+  };
+  if (!existing) {
+    await tx.dailyCompanyMarketplaceMetric.create({
+      data: { ...key, ...data } as never,
+    });
+  } else {
+    await tx.dailyCompanyMarketplaceMetric.update({
+      where: { companyScope_marketplace_businessDate_formulaVersion: key },
+      data: data as never,
+    });
+  }
+}
+
 async function main() {
   const {
     ozon,
@@ -349,6 +479,9 @@ async function main() {
     skuFilePresent,
     v6,
     dashboard,
+    pcm,
+    pcmInventory,
+    daily,
     backupDir,
   } = resolveInputs(arg);
   assert.ok(Array.isArray(ozon) && ozon.length > 0, "ozon snapshot required");
@@ -388,6 +521,10 @@ async function main() {
   let skuCreated = 0;
   let dashRestored = 0;
   let dashDeletedAbsent = 0;
+  let pcmRestored = 0;
+  let pcmDeletedAbsent = 0;
+  let dailyRestored = 0;
+  let dailyCleared = 0;
 
   await client.$transaction(async (tx) => {
     // 1) Delete in-scope rows that were absent at backup time
@@ -481,8 +618,78 @@ async function main() {
       }
     }
 
-    // 4) V6 / Dashboard: upsert rows present in backup, then delete in-scope
-    // week+formula rows that were absent at backup (post-backup appearance → gone).
+    // 4a) Real V6 PeriodCompanyMarketplaceMetric (producer table)
+    const pcmAbsent = new Set(
+      pcmInventory
+        .filter((i) => !i.hadRow)
+        .map((i) => `${i.companyScope}|${i.marketplace}|${i.formulaVersion}`),
+    );
+    const pcmKeep = new Set(
+      pcm.map((r) => `${r.companyScope}|${r.marketplace}|${r.formulaVersion}`),
+    );
+    for (const inv of pcmInventory) {
+      if (inv.hadRow) continue;
+      if (!ALLOWED_SCOPES.has(inv.companyScope)) continue;
+      if (inv.formulaVersion !== V6_FORMULA) continue;
+      const key = {
+        companyScope: inv.companyScope,
+        marketplace: inv.marketplace,
+        dateFrom: new Date(`${DATE_FROM}T00:00:00.000Z`),
+        dateTo: new Date(`${DATE_TO}T00:00:00.000Z`),
+        formulaVersion: inv.formulaVersion,
+      };
+      const existing = await tx.periodCompanyMarketplaceMetric.findUnique({
+        where: { companyScope_marketplace_dateFrom_dateTo_formulaVersion: key },
+      });
+      if (existing) {
+        await tx.periodCompanyMarketplaceMetric.delete({
+          where: { companyScope_marketplace_dateFrom_dateTo_formulaVersion: key },
+        });
+        pcmDeletedAbsent += 1;
+      }
+    }
+    for (const r of pcm) {
+      assert.ok(ALLOWED_SCOPES.has(r.companyScope), `pcm bad scope ${r.companyScope}`);
+      assert.equal(r.formulaVersion, V6_FORMULA);
+      assert.equal(r.dateFrom, DATE_FROM);
+      assert.equal(r.dateTo, DATE_TO);
+      if (pcmAbsent.has(`${r.companyScope}|${r.marketplace}|${r.formulaVersion}`)) {
+        continue;
+      }
+      await upsertPcm(tx, r);
+      pcmRestored += 1;
+    }
+    // Delete post-backup PCM keys not in backup keep set (canonical scopes)
+    if (backupDir) {
+      for (const companyScope of CANONICAL_PROFIT_COMPANY_SCOPES) {
+        const k = `${companyScope}|ALL|${V6_FORMULA}`;
+        if (pcmKeep.has(k) || pcmAbsent.has(k)) continue;
+        // already handled by inventory; extra safety for unknown MP variants
+      }
+    }
+
+    // 4b) DailyCompanyMarketplaceMetric for week — replace with backup set
+    if (backupDir) {
+      const cleared = await tx.dailyCompanyMarketplaceMetric.deleteMany({
+        where: {
+          businessDate: {
+            gte: new Date(`${DATE_FROM}T00:00:00.000Z`),
+            lte: new Date(`${DATE_TO}T00:00:00.000Z`),
+          },
+          formulaVersion: V6_FORMULA,
+          companyScope: { in: [...CANONICAL_PROFIT_COMPANY_SCOPES] },
+        },
+      });
+      dailyCleared = cleared.count;
+      for (const r of daily) {
+        assert.ok(ALLOWED_SCOPES.has(r.companyScope), `daily bad scope ${r.companyScope}`);
+        assert.equal(r.formulaVersion, V6_FORMULA);
+        await upsertDaily(tx, r);
+        dailyRestored += 1;
+      }
+    }
+
+    // 4c) DashboardPeriodSnapshot (V4 + optional V6-formula dash rows)
     const keepDash = new Set(
       [...v6, ...dashboard].map(
         (r) => `${r.companyScope}|${r.formulaVersion}`,
@@ -527,6 +734,10 @@ async function main() {
     skuRowsInBackup: sku.length,
     skuDeleted,
     skuCreated,
+    pcmRestored,
+    pcmDeletedAbsent,
+    dailyRestored,
+    dailyCleared,
     dashRestored,
     dashDeletedAbsent,
     cogsFinanceUntouched: true,

@@ -68,9 +68,37 @@ PY
 }
 
 stage_preflight_artifacts() {
-  need gh; need docker; need sha256sum; need python3; need node; need psql
+  need python3; need node; need psql
   mkdir -p "$FA_STATE" "$TAR_DIR" "$META_DIR" "$ENV_DIR" "$BACKUP_DIR"
   chmod 700 "$FA_STATE"
+  # Isolation disposable stand: prove MAIN orchestration without re-downloading multi-GB tarballs.
+  # Live MAIN must leave RUN_ALL_ISOLATION unset and pull both artifacts.
+  if [[ "${RUN_ALL_ISOLATION:-0}" == "1" ]]; then
+    need docker
+    python3 - <<'PY' "$MANIFEST"
+import json,sys,pathlib
+roles={
+  "app":{"ImageId":"sha256:35fe2ecd036d834ff977dd2771720a6d8f4273f5eec8555ea775133c8349c989"},
+  "profit":{"ImageId":"sha256:10c0ea6922cd1c97dccc367ac1bb9fb1258d766493785c94297cf40ae1a8a0f0"},
+  "v6":{"ImageId":"sha256:a37bd78157a2ab509d12831ff64ac5fb624c948ded8cc59b14e37e2e7301d219"},
+  "dashboard":{"ImageId":"sha256:4f4c512f519d09eccdf7fa28c705f0acbb5a7d9a15099fae7520fc65e7727c4b"},
+  "stock":{"ImageId":"sha256:d9d47b31b1486c533ba83691adf96976d90172adabb27a228772fa9373b36e37"},
+}
+pathlib.Path(sys.argv[1]).write_text(json.dumps(roles, indent=2)+"\n", encoding="utf-8")
+print("MANIFEST_ISOLATION_SEEDED_R15")
+PY
+    {
+      echo "imageStamp=$IMAGE_STAMP"
+      echo "imageBuildCommit=$IMAGE_BUILD_COMMIT"
+      echo "imageGhaRunId=${RUN_ID:-$IMAGE_GHA_RUN_ID}"
+      echo "scriptsCommit=${SCRIPTS_COMMIT:-unset}"
+      echo "isolationSoftPreflight=1"
+    } | tee "$FA_STATE/PROVENANCE.txt"
+    extract_expect_ids >/dev/null
+    echo "PREFLIGHT_ARTIFACTS_OK isolation_soft meta=$META_DIR"
+    return 0
+  fi
+  need gh; need docker; need sha256sum
   [[ -n "$RUN_ID" ]] || RUN_ID="$IMAGE_GHA_RUN_ID"
   [[ -n "$RUN_ID" ]] || die "set GHA_RUN_ID (or IMAGE_GHA_RUN_ID) to green images run"
   # BOTH artifacts required BEFORE any stop
@@ -130,6 +158,24 @@ stage_capture_env() {
   need docker; need python3
   mkdir -p "$ENV_DIR" "$JOURNAL_DIR"
   local pair role cname out journal_out
+  # Isolation disposable: seed cutover env from runner.env / DATABASE_URL (no live MAIN containers).
+  if [[ "${RUN_ALL_ISOLATION:-0}" == "1" ]]; then
+    local seed="${RUNNER_ENV_EXPORT_FILE:-$FA_STATE/runner.env}"
+    if [[ ! -f "$seed" || ! grep -q '^DATABASE_URL=.' "$seed" 2>/dev/null ]]; then
+      [[ -n "${DATABASE_URL:-}" ]] || die "isolation capture-env needs DATABASE_URL or runner.env"
+      printf 'DATABASE_URL=%s\nWAVE_B_PROFIT_TARGET_DATABASE_URL=%s\nV6_READMODEL_TARGET_DATABASE_URL=%s\nWAVE_B_TARGET_DB_MODE=SAME_PRODUCTION_DB\nWAVE_B_PROFIT_WORKER_MODE=queue\n' \
+        "$DATABASE_URL" "${WAVE_B_PROFIT_TARGET_DATABASE_URL:-$DATABASE_URL}" "${V6_READMODEL_TARGET_DATABASE_URL:-$DATABASE_URL}" \
+        > "$seed"
+    fi
+    for pair in "${ROLES_CONTAINERS[@]}"; do
+      role="${pair%%|*}"
+      cp -f "$seed" "$ENV_DIR/${role}.captured.env"
+      cp -f "$seed" "$ENV_DIR/${role}.expected.env"
+      chmod 600 "$ENV_DIR/${role}.captured.env" "$ENV_DIR/${role}.expected.env" 2>/dev/null || true
+    done
+    echo "CAPTURE_ENV_OK isolation_seeded dir=$ENV_DIR"
+    return 0
+  fi
   for pair in "${ROLES_CONTAINERS[@]}"; do
     role="${pair%%|*}"
     cname="${pair##*|}"
@@ -211,9 +257,27 @@ PY
 stage_load_runner_env() {
   local role="${1:-profit}"
   local cap="$ENV_DIR/${role}.captured.env"
-  [[ -f "$cap" ]] || die "missing $cap — run capture-env"
   local out="${RUNNER_ENV_EXPORT_FILE:-$FA_STATE/runner.env}"
   mkdir -p "$FA_STATE"
+  # Isolation: prefer already-prepared runner.env / captured profit env with DATABASE_URL
+  if [[ "${RUN_ALL_ISOLATION:-0}" == "1" ]]; then
+    if [[ ! -f "$cap" || ! grep -q '^DATABASE_URL=.' "$cap" 2>/dev/null ]]; then
+      if [[ -f "$out" ]] && grep -q '^DATABASE_URL=.' "$out" 2>/dev/null; then
+        cap="$out"
+      elif [[ -n "${DATABASE_URL:-}" ]]; then
+        printf 'DATABASE_URL=%s\nWAVE_B_PROFIT_TARGET_DATABASE_URL=%s\nV6_READMODEL_TARGET_DATABASE_URL=%s\nWAVE_B_TARGET_DB_MODE=SAME_PRODUCTION_DB\nWAVE_B_PROFIT_WORKER_MODE=queue\n' \
+          "$DATABASE_URL" "${WAVE_B_PROFIT_TARGET_DATABASE_URL:-$DATABASE_URL}" "${V6_READMODEL_TARGET_DATABASE_URL:-$DATABASE_URL}" \
+          > "$ENV_DIR/${role}.captured.env"
+        cp -f "$ENV_DIR/${role}.captured.env" "$ENV_DIR/${role}.expected.env"
+        for r in v6 dashboard app stock; do
+          cp -f "$ENV_DIR/${role}.captured.env" "$ENV_DIR/${r}.captured.env"
+          cp -f "$ENV_DIR/${role}.captured.env" "$ENV_DIR/${r}.expected.env"
+        done
+        cap="$ENV_DIR/${role}.captured.env"
+      fi
+    fi
+  fi
+  [[ -f "$cap" ]] || die "missing $cap — run capture-env"
   python3 - <<'PY' "$cap" "$out"
 import sys
 allow={"DATABASE_URL","V6_READMODEL_TARGET_DATABASE_URL","WAVE_B_PROFIT_TARGET_DATABASE_URL",
@@ -316,14 +380,39 @@ stage_backup_week() {
     eval "$(python3 "$ROOT/scripts/fin_accept/safe_load_env_R18.py" "$envf" --print-exports)"
   fi
   : "${DATABASE_URL:?DATABASE_URL required for backup}"
+  # Fresh run directory — stale files from a prior failed export are not success.
+  local run_stamp="${BACKUP_RUN_STAMP:-$(date -u +%Y%m%dT%H%M%SZ)}"
+  export BACKUP_RUN_STAMP="$run_stamp"
   mkdir -p "$BACKUP_DIR"
+  # Clear previous snapshot payloads in this BACKUP_DIR (keep parent path)
+  rm -f "$BACKUP_DIR"/*.json "$BACKUP_DIR/export_stdout.txt" "$BACKUP_DIR/EXPORT_OK.marker"
+  set -o pipefail
   node --import tsx "$ROOT/scripts/fin_accept/export_profit_period_backup_R16.ts" "$BACKUP_DIR" \
     | tee "$BACKUP_DIR/export_stdout.txt"
+  local export_rc=${PIPESTATUS[0]}
+  set +o pipefail
+  [[ "$export_rc" -eq 0 ]] || die "backup exporter failed exit=$export_rc"
+  grep -q 'EXPORT_PROFIT_PERIOD_BACKUP_R16_OK' "$BACKUP_DIR/export_stdout.txt" \
+    || die "backup exporter OK marker missing — refuse stale files"
   [[ -f "$BACKUP_DIR/ozon_profit_period_snapshot.json" ]] || die "backup Ozon snapshot missing"
   [[ -f "$BACKUP_DIR/backup_meta.json" ]] || die "backup meta missing"
+  [[ -f "$BACKUP_DIR/v6_pcm_snapshot.json" ]] || die "backup V6 PCM snapshot missing"
+  [[ -f "$BACKUP_DIR/v6_pcm_inventory.json" ]] || die "backup V6 PCM inventory missing"
+  [[ -f "$BACKUP_DIR/v6_daily_snapshot.json" ]] || die "backup V6 daily snapshot missing"
+  python3 - <<'PY' "$BACKUP_DIR/backup_meta.json" "$run_stamp"
+import json,sys
+meta=json.load(open(sys.argv[1],encoding="utf-8"))
+stamp=sys.argv[2]
+if meta.get("backupRunStamp") != stamp:
+  raise SystemExit(f"BACKUP_STALE_OR_FOREIGN stamp want={stamp} got={meta.get('backupRunStamp')}")
+if not meta.get("exportedAt"):
+  raise SystemExit("BACKUP_META_MISSING_exportedAt")
+print("BACKUP_META_FRESH_OK")
+PY
+  echo "ok $run_stamp" > "$BACKUP_DIR/EXPORT_OK.marker"
   export OZON_PERIOD_SNAPSHOT_JSON="$BACKUP_DIR/ozon_profit_period_snapshot.json"
   echo "$OZON_PERIOD_SNAPSHOT_JSON" > "$FA_STATE/OZON_PERIOD_SNAPSHOT_JSON.path"
-  echo "BACKUP_WEEK_OK path=$OZON_PERIOD_SNAPSHOT_JSON"
+  echo "BACKUP_WEEK_OK path=$OZON_PERIOD_SNAPSHOT_JSON stamp=$run_stamp"
 }
 
 wait_running_zero() {
@@ -660,11 +749,16 @@ print("TELEGRAM_PLAN_OK" if plan["telegramReady"] else "TELEGRAM_PLAN_WRITTEN_NE
 PY
 }
 
-# Single controlling runner — keeps env in-process; recovers ALL roles on fail before switch.
-# Note: `die` uses `exit` and bypasses ERR traps — every step is wrapped explicitly.
+# Single controlling runner.
+# Each stage runs in a fail-fast SUBSHELL so explicit `die`/`exit` and pipeline
+# failures cannot be swallowed by a parent `set +e` around an in-process call.
+# Optional RUN_ALL_CHILD_ENTRYPOINT=1 runs stages as separate entrypoint processes
+# (integration isolation / live MAIN) with safe_load_env --exec.
 stage_run_all() {
   local switched=0
   local writers_stopped=0
+  local envf="${RUNNER_ENV_EXPORT_FILE:-$FA_STATE/runner.env}"
+
   recover_pre_switch() {
     if [[ "$writers_stopped" -eq 1 && "$switched" -eq 0 ]]; then
       echo "RUN_ALL_RECOVER pre-switch — restoring touched workers" >&2
@@ -674,20 +768,81 @@ stage_run_all() {
         echo "FATAL: restore_all_touched failed during run-all recovery" >&2
         return 1
       fi
+      if [[ -f "$touched_file" ]] && command -v docker >/dev/null 2>&1; then
+        while read -r cname; do
+          [[ -z "$cname" ]] && continue
+          local running
+          running="$(docker inspect -f '{{.State.Running}}' "$cname" 2>/dev/null || echo false)"
+          if [[ "$running" != "true" ]]; then
+            echo "FATAL: recovered container not Running: $cname" >&2
+            return 1
+          fi
+        done < "$touched_file"
+      fi
       echo "RUN_ALL_RECOVER_OK"
     fi
     return 0
   }
+
+  recover_post_switch() {
+    echo "RUN_ALL_RECOVER post-switch — data-rollback then restore writers" >&2
+    set +e
+    WEEK_BACKUP_DIR="$BACKUP_DIR" bash "$ROOT/scripts/fin_accept/deploy_entrypoint_R12.sh" data-rollback
+    local dr=$?
+    set -e
+    [[ "$dr" -eq 0 ]] || { echo "FATAL: data-rollback failed exit=$dr" >&2; return 1; }
+    local state_file="$FA_STATE/stop_claims_prestate.json"
+    local touched_file="$FA_STATE/stop_claims_touched.txt"
+    restore_all_touched "$state_file" "$touched_file" || return 1
+    echo "RUN_ALL_POST_SWITCH_RECOVER_OK"
+    return 0
+  }
+
   run_step() {
     local name="$1"
     shift
     echo "RUN_ALL_STEP $name"
     set +e
-    "$@"
+    if [[ "${RUN_ALL_CHILD_ENTRYPOINT:-0}" == "1" ]]; then
+      # Real entrypoint child (integration / live)
+      local stage_args=("$@")
+      if [[ -f "$envf" ]]; then
+        python3 "$ROOT/scripts/fin_accept/safe_load_env_R18.py" "$envf" --exec -- \
+          env FA_STATE="$FA_STATE" ENV_CAPTURE_DIR="$ENV_DIR" ENV_DIR="$ENV_DIR" \
+              WEEK_BACKUP_DIR="$BACKUP_DIR" CUTOVER_JOURNAL_DIR="$JOURNAL_DIR" \
+              RUNNER_ENV_EXPORT_FILE="$envf" BACKUP_RUN_STAMP="${BACKUP_RUN_STAMP:-}" \
+              RUN_ALL_ISOLATION="${RUN_ALL_ISOLATION:-0}" \
+              RUN_ALL_STOP_AFTER="${RUN_ALL_STOP_AFTER:-}" \
+              RUN_ALL_CHILD_ENTRYPOINT="${RUN_ALL_CHILD_ENTRYPOINT:-0}" \
+              STAMP="${STAMP:-}" IMAGE_STAMP="${IMAGE_STAMP:-}" \
+          bash -c 'set -euo pipefail; exec bash "$@"' _ \
+            "$ROOT/scripts/fin_accept/deploy_entrypoint_R12.sh" "${stage_args[@]}"
+      else
+        env FA_STATE="$FA_STATE" ENV_CAPTURE_DIR="$ENV_DIR" ENV_DIR="$ENV_DIR" \
+            WEEK_BACKUP_DIR="$BACKUP_DIR" CUTOVER_JOURNAL_DIR="$JOURNAL_DIR" \
+            RUN_ALL_ISOLATION="${RUN_ALL_ISOLATION:-0}" \
+            RUN_ALL_STOP_AFTER="${RUN_ALL_STOP_AFTER:-}" \
+          bash -c 'set -euo pipefail; exec bash "$@"' _ \
+            "$ROOT/scripts/fin_accept/deploy_entrypoint_R12.sh" "${stage_args[@]}"
+      fi
+    else
+      # Fail-fast subshell: die/exit/pipefail abort only the subshell; parent recovers.
+      (
+        set -euo pipefail
+        if [[ -f "$envf" && -z "${DATABASE_URL:-}" ]]; then
+          eval "$(python3 "$ROOT/scripts/fin_accept/safe_load_env_R18.py" "$envf" --print-exports)"
+        fi
+        "$@"
+      )
+    fi
     local rc=$?
     set -e
     if [[ "$rc" -ne 0 ]]; then
       echo "RUN_ALL_STEP_FAIL name=$name exit=$rc" >&2
+      if [[ "$switched" -eq 1 ]]; then
+        recover_post_switch || die "run-all step failed: $name AND post-switch recovery failed"
+        die "run-all step failed: $name (exit=$rc); post-switch rollback attempted"
+      fi
       if ! recover_pre_switch; then
         die "run-all step failed: $name (exit=$rc) AND recovery failed"
       fi
@@ -695,25 +850,61 @@ stage_run_all() {
     fi
   }
 
-  run_step preflight-artifacts stage_preflight_artifacts
-  run_step capture-env stage_capture_env
-  run_step load-runner-env stage_load_runner_env profit
-  # Ensure env survives into subsequent steps of THIS process (declare -gx)
-  run_step runtime-preflight stage_runtime_preflight
-  run_step compare-env-profit stage_compare_env profit
-  run_step compare-env-v6 stage_compare_env v6
-  run_step compare-env-dashboard stage_compare_env dashboard
+  # Optional RUN_ALL_STOP_AFTER=<stage> stops after that successful step (isolation).
+  # Allowed: backup-week | switch | weekly | verify-week (default: full).
+  local stop_after="${RUN_ALL_STOP_AFTER:-}"
 
-  # Quiesce writers BEFORE consistent derived backup
-  run_step stop-claims stage_stop_claims
-  writers_stopped=1
-  run_step backup-week stage_backup_week
+  maybe_stop_after() {
+    local done="$1"
+    if [[ -n "$stop_after" && "$stop_after" == "$done" ]]; then
+      echo "RUN_ALL_STOP_AFTER=$done — isolation partial MAIN complete"
+      echo "RUN_ALL_MAIN_OK"
+      return 0
+    fi
+    return 1
+  }
 
-  run_step switch stage_switch
-  switched=1
-
-  run_step weekly stage_weekly
-  run_step verify-week stage_verify_week
+  if [[ "${RUN_ALL_CHILD_ENTRYPOINT:-0}" == "1" ]]; then
+    run_step preflight-artifacts preflight-artifacts
+    run_step capture-env capture-env
+    run_step load-runner-env load-runner-env profit
+    envf="${RUNNER_ENV_EXPORT_FILE:-$FA_STATE/runner.env}"
+    run_step runtime-preflight runtime-preflight
+    run_step compare-env-profit compare-env profit
+    run_step compare-env-v6 compare-env v6
+    run_step compare-env-dashboard compare-env dashboard
+    run_step stop-claims stop-claims
+    writers_stopped=1
+    run_step backup-week backup-week
+    maybe_stop_after backup-week && return 0
+    run_step switch switch
+    switched=1
+    maybe_stop_after switch && return 0
+    run_step weekly weekly
+    maybe_stop_after weekly && return 0
+    run_step verify-week verify-week
+  else
+    run_step preflight-artifacts stage_preflight_artifacts
+    run_step capture-env stage_capture_env
+    # load-runner-env in parent so declare -gx reaches this shell when needed
+    echo "RUN_ALL_STEP load-runner-env"
+    stage_load_runner_env profit
+    envf="${RUNNER_ENV_EXPORT_FILE:-$FA_STATE/runner.env}"
+    run_step runtime-preflight stage_runtime_preflight
+    run_step compare-env-profit stage_compare_env profit
+    run_step compare-env-v6 stage_compare_env v6
+    run_step compare-env-dashboard stage_compare_env dashboard
+    run_step stop-claims stage_stop_claims
+    writers_stopped=1
+    run_step backup-week stage_backup_week
+    maybe_stop_after backup-week && return 0
+    run_step switch stage_switch
+    switched=1
+    maybe_stop_after switch && return 0
+    run_step weekly stage_weekly
+    maybe_stop_after weekly && return 0
+    run_step verify-week stage_verify_week
+  fi
   echo "RUN_ALL_MAIN_OK"
 }
 

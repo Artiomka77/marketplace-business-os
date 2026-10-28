@@ -78,7 +78,34 @@ jobs:
           set -euo pipefail
           sed -i 's/\r$//' scripts/fin_accept/*.sh
           chmod +x scripts/fin_accept/*.sh scripts/fin_accept/*.py || true
+      - name: Fetch accepted R15 app image tarball (Telegram NEW candidate)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/r15_image_tarballs
+          # Prefer draft-release portable app tar when present; else GHA artifact from green R15 build.
+          if gh release download fin-close-c01-primary-stand \
+              --pattern 'app_fin_accept_20261028_R15.tar.gz' \
+              --dir /tmp/r15_image_tarballs 2>/tmp/app_tar_dl.err; then
+            mkdir -p /tmp/r15_image_tarballs/image-tarballs
+            mv /tmp/r15_image_tarballs/app_fin_accept_20261028_R15.tar.gz \
+              /tmp/r15_image_tarballs/image-tarballs/app.tar.gz
+            echo "APP_TAR_FROM_RELEASE"
+          else
+            cat /tmp/app_tar_dl.err || true
+            gh run download 40653680208 --repo "${{ github.repository }}" \
+              -n fin-accept-image-tarballs-20261028_R15 \
+              -D /tmp/r15_image_tarballs
+            test -f /tmp/r15_image_tarballs/image-tarballs/app.tar.gz \
+              || test -f /tmp/r15_image_tarballs/app.tar.gz
+            echo "APP_TAR_FROM_R15_ARTIFACT"
+          fi
+          find /tmp/r15_image_tarballs -name 'app.tar.gz' -printf '%p %s\n'
+          echo "TELEGRAM_APP_TAR=$(find /tmp/r15_image_tarballs -name 'app.tar.gz' | head -1)" >> "$GITHUB_ENV"
       - name: Run isolated R18/C01 sequence
+        env:
+          TELEGRAM_APP_TAR: ${{ env.TELEGRAM_APP_TAR }}
         run: bash scripts/fin_accept/run_isolated_deploy_sequence_R18.sh
       - name: Upload isolation evidence
         if: always()
