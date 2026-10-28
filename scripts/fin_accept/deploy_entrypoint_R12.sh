@@ -265,7 +265,7 @@ stage_runtime_preflight() {
     eval "$(python3 "$ROOT/scripts/fin_accept/safe_load_env_R18.py" "$envf" --print-exports)"
   fi
   : "${DATABASE_URL:?DATABASE_URL required after safe load}"
-  node --import tsx -e 'import { prisma } from "@/lib/prisma"; const n=await prisma.$queryRawUnsafe("select 1 as n"); console.log("PRISMA_DB_OK", n); await prisma.$disconnect();' \
+  node --import tsx "$ROOT/scripts/fin_accept/runtime_preflight_db_R18.ts" \
     || die "prisma/db preflight failed"
   echo "RUNTIME_PREFLIGHT_OK"
 }

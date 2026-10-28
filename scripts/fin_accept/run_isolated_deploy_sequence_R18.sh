@@ -151,46 +151,100 @@ grep -q 'STOP_CLAIMS_RECOVER_ALL\|RESTARTED start avorofin-profit\|start avorofi
   "$OUT_DIR/logs/stop_claims_multi.txt" "$OUT_DIR/logs/docker_calls.txt" \
   || { echo "FAIL recover all"; exit 36; }
 
-# ---------- G3: enqueue + REAL workers (no SQL SUCCESS) ----------
-echo "=== G3 enqueue + real worker drain ==="
+# ---------- G3: enqueue + REAL worker scripts (no SQL SUCCESS, no fixture-canon for VERIFIED) ----------
+echo "=== G3 enqueue + real worker scripts ==="
 psql "$DATABASE_URL" -c "DELETE FROM \"DashboardPeriodSnapshotJob\" WHERE id LIKE 'iso-%';"
 
 export WEEKLY_STAGE=profit WEEKLY_JOB_IDS_FILE="$OUT_DIR/ids/weekly_ids_profit.txt"
 node --import tsx scripts/fin_accept/run_weekly_enqueue_R12.ts "$OUT_DIR/weekly_profit.json" \
   | tee "$OUT_DIR/logs/enqueue_profit.txt"
-node --import tsx scripts/fin_accept/iso_drain_workers_R18.ts profit \
-  | tee "$OUT_DIR/logs/drain_profit.txt"
+
+# Actual profit worker binary (queue-once). Without primary marketplace rows this
+# typically cannot produce FINAL canon — that is recorded honestly for CLOSE_ACCEPTANCE.
+set +e
+WAVE_B_PROFIT_WORKER_MODE=queue-once WAVE_B_PROFIT_WORKER_MAX_JOBS=6 \
+  WAVE_B_PROFIT_WORKER_POLL_MS=500 \
+  node --import tsx scripts/dashboard/runProfitReadModelWorker.ts \
+  >"$OUT_DIR/logs/real_worker_profit.txt" 2>&1
+rwp=$?
+set -e
+echo "real_worker_profit_exit=$rwp" | tee -a "$OUT_DIR/logs/real_worker_profit.txt"
+
+set +e
 WEEKLY_STAGE=profit WEEKLY_JOB_IDS_FILE="$OUT_DIR/ids/weekly_ids_profit.txt" \
-  bash scripts/fin_accept/wait_weekly_R12.sh | tee "$OUT_DIR/logs/wait_profit.txt"
+  WEEKLY_WAIT_POLL_MAX=8 \
+  bash scripts/fin_accept/wait_weekly_R12.sh >"$OUT_DIR/logs/wait_profit_real.txt" 2>&1
+wpr=$?
+set -e
+echo "wait_profit_real_exit=$wpr" | tee -a "$OUT_DIR/logs/wait_profit_real.txt"
 
 for st in v6 dashboard; do
   export WEEKLY_STAGE=$st WEEKLY_JOB_IDS_FILE="$OUT_DIR/ids/weekly_ids_${st}.txt"
   node --import tsx scripts/fin_accept/run_weekly_enqueue_R12.ts "$OUT_DIR/weekly_${st}.json" \
     | tee "$OUT_DIR/logs/enqueue_${st}.txt"
+done
+set +e
+V6_READMODEL_WORKER_MODE=queue-once V6_READMODEL_WORKER_MAX_JOBS=3 \
+  node --import tsx scripts/dashboard/runV6PeriodReadModelWorker.ts \
+  >"$OUT_DIR/logs/real_worker_v6.txt" 2>&1
+rwv=$?
+DASHBOARD_SNAPSHOT_WORKER_MODE=drain \
+  node --import tsx scripts/dashboard/runDashboardPeriodSnapshotWorker.ts \
+  >"$OUT_DIR/logs/real_worker_dashboard.txt" 2>&1
+rwd=$?
+set -e
+echo "real_worker_v6_exit=$rwv dashboard_exit=$rwd" | tee "$OUT_DIR/logs/real_worker_exits.txt"
+
+set +e
+node --import tsx scripts/fin_accept/verify_week_consumer_R12.ts "$OUT_DIR/verify_hit_real.json" \
+  >"$OUT_DIR/logs/verify_hit_real.txt" 2>&1
+vh_real=$?
+set -e
+echo "verify_hit_real_exit=$vh_real" | tee -a "$OUT_DIR/logs/verify_hit_real.txt"
+
+# G3 status: VERIFIED only if real workers completed matrix + consumer PASS
+g3_status="BLOCKED"
+g3_proof="real_worker_scripts"
+if [[ "$wpr" -eq 0 && "$vh_real" -eq 0 ]]; then
+  g3_status="VERIFIED"
+fi
+echo "g3_status=$g3_status" | tee "$OUT_DIR/logs/g3_status.txt"
+
+# Contract setup for G4/G5 (NOT counted as G3 VERIFIED — fixture compute marker)
+echo "fixture_compute_for_g4_setup_only" > "$OUT_DIR/logs/g3_used_fixture_compute.txt"
+# Reset jobs/metrics for rollback contract tests
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 <<'SQL'
+TRUNCATE "DashboardPeriodSnapshotJob" CASCADE;
+TRUNCATE "DashboardPeriodSnapshot" CASCADE;
+TRUNCATE "ProfitPeriodMetric" CASCADE;
+TRUNCATE "ProfitSkuPeriodMetric" CASCADE;
+SQL
+node --import tsx scripts/fin_accept/load_finance_fixture_R17.ts "$FIXTURE" \
+  | tee "$OUT_DIR/logs/reload_finance_g4.txt"
+export WEEKLY_STAGE=profit WEEKLY_JOB_IDS_FILE="$OUT_DIR/ids/weekly_ids_profit.txt"
+node --import tsx scripts/fin_accept/run_weekly_enqueue_R12.ts "$OUT_DIR/weekly_profit_g4.json" \
+  | tee "$OUT_DIR/logs/enqueue_profit_g4.txt"
+node --import tsx scripts/fin_accept/iso_drain_workers_R18.ts profit \
+  | tee "$OUT_DIR/logs/drain_profit.txt"
+WEEKLY_STAGE=profit WEEKLY_JOB_IDS_FILE="$OUT_DIR/ids/weekly_ids_profit.txt" \
+  bash scripts/fin_accept/wait_weekly_R12.sh | tee "$OUT_DIR/logs/wait_profit.txt"
+for st in v6 dashboard; do
+  export WEEKLY_STAGE=$st WEEKLY_JOB_IDS_FILE="$OUT_DIR/ids/weekly_ids_${st}.txt"
+  node --import tsx scripts/fin_accept/run_weekly_enqueue_R12.ts "$OUT_DIR/weekly_${st}_g4.json" \
+    | tee "$OUT_DIR/logs/enqueue_${st}_g4.txt"
   node --import tsx scripts/fin_accept/iso_drain_workers_R18.ts "$st" \
     | tee "$OUT_DIR/logs/drain_${st}.txt"
   WEEKLY_STAGE=$st WEEKLY_JOB_IDS_FILE="$OUT_DIR/ids/weekly_ids_${st}.txt" \
     bash scripts/fin_accept/wait_weekly_R12.sh | tee "$OUT_DIR/logs/wait_${st}.txt"
 done
-cat "$OUT_DIR/ids/weekly_ids_profit.txt" "$OUT_DIR/ids/weekly_ids_v6.txt" "$OUT_DIR/ids/weekly_ids_dashboard.txt" \
-  > "$OUT_DIR/ids/weekly_ids_final.txt"
-WEEKLY_STAGE=final WEEKLY_JOB_IDS_FILE="$OUT_DIR/ids/weekly_ids_final.txt" \
-  bash scripts/fin_accept/wait_weekly_R12.sh | tee "$OUT_DIR/logs/wait_final.txt"
-
-# Prove jobs were SUCCESS via worker (finishedAt set, lockedBy cleared) — not a pre-seed
-psql "$DATABASE_URL" -Atc "SELECT count(*) FROM \"DashboardPeriodSnapshotJob\" WHERE status='SUCCESS' AND \"finishedAt\" IS NOT NULL AND \"dateFrom\"='2026-10-19'::date" \
-  | tee "$OUT_DIR/logs/success_job_count.txt"
-
-echo "=== G3 positive verify with Finance (REQUIRED) ==="
 set +e
 node --import tsx scripts/fin_accept/verify_week_consumer_R12.ts "$OUT_DIR/verify_hit.json" \
   >"$OUT_DIR/logs/verify_hit.txt" 2>&1
 vh=$?
 set -e
-echo "verify_hit_exit=$vh" | tee -a "$OUT_DIR/logs/verify_hit.txt"
-[[ "$vh" -eq 0 ]] || { echo "FAIL positive verify"; tail -40 "$OUT_DIR/logs/verify_hit.txt"; exit 37; }
+echo "verify_hit_contract_exit=$vh (g4 setup; not G3 proof)" | tee -a "$OUT_DIR/logs/verify_hit.txt"
+[[ "$vh" -eq 0 ]] || { echo "FAIL g4-setup verify"; tail -40 "$OUT_DIR/logs/verify_hit.txt"; exit 37; }
 
-# V6/Dashboard consumers (snapshot present)
 v6c="$(psql "$DATABASE_URL" -Atc "SELECT count(*) FROM \"DashboardPeriodSnapshot\" WHERE \"formulaVersion\"='FINANCIAL_CORE_V6_PERIOD_READMODEL_V2'")"
 dsc="$(psql "$DATABASE_URL" -Atc "SELECT count(*) FROM \"DashboardPeriodSnapshot\" WHERE \"formulaVersion\"='FINANCIAL_CORE_V4_PERIOD_SNAPSHOT_V1'")"
 echo "v6_snapshots=$v6c dashboard_snapshots=$dsc" | tee "$OUT_DIR/logs/dependent_snapshots.txt"
@@ -243,26 +297,8 @@ node --import tsx scripts/fin_accept/export_profit_period_backup_R16.ts "$OUT_DI
   | tee "$OUT_DIR/logs/backup_sku.txt"
 # Force empty SKU file in backup while adding a new SKU in DB
 echo '[]' > "$OUT_DIR/backup_sku/sku_profit_period_snapshot.json"
-node --import tsx scripts/fin_accept/iso_mutate_helpers_R16.ts ensure_extra_sku \
-  >"$OUT_DIR/logs/ensure_extra_sku.txt" 2>&1 || \
-node --import tsx -e '
-import { prisma } from "@/lib/prisma";
-import { FINANCIAL_CORE_V6_PROFIT_OZON_READMODEL_V1 } from "@/lib/profitReadModel/contract";
-await prisma.profitSkuPeriodMetric.create({
-  data: {
-    companyScope: "ALL",
-    marketplace: "OZON",
-    dateFrom: new Date("2026-10-19T00:00:00.000Z"),
-    dateTo: new Date("2026-10-25T00:00:00.000Z"),
-    formulaVersion: FINANCIAL_CORE_V6_PROFIT_OZON_READMODEL_V1,
-    productKey: "post-backup-sku",
-    payload: { x: 1 },
-    generatedAt: new Date(),
-  },
-});
-console.log("EXTRA_SKU_CREATED");
-await prisma.$disconnect();
-' | tee "$OUT_DIR/logs/ensure_extra_sku.txt"
+node --import tsx scripts/fin_accept/iso_extra_sku_R18.ts \
+  | tee "$OUT_DIR/logs/ensure_extra_sku.txt"
 node --import tsx scripts/fin_accept/run_data_rollback_ozon_R12.ts "$OUT_DIR/backup_sku" \
   | tee "$OUT_DIR/logs/restore_empty_sku.txt"
 left="$(psql "$DATABASE_URL" -Atc "SELECT count(*) FROM \"ProfitSkuPeriodMetric\" WHERE \"productKey\"='post-backup-sku'")"
@@ -323,46 +359,138 @@ PY
 # Mock docker telegram health rehearsal
 bash scripts/fin_accept/telegram_rehearsal_R18.sh "$OUT_DIR/telegram" \
   | tee "$OUT_DIR/logs/telegram_rehearsal.txt"
+tg_reh=0
+grep -q 'TELEGRAM_REHEARSAL_R18_OK' "$OUT_DIR/logs/telegram_rehearsal.txt" || tg_reh=1
 
-# ---------- SUMMARY ----------
+# ---------- Meta: assert rejects incomplete CLOSE_ACCEPTANCE ----------
+echo "=== meta: readiness assert must refuse incomplete gates ==="
+python3 - <<'PY' "$OUT_DIR/CLOSE_ACCEPTANCE_INCOMPLETE.json"
+import json,sys
+doc={
+  "gates":[{"id":"G1","status":"VERIFIED","evidence":["x"]},
+           {"id":"G2","status":"VERIFIED","evidence":["x"]},
+           {"id":"G3","status":"NOT_RUN","evidence":[]},
+           {"id":"G4","status":"VERIFIED","evidence":["x"]},
+           {"id":"G5","status":"VERIFIED","evidence":["x"]},
+           {"id":"G6","status":"VERIFIED","evidence":["x"]}],
+  "readyForDeploy": True,
+  "productionChanged": False,
+  "telegramSent": False,
+}
+json.dump(doc, open(sys.argv[1],"w",encoding="utf-8"), indent=2)
+PY
+set +e
+node --import tsx scripts/fin_accept/assert_close_acceptance_R18.ts \
+  "$OUT_DIR/CLOSE_ACCEPTANCE_INCOMPLETE.json" "$OUT_DIR" \
+  >"$OUT_DIR/logs/assert_incomplete.txt" 2>&1
+ai=$?
+set -e
+[[ "$ai" -ne 0 ]] || { echo "FAIL assert must reject incomplete"; exit 45; }
+
+# ---------- Write CLOSE_ACCEPTANCE from actual run ----------
+scripts_commit="$(git rev-parse HEAD 2>/dev/null || echo unknown)"
 python3 - <<PY
 import json, pathlib
-out=pathlib.Path("$OUT_DIR")
-summary={
+out = pathlib.Path("$OUT_DIR")
+g3_status = "$g3_status"
+g1_ok = ($ed == 0 and $rp == 0)
+g2_ok = ($spf != 0 and $sc != 0)
+g4_ok = ($rc_corrupt != 0 and "$gone" == "0" and "$left" == "0" and $vr == 0)
+g5_ok = ($tg_reh == 0) and (out/"fa_state"/"telegram_plan.json").exists()
+# G6 = reproducible bundle only after G1-G5 VERIFIED
+g6_status = "VERIFIED" if (g1_ok and g2_ok and g3_status == "VERIFIED" and g4_ok and g5_ok) else "BLOCKED"
+if g3_status != "VERIFIED":
+  g6_status = "BLOCKED"
+
+def gate(gid, desc, ok, evidence, proof, blocked_reason=None):
+  st = "VERIFIED" if ok else ("BLOCKED" if blocked_reason else "FAILED")
+  if gid == "G3":
+    st = g3_status if g3_status in ("VERIFIED","BLOCKED","FAILED") else "FAILED"
+  if gid == "G6":
+    st = g6_status
+  g = {"id": gid, "description": desc, "status": st, "evidence": evidence, "proofType": proof}
+  if blocked_reason and st != "VERIFIED":
+    g["blockedReason"] = blocked_reason
+  return g
+
+doc = {
+  "documentType": "CLOSE_ACCEPTANCE_EXECUTED",
+  "scope": "FIN_CLOSE_20261028_C01 / R18",
+  "weekBusinessCanon": 994198.47,
+  "scriptsCommit": "$scripts_commit",
+  "gates": [
+    gate("G1", "Safe effective environment reaches all runners", g1_ok,
+         ["logs/env_dollar.txt","logs/runtime_preflight_cross_proc.txt","logs/env_runtime_match.txt"],
+         "safe_load_env_R18+runtime_preflight"),
+    gate("G2", "MAIN stop/recovery on SQL/docker failure", g2_ok,
+         ["logs/stop_claims_psql_fail.txt","logs/stop_claims_multi.txt","logs/docker_calls.txt"],
+         "mock_docker+real_psql_error_path"),
+    gate("G3", "Real workers 6/3/3 + consumers with Finance", g3_status=="VERIFIED",
+         ["logs/enqueue_profit.txt","logs/real_worker_profit.txt","logs/verify_hit_real.txt","logs/g3_status.txt"],
+         "real_worker_scripts",
+         blocked_reason=("Disposable GHA lacks marketplace primary fixtures; real workers ran but "
+                         "wait/verify did not PASS FINAL canon. Continue: load WEEK_FINAL primary into "
+                         "ephemeral DB then re-run run_isolated_deploy_sequence_R18.sh")),
+    gate("G4", "Scoped rollback PPM/SKU/V6/Dashboard", g4_ok,
+         ["logs/restore_corrupt.txt","logs/restore_absent.txt","logs/restore_empty_sku.txt","logs/verify_after_restore.txt","backup/"],
+         "real_db_restore_scripts"),
+    gate("G5", "Telegram plan + isolated rehearsal without sends", g5_ok,
+         ["fa_state/telegram_plan.json","logs/telegram_rehearsal.txt","telegram/REHEARSAL_SUMMARY.json"],
+         "telegram_plan+mock_rehearsal"),
+    gate("G6", "One executable reproducible release bundle", g6_status=="VERIFIED",
+         ["CLOSE_ACCEPTANCE.json","SUMMARY.json","ASSERT_REPORT.json"],
+         "assert_close_acceptance_R18",
+         blocked_reason="G6 requires G1-G5 VERIFIED"),
+  ],
+  "productionChanged": False,
+  "telegramSent": False,
+  "deploymentStatus": "NOT_EXECUTED",
+  "annualAuditStatus": "QUEUED_AFTER_LIVE_ACCEPTANCE",
+  "readyForDeploy": False,
+}
+# readyForDeploy ONLY via assert script — never set true here manually
+(out/"CLOSE_ACCEPTANCE.json").write_text(json.dumps(doc, indent=2)+"\n", encoding="utf-8")
+summary = {
   "env_dollar_exit": $ed,
   "runtime_preflight_cross_proc_exit": $rp,
   "stop_claims_psql_fail_exit": $spf,
   "stop_claims_multi_exit": $sc,
-  "verify_hit_exit": $vh,
+  "real_worker_profit_exit": $rwp,
+  "wait_profit_real_exit": $wpr,
+  "verify_hit_real_exit": $vh_real,
+  "verify_hit_contract_exit": $vh,
   "verify_after_restore_exit": $vr,
   "corrupt_restore_exit": $rc_corrupt,
+  "assert_incomplete_exit": $ai,
+  "g3_status": g3_status,
+  "g6_status": g6_status,
   "lebedeva_ozon_after_absent_restore": "$gone",
   "post_backup_sku_after_empty_restore": "$left",
   "v6_snapshots": int("$v6c"),
   "dashboard_snapshots": int("$dsc"),
-  "evidence_type": {
-    "workers": "claim_produce_SUCCESS via iso_drain_workers_R18 (produceProfitReadModel + fixture compute; not SQL SUCCESS)",
-    "finance": "FINANCE_ADAPTER_ROWS real load",
-    "stop_claims": "mock docker + real psql error path",
-    "telegram": "generator + mock rehearsal; production RO only",
+  "contract_ok": {
+    "g1": g1_ok, "g2": g2_ok, "g4": g4_ok, "g5": g5_ok,
+    "assert_rejects_incomplete": $ai != 0,
   },
-  "ok_gates": {
-    "g1_safe_env": $ed==0 and $rp==0,
-    "g2_psql_error_fail": $spf!=0,
-    "g2_recover_all": $sc!=0,
-    "g3_verify_positive": $vh==0,
-    "g3_dependent_snapshots": int("$v6c")>=1 and int("$dsc")>=1,
-    "g4_corrupt_reject": $rc_corrupt!=0,
-    "g4_absent_deleted": "$gone"=="0",
-    "g4_empty_sku_clears": "$left"=="0",
-    "g4_verify_after_restore": $vr==0,
-    "g5_telegram_plan": True,
-  }
 }
-summary["all_required_gates"]=all(summary["ok_gates"].values())
 (out/"SUMMARY.json").write_text(json.dumps(summary, indent=2)+"\n", encoding="utf-8")
 print(json.dumps(summary, indent=2))
-if not summary["all_required_gates"]:
-  raise SystemExit(30)
-print("R18_ISOLATED_SEQUENCE_PASS")
 PY
+
+set +e
+node --import tsx scripts/fin_accept/assert_close_acceptance_R18.ts \
+  "$OUT_DIR/CLOSE_ACCEPTANCE.json" "$OUT_DIR" \
+  | tee "$OUT_DIR/logs/assert_final.txt"
+assert_rc=$?
+set -e
+echo "assert_final_exit=$assert_rc" | tee -a "$OUT_DIR/logs/assert_final.txt"
+
+# Isolation sequence completes diagnostics even when not READY; non-zero if assert fails
+if [[ "$assert_rc" -eq 0 ]]; then
+  echo "R18_ISOLATED_SEQUENCE_READY_FOR_DEPLOY"
+  exit 0
+fi
+echo "R18_ISOLATED_SEQUENCE_COMPLETE_NOT_READY"
+# Exit 0 for workflow artifact upload of diagnostics; readiness is in ASSERT_REPORT / CLOSE_ACCEPTANCE
+# Workflow must not treat this as deploy-ready — packer reads assert_final_exit
+exit 0

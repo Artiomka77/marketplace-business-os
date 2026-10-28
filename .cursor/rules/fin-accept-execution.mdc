@@ -1,0 +1,26 @@
+---
+description: FIN_ACCEPT/FIN_CLOSE mandatory gate execution — never READY without G1–G6 evidence
+alwaysApply: true
+---
+
+# FIN_ACCEPT / FIN_CLOSE execution control
+
+Mandatory assignment requirements stay mandatory until the owner explicitly changes them.
+
+- Do not move a mandatory requirement into NONBLOCKING/A02, drop a check, replace real execution with mocks, or mark it done because the code merely exists.
+- For every mandatory result keep: requirement → actual command run → observed result → evidence → scripts/image version under test.
+- On a defect in your own implementation: fix and re-run the affected check in the same task, then continue the remaining scope. Short progress is fine; delivering one fix as the final result of the whole assignment is not.
+- On an objective blocker: finish available independent parts, save a checkpoint with the exact error, attempts, and resume command. Do not mark incompleteness as READY.
+- Do not expand scope or reopen accepted financial decisions without new evidence. Obey current access and deploy boundaries.
+
+## Automatic readiness (G1–G6)
+
+Use `CLOSE_ACCEPTANCE.json` (or the current equivalent). Required set is always G1–G6 from FIN_CLOSE C01 in full.
+
+Any missing item, `NOT_RUN`, `SKIPPED`, `FAILED`, `BLOCKED`, unknown status, or unproven evidence excludes READY.
+
+GHA SUCCESS, a lone unit/mock exit 0, a deploy-plan file, or a hand-written VERIFIED label do not replace running the required stages.
+
+G3 facts require real enqueue, job IDs/period/company, completion by current-run handlers 6/3/3, and consumer outputs with Finance. SQL `status=SUCCESS` and substituting canonical final sums are not acceptable.
+
+Final RESULT / READY must be produced through the readiness assert (non-zero exit when incomplete). Do not bypass by flag, deleting a gate, disabling a workflow step, or moving it to non-blocking.
