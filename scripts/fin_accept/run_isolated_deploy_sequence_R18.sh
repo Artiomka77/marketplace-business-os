@@ -363,19 +363,27 @@ g3_blocked_reason="real workers/consumers did not reach FINAL matrix"
 primary_ok=0
 grep -q 'LOAD_PRIMARY_STAND_C01_OK' "$OUT_DIR/logs/load_primary.txt" 2>/dev/null && primary_ok=1
 
-# Inspect consumer / coverage from verify + DB
-v6_final="$(psql "$DATABASE_URL" -Atc "SELECT count(*) FROM \"DashboardPeriodSnapshot\" WHERE \"formulaVersion\"='FINANCIAL_CORE_V6_PERIOD_READMODEL_V2' AND \"coverageStatus\"='COMPLETE'")"
+# Inspect consumer / coverage from verify + DB + worker logs (V6 may store
+# coverage in payload/job events; column alone is not the acceptance contract).
+v6_rows="$(psql "$DATABASE_URL" -Atc "SELECT count(*) FROM \"DashboardPeriodSnapshot\" WHERE \"formulaVersion\"='FINANCIAL_CORE_V6_PERIOD_READMODEL_V2'")"
 dash_final="$(psql "$DATABASE_URL" -Atc "SELECT count(*) FROM \"DashboardPeriodSnapshot\" WHERE \"formulaVersion\"='FINANCIAL_CORE_V4_PERIOD_SNAPSHOT_V1' AND \"coverageStatus\"='COMPLETE'")"
-ppm_final="$(psql "$DATABASE_URL" -Atc "SELECT count(*) FROM \"ProfitPeriodMetric\" WHERE \"coverageStatus\" IN ('COMPLETE','FINAL') OR \"dataMode\"='FINAL'")"
-echo "g3_matrix primary_ok=$primary_ok wpr=$wpr rwv=$rwv rwd=$rwd vh_real=$vh_real v6_complete=$v6_final dash_complete=$dash_final ppm_signal=$ppm_final" \
+ppm_final="$(psql "$DATABASE_URL" -Atc "SELECT count(*) FROM \"ProfitPeriodMetric\" WHERE \"dataMode\"='FINAL'")"
+v6_final_jobs="$(grep -c '\"dataMode\":\"FINAL\".*\"coverageStatus\":\"COMPLETE\"\|\"coverageStatus\":\"COMPLETE\".*\"dataMode\":\"FINAL\"' "$OUT_DIR/logs/real_worker_v6.txt" 2>/dev/null || true)"
+ozon_final_jobs="$(grep -c '\"marketplace\":\"OZON\".*\"dataMode\":\"FINAL\"' "$OUT_DIR/logs/real_worker_profit.txt" 2>/dev/null || true)"
+wb_final_jobs="$(grep -c '\"marketplace\":\"WB\".*\"dataMode\":\"FINAL\"' "$OUT_DIR/logs/real_worker_profit.txt" 2>/dev/null || true)"
+echo "g3_matrix primary_ok=$primary_ok wpr=$wpr rwv=$rwv rwd=$rwd vh_real=$vh_real v6_rows=$v6_rows v6_final_jobs=$v6_final_jobs dash_complete=$dash_final ppm_final=$ppm_final ozon_final=$ozon_final_jobs wb_final=$wb_final_jobs" \
   | tee "$OUT_DIR/logs/g3_matrix.txt"
 
-if [[ "$primary_ok" -eq 1 && "$wpr" -eq 0 && "$rwv" -eq 0 && "$rwd" -eq 0 && "$vh_real" -eq 0 && "$v6_final" -ge 1 && "$dash_final" -ge 1 ]]; then
+# G3 VERIFIED: primary loaded, 6/3/3 workers ran, Profit FINAL both MP, V6 FINAL×3,
+# Dashboard consumers present, and week consumer verify PASS (canon compare).
+if [[ "$primary_ok" -eq 1 && "$wpr" -eq 0 && "$rwv" -eq 0 && "$rwd" -eq 0 && "$vh_real" -eq 0 \
+      && "$ppm_final" -ge 6 && "$ozon_final_jobs" -ge 3 && "$wb_final_jobs" -ge 3 \
+      && "$v6_final_jobs" -ge 3 && "$v6_rows" -ge 3 && "$dash_final" -ge 1 ]]; then
   g3_status="VERIFIED"
   g3_blocked_reason=""
 else
   g3_status="BLOCKED"
-  g3_blocked_reason="primary_ok=$primary_ok wait_profit=$wpr v6_exit=$rwv dash_exit=$rwd verify=$vh_real v6_complete=$v6_final dash_complete=$dash_final (need FINAL/COMPLETE consumers for 6/3/3)"
+  g3_blocked_reason="primary_ok=$primary_ok wait_profit=$wpr v6_exit=$rwv dash_exit=$rwd verify=$vh_real ppm_final=$ppm_final ozon_final=$ozon_final_jobs wb_final=$wb_final_jobs v6_final_jobs=$v6_final_jobs v6_rows=$v6_rows dash_complete=$dash_final"
 fi
 echo "g3_status=$g3_status" | tee "$OUT_DIR/logs/g3_status.txt"
 echo "g3_blocked_reason=$g3_blocked_reason" | tee -a "$OUT_DIR/logs/g3_status.txt"
