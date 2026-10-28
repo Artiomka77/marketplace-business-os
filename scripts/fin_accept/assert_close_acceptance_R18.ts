@@ -186,6 +186,60 @@ if (isoDir && fs.existsSync(isoDir)) {
     }
   }
 
+  // G2: full MAIN evidence — refuse STOP_AFTER-as-MAIN_OK and failed recovery marked OK
+  const g2 = byId.get("G2");
+  if (g2 && g2.status === "VERIFIED") {
+    const runOk = path.join(logsDir, "run_all_real_backup_ok.txt");
+    const runFail = path.join(logsDir, "run_all_backup_fail.txt");
+    const runFull = path.join(logsDir, "run_all_full_ok.txt");
+    if (fs.existsSync(runOk)) {
+      const t = fs.readFileSync(runOk, "utf8");
+      if (/RUN_ALL_STOP_AFTER=/.test(t) && /RUN_ALL_MAIN_OK/.test(t)) {
+        reasons.push(
+          "G2_DISQUALIFIED RUN_ALL_STOP_AFTER combined with RUN_ALL_MAIN_OK (partial is not full MAIN)",
+        );
+      }
+      if (/RUN_ALL_PARTIAL_OK/.test(t) && !fs.existsSync(runFull)) {
+        reasons.push(
+          "G2_DISQUALIFIED only PARTIAL run-all present — need run_all_full_ok.txt with switch/weekly/verify",
+        );
+      }
+    }
+    if (fs.existsSync(runFail)) {
+      const t = fs.readFileSync(runFail, "utf8");
+      if (
+        /AND recovery failed|FATAL:.*recovery failed|FATAL: recovered container not Running/.test(
+          t,
+        ) &&
+        /RUN_ALL_BACKUP_FAIL_RECOVERY_OK/.test(t)
+      ) {
+        reasons.push(
+          "G2_DISQUALIFIED RUN_ALL_BACKUP_FAIL_RECOVERY_OK stamped over failed recovery",
+        );
+      }
+    }
+    if (fs.existsSync(runFull)) {
+      const t = fs.readFileSync(runFull, "utf8");
+      if (!/RUN_ALL_MAIN_OK/.test(t)) {
+        reasons.push("G2_DISQUALIFIED run_all_full_ok.txt missing RUN_ALL_MAIN_OK");
+      }
+      if (/RUN_ALL_STOP_AFTER=/.test(t)) {
+        reasons.push("G2_DISQUALIFIED full MAIN log still has RUN_ALL_STOP_AFTER");
+      }
+      if (!/RUN_ALL_STEP switch|SWITCH_OK|SWITCH_CALLED/.test(t)) {
+        reasons.push("G2_DISQUALIFIED full MAIN missing switch step");
+      }
+      if (!/RUN_ALL_STEP weekly|WEEKLY_ENQUEUE_AND_WAIT_OK|WEEKLY_CALLED/.test(t)) {
+        reasons.push("G2_DISQUALIFIED full MAIN missing weekly step");
+      }
+      if (!/RUN_ALL_STEP verify-week|VERIFY_WEEK|VERIFY_CALLED/.test(t)) {
+        reasons.push("G2_DISQUALIFIED full MAIN missing verify-week step");
+      }
+    } else if (g2.status === "VERIFIED") {
+      reasons.push("G2_DISQUALIFIED missing run_all_full_ok.txt (complete MAIN required)");
+    }
+  }
+
   const g4 = byId.get("G4");
   if (g4 && g4.status === "VERIFIED") {
     const verifyAfter = path.join(logsDir, "verify_after_restore.txt");
@@ -217,6 +271,7 @@ if (isoDir && fs.existsSync(isoDir)) {
   const g5 = byId.get("G5");
   if (g5 && g5.status === "VERIFIED") {
     const tgSum = path.join(isoDir, "telegram/REHEARSAL_SUMMARY.json");
+    const tgPlan = path.join(isoDir, "fa_state/telegram_plan.json");
     if (!fs.existsSync(tgSum)) {
       reasons.push("G5_DISQUALIFIED missing telegram/REHEARSAL_SUMMARY.json");
     } else {
@@ -229,6 +284,10 @@ if (isoDir && fs.existsSync(isoDir)) {
           webhookRouteOk?: boolean;
           autoRecoveryOnBadHealth?: boolean;
           imageIdObserved?: string;
+          oldImageId?: string;
+          planJson?: string | null;
+          planExecuted?: boolean;
+          financeAllRounded?: number;
         };
         if (s.ok !== true) reasons.push("G5_DISQUALIFIED REHEARSAL_SUMMARY ok!==true");
         if (s.mockUsed === true) reasons.push("G5_DISQUALIFIED mockUsed=true");
@@ -247,12 +306,72 @@ if (isoDir && fs.existsSync(isoDir)) {
         if (
           !s.imageIdObserved ||
           String(s.imageIdObserved).includes("1bb80d6b") ||
-          String(s.imageIdObserved).includes("deadbeef")
+          String(s.imageIdObserved).includes("deadbeef") ||
+          String(s.imageIdObserved).includes("6c90e310")
         ) {
           reasons.push("G5_DISQUALIFIED stub/forbidden ImageId");
         }
+        if (
+          !s.oldImageId ||
+          String(s.oldImageId).includes("6c90e310") ||
+          String(s.oldImageId) === String(s.imageIdObserved)
+        ) {
+          reasons.push(
+            "G5_DISQUALIFIED OLD must be real prior runtime (7f9fee6a…), not helper stub",
+          );
+        }
+        if (!s.planJson) {
+          reasons.push("G5_DISQUALIFIED planJson=null — plan must bind to rehearsal");
+        }
+        if (s.planExecuted !== true) {
+          reasons.push("G5_DISQUALIFIED planExecuted!==true");
+        }
+        if (s.financeAllRounded != null && s.financeAllRounded !== 994198.47) {
+          reasons.push(
+            `G5_DISQUALIFIED financeAllRounded=${s.financeAllRounded} want 994198.47`,
+          );
+        }
       } catch {
         reasons.push("G5_DISQUALIFIED REHEARSAL_SUMMARY unreadable");
+      }
+    }
+    if (!fs.existsSync(tgPlan)) {
+      reasons.push("G5_DISQUALIFIED missing fa_state/telegram_plan.json");
+    } else {
+      try {
+        const p = JSON.parse(fs.readFileSync(tgPlan, "utf8")) as {
+          telegramReady?: boolean;
+          commands_update_AFTER_MAIN_VERIFY?: string[];
+          commands_rollback?: string[];
+          scriptsCommit?: string;
+        };
+        if (p.telegramReady !== true) {
+          reasons.push("G5_DISQUALIFIED telegramReady!==true");
+        }
+        if (
+          !Array.isArray(p.commands_update_AFTER_MAIN_VERIFY) ||
+          p.commands_update_AFTER_MAIN_VERIFY.length === 0
+        ) {
+          reasons.push("G5_DISQUALIFIED empty commands_update_AFTER_MAIN_VERIFY");
+        }
+        if (!Array.isArray(p.commands_rollback) || p.commands_rollback.length === 0) {
+          reasons.push("G5_DISQUALIFIED empty commands_rollback");
+        }
+        if (!p.scriptsCommit || String(p.scriptsCommit).includes("MUST_SET")) {
+          reasons.push("G5_DISQUALIFIED scriptsCommit missing/placeholder");
+        }
+        const cmds = [
+          ...(p.commands_update_AFTER_MAIN_VERIFY || []),
+          ...(p.commands_rollback || []),
+        ].join("\n");
+        if (/c01_isolation_local|telegram_health_stub|NEW_TELEGRAM_IMAGE_WITH_ACCEPTED/.test(cmds)) {
+          reasons.push("G5_DISQUALIFIED plan still references stub/placeholder image");
+        }
+        if (!/api\/telegram\/webhook|daily-report/.test(cmds)) {
+          reasons.push("G5_DISQUALIFIED plan health must check application routes");
+        }
+      } catch {
+        reasons.push("G5_DISQUALIFIED telegram_plan.json unreadable");
       }
     }
   }

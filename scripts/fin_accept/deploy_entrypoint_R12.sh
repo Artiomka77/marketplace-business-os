@@ -380,26 +380,40 @@ stage_backup_week() {
     eval "$(python3 "$ROOT/scripts/fin_accept/safe_load_env_R18.py" "$envf" --print-exports)"
   fi
   : "${DATABASE_URL:?DATABASE_URL required for backup}"
-  # Fresh run directory — stale files from a prior failed export are not success.
+  # Fresh run directory under backup root — never wipe a prior successful snapshot set.
   local run_stamp="${BACKUP_RUN_STAMP:-$(date -u +%Y%m%dT%H%M%SZ)}"
   export BACKUP_RUN_STAMP="$run_stamp"
-  mkdir -p "$BACKUP_DIR"
-  # Clear previous snapshot payloads in this BACKUP_DIR (keep parent path)
-  rm -f "$BACKUP_DIR"/*.json "$BACKUP_DIR/export_stdout.txt" "$BACKUP_DIR/EXPORT_OK.marker"
+  local backup_root="${BACKUP_ROOT:-}"
+  if [[ -z "$backup_root" && -f "$FA_STATE/BACKUP_ROOT.path" ]]; then
+    backup_root="$(cat "$FA_STATE/BACKUP_ROOT.path")"
+  fi
+  backup_root="${backup_root:-$BACKUP_DIR}"
+  # If caller already pointed BACKUP_DIR at a prior run_*, climb to parent root
+  if [[ "$(basename "$backup_root")" == run_* ]]; then
+    backup_root="$(dirname "$backup_root")"
+  fi
+  export BACKUP_ROOT="$backup_root"
+  mkdir -p "$backup_root" "$FA_STATE"
+  echo "$backup_root" > "$FA_STATE/BACKUP_ROOT.path"
+  local run_dir="$backup_root/run_${run_stamp}"
+  if [[ -d "$run_dir" ]]; then
+    die "backup run dir already exists: $run_dir — refuse overwrite of prior snapshot"
+  fi
+  mkdir -p "$run_dir"
   set -o pipefail
-  node --import tsx "$ROOT/scripts/fin_accept/export_profit_period_backup_R16.ts" "$BACKUP_DIR" \
-    | tee "$BACKUP_DIR/export_stdout.txt"
+  node --import tsx "$ROOT/scripts/fin_accept/export_profit_period_backup_R16.ts" "$run_dir" \
+    | tee "$run_dir/export_stdout.txt"
   local export_rc=${PIPESTATUS[0]}
   set +o pipefail
   [[ "$export_rc" -eq 0 ]] || die "backup exporter failed exit=$export_rc"
-  grep -q 'EXPORT_PROFIT_PERIOD_BACKUP_R16_OK' "$BACKUP_DIR/export_stdout.txt" \
+  grep -q 'EXPORT_PROFIT_PERIOD_BACKUP_R16_OK' "$run_dir/export_stdout.txt" \
     || die "backup exporter OK marker missing — refuse stale files"
-  [[ -f "$BACKUP_DIR/ozon_profit_period_snapshot.json" ]] || die "backup Ozon snapshot missing"
-  [[ -f "$BACKUP_DIR/backup_meta.json" ]] || die "backup meta missing"
-  [[ -f "$BACKUP_DIR/v6_pcm_snapshot.json" ]] || die "backup V6 PCM snapshot missing"
-  [[ -f "$BACKUP_DIR/v6_pcm_inventory.json" ]] || die "backup V6 PCM inventory missing"
-  [[ -f "$BACKUP_DIR/v6_daily_snapshot.json" ]] || die "backup V6 daily snapshot missing"
-  python3 - <<'PY' "$BACKUP_DIR/backup_meta.json" "$run_stamp"
+  [[ -f "$run_dir/ozon_profit_period_snapshot.json" ]] || die "backup Ozon snapshot missing"
+  [[ -f "$run_dir/backup_meta.json" ]] || die "backup meta missing"
+  [[ -f "$run_dir/v6_pcm_snapshot.json" ]] || die "backup V6 PCM snapshot missing"
+  [[ -f "$run_dir/v6_pcm_inventory.json" ]] || die "backup V6 PCM inventory missing"
+  [[ -f "$run_dir/v6_daily_snapshot.json" ]] || die "backup V6 daily snapshot missing"
+  python3 - <<'PY' "$run_dir/backup_meta.json" "$run_stamp"
 import json,sys
 meta=json.load(open(sys.argv[1],encoding="utf-8"))
 stamp=sys.argv[2]
@@ -409,10 +423,15 @@ if not meta.get("exportedAt"):
   raise SystemExit("BACKUP_META_MISSING_exportedAt")
 print("BACKUP_META_FRESH_OK")
 PY
-  echo "ok $run_stamp" > "$BACKUP_DIR/EXPORT_OK.marker"
-  export OZON_PERIOD_SNAPSHOT_JSON="$BACKUP_DIR/ozon_profit_period_snapshot.json"
+  echo "ok $run_stamp" > "$run_dir/EXPORT_OK.marker"
+  # Point WEEK_BACKUP_DIR / BACKUP_DIR at this run for subsequent data-rollback / recovery
+  export WEEK_BACKUP_DIR="$run_dir"
+  export BACKUP_DIR="$run_dir"
+  echo "$run_dir" > "$FA_STATE/WEEK_BACKUP_DIR.path"
+  export OZON_PERIOD_SNAPSHOT_JSON="$run_dir/ozon_profit_period_snapshot.json"
   echo "$OZON_PERIOD_SNAPSHOT_JSON" > "$FA_STATE/OZON_PERIOD_SNAPSHOT_JSON.path"
-  echo "BACKUP_WEEK_OK path=$OZON_PERIOD_SNAPSHOT_JSON stamp=$run_stamp"
+  ln -sfn "run_${run_stamp}" "$backup_root/latest" 2>/dev/null || true
+  echo "BACKUP_WEEK_OK path=$OZON_PERIOD_SNAPSHOT_JSON stamp=$run_stamp rundir=$run_dir"
 }
 
 wait_running_zero() {
@@ -586,7 +605,10 @@ PY
   stop_one avorofin-stock-planning-snapshot-worker stock \
     "SELECT count(*) FROM \"DashboardPeriodSnapshotJob\" WHERE status='RUNNING' AND \"formulaVersion\" LIKE 'STOCK_PLANNING%';"
 
-  echo "STOP_CLAIMS_OK (APP still up until switch)"
+  # Immutable pre-deploy copy — post-switch recovery must not use NEW-era state
+  cp -f "$state_file" "$FA_STATE/stop_claims_prestate_predeploy.json"
+  cp -f "$touched_file" "$FA_STATE/stop_claims_touched_predeploy.txt"
+  echo "STOP_CLAIMS_OK (APP still up until switch) predeploy_journal=saved"
 }
 
 stage_switch() {
@@ -671,42 +693,108 @@ stage_data_rollback() {
 }
 
 # Concrete Telegram update/rollback after MAIN verify. Does NOT send messages.
+# TELEGRAM_PLAN_MODE=isolation → local docker commands (same procedure as live SSH).
 stage_telegram_plan() {
   local out="$FA_STATE/telegram_plan.json"
   mkdir -p "$FA_STATE" "$JOURNAL_DIR"
   local host="${TELEGRAM_HOST:-64.188.63.133}"
   local user="${TELEGRAM_SSH_USER:-root}"
-  # Concrete NEW image: R15 app image is NOT assumed Telegram-compatible.
-  # Default keeps currently accepted TG tag unless TELEGRAM_NEW_IMAGE is set explicitly
-  # to a built/loaded image that was health-checked in isolation rehearsal.
-  local new_image="${TELEGRAM_NEW_IMAGE:-avorofin-p0-cogs-telegram:20261014_tg_top_truth}"
+  local mode="${TELEGRAM_PLAN_MODE:-live}"
+  local new_image="${TELEGRAM_NEW_IMAGE:-}"
   local new_image_id="${TELEGRAM_NEW_IMAGE_ID:-}"
+  local old_image="${TELEGRAM_OLD_IMAGE:-avorofin-p0-cogs-telegram:20261014_tg_top_truth}"
+  local old_image_id="${TELEGRAM_OLD_IMAGE_ID:-sha256:7f9fee6a7e5f5595d6895d892d37dd218e5e2cb62ebf86a5b048ee15a1132453}"
+  local new_tar="${TELEGRAM_APP_TAR:-}"
+  local new_tar_sha="${TELEGRAM_APP_TAR_SHA256:-cdfcbaa72017f5ed82e8659049faa39a0ded4a31d87cadd5989732cf080a5a7a}"
+  local scripts_commit
+  scripts_commit="$(git -C "$ROOT" rev-parse HEAD 2>/dev/null || echo "${SCRIPTS_COMMIT:-unknown}")"
   local inspect="$FA_STATE/telegram_ro_inspect.txt"
-  if ssh -o BatchMode=yes -o ConnectTimeout=10 "${user}@${host}" "true" 2>/dev/null; then
+  if [[ "$mode" == "isolation" ]]; then
+    {
+      echo "mode=isolation"
+      docker inspect avorofin-telegram-app --format 'name={{.Name}} image={{.Config.Image}} id={{.Image}} status={{.State.Status}} ports={{json .HostConfig.PortBindings}} restart={{.HostConfig.RestartPolicy.Name}} user={{.Config.User}} cmd={{json .Config.Cmd}}' 2>/dev/null \
+        || echo "image=${old_image} id=${old_image_id} status=missing"
+    } | tee "$inspect"
+  elif ssh -o BatchMode=yes -o ConnectTimeout=10 "${user}@${host}" "true" 2>/dev/null; then
     ssh -o BatchMode=yes "${user}@${host}" "bash -s" <<'EOF' | tee "$inspect"
 set -euo pipefail
-cd /opt/avorofin
 docker inspect avorofin-telegram-app --format 'name={{.Name}} image={{.Config.Image}} id={{.Image}} status={{.State.Status}} ports={{json .HostConfig.PortBindings}} restart={{.HostConfig.RestartPolicy.Name}} user={{.Config.User}} cmd={{json .Config.Cmd}}' || true
 ss -lptn | grep -E '8091|8092|3001|443' || true
 EOF
   else
     echo "TELEGRAM_SSH_UNAVAILABLE" | tee "$inspect"
   fi
-  python3 - <<'PY' "$out" "$inspect" "$host" "$user" "$new_image" "$new_image_id" "$SCRIPTS_COMMIT" "$IMAGE_STAMP"
+  local ready_helper="$ROOT/scripts/fin_accept/telegram_app_ready_check.sh"
+  python3 - <<'PY' "$out" "$inspect" "$host" "$user" "$new_image" "$new_image_id" "$scripts_commit" "$IMAGE_STAMP" "$mode" "$old_image" "$old_image_id" "$new_tar" "$new_tar_sha" "$ready_helper"
 import json, pathlib, re, sys
-out, inspect_path, host, user, new_image, new_image_id, scripts_commit, image_stamp = sys.argv[1:9]
+(out, inspect_path, host, user, new_image, new_image_id, scripts_commit, image_stamp,
+ mode, old_image, old_image_id, new_tar, new_tar_sha, ready_helper) = sys.argv[1:15]
 inspect = pathlib.Path(inspect_path).read_text(encoding="utf-8", errors="replace")
 m = re.search(r"image=(\S+).*?id=(sha256:\S+)", inspect)
-cur_image = m.group(1) if m else "avorofin-p0-cogs-telegram:20261014_tg_top_truth"
-cur_id = m.group(2) if m else "sha256:7f9fee6a7e5f5595d6895d892d37dd218e5e2cb62ebf86a5b048ee15a1132453"
+cur_image = m.group(1) if m else old_image
+cur_id = m.group(2) if m else old_image_id
+if "status=missing" in inspect or "TELEGRAM_SSH_UNAVAILABLE" in inspect:
+  cur_image, cur_id = old_image, old_image_id
 ssh_ok = "TELEGRAM_SSH_UNAVAILABLE" not in inspect
-if not new_image_id:
-    new_image_id = cur_id if new_image == cur_image else "MUST_SET_TELEGRAM_NEW_IMAGE_ID_AFTER_LOAD"
+iso = mode == "isolation"
+ready = bool((iso or ssh_ok) and new_image and new_image_id and not str(new_image_id).startswith("MUST_SET"))
+
+def q(s: str) -> str:
+  if iso:
+    return s
+  # Escape single quotes for remote bash -c
+  esc = s.replace("'", "'\"'\"'")
+  return f"ssh {user}@{host} '{esc}'"
+
+remote_tar = "/var/lib/avorofin/telegram_new_app.tar.gz"
+update = []
+if new_tar:
+  if iso:
+    update += [
+      f'test -f "{new_tar}"',
+      f'test "$(sha256sum "{new_tar}" | awk \'{{print $1}}\')" = "{new_tar_sha}"',
+      f'gzip -dc "{new_tar}" | docker load',
+    ]
+  else:
+    update.append(f"scp {new_tar} {user}@{host}:{remote_tar}")
+    update.append(q(f'test "$(sha256sum {remote_tar} | awk \'{{print $1}}\')" = "{new_tar_sha}"'))
+    update.append(q(f"gzip -dc {remote_tar} | docker load"))
+update += [
+  q(f"docker image inspect {new_image} >/dev/null"),
+  q(f'test "$(docker image inspect -f \'{{{{.Id}}}}\' {new_image})" = "{new_image_id}"'),
+  q("mkdir -p /var/lib/avorofin"),
+  q('docker inspect avorofin-telegram-app --format "{{range .Config.Env}}{{println .}}{{end}}" > /var/lib/avorofin/tg_env_captured.env && chmod 600 /var/lib/avorofin/tg_env_captured.env'),
+  q('docker inspect avorofin-telegram-app --format "{{json .HostConfig}}" > /var/lib/avorofin/tg_hostconfig.json'),
+  q(f"docker tag {cur_image} avorofin-p0-cogs-telegram:rollback_pre_c01 && echo {cur_id} > /var/lib/avorofin/tg_rollback_imageid.txt"),
+  q("docker stop avorofin-telegram-app && docker rm avorofin-telegram-app"),
+  q(f"docker run -d --name avorofin-telegram-app --restart unless-stopped --add-host=host.docker.internal:host-gateway --env-file /var/lib/avorofin/tg_env_captured.env -p 127.0.0.1:3001:3000 {new_image}"),
+]
+if iso:
+  update.append(f'bash "{ready_helper}" http://127.0.0.1:3001')
+else:
+  update.append(f"scp {ready_helper} {user}@{host}:/var/lib/avorofin/telegram_app_ready_check.sh")
+  update.append(q("bash /var/lib/avorofin/telegram_app_ready_check.sh http://127.0.0.1:3001"))
+
+rollback = [
+  q("docker stop avorofin-telegram-app; docker rm avorofin-telegram-app || true"),
+  q("docker run -d --name avorofin-telegram-app --restart unless-stopped --env-file /var/lib/avorofin/tg_env_captured.env -p 127.0.0.1:3001:3000 avorofin-p0-cogs-telegram:rollback_pre_c01"),
+  q(f'test "$(docker inspect -f \'{{{{.Image}}}}\' avorofin-telegram-app)" = "{cur_id}"'),
+]
+update_with_auto = [
+  "set -euo pipefail",
+  "AUTO_RB=0",
+  "on_err(){ echo AUTO_ROLLBACK_ON_FAILURE; AUTO_RB=1; " + " ; ".join(rollback) + "; exit 1; }",
+  "trap on_err ERR",
+  *update,
+  "trap - ERR",
+  "echo TELEGRAM_UPDATE_OK",
+]
 plan = {
   "productionChanged": False,
   "sendMessages": False,
-  "telegramReady": bool(ssh_ok and new_image and not str(new_image_id).startswith("MUST_SET")),
-  "host": host,
+  "telegramReady": ready,
+  "planMode": mode,
+  "host": "isolation-local" if iso else host,
   "sshUser": user,
   "remoteRoot": "/opt/avorofin",
   "afterMainGate": "MAIN verify-week PASS",
@@ -722,25 +810,14 @@ plan = {
   "newRuntime": {
     "image": new_image,
     "imageId": new_image_id,
-    "note": "Set TELEGRAM_NEW_IMAGE / TELEGRAM_NEW_IMAGE_ID to the isolation-verified image before live cutover",
+    "portableTarSha256": new_tar_sha,
+    "portableTar": new_tar or None,
   },
+  "oldRuntimeRequired": {"image": old_image, "imageId": old_image_id},
   "dailyReportSha_expected_R15": "9c800fcc2d9a75fc4940de03c2f87a511f78677210cd83793a33577cf9e58327",
-  "commands_update_AFTER_MAIN_VERIFY": [
-    f"ssh {user}@{host} 'docker image inspect {new_image} >/dev/null'",
-    f"ssh {user}@{host} 'test \"$(docker image inspect -f \"{{{{.Id}}}}\" {new_image})\" = \"{new_image_id}\"'",
-    f"ssh {user}@{host} 'docker inspect avorofin-telegram-app --format \"{{{{range .Config.Env}}}}{{{{println .}}}}{{{{end}}}}\" > /var/lib/avorofin/tg_env_captured.env && chmod 600 /var/lib/avorofin/tg_env_captured.env'",
-    f"ssh {user}@{host} 'docker inspect avorofin-telegram-app --format \"{{{{json .HostConfig}}}}\" > /var/lib/avorofin/tg_hostconfig.json'",
-    f"ssh {user}@{host} 'docker tag {cur_image} avorofin-p0-cogs-telegram:rollback_pre_c01 && echo {cur_id} > /var/lib/avorofin/tg_rollback_imageid.txt'",
-    f"ssh {user}@{host} 'docker stop avorofin-telegram-app && docker rm avorofin-telegram-app'",
-    f"ssh {user}@{host} 'docker run -d --name avorofin-telegram-app --restart unless-stopped --env-file /var/lib/avorofin/tg_env_captured.env -p 127.0.0.1:3001:3000 {new_image}'",
-    f"ssh {user}@{host} 'code=$(curl -sf -o /dev/null -w \"%{{http_code}}\" http://127.0.0.1:3001/); test \"$code\" = \"200\" -o \"$code\" = \"307\" -o \"$code\" = \"302\"'",
-  ],
-  "commands_rollback": [
-    f"ssh {user}@{host} 'docker stop avorofin-telegram-app; docker rm avorofin-telegram-app'",
-    f"ssh {user}@{host} 'docker run -d --name avorofin-telegram-app --restart unless-stopped --env-file /var/lib/avorofin/tg_env_captured.env -p 127.0.0.1:3001:3000 avorofin-p0-cogs-telegram:rollback_pre_c01'",
-    f"ssh {user}@{host} 'code=$(curl -sf -o /dev/null -w \"%{{http_code}}\" http://127.0.0.1:3001/); test \"$code\" = \"200\" -o \"$code\" = \"307\" -o \"$code\" = \"302\"'",
-  ],
-  "forbidden": ["telegram send", "op 572", "test finance tx", "touch 8091"],
+  "commands_update_AFTER_MAIN_VERIFY": update_with_auto,
+  "commands_rollback": rollback,
+  "forbidden": ["telegram send", "op 572", "test finance tx", "touch 8091", "c01_isolation_local", "telegram_health_stub"],
   "scriptsCommit": scripts_commit,
   "imageStampApp": image_stamp,
 }
@@ -761,22 +838,32 @@ stage_run_all() {
 
   recover_pre_switch() {
     if [[ "$writers_stopped" -eq 1 && "$switched" -eq 0 ]]; then
-      echo "RUN_ALL_RECOVER pre-switch — restoring touched workers" >&2
-      local state_file="$FA_STATE/stop_claims_prestate.json"
-      local touched_file="$FA_STATE/stop_claims_touched.txt"
+      echo "RUN_ALL_RECOVER pre-switch — restoring touched workers to pre-stop state" >&2
+      local state_file="$FA_STATE/stop_claims_prestate_predeploy.json"
+      [[ -f "$state_file" ]] || state_file="$FA_STATE/stop_claims_prestate.json"
+      local touched_file="$FA_STATE/stop_claims_touched_predeploy.txt"
+      [[ -f "$touched_file" ]] || touched_file="$FA_STATE/stop_claims_touched.txt"
       if ! restore_all_touched "$state_file" "$touched_file"; then
         echo "FATAL: restore_all_touched failed during run-all recovery" >&2
         return 1
       fi
+      # Only containers that were running before stop must be Running after recover.
       if [[ -f "$touched_file" ]] && command -v docker >/dev/null 2>&1; then
         while read -r cname; do
           [[ -z "$cname" ]] && continue
+          local was
+          was="$(python3 -c "import json;print(json.load(open(r'$state_file')).get('$cname','missing'))")"
+          if [[ "$was" != "running" ]]; then
+            echo "RECOVER_SKIP not previously running: $cname was=$was"
+            continue
+          fi
           local running
           running="$(docker inspect -f '{{.State.Running}}' "$cname" 2>/dev/null || echo false)"
           if [[ "$running" != "true" ]]; then
-            echo "FATAL: recovered container not Running: $cname" >&2
+            echo "FATAL: recovered container not Running: $cname (was=$was)" >&2
             return 1
           fi
+          echo "RECOVERED_RUNNING $cname"
         done < "$touched_file"
       fi
       echo "RUN_ALL_RECOVER_OK"
@@ -785,15 +872,61 @@ stage_run_all() {
   }
 
   recover_post_switch() {
-    echo "RUN_ALL_RECOVER post-switch — data-rollback then restore writers" >&2
+    # Order: stop NEW writers → scoped data restore (no competing writers) →
+    # cutover rollback to OLD images/config → restore original running roles from predeploy journal.
+    echo "RUN_ALL_RECOVER post-switch — stop NEW writers, data-rollback, cutover rollback, restore OLD runtime" >&2
+    local wb="${WEEK_BACKUP_DIR:-$BACKUP_DIR}"
+    if [[ -f "$FA_STATE/WEEK_BACKUP_DIR.path" ]]; then
+      wb="$(cat "$FA_STATE/WEEK_BACKUP_DIR.path")"
+    fi
+    # 1) Quiesce NEW writers before touching data
+    for cname in avorofin-profit-readmodel-worker avorofin-v6-period-readmodel-worker \
+                 avorofin-dashboard-period-snapshot-worker avorofin-stock-planning-snapshot-worker \
+                 avorofin-app; do
+      docker stop -t 10 "$cname" >/dev/null 2>&1 || true
+    done
+    if [[ -n "${PROBE_STATE:-}" ]]; then
+      echo STOPPED > "$PROBE_STATE/writers" 2>/dev/null || true
+    fi
+    echo "POST_SWITCH_WRITERS_STOPPED"
+    # 2) Scoped data restore with writers down
     set +e
-    WEEK_BACKUP_DIR="$BACKUP_DIR" bash "$ROOT/scripts/fin_accept/deploy_entrypoint_R12.sh" data-rollback
+    WEEK_BACKUP_DIR="$wb" bash "$ROOT/scripts/fin_accept/deploy_entrypoint_R12.sh" data-rollback
     local dr=$?
     set -e
     [[ "$dr" -eq 0 ]] || { echo "FATAL: data-rollback failed exit=$dr" >&2; return 1; }
-    local state_file="$FA_STATE/stop_claims_prestate.json"
-    local touched_file="$FA_STATE/stop_claims_touched.txt"
-    restore_all_touched "$state_file" "$touched_file" || return 1
+    # 3) Image/config rollback via cutover journal (not start of NEW)
+    set +e
+    CUTOVER_JOURNAL_DIR="$JOURNAL_DIR" bash "$ROOT/scripts/deploy/cutover_five_roles.sh" rollback
+    local cr=$?
+    set -e
+    [[ "$cr" -eq 0 ]] || { echo "FATAL: cutover rollback failed exit=$cr" >&2; return 1; }
+    # 4) Align running set to pre-deploy journal (previously stopped stay stopped)
+    local state_file="$FA_STATE/stop_claims_prestate_predeploy.json"
+    [[ -f "$state_file" ]] || state_file="$FA_STATE/stop_claims_prestate.json"
+    local touched_file="$FA_STATE/stop_claims_touched_predeploy.txt"
+    [[ -f "$touched_file" ]] || touched_file="$FA_STATE/stop_claims_touched.txt"
+    if ! restore_all_touched "$state_file" "$touched_file"; then
+      echo "FATAL: restore_all_touched (predeploy) failed" >&2
+      return 1
+    fi
+    if [[ -f "$touched_file" ]] && command -v docker >/dev/null 2>&1; then
+      while read -r cname; do
+        [[ -z "$cname" ]] && continue
+        local was
+        was="$(python3 -c "import json;print(json.load(open(r'$state_file')).get('$cname','missing'))")"
+        local running
+        running="$(docker inspect -f '{{.State.Running}}' "$cname" 2>/dev/null || echo false)"
+        if [[ "$was" == "running" && "$running" != "true" ]]; then
+          echo "FATAL: post-switch recover expected Running for $cname" >&2
+          return 1
+        fi
+        if [[ "$was" != "running" && "$running" == "true" ]]; then
+          echo "FATAL: post-switch recover left unexpected Running $cname (was=$was)" >&2
+          return 1
+        fi
+      done < "$touched_file"
+    fi
     echo "RUN_ALL_POST_SWITCH_RECOVER_OK"
     return 0
   }
@@ -850,15 +983,18 @@ stage_run_all() {
     fi
   }
 
-  # Optional RUN_ALL_STOP_AFTER=<stage> stops after that successful step (isolation).
-  # Allowed: backup-week | switch | weekly | verify-week (default: full).
+  # Optional RUN_ALL_STOP_AFTER is DIAGNOSTIC ONLY and NEVER equals MAIN_OK / readiness.
+  # Allowed only with RUN_ALL_ISOLATION=1. Live/full proof must leave it unset.
   local stop_after="${RUN_ALL_STOP_AFTER:-}"
+  if [[ -n "$stop_after" && "${RUN_ALL_ISOLATION:-0}" != "1" ]]; then
+    die "RUN_ALL_STOP_AFTER=$stop_after forbidden outside RUN_ALL_ISOLATION=1 (not a full MAIN)"
+  fi
 
   maybe_stop_after() {
     local done="$1"
     if [[ -n "$stop_after" && "$stop_after" == "$done" ]]; then
-      echo "RUN_ALL_STOP_AFTER=$done — isolation partial MAIN complete"
-      echo "RUN_ALL_MAIN_OK"
+      echo "RUN_ALL_STOP_AFTER=$done — DIAGNOSTIC partial only (NOT MAIN_OK, NOT READY)"
+      echo "RUN_ALL_PARTIAL_OK stage=$done"
       return 0
     fi
     return 1

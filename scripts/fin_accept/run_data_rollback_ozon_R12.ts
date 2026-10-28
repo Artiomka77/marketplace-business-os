@@ -329,6 +329,56 @@ function assertNoCorruptInventory(
   }
 }
 
+function assertNoCorruptPcmInventory(
+  pcm: PcmRow[],
+  pcmInventory: InventoryRow[],
+) {
+  const seenInv = new Set<string>();
+  const present = new Set(
+    pcm.map((r) => `${r.companyScope}|${r.marketplace}|${r.formulaVersion}`),
+  );
+  for (const inv of pcmInventory) {
+    assert.ok(ALLOWED_SCOPES.has(inv.companyScope), `pcm inv bad scope ${inv.companyScope}`);
+    assert.equal(inv.formulaVersion, V6_FORMULA, `pcm inv bad formula ${inv.formulaVersion}`);
+    const k = `${inv.companyScope}|${inv.marketplace}|${inv.formulaVersion}`;
+    if (seenInv.has(k)) {
+      throw new Error(`CORRUPT_BACKUP duplicate PCM inventory key ${k}`);
+    }
+    seenInv.add(k);
+    if (!inv.hadRow && present.has(k)) {
+      throw new Error(
+        `CORRUPT_BACKUP PCM inventory hadRow=false but PeriodCompanyMarketplaceMetric present for ${k}`,
+      );
+    }
+    if (inv.hadRow && !present.has(k)) {
+      throw new Error(
+        `CORRUPT_BACKUP PCM inventory hadRow=true but PeriodCompanyMarketplaceMetric missing for ${k}`,
+      );
+    }
+  }
+  for (const r of pcm) {
+    assert.ok(ALLOWED_SCOPES.has(r.companyScope), `pcm bad scope ${r.companyScope}`);
+    assert.equal(r.formulaVersion, V6_FORMULA);
+    assert.equal(r.dateFrom, DATE_FROM);
+    assert.equal(r.dateTo, DATE_TO);
+  }
+}
+
+function validateDailyRows(daily: DailyRow[]) {
+  const weekFrom = new Date(`${DATE_FROM}T00:00:00.000Z`).getTime();
+  const weekTo = new Date(`${DATE_TO}T00:00:00.000Z`).getTime();
+  for (const r of daily) {
+    assert.ok(ALLOWED_SCOPES.has(r.companyScope), `daily bad scope ${r.companyScope}`);
+    assert.equal(r.formulaVersion, V6_FORMULA);
+    const bd = new Date(`${r.businessDate}T00:00:00.000Z`).getTime();
+    if (!(bd >= weekFrom && bd <= weekTo)) {
+      throw new Error(
+        `CORRUPT_BACKUP daily businessDate ${r.businessDate} outside week ${DATE_FROM}..${DATE_TO}`,
+      );
+    }
+  }
+}
+
 async function upsertPpm(
   tx: Parameters<Parameters<typeof prisma.$transaction>[0]>[0],
   r: SnapshotRow,
@@ -489,6 +539,8 @@ async function main() {
   for (const r of wb) validateRow(r, "WB");
   validateInventory(inventory);
   assertNoCorruptInventory(ozon, wb, inventory);
+  assertNoCorruptPcmInventory(pcm, pcmInventory);
+  validateDailyRows(daily);
   for (const s of sku) validateSku(s);
   for (const r of v6) validateDash(r, V6_FORMULA);
   for (const r of dashboard) validateDash(r, DASH_FORMULA);

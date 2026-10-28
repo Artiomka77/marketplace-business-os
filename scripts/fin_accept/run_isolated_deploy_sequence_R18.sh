@@ -298,9 +298,13 @@ echo "real_run_all_backup_fail_exit=$raf" | tee -a "$OUT_DIR/logs/run_all_backup
 grep -q 'BACKUP_COMMAND_FAILED\|backup exporter failed\|RUN_ALL_STEP_FAIL name=backup-week' \
   "$OUT_DIR/logs/run_all_backup_fail.txt" \
   || { echo "FAIL missing backup failure signal"; cat "$OUT_DIR/logs/run_all_backup_fail.txt"; exit 36; }
-grep -q 'RUN_ALL_RECOVER_OK\|RUN_ALL_RECOVER pre-switch\|STOP_CLAIMS_RECOVER\|run-all step failed: backup-week' \
-  "$OUT_DIR/logs/run_all_backup_fail.txt" \
-  || { echo "FAIL real run-all did not recover after backup fail"; exit 36; }
+if grep -q 'AND recovery failed\|FATAL:.*recovery failed\|FATAL: recovered container not Running' \
+  "$OUT_DIR/logs/run_all_backup_fail.txt"; then
+  echo "FAIL recovery actually failed — refusing RECOVERY_OK stamp"
+  exit 36
+fi
+grep -q 'RUN_ALL_RECOVER_OK' "$OUT_DIR/logs/run_all_backup_fail.txt" \
+  || { echo "FAIL real run-all did not emit RUN_ALL_RECOVER_OK"; exit 36; }
 echo "RUN_ALL_BACKUP_FAIL_RECOVERY_OK" | tee -a "$OUT_DIR/logs/run_all_backup_fail.txt"
 
 # ---------- G3: enqueue + REAL worker scripts (no SQL SUCCESS, no fixture-canon for VERIFIED) ----------
@@ -603,56 +607,221 @@ echo "verify_after_restore_exit=$vr" | tee -a "$OUT_DIR/logs/verify_after_restor
 [[ "$vr" -eq 0 ]] || { echo "FAIL verify after restore (mandatory for G4)"; tail -80 "$OUT_DIR/logs/verify_after_restore.txt"; exit 42; }
 grep -q 'VERIFY_WEEK_CONSUMER' "$OUT_DIR/logs/verify_after_restore.txt" || true
 
-# ---------- G2b: real run-all through backup-week on disposable stand (fresh backup + PCM files) ----------
-echo "=== G2b real run-all child-entrypoint through backup-week ==="
-mkdir -p "$OUT_DIR/backup_runall_ok" "$OUT_DIR/journal"
-# Refresh runner.env for cutover roles after G4 mutations
-printf 'DATABASE_URL=%s\nWAVE_B_PROFIT_TARGET_DATABASE_URL=%s\nV6_READMODEL_TARGET_DATABASE_URL=%s\nWAVE_B_TARGET_DB_MODE=SAME_PRODUCTION_DB\nWAVE_B_PROFIT_WORKER_MODE=queue\n' \
+# ---------- G2b: FULL real run-all (stop→backup→switch→weekly→verify) with real containers ----------
+echo "=== G2b FULL real run-all with R15 containers (no STOP_AFTER) ==="
+mkdir -p "$OUT_DIR/backup_runall_ok" "$OUT_DIR/journal" "$OUT_DIR/backup_runall_full"
+printf 'DATABASE_URL=%s\nWAVE_B_PROFIT_TARGET_DATABASE_URL=%s\nV6_READMODEL_TARGET_DATABASE_URL=%s\nWAVE_B_TARGET_DB_MODE=SAME_PRODUCTION_DB\nWAVE_B_PROFIT_WORKER_MODE=queue\nV6_READMODEL_WORKER_MODE=queue\nDASHBOARD_SNAPSHOT_WORKER_MODE=queue\n' \
   "$DATABASE_URL" "$DATABASE_URL" "$DATABASE_URL" > "$FA_STATE/runner.env"
 chmod 600 "$FA_STATE/runner.env"
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c \
   "UPDATE \"DashboardPeriodSnapshotJob\" SET status='SUCCESS', \"finishedAt\"=NOW() WHERE status='RUNNING';" \
   | tee "$OUT_DIR/logs/clear_running_before_runall_ok.txt"
+
+export FA_STATE IMAGE_STAMP=20261028_R15 R15_IMAGE_TARBALLS="${R15_IMAGE_TARBALLS:-/tmp/r15_image_tarballs}"
 set +e
-PATH="$MOCK:$PATH" \
+bash scripts/fin_accept/iso_boot_main_roles_R18.sh >"$OUT_DIR/logs/iso_boot_main_roles.txt" 2>&1
+boot_rc=$?
+set -e
+cat "$OUT_DIR/logs/iso_boot_main_roles.txt" || true
+[[ "$boot_rc" -eq 0 ]] || { echo "FAIL iso_boot_main_roles"; exit 36; }
+
+for role in app profit v6 dashboard stock; do
+  case "$role" in
+    profit) cname=avorofin-profit-readmodel-worker ;;
+    v6) cname=avorofin-v6-period-readmodel-worker ;;
+    dashboard) cname=avorofin-dashboard-period-snapshot-worker ;;
+    stock) cname=avorofin-stock-planning-snapshot-worker ;;
+    app) cname=avorofin-app ;;
+  esac
+  docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' "$cname" > "$OUT_DIR/env/${role}.captured.env" \
+    || cp -f "$FA_STATE/runner.env" "$OUT_DIR/env/${role}.captured.env"
+  cp -f "$OUT_DIR/env/${role}.captured.env" "$OUT_DIR/env/${role}.expected.env"
+done
+
+eval "$(python3 - <<'PY' "$FA_STATE/meta/ARTIFACTS_MANIFEST.json"
+import json,sys
+m=json.load(open(sys.argv[1],encoding="utf-8"))
+for r,v in m.items():
+  print(f"export EXPECT_{r.upper()}={v['ImageId']}")
+  print(f"export IMAGE_{r.upper()}={v['tag']}")
+PY
+)"
+
+set +e
 FA_STATE="$FA_STATE" ENV_CAPTURE_DIR="$OUT_DIR/env" ENV_DIR="$OUT_DIR/env" \
-WEEK_BACKUP_DIR="$OUT_DIR/backup_runall_ok" CUTOVER_JOURNAL_DIR="$OUT_DIR/journal" \
+WEEK_BACKUP_DIR="$OUT_DIR/backup_runall_full" CUTOVER_JOURNAL_DIR="$OUT_DIR/journal" \
 RUNNER_ENV_EXPORT_FILE="$FA_STATE/runner.env" \
-RUN_ALL_CHILD_ENTRYPOINT=1 RUN_ALL_STOP_AFTER=backup-week RUN_ALL_ISOLATION=1 \
-STAMP=20261028_R18 DATABASE_URL="$DATABASE_URL" \
+RUN_ALL_CHILD_ENTRYPOINT=1 RUN_ALL_ISOLATION=1 \
+STAMP=20261028_R18 IMAGE_STAMP=20261028_R15 DATABASE_URL="$DATABASE_URL" \
 WAVE_B_PROFIT_TARGET_DATABASE_URL="$DATABASE_URL" \
 V6_READMODEL_TARGET_DATABASE_URL="$DATABASE_URL" \
-BACKUP_RUN_STAMP="iso_runall_$(date -u +%Y%m%dT%H%M%SZ)" \
+BACKUP_ROOT="$OUT_DIR/backup_runall_full" \
+BACKUP_RUN_STAMP="iso_full_$(date -u +%Y%m%dT%H%M%SZ)" \
+EXPECT_APP="$EXPECT_APP" EXPECT_PROFIT="$EXPECT_PROFIT" EXPECT_V6="$EXPECT_V6" \
+EXPECT_DASHBOARD="$EXPECT_DASHBOARD" EXPECT_STOCK="$EXPECT_STOCK" \
+IMAGE_APP="$IMAGE_APP" IMAGE_PROFIT="$IMAGE_PROFIT" IMAGE_V6="$IMAGE_V6" \
+IMAGE_DASHBOARD="$IMAGE_DASHBOARD" IMAGE_STOCK="$IMAGE_STOCK" \
+WEEKLY_JOB_IDS_DIR="$OUT_DIR/ids" WEEKLY_WAIT_POLL_MAX=60 WEEKLY_WAIT_POLL_SLEEP=3 \
+STOP_CLAIMS_WAIT_MAX=24 STOP_CLAIMS_WAIT_SLEEP=2 \
   bash scripts/fin_accept/deploy_entrypoint_R12.sh run-all \
-  >"$OUT_DIR/logs/run_all_real_backup_ok.txt" 2>&1
-rao=$?
+  >"$OUT_DIR/logs/run_all_full_ok.txt" 2>&1
+rafull=$?
 set -e
-echo "real_run_all_backup_ok_exit=$rao" | tee -a "$OUT_DIR/logs/run_all_real_backup_ok.txt"
-[[ "$rao" -eq 0 ]] || { echo "FAIL real run-all through backup"; tail -80 "$OUT_DIR/logs/run_all_real_backup_ok.txt"; exit 36; }
-grep -q 'RUN_ALL_MAIN_OK' "$OUT_DIR/logs/run_all_real_backup_ok.txt"
-grep -q 'BACKUP_WEEK_OK' "$OUT_DIR/logs/run_all_real_backup_ok.txt"
-[[ -f "$OUT_DIR/backup_runall_ok/v6_pcm_snapshot.json" ]]
-[[ -f "$OUT_DIR/backup_runall_ok/EXPORT_OK.marker" ]]
+cp -f "$OUT_DIR/logs/run_all_full_ok.txt" "$OUT_DIR/logs/run_all_real_backup_ok.txt"
+echo "real_run_all_full_exit=$rafull" | tee -a "$OUT_DIR/logs/run_all_full_ok.txt"
+[[ "$rafull" -eq 0 ]] || { echo "FAIL full run-all"; tail -120 "$OUT_DIR/logs/run_all_full_ok.txt"; exit 36; }
+grep -q 'RUN_ALL_MAIN_OK' "$OUT_DIR/logs/run_all_full_ok.txt"
+if grep -q 'RUN_ALL_STOP_AFTER=' "$OUT_DIR/logs/run_all_full_ok.txt"; then
+  echo "FAIL STOP_AFTER present in full MAIN log"; exit 36
+fi
+grep -qE 'RUN_ALL_STEP switch|SWITCH_OK' "$OUT_DIR/logs/run_all_full_ok.txt"
+grep -qE 'RUN_ALL_STEP weekly|WEEKLY_ENQUEUE_AND_WAIT_OK' "$OUT_DIR/logs/run_all_full_ok.txt"
+grep -qE 'RUN_ALL_STEP verify-week' "$OUT_DIR/logs/run_all_full_ok.txt"
+grep -q 'BACKUP_WEEK_OK' "$OUT_DIR/logs/run_all_full_ok.txt"
+echo "RUN_ALL_FULL_OK" | tee -a "$OUT_DIR/logs/run_all_full_ok.txt"
 echo "RUN_ALL_REAL_BACKUP_OK" | tee -a "$OUT_DIR/logs/run_all_real_backup_ok.txt"
 
-# ---------- G5: real Next app image (R15 tar) → routes → OLD≠NEW rollback ----------
-echo "=== G5 telegram real docker rehearsal + concrete plan ==="
-unset TELEGRAM_NEW_IMAGE TELEGRAM_NEW_IMAGE_ID TELEGRAM_OLD_IMAGE TELEGRAM_OLD_IMAGE_ID || true
-if [[ -n "${TELEGRAM_APP_TAR:-}" && -f "${TELEGRAM_APP_TAR}" ]]; then
-  export TELEGRAM_APP_TAR
-  echo "TELEGRAM_APP_TAR=$TELEGRAM_APP_TAR" | tee "$OUT_DIR/logs/telegram_image_source.txt"
-elif [[ -f /tmp/r15_image_tarballs/image-tarballs/app.tar.gz ]]; then
-  export TELEGRAM_APP_TAR=/tmp/r15_image_tarballs/image-tarballs/app.tar.gz
-elif [[ -f /tmp/r15_image_tarballs/app.tar.gz ]]; then
-  export TELEGRAM_APP_TAR=/tmp/r15_image_tarballs/app.tar.gz
-fi
+# ---------- G2c: post-switch recovery (weekly fail → stop NEW → data-rollback → cutover rollback) ----------
+echo "=== G2c post-switch recovery on weekly failure ==="
+# Re-boot roles so pre-state is running OLD/NEW as switch would leave them
+export FA_STATE IMAGE_STAMP=20261028_R15 R15_IMAGE_TARBALLS="${R15_IMAGE_TARBALLS:-/tmp/r15_image_tarballs}"
+bash scripts/fin_accept/iso_boot_main_roles_R18.sh >"$OUT_DIR/logs/iso_boot_before_post_switch.txt" 2>&1
+# Capture predeploy journal before intentional fail path
+mkdir -p "$FA_STATE"
+python3 - <<'PY' "$FA_STATE"
+import json, pathlib, subprocess, sys
+fa = pathlib.Path(sys.argv[1])
+names = [
+  "avorofin-app","avorofin-profit-readmodel-worker","avorofin-v6-period-readmodel-worker",
+  "avorofin-dashboard-period-snapshot-worker","avorofin-stock-planning-snapshot-worker",
+]
+st = {}
+for n in names:
+  try:
+    s = subprocess.check_output(["docker","inspect","-f","{{.State.Status}}",n], text=True).strip()
+  except Exception:
+    s = "missing"
+  st[n] = s
+(fa/"stop_claims_prestate_predeploy.json").write_text(json.dumps(st), encoding="utf-8")
+(fa/"stop_claims_touched_predeploy.txt").write_text("\n".join(names)+"\n", encoding="utf-8")
+print("PREDEPLOY_JOURNAL_SEEDED", st)
+PY
+# Fresh backup for scoped restore target
+mkdir -p "$OUT_DIR/backup_post_switch"
+BACKUP_RUN_STAMP="iso_post_$(date -u +%Y%m%dT%H%M%SZ)" BACKUP_ROOT="$OUT_DIR/backup_post_switch" \
+FA_STATE="$FA_STATE" DATABASE_URL="$DATABASE_URL" \
+WAVE_B_PROFIT_TARGET_DATABASE_URL="$DATABASE_URL" \
+V6_READMODEL_TARGET_DATABASE_URL="$DATABASE_URL" \
+  bash scripts/fin_accept/deploy_entrypoint_R12.sh backup-week \
+  >"$OUT_DIR/logs/backup_before_post_switch.txt" 2>&1
+# Poison weekly stage via temporary wrapper: run-all child calls entrypoint weekly
+# Force post-switch path by invoking recover_post_switch through a failing weekly in child run-all after switch.
+# Use a short controlled script that sources recover path via run-all with STOP after switch then manual weekly fail is complex;
+# Instead call entrypoint run-all with a poisoned wait_weekly / weekly script.
+WEEKLY_SH="$ROOT/scripts/fin_accept/run_weekly_enqueue_R12.ts"
+WEEKLY_BAK="$OUT_DIR/run_weekly_enqueue_R12.ts.bak_g2c"
+cp -f "$WEEKLY_SH" "$WEEKLY_BAK"
+cat > "$WEEKLY_SH" <<'EOS'
+console.error("WEEKLY_COMMAND_FAILED intentional post-switch isolation poison");
+process.exit(9);
+EOS
+# Ensure EXPECT_* and images for switch
+eval "$(python3 - <<'PY' "$FA_STATE/meta/ARTIFACTS_MANIFEST.json"
+import json,sys
+m=json.load(open(sys.argv[1],encoding="utf-8"))
+for r,v in m.items():
+  print(f"export EXPECT_{r.upper()}={v['ImageId']}")
+  print(f"export IMAGE_{r.upper()}={v['tag']}")
+PY
+)"
+for role in app profit v6 dashboard stock; do
+  case "$role" in
+    profit) cname=avorofin-profit-readmodel-worker ;;
+    v6) cname=avorofin-v6-period-readmodel-worker ;;
+    dashboard) cname=avorofin-dashboard-period-snapshot-worker ;;
+    stock) cname=avorofin-stock-planning-snapshot-worker ;;
+    app) cname=avorofin-app ;;
+  esac
+  docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' "$cname" > "$OUT_DIR/env/${role}.captured.env" \
+    || cp -f "$FA_STATE/runner.env" "$OUT_DIR/env/${role}.captured.env"
+  cp -f "$OUT_DIR/env/${role}.captured.env" "$OUT_DIR/env/${role}.expected.env"
+done
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c \
+  "UPDATE \"DashboardPeriodSnapshotJob\" SET status='SUCCESS', \"finishedAt\"=NOW() WHERE status='RUNNING';" \
+  >/dev/null 2>&1 || true
 set +e
-DATABASE_URL="$DATABASE_URL" \
+FA_STATE="$FA_STATE" ENV_CAPTURE_DIR="$OUT_DIR/env" ENV_DIR="$OUT_DIR/env" \
+WEEK_BACKUP_DIR="$OUT_DIR/backup_post_switch" CUTOVER_JOURNAL_DIR="$OUT_DIR/journal" \
+RUNNER_ENV_EXPORT_FILE="$FA_STATE/runner.env" \
+RUN_ALL_CHILD_ENTRYPOINT=1 RUN_ALL_ISOLATION=1 \
+STAMP=20261028_R18 IMAGE_STAMP=20261028_R15 DATABASE_URL="$DATABASE_URL" \
+WAVE_B_PROFIT_TARGET_DATABASE_URL="$DATABASE_URL" \
+V6_READMODEL_TARGET_DATABASE_URL="$DATABASE_URL" \
+BACKUP_ROOT="$OUT_DIR/backup_post_switch" \
+BACKUP_RUN_STAMP="iso_postfail_$(date -u +%Y%m%dT%H%M%SZ)" \
+EXPECT_APP="$EXPECT_APP" EXPECT_PROFIT="$EXPECT_PROFIT" EXPECT_V6="$EXPECT_V6" \
+EXPECT_DASHBOARD="$EXPECT_DASHBOARD" EXPECT_STOCK="$EXPECT_STOCK" \
+IMAGE_APP="$IMAGE_APP" IMAGE_PROFIT="$IMAGE_PROFIT" IMAGE_V6="$IMAGE_V6" \
+IMAGE_DASHBOARD="$IMAGE_DASHBOARD" IMAGE_STOCK="$IMAGE_STOCK" \
+WEEKLY_JOB_IDS_DIR="$OUT_DIR/ids" WEEKLY_WAIT_POLL_MAX=8 WEEKLY_WAIT_POLL_SLEEP=1 \
+STOP_CLAIMS_WAIT_MAX=24 STOP_CLAIMS_WAIT_SLEEP=2 \
+  bash scripts/fin_accept/deploy_entrypoint_R12.sh run-all \
+  >"$OUT_DIR/logs/run_all_post_switch_recover.txt" 2>&1
+rapost=$?
+set -e
+cp -f "$WEEKLY_BAK" "$WEEKLY_SH"
+echo "real_run_all_post_switch_exit=$rapost" | tee -a "$OUT_DIR/logs/run_all_post_switch_recover.txt"
+[[ "$rapost" -ne 0 ]] || { echo "FAIL expected non-zero on post-switch weekly fail"; exit 36; }
+grep -q 'WEEKLY_COMMAND_FAILED\|RUN_ALL_STEP_FAIL name=weekly' "$OUT_DIR/logs/run_all_post_switch_recover.txt" \
+  || { echo "FAIL missing weekly failure signal"; tail -80 "$OUT_DIR/logs/run_all_post_switch_recover.txt"; exit 36; }
+grep -q 'POST_SWITCH_WRITERS_STOPPED' "$OUT_DIR/logs/run_all_post_switch_recover.txt" \
+  || { echo "FAIL writers not stopped before data restore"; exit 36; }
+grep -q 'RUN_ALL_POST_SWITCH_RECOVER_OK' "$OUT_DIR/logs/run_all_post_switch_recover.txt" \
+  || { echo "FAIL post-switch recover OK missing"; tail -120 "$OUT_DIR/logs/run_all_post_switch_recover.txt"; exit 36; }
+# Confirm recover marker is not stamped without OK
+if grep -q 'AND recovery failed\|FATAL: data-rollback failed\|FATAL: cutover rollback failed' \
+  "$OUT_DIR/logs/run_all_post_switch_recover.txt"; then
+  if grep -q 'RUN_ALL_POST_SWITCH_RECOVER_OK' "$OUT_DIR/logs/run_all_post_switch_recover.txt"; then
+    echo "FAIL POST_SWITCH_RECOVER_OK stamped over failure"
+    exit 36
+  fi
+fi
+echo "RUN_ALL_POST_SWITCH_RECOVER_PROBED_OK" | tee -a "$OUT_DIR/logs/run_all_post_switch_recover.txt"
+
+# ---------- G5: execute Telegram plan with real OLD 7f9fee6a + NEW R15 ----------
+echo "=== G5 telegram plan execution (real OLD+NEW) ==="
+unset TELEGRAM_NEW_IMAGE TELEGRAM_NEW_IMAGE_ID || true
+export TELEGRAM_OLD_IMAGE="avorofin-p0-cogs-telegram:20261014_tg_top_truth"
+export TELEGRAM_OLD_IMAGE_ID="sha256:7f9fee6a7e5f5595d6895d892d37dd218e5e2cb62ebf86a5b048ee15a1132453"
+if [[ -z "${TELEGRAM_APP_TAR:-}" || ! -f "${TELEGRAM_APP_TAR}" ]]; then
+  if [[ -f /tmp/r15_image_tarballs/app_fin_accept_20261028_R15.tar.gz ]]; then
+    export TELEGRAM_APP_TAR=/tmp/r15_image_tarballs/app_fin_accept_20261028_R15.tar.gz
+  elif [[ -f /tmp/r15_image_tarballs/image-tarballs/app.tar.gz ]]; then
+    export TELEGRAM_APP_TAR=/tmp/r15_image_tarballs/image-tarballs/app.tar.gz
+  fi
+fi
+if [[ -z "${TELEGRAM_OLD_APP_TAR:-}" || ! -f "${TELEGRAM_OLD_APP_TAR}" ]]; then
+  if [[ -f /tmp/r15_image_tarballs/telegram_old_7f9fee6a.tar.gz ]]; then
+    export TELEGRAM_OLD_APP_TAR=/tmp/r15_image_tarballs/telegram_old_7f9fee6a.tar.gz
+  fi
+fi
+echo "TELEGRAM_APP_TAR=${TELEGRAM_APP_TAR:-}" | tee "$OUT_DIR/logs/telegram_image_source.txt"
+echo "TELEGRAM_OLD_APP_TAR=${TELEGRAM_OLD_APP_TAR:-}" | tee -a "$OUT_DIR/logs/telegram_image_source.txt"
+sudo mkdir -p /var/lib/avorofin && sudo chmod 777 /var/lib/avorofin || true
+set +e
+FA_STATE="$FA_STATE" DATABASE_URL="$DATABASE_URL" \
+TELEGRAM_APP_TAR="$TELEGRAM_APP_TAR" TELEGRAM_OLD_APP_TAR="$TELEGRAM_OLD_APP_TAR" \
+TELEGRAM_APP_TAR_SHA256="${TELEGRAM_APP_TAR_SHA256:-cdfcbaa72017f5ed82e8659049faa39a0ded4a31d87cadd5989732cf080a5a7a}" \
 bash scripts/fin_accept/telegram_rehearsal_R18.sh "$OUT_DIR/telegram" \
   >"$OUT_DIR/logs/telegram_rehearsal.txt" 2>&1
 tg_rc=$?
 set -e
 cat "$OUT_DIR/logs/telegram_rehearsal.txt" || true
+if [[ -f "$OUT_DIR/telegram/fa_state/telegram_plan.json" ]]; then
+  cp -f "$OUT_DIR/telegram/fa_state/telegram_plan.json" "$FA_STATE/telegram_plan.json"
+elif [[ -f "$OUT_DIR/telegram/telegram_plan.json" ]]; then
+  cp -f "$OUT_DIR/telegram/telegram_plan.json" "$FA_STATE/telegram_plan.json"
+fi
 tg_reh=1
 tg_mock=0
 tg_stub=0
@@ -662,28 +831,16 @@ fi
 if [[ -f "$OUT_DIR/telegram/REHEARSAL_SUMMARY.json" ]]; then
   grep -q '"mockUsed": true' "$OUT_DIR/telegram/REHEARSAL_SUMMARY.json" && tg_mock=1 && tg_reh=1
   grep -q '"stubServer": true' "$OUT_DIR/telegram/REHEARSAL_SUMMARY.json" && tg_stub=1 && tg_reh=1
+  grep -q '"planExecuted": true' "$OUT_DIR/telegram/REHEARSAL_SUMMARY.json" || tg_reh=1
   grep -q '"webhookRouteOk": true' "$OUT_DIR/telegram/REHEARSAL_SUMMARY.json" || tg_reh=1
   grep -q '"dailyReportRouteOk": true' "$OUT_DIR/telegram/REHEARSAL_SUMMARY.json" || tg_reh=1
   export TELEGRAM_NEW_IMAGE="$(python3 -c "import json;s=json.load(open(r'$OUT_DIR/telegram/REHEARSAL_SUMMARY.json'));print(s.get('newImage') or '')")"
-  export TELEGRAM_NEW_IMAGE_ID="$(python3 -c "import json;s=json.load(open(r'$OUT_DIR/telegram/REHEARSAL_SUMMARY.json'));print(s.get('imageIdObserved') or s.get('imageIdExpected') or '')")"
-fi
-if [[ -z "${TELEGRAM_NEW_IMAGE:-}" ]] && docker image inspect avorofin-p0-cogs-app:fin_accept_20261028_R15 >/dev/null 2>&1; then
-  export TELEGRAM_NEW_IMAGE="avorofin-p0-cogs-app:fin_accept_20261028_R15"
-  export TELEGRAM_NEW_IMAGE_ID="$(docker image inspect -f '{{.Id}}' "$TELEGRAM_NEW_IMAGE")"
+  export TELEGRAM_NEW_IMAGE_ID="$(python3 -c "import json;s=json.load(open(r'$OUT_DIR/telegram/REHEARSAL_SUMMARY.json'));print(s.get('imageIdObserved') or '')")"
 fi
 [[ "$tg_stub" -eq 0 ]] || { echo "FAIL stub telegram image used"; exit 44; }
-set +e
-FA_STATE="$FA_STATE" CUTOVER_JOURNAL_DIR="$CUTOVER_JOURNAL_DIR" \
-TELEGRAM_HOST=64.188.63.133 TELEGRAM_SSH_USER=root \
-TELEGRAM_NEW_IMAGE="${TELEGRAM_NEW_IMAGE:-avorofin-p0-cogs-telegram:c01_isolation_local}" \
-TELEGRAM_NEW_IMAGE_ID="${TELEGRAM_NEW_IMAGE_ID:-MUST_SET_TELEGRAM_NEW_IMAGE_ID_AFTER_LOAD}" \
-  bash scripts/fin_accept/deploy_entrypoint_R12.sh telegram-plan \
-  >"$OUT_DIR/logs/telegram_plan.txt" 2>&1
-tp=$?
-set -e
 if [[ -f "$FA_STATE/telegram_plan.json" ]]; then
-  grep -q 'NEW_TELEGRAM_IMAGE_WITH_ACCEPTED_DAILYREPORT' "$FA_STATE/telegram_plan.json" \
-    && { echo "FAIL placeholder image still present"; exit 44; } || true
+  grep -q 'NEW_TELEGRAM_IMAGE_WITH_ACCEPTED_DAILYREPORT\|c01_isolation_local\|telegram_health_stub' "$FA_STATE/telegram_plan.json" \
+    && { echo "FAIL placeholder/stub still in plan"; exit 44; } || true
   python3 - <<'PY' "$OUT_DIR/telegram/REHEARSAL_SUMMARY.json" "$FA_STATE/telegram_plan.json"
 import json,sys,pathlib
 sum_path, plan_path = sys.argv[1:3]
@@ -691,9 +848,10 @@ plan=json.load(open(plan_path,encoding="utf-8"))
 summ={}
 if pathlib.Path(sum_path).exists():
   summ=json.load(open(sum_path,encoding="utf-8"))
-plan["isolationRehearsalOk"]=bool(summ.get("ok") and not summ.get("mockUsed"))
+plan["isolationRehearsalOk"]=bool(summ.get("ok") and not summ.get("mockUsed") and summ.get("planExecuted"))
 plan["dailyReportShaOk"]=bool(summ.get("dailyReportShaOk"))
 plan["autoRecoveryOnBadHealth"]=bool(summ.get("autoRecoveryOnBadHealth"))
+plan["planExecuted"]=bool(summ.get("planExecuted"))
 json.dump(plan, open(plan_path,"w",encoding="utf-8"), indent=2, ensure_ascii=False)
 print("TELEGRAM_PLAN_BOUND_TO_REHEARSAL")
 PY
@@ -734,10 +892,25 @@ g3_status = "$g3_status"
 g3_blocked_reason = """$g3_blocked_reason"""
 g1_ok = ($ed == 0 and $rp == 0 and $wre == 0 and (out/"logs"/"g1_effective_env.txt").exists()
          and (out/"logs"/"disposable_identity.txt").exists())
-g2_ok = ($spf != 0 and $sc != 0 and (out/"logs"/"run_all_backup_fail.txt").exists()
-         and "RUN_ALL_BACKUP_FAIL_RECOVERY_OK" in (out/"logs"/"run_all_backup_fail.txt").read_text(encoding="utf-8", errors="replace")
-         and (out/"logs"/"run_all_real_backup_ok.txt").exists()
-         and "RUN_ALL_REAL_BACKUP_OK" in (out/"logs"/"run_all_real_backup_ok.txt").read_text(encoding="utf-8", errors="replace"))
+_full = (out/"logs"/"run_all_full_ok.txt")
+_full_t = _full.read_text(encoding="utf-8", errors="replace") if _full.exists() else ""
+_fail_t = (out/"logs"/"run_all_backup_fail.txt").read_text(encoding="utf-8", errors="replace") if (out/"logs"/"run_all_backup_fail.txt").exists() else ""
+_ok_t = (out/"logs"/"run_all_real_backup_ok.txt").read_text(encoding="utf-8", errors="replace") if (out/"logs"/"run_all_real_backup_ok.txt").exists() else ""
+_post = (out/"logs"/"run_all_post_switch_recover.txt")
+_post_t = _post.read_text(encoding="utf-8", errors="replace") if _post.exists() else ""
+g2_ok = ($spf != 0 and $sc != 0
+         and "RUN_ALL_BACKUP_FAIL_RECOVERY_OK" in _fail_t
+         and "AND recovery failed" not in _fail_t
+         and "FATAL: recovered container not Running" not in _fail_t
+         and "RUN_ALL_REAL_BACKUP_OK" in _ok_t
+         and "RUN_ALL_FULL_OK" in _full_t
+         and "RUN_ALL_MAIN_OK" in _full_t
+         and "RUN_ALL_STOP_AFTER=" not in _full_t
+         and ("RUN_ALL_STEP switch" in _full_t or "SWITCH_OK" in _full_t)
+         and ("RUN_ALL_STEP weekly" in _full_t or "WEEKLY_ENQUEUE_AND_WAIT_OK" in _full_t)
+         and ("RUN_ALL_STEP verify-week" in _full_t)
+         and "RUN_ALL_POST_SWITCH_RECOVER_OK" in _post_t
+         and "POST_SWITCH_WRITERS_STOPPED" in _post_t)
 g4_ok = ($rc_corrupt != 0 and "$gone" == "0" and "$left" == "0"
          and "$v6gone" == "0" and $rc_miss_v6 != 0 and $rc_miss_pcm != 0
          and $vr == 0
@@ -767,7 +940,7 @@ doc = {
          ["logs/env_dollar.txt","logs/runtime_preflight_cross_proc.txt","logs/g1_effective_env.txt","logs/with_runner_env.txt","logs/env_runtime_match.txt"],
          "safe_load_env_R18+with_runner_env+backup_week_autoload"),
     gate("G2", "MAIN run-all stop/recovery + SQL/docker failure paths", g2_ok,
-         ["logs/stop_claims_psql_fail.txt","logs/stop_claims_multi.txt","logs/run_all_backup_fail.txt","logs/run_all_real_backup_ok.txt","logs/docker_calls.txt","logs/disposable_identity.txt"],
+         ["logs/stop_claims_psql_fail.txt","logs/stop_claims_multi.txt","logs/run_all_backup_fail.txt","logs/run_all_full_ok.txt","logs/run_all_real_backup_ok.txt","logs/run_all_post_switch_recover.txt","logs/docker_calls.txt","logs/disposable_identity.txt"],
          "real_run_all_child_entrypoint+stop_claims"),
     gate("G3", "Real workers 6/3/3 + consumers with primary+Finance", g3_status=="VERIFIED",
          ["logs/load_primary.txt","logs/enqueue_profit.txt","logs/real_worker_profit.txt","logs/real_worker_v6.txt","logs/real_worker_dashboard.txt","logs/verify_hit_real.txt","verify_hit_real.json","logs/g3_matrix.txt","logs/g3_status.txt"],

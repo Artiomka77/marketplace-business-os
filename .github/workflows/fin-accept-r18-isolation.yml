@@ -18,7 +18,7 @@ jobs:
   isolated-sequence:
     if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 180
     services:
       postgres:
         image: postgres:16-alpine
@@ -42,6 +42,7 @@ jobs:
       PRIMARY_STAND_DISPOSABLE_OK: "1"
       R18_ISOLATION_OUT: ${{ github.workspace }}/R18_isolation_out
       PRIMARY_C01_ROOT: ${{ github.workspace }}/scripts/fin_accept/fixtures/primary_c01
+      R15_IMAGE_TARBALLS: /tmp/r15_image_tarballs
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -78,34 +79,61 @@ jobs:
           set -euo pipefail
           sed -i 's/\r$//' scripts/fin_accept/*.sh
           chmod +x scripts/fin_accept/*.sh scripts/fin_accept/*.py || true
-      - name: Fetch accepted R15 app image tarball (Telegram NEW candidate)
+      - name: Fetch R15 five-role image tarballs + Telegram NEW/OLD
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          mkdir -p /tmp/r15_image_tarballs
-          # Prefer draft-release portable app tar when present; else GHA artifact from green R15 build.
+          mkdir -p /tmp/r15_image_tarballs/image-tarballs
+          # Full five-role artifact from accepted R15 image build
+          gh run download 40653680208 --repo "${{ github.repository }}" \
+            -n fin-accept-image-tarballs-20261028_R15 \
+            -D /tmp/r15_image_tarballs
+          # Normalize layout to image-tarballs/<role>.tar.gz
+          if [[ -d /tmp/r15_image_tarballs/image-tarballs ]]; then
+            echo "LAYOUT_OK image-tarballs"
+          else
+            mkdir -p /tmp/r15_image_tarballs/image-tarballs
+            for role in app profit v6 dashboard stock; do
+              f="$(find /tmp/r15_image_tarballs -name "${role}.tar.gz" | head -1 || true)"
+              [[ -n "$f" ]] && cp -f "$f" "/tmp/r15_image_tarballs/image-tarballs/${role}.tar.gz"
+            done
+          fi
+          for role in app profit v6 dashboard stock; do
+            test -f "/tmp/r15_image_tarballs/image-tarballs/${role}.tar.gz" \
+              || test -f "/tmp/r15_image_tarballs/${role}.tar.gz"
+          done
+          # Portable NEW app (may already be in artifact as app.tar.gz)
           if gh release download fin-close-c01-primary-stand \
               --pattern 'app_fin_accept_20261028_R15.tar.gz' \
               --dir /tmp/r15_image_tarballs 2>/tmp/app_tar_dl.err; then
-            mkdir -p /tmp/r15_image_tarballs/image-tarballs
-            mv /tmp/r15_image_tarballs/app_fin_accept_20261028_R15.tar.gz \
+            cp -f /tmp/r15_image_tarballs/app_fin_accept_20261028_R15.tar.gz \
               /tmp/r15_image_tarballs/image-tarballs/app.tar.gz
             echo "APP_TAR_FROM_RELEASE"
           else
             cat /tmp/app_tar_dl.err || true
-            gh run download 40653680208 --repo "${{ github.repository }}" \
-              -n fin-accept-image-tarballs-20261028_R15 \
-              -D /tmp/r15_image_tarballs
-            test -f /tmp/r15_image_tarballs/image-tarballs/app.tar.gz \
-              || test -f /tmp/r15_image_tarballs/app.tar.gz
             echo "APP_TAR_FROM_R15_ARTIFACT"
           fi
-          find /tmp/r15_image_tarballs -name 'app.tar.gz' -printf '%p %s\n'
-          echo "TELEGRAM_APP_TAR=$(find /tmp/r15_image_tarballs -name 'app.tar.gz' | head -1)" >> "$GITHUB_ENV"
+          # Production OLD telegram image (7f9fee6a)
+          if gh release download fin-close-c01-primary-stand \
+              --pattern 'telegram_old_7f9fee6a.tar.gz' \
+              --dir /tmp/r15_image_tarballs 2>/tmp/old_tar_dl.err; then
+            echo "OLD_TAR_FROM_RELEASE"
+          else
+            echo "OLD_TAR_MISSING"
+            cat /tmp/old_tar_dl.err || true
+            exit 2
+          fi
+          find /tmp/r15_image_tarballs -name '*.tar.gz' -printf '%p %s\n' | head -40
+          APP_TAR="$(find /tmp/r15_image_tarballs -path '*image-tarballs/app.tar.gz' -o -name 'app_fin_accept_20261028_R15.tar.gz' | head -1)"
+          echo "TELEGRAM_APP_TAR=$APP_TAR" >> "$GITHUB_ENV"
+          echo "TELEGRAM_OLD_APP_TAR=/tmp/r15_image_tarballs/telegram_old_7f9fee6a.tar.gz" >> "$GITHUB_ENV"
       - name: Run isolated R18/C01 sequence
         env:
           TELEGRAM_APP_TAR: ${{ env.TELEGRAM_APP_TAR }}
+          TELEGRAM_OLD_APP_TAR: ${{ env.TELEGRAM_OLD_APP_TAR }}
+          TELEGRAM_APP_TAR_SHA256: cdfcbaa72017f5ed82e8659049faa39a0ded4a31d87cadd5989732cf080a5a7a
+          R15_IMAGE_TARBALLS: /tmp/r15_image_tarballs
         run: bash scripts/fin_accept/run_isolated_deploy_sequence_R18.sh
       - name: Upload isolation evidence
         if: always()
