@@ -213,13 +213,18 @@ echo "portable_sha=$portable_sha bytes=$(wc -c < "$PORTABLE")" | tee -a "$OUT/lo
 DB_URL="${DATABASE_URL:-}"
 DOCKER_DB_URL="$DB_URL"
 if [[ -n "$DB_URL" ]]; then
-  # Containers cannot use 127.0.0.1 of the host — rewrite to host-gateway
+  # Containers cannot use 127.0.0.1 of the host — rewrite to host-gateway.
+  # Disposable Postgres has no TLS — force sslmode=disable (Prisma otherwise P1011).
   DOCKER_DB_URL="$(python3 - <<'PY' "$DB_URL"
 import sys
+from urllib.parse import urlparse, parse_qsl, urlencode, urlunparse
 u=sys.argv[1]
 for h in ("127.0.0.1","localhost"):
   u=u.replace("@"+h+":", "@host.docker.internal:")
-print(u)
+p=urlparse(u)
+q=dict(parse_qsl(p.query, keep_blank_values=True))
+q["sslmode"]="disable"
+print(urlunparse(p._replace(query=urlencode(q))))
 PY
 )"
 fi
