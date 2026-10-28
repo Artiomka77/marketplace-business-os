@@ -1,0 +1,78 @@
+name: fin-accept-r16-isolation
+
+# Isolated postgres rehearsal of R16 deploy-facing scripts. No production. No image rebuild required.
+on:
+  push:
+    branches:
+      - "build/fin-accept-images-20261028_R16"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: fin-accept-r16-isolation
+  cancel-in-progress: true
+
+jobs:
+  isolated-sequence:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: finaccept
+          POSTGRES_PASSWORD: finaccept
+          POSTGRES_DB: finaccept
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U finaccept -d finaccept"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      DATABASE_URL: postgresql://finaccept:finaccept@127.0.0.1:5432/finaccept
+      WAVE_B_PROFIT_TARGET_DATABASE_URL: postgresql://finaccept:finaccept@127.0.0.1:5432/finaccept
+      V6_READMODEL_TARGET_DATABASE_URL: postgresql://finaccept:finaccept@127.0.0.1:5432/finaccept
+      WEEKLY_REQUIRE_SAME_TARGETS: "1"
+      R16_ISOLATION_OUT: ${{ github.workspace }}/R16_isolation_out
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install deps + prisma generate
+        run: |
+          set -euo pipefail
+          npm ci --ignore-scripts
+          npx prisma generate
+
+      - name: Install psql client
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+
+      - name: LF + executable scripts
+        run: |
+          set -euo pipefail
+          sed -i 's/\r$//' scripts/fin_accept/*.sh
+          chmod +x scripts/fin_accept/*.sh
+
+      - name: Run isolated R16 sequence (real scripts + real postgres)
+        run: bash scripts/fin_accept/run_isolated_deploy_sequence_R16.sh
+
+      - name: Upload isolation evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fin-accept-r16-isolation-out
+          path: R16_isolation_out/
+          if-no-files-found: warn
+          retention-days: 14
