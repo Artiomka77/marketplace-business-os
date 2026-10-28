@@ -283,7 +283,7 @@ PY
     else
       docker stop -t 5 "$cname" 2>/dev/null || true
     fi
-    if wait_running_zero "$label" "$sql" "$url" 36; then
+    if wait_running_zero "$label" "$sql" "$url"; then
       echo "STOP_OK $label"
       return 0
     fi
