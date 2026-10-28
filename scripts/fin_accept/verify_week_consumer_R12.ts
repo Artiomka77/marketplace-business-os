@@ -208,7 +208,7 @@ async function main() {
 
   const petrov = cases.find((c) => c.companyScope === "ИП Петров")!;
   const lebedeva = cases.find((c) => c.companyScope === "ИП Лебедева")!;
-  const all = cases.find((c) => c.companyScope === "ALL")!;
+  const all = cases.find((c) => c.companyScope === "ALL") as { displayN: number; business: number };
   if (!nearly(round2(petrov.displayN + lebedeva.displayN), all.displayN)) {
     failures.push("ALL N != sum of companies");
   }

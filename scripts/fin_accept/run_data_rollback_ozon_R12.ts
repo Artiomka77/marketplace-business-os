@@ -95,12 +95,14 @@ async function main() {
           sourceFingerprint: r.sourceFingerprint,
           payloadChecksum: r.payloadChecksum,
           totals: r.totals as object,
-          comparison: (r.comparison ?? null) as object | null,
+          ...(r.comparison === undefined
+            ? {}
+            : { comparison: r.comparison as object }),
           meta: r.meta as object,
           analyticsPayload: r.analyticsPayload as object,
           generatedAt: r.generatedAt ? new Date(r.generatedAt) : existing.generatedAt,
           staleAfterMs: r.staleAfterMs ?? existing.staleAfterMs,
-        },
+        } as never,
       });
       const aTotals = updated.totals as {
         netOzonExpenses?: number;
