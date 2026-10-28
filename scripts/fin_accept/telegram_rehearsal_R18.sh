@@ -204,6 +204,14 @@ PY
 )"
 [[ "$webhook_ok" -eq 1 && "$daily_ok" -eq 1 ]] || { write_blocked "ROUTE_MARKERS_MISSING"; exit 0; }
 
+# Persist non-empty route bodies while NEW is still healthy
+mkdir -p "$OUT/logs" "$OUT/fa_state"
+curl -sf "http://127.0.0.1:${PORT_HOST}/api/telegram/webhook" > "$OUT/logs/webhook_route.json"
+curl -sf "http://127.0.0.1:${PORT_HOST}/api/telegram/daily-report?from=2026-10-19&to=2026-10-25&send=false&ai=false" \
+  > "$OUT/logs/daily_report_route.json"
+[[ -s "$OUT/logs/webhook_route.json" && -s "$OUT/logs/daily_report_route.json" ]] \
+  || { write_blocked "ROUTE_JSON_EMPTY"; exit 0; }
+
 # Negative: force bad health → automatic recovery to OLD via plan rollback commands
 echo "=== bad health → plan rollback to OLD ===" | tee -a "$OUT/logs/telegram_rehearsal_steps.txt"
 docker rm -f avorofin-telegram-app >/dev/null 2>&1 || true
@@ -218,13 +226,7 @@ rb_id="$(docker inspect -f '{{.Image}}' avorofin-telegram-app)"
 [[ "$rb_id" == "$OLD_ID" ]] || { write_blocked "ROLLBACK_NOT_OLD got=$rb_id"; exit 9; }
 echo "AUTO_RECOVERY_OK old=$rb_id" | tee -a "$OUT/logs/telegram_rehearsal_steps.txt"
 
-# Copy plan into FA_STATE for assert
-mkdir -p "$OUT/fa_state"
 cp -f "$PLAN_JSON" "$OUT/fa_state/telegram_plan.json"
-curl -sf "http://127.0.0.1:${PORT_HOST}/api/telegram/webhook" > "$OUT/logs/webhook_route.json" || true
-curl -sf "http://127.0.0.1:${PORT_HOST}/api/telegram/daily-report?from=2026-10-19&to=2026-10-25&send=false&ai=false" \
-  > "$OUT/logs/daily_report_route.json" || true
-
 docker rm -f avorofin-telegram-app >/dev/null 2>&1 || true
 
 python3 - <<PY

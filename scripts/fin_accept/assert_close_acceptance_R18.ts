@@ -376,7 +376,11 @@ if (isoDir && fs.existsSync(isoDir)) {
         if (/c01_isolation_local|telegram_health_stub|NEW_TELEGRAM_IMAGE_WITH_ACCEPTED/.test(cmds)) {
           reasons.push("G5_DISQUALIFIED plan still references stub/placeholder image");
         }
-        if (!/api\/telegram\/webhook|daily-report/.test(cmds)) {
+        if (
+          !/api\/telegram\/webhook|daily-report|telegram_app_ready_check\.sh/.test(
+            cmds,
+          )
+        ) {
           reasons.push("G5_DISQUALIFIED plan health must check application routes");
         }
       } catch {
