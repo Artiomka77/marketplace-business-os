@@ -259,7 +259,6 @@ ev={
   "portableTar": str(out/"portable"/"telegram_new_app.tar.gz"),
   "portableSha256": "$portable_sha",
   "acceptedAppImageId": "$EXPECTED_NEW_ID",
-  "productionOldImageId": "$EXPECTED_OLD_ID",
 }
 (out/"REHEARSAL_SUMMARY.json").write_text(json.dumps(ev, indent=2)+"\n", encoding="utf-8")
 print("TELEGRAM_REHEARSAL_R18_OK")
