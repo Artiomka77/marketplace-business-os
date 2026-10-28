@@ -5,8 +5,12 @@ ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 : "${DATABASE_URL:?}"
 TAR_ROOT="${R15_IMAGE_TARBALLS:-/tmp/r15_image_tarballs}"
 STAMP="${IMAGE_STAMP:-20261028_R15}"
+# On Linux GHA, host network lets containers reach service Postgres at 127.0.0.1.
+# host.docker.internal alone is unreliable for compose-like service ports.
+USE_HOST_NET="${ISO_BOOT_HOST_NETWORK:-1}"
 DB_DOCKER="$DATABASE_URL"
-DB_DOCKER="$(python3 - <<'PY' "$DATABASE_URL"
+if [[ "$USE_HOST_NET" != "1" ]]; then
+  DB_DOCKER="$(python3 - <<'PY' "$DATABASE_URL"
 import sys
 from urllib.parse import urlparse, parse_qsl, urlencode, urlunparse
 u=sys.argv[1]
@@ -16,6 +20,16 @@ p=urlparse(u); q=dict(parse_qsl(p.query, keep_blank_values=True)); q["sslmode"]=
 print(urlunparse(p._replace(query=urlencode(q))))
 PY
 )"
+else
+  DB_DOCKER="$(python3 - <<'PY' "$DATABASE_URL"
+import sys
+from urllib.parse import urlparse, parse_qsl, urlencode, urlunparse
+u=sys.argv[1]
+p=urlparse(u); q=dict(parse_qsl(p.query, keep_blank_values=True)); q["sslmode"]="disable"
+print(urlunparse(p._replace(query=urlencode(q))))
+PY
+)"
+fi
 
 find_tar() {
   local role="$1"
@@ -81,11 +95,17 @@ chmod 600 "$ENVF"
 start_one() {
   local name="$1" image="$2"
   docker rm -f "$name" >/dev/null 2>&1 || true
+  local net_args=()
+  if [[ "$USE_HOST_NET" == "1" ]]; then
+    net_args=(--network host)
+  else
+    net_args=(--add-host=host.docker.internal:host-gateway)
+  fi
   docker run -d --name "$name" --restart unless-stopped \
-    --add-host=host.docker.internal:host-gateway \
+    "${net_args[@]}" \
     --env-file "$ENVF" \
     "$image"
-  echo "STARTED $name"
+  echo "STARTED $name net=${USE_HOST_NET}"
 }
 
 start_one avorofin-app "avorofin-p0-cogs-app:fin_accept_${STAMP}"
