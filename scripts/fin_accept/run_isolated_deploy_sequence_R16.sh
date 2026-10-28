@@ -32,7 +32,7 @@ need() { command -v "$1" >/dev/null || { echo "missing $1"; exit 2; }; }
 need psql; need node; need python3
 
 echo "=== prisma db push ==="
-npx prisma db push --accept-data-loss --skip-generate 2>&1 | tee "$OUT_DIR/logs/prisma_push.txt"
+npx prisma db push --accept-data-loss 2>&1 | tee "$OUT_DIR/logs/prisma_push.txt"
 
 echo "=== seed schema helpers via SQL ==="
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 <<'SQL' | tee "$OUT_DIR/logs/seed_clean.txt"
