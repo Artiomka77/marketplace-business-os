@@ -15,6 +15,7 @@ import {
 import { createPrismaProfitReadModelRepository } from "@/lib/profitReadModel/repository";
 import { loadProfitReadModel } from "@/lib/profitReadModel/consumer";
 import { createWaveBProfitTargetPrismaClient } from "@/lib/profitReadModel/targetClient";
+import { computeCheapProfitSourceVersion } from "@/lib/profitReadModel/sourceVersion";
 
 const dateFrom = process.env.DATE_FROM || "2026-10-19";
 const dateTo = process.env.DATE_TO || "2026-10-25";
@@ -64,6 +65,7 @@ async function loadProfitConsumer(
 ) {
   const targetPrisma = createWaveBProfitTargetPrismaClient();
   const repository = createPrismaProfitReadModelRepository(targetPrisma);
+  // Same freshness path as app/profit-ozon/page.tsx (enqueueOnMiss forced off for gate).
   const loaded = await loadProfitReadModel({
     repository,
     marketplace,
@@ -71,6 +73,14 @@ async function loadProfitConsumer(
     dateFrom,
     dateTo,
     enqueueOnMiss: false,
+    resolveCurrentSourceVersion: () =>
+      computeCheapProfitSourceVersion({
+        prisma,
+        marketplace,
+        companyScope,
+        dateFrom,
+        dateTo,
+      }),
   });
 
   if (loaded.status !== "HIT") {

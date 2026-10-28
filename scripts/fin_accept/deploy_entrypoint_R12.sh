@@ -125,22 +125,25 @@ PY
   echo "PREFLIGHT_ARTIFACTS_OK tar=$TAR_DIR meta=$META_DIR"
 }
 
-# Read-only capture of current container env (values written to FA_STATE; secrets not echoed).
+# Capture RUNTIME container env (same source cutover uses). Never use image Config.Env as expected.
 stage_capture_env() {
   need docker; need python3
-  mkdir -p "$ENV_DIR"
-  local pair role cname out
+  mkdir -p "$ENV_DIR" "$JOURNAL_DIR"
+  local pair role cname out journal_out
   for pair in "${ROLES_CONTAINERS[@]}"; do
     role="${pair%%|*}"
     cname="${pair##*|}"
     out="$ENV_DIR/${role}.captured.env"
+    journal_out="$JOURNAL_DIR/${cname}.env.captured"
     if ! docker inspect "$cname" >/dev/null 2>&1; then
       echo "CAPTURE_ENV_SKIP missing_container=$cname role=$role" >&2
       : > "$out"
       continue
     fi
+    # Runtime Config.Env of the RUNNING container (= process env), NOT image defaults
     docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' "$cname" > "$out"
-    # Non-secret summary only
+    cp -f "$out" "$journal_out"
+    chmod 600 "$out" "$journal_out" 2>/dev/null || true
     python3 - <<'PY' "$out" "$ENV_DIR/${role}.captured.summary.json"
 import hashlib,json,sys,re
 path,out=sys.argv[1],sys.argv[2]
@@ -154,22 +157,96 @@ for line in open(path,encoding="utf-8",errors="replace"):
     rows.append({"key":k,"present":True,"sha256":hashlib.sha256(v.encode()).hexdigest()[:16]})
   else:
     rows.append({"key":k,"value":v})
-json.dump({"role_env_keys":rows}, open(out,"w",encoding="utf-8"), indent=2)
-print("CAPTURED", path)
+json.dump({"role_env_keys":rows,"source":"running_container_runtime"}, open(out,"w",encoding="utf-8"), indent=2)
+print("CAPTURED_RUNTIME", path)
 PY
   done
-  # Expected env for compare: from loaded image Config (candidate) when available
-  for role in app profit v6 dashboard stock; do
-    local tag="avorofin-p0-cogs-${role}:fin_accept_${IMAGE_STAMP}"
+  # Expected = cutover env-file that will be passed on switch:
+  # prefer ENV_DIR/env/<container>.env, else journal captured, else copy of runtime captured.
+  # Optional approved non-secret overrides: $ENV_DIR/<role>.expected.overrides.env
+  for pair in "${ROLES_CONTAINERS[@]}"; do
+    role="${pair%%|*}"
+    cname="${pair##*|}"
     local exp="$ENV_DIR/${role}.expected.env"
-    if docker image inspect "$tag" >/dev/null 2>&1; then
-      docker image inspect -f '{{range .Config.Env}}{{println .}}{{end}}' "$tag" > "$exp" || : > "$exp"
+    local cutover=""
+    if [[ -f "${ENV_DIR}/env/${cname}.env" ]]; then
+      cutover="${ENV_DIR}/env/${cname}.env"
+    elif [[ -f "$JOURNAL_DIR/${cname}.env.captured" ]]; then
+      cutover="$JOURNAL_DIR/${cname}.env.captured"
     else
-      # Fall back: use captured as expected baseline (presence check still requires DATABASE_URL)
-      cp -f "$ENV_DIR/${role}.captured.env" "$exp" 2>/dev/null || : > "$exp"
+      cutover="$ENV_DIR/${role}.captured.env"
+    fi
+    cp -f "$cutover" "$exp"
+    if [[ -f "$ENV_DIR/${role}.expected.overrides.env" ]]; then
+      # Merge overrides by key (safe line-based; no eval)
+      python3 - <<'PY' "$exp" "$ENV_DIR/${role}.expected.overrides.env"
+import sys
+base,ovr=sys.argv[1],sys.argv[2]
+vals={}
+order=[]
+def load(p):
+  for line in open(p,encoding="utf-8",errors="replace"):
+    line=line.rstrip("\n")
+    if not line or line.startswith("#") or "=" not in line: continue
+    k,v=line.split("=",1)
+    if k not in vals: order.append(k)
+    vals[k]=v
+load(base); load(ovr)
+open(base,"w",encoding="utf-8").write("".join(f"{k}={vals[k]}\n" for k in order))
+print("MERGED_OVERRIDES", ovr)
+PY
+    fi
+    # Document image defaults separately — NOT used for REQUIRED DATABASE_URL compare
+    local tag="avorofin-p0-cogs-${role}:fin_accept_${IMAGE_STAMP}"
+    if docker image inspect "$tag" >/dev/null 2>&1; then
+      docker image inspect -f '{{range .Config.Env}}{{println .}}{{end}}' "$tag" \
+        > "$ENV_DIR/${role}.image_defaults.env" || true
     fi
   done
-  echo "CAPTURE_ENV_OK dir=$ENV_DIR"
+  echo "CAPTURE_ENV_OK dir=$ENV_DIR source=runtime_or_cutover_envfile"
+}
+
+# Export allowlisted keys from profit captured env into current shell file (no secret print).
+stage_load_runner_env() {
+  local role="${1:-profit}"
+  local cap="$ENV_DIR/${role}.captured.env"
+  [[ -f "$cap" ]] || die "missing $cap — run capture-env"
+  local out="${RUNNER_ENV_EXPORT_FILE:-$FA_STATE/runner.env}"
+  python3 - <<'PY' "$cap" "$out"
+import sys
+allow={"DATABASE_URL","V6_READMODEL_TARGET_DATABASE_URL","WAVE_B_PROFIT_TARGET_DATABASE_URL",
+       "WAVE_B_PROFIT_WORKER_MODE","WAVE_B_TARGET_DB_MODE","V6_READMODEL_WORKER_MODE",
+       "DASHBOARD_SNAPSHOT_WORKER_MODE","DASHBOARD_SNAPSHOT_FORMULA_VERSIONS",
+       "WAVE_B_PROFIT_READMODEL_FIRST"}
+src,dst=sys.argv[1],sys.argv[2]
+vals={}
+for line in open(src,encoding="utf-8",errors="replace"):
+  if "=" not in line: continue
+  k,v=line.rstrip("\n").split("=",1)
+  if k in allow: vals[k]=v
+if "DATABASE_URL" not in vals or not vals["DATABASE_URL"]:
+  raise SystemExit("DATABASE_URL missing in captured runtime env")
+open(dst,"w",encoding="utf-8").write("".join(f"{k}={vals[k]}\n" for k in vals))
+print("RUNNER_ENV_WRITTEN keys=", ",".join(sorted(vals)), "path=", dst)
+PY
+  chmod 600 "$out"
+  set -a
+  # shellcheck disable=SC1090
+  source "$out"
+  set +a
+  echo "LOAD_RUNNER_ENV_OK role=$role (secrets not printed)"
+}
+
+stage_runtime_preflight() {
+  need node; need python3; need psql
+  [[ -f "$ROOT/prisma/schema.prisma" ]] || die "missing prisma schema"
+  node -e "require('fs').accessSync('node_modules/tsx/dist/loader.mjs')" 2>/dev/null \
+    || [[ -d "$ROOT/node_modules/tsx" ]] \
+    || die "tsx package missing — npm ci required for host runners"
+  : "${DATABASE_URL:?DATABASE_URL required — run load-runner-env first}"
+  node --import tsx -e 'import { prisma } from "@/lib/prisma"; const n=await prisma.$queryRawUnsafe("select 1 as n"); console.log("PRISMA_DB_OK", n); await prisma.$disconnect();' \
+    || die "prisma/db preflight failed"
+  echo "RUNTIME_PREFLIGHT_OK"
 }
 
 stage_compare_env() {
@@ -240,19 +317,34 @@ wait_running_zero() {
   return 1
 }
 
-restore_container_if_was_running() {
+restore_all_touched() {
+  local state_file="$1"
+  local touched_file="$2"
+  [[ -f "$touched_file" ]] || return 0
+  local cname was
+  while IFS= read -r cname || [[ -n "${cname:-}" ]]; do
+    [[ -z "${cname:-}" ]] && continue
+    was="$(python3 -c "import json;print(json.load(open(r'$state_file')).get('$cname','missing'))")"
+    if [[ "$was" == "running" ]]; then
+      echo "STOP_CLAIMS_RECOVER_ALL start $cname (was=$was)"
+      docker start "$cname" || echo "WARN: restart failed $cname" >&2
+    fi
+  done < "$touched_file"
+}
+
+container_is_running() {
   local cname="$1"
-  local was="$2"
-  if [[ "$was" == "running" ]]; then
-    echo "STOP_CLAIMS_RECOVER start $cname"
-    docker start "$cname" || die "failed to restart $cname after stop-claims failure"
-  fi
+  local st
+  st="$(docker inspect -f '{{.State.Running}}' "$cname" 2>/dev/null || echo false)"
+  [[ "$st" == "true" ]]
 }
 
 stage_stop_claims() {
   need docker; need psql
   : "${DATABASE_URL:?DATABASE_URL required}"
   local state_file="$FA_STATE/stop_claims_prestate.json"
+  local touched_file="$FA_STATE/stop_claims_touched.txt"
+  : > "$touched_file"
   mkdir -p "$FA_STATE"
   python3 - <<'PY' "$state_file"
 import json,subprocess,sys
@@ -273,24 +365,35 @@ json.dump(state, open(sys.argv[1],"w",encoding="utf-8"), indent=2)
 print("PRESTATE", state)
 PY
 
+  fail_restore() {
+    echo "STOP_CLAIMS_FAIL — restoring ALL touched roles" >&2
+    restore_all_touched "$state_file" "$touched_file"
+    die "$*"
+  }
+
   stop_one() {
     local cname="$1" label="$2" sql="$3" url="${4:-$DATABASE_URL}"
     local was
-    was="$(python3 -c "import json;print(json.load(open('$state_file')).get('$cname','missing'))")"
-    # Soft signal first if running (give producer time) — docker kill --signal=SIGTERM then brief wait
+    was="$(python3 -c "import json;print(json.load(open(r'$state_file')).get('$cname','missing'))")"
+    echo "$cname" >> "$touched_file"
     if [[ "$was" == "running" ]]; then
       docker kill --signal=SIGTERM "$cname" 2>/dev/null || docker stop -t 20 "$cname" || true
     else
       docker stop -t 5 "$cname" 2>/dev/null || true
     fi
-    if wait_running_zero "$label" "$sql" "$url"; then
-      echo "STOP_OK $label"
-      return 0
+    # Claim drain
+    if ! wait_running_zero "$label" "$sql" "$url"; then
+      fail_restore "timeout RUNNING=0 for $label"
     fi
-    echo "STOP_CLAIMS_FAIL $label — restoring prior runtime" >&2
-    restore_container_if_was_running "$cname" "$was"
-    # Do not mark unfinished SUCCESS; do not start a blind second writer.
-    die "timeout waiting RUNNING=0 for $label; restored container=$cname was=$was"
+    # Container must actually be stopped (claims=0 with running writer is NOT OK)
+    if container_is_running "$cname"; then
+      docker stop -t 10 "$cname" || true
+      if container_is_running "$cname"; then
+        fail_restore "container still running after stop: $cname (claims drained but writer alive)"
+      fi
+    fi
+    echo "STOP_OK $label container_stopped=true claims=0"
+    return 0
   }
 
   stop_one avorofin-profit-readmodel-worker profit \
@@ -375,79 +478,89 @@ stage_rollback() {
 }
 
 stage_data_rollback() {
-  local snap="${OZON_PERIOD_SNAPSHOT_JSON:-}"
-  if [[ -z "$snap" && -f "$FA_STATE/OZON_PERIOD_SNAPSHOT_JSON.path" ]]; then
-    snap="$(cat "$FA_STATE/OZON_PERIOD_SNAPSHOT_JSON.path")"
+  # Prefer full backup directory (Ozon+WB+SKU+inventory). Fallback to ozon json path.
+  local target="${WEEK_BACKUP_DIR:-$BACKUP_DIR}"
+  if [[ ! -d "$target" ]]; then
+    local snap="${OZON_PERIOD_SNAPSHOT_JSON:-}"
+    if [[ -z "$snap" && -f "$FA_STATE/OZON_PERIOD_SNAPSHOT_JSON.path" ]]; then
+      snap="$(cat "$FA_STATE/OZON_PERIOD_SNAPSHOT_JSON.path")"
+    fi
+    [[ -n "$snap" ]] || die "WEEK_BACKUP_DIR / OZON_PERIOD_SNAPSHOT_JSON unset — run backup-week"
+    target="$snap"
   fi
-  [[ -n "$snap" ]] || die "OZON_PERIOD_SNAPSHOT_JSON unset — run backup-week first"
-  [[ -f "$snap" ]] || die "snapshot file missing: $snap"
-  node --import tsx "$ROOT/scripts/fin_accept/run_data_rollback_ozon_R12.ts" "$snap"
+  # Quiesce writers before data restore (do not start workers mid-restore)
+  echo "DATA_ROLLBACK_REQUIRE_NO_WRITER — ensure stop-claims done; not starting workers here"
+  node --import tsx "$ROOT/scripts/fin_accept/run_data_rollback_ozon_R12.ts" "$target"
 }
 
-# Concrete Telegram follow-up plan (read-only discovery). Does NOT send messages.
+# Concrete Telegram update/rollback after MAIN verify. Does NOT send messages.
 stage_telegram_plan() {
-  need ssh || true
   local out="$FA_STATE/telegram_plan.json"
-  mkdir -p "$FA_STATE"
+  mkdir -p "$FA_STATE" "$JOURNAL_DIR"
   local host="${TELEGRAM_HOST:-64.188.63.133}"
   local user="${TELEGRAM_SSH_USER:-root}"
-  local remote_root="${TELEGRAM_REMOTE_ROOT:-/opt/avorofin}"
-  # Read-only remote inspect when key available; otherwise write local checklist with known provenance.
-  if ssh -o BatchMode=yes -o ConnectTimeout=8 "${user}@${host}" "true" 2>/dev/null; then
-    ssh -o BatchMode=yes "${user}@${host}" "bash -s" <<EOF | tee "$FA_STATE/telegram_ro_inspect.txt"
+  local inspect="$FA_STATE/telegram_ro_inspect.txt"
+  if ssh -o BatchMode=yes -o ConnectTimeout=10 "${user}@${host}" "true" 2>/dev/null; then
+    ssh -o BatchMode=yes "${user}@${host}" "bash -s" <<'EOF' | tee "$inspect"
 set -euo pipefail
-cd "$remote_root" 2>/dev/null || cd /opt/avorofin || true
-echo "PWD=\$(pwd)"
-docker ps --format '{{.Names}} {{.Image}} {{.Status}}' 2>/dev/null | head -50 || true
-ls -la 2>/dev/null | head -40 || true
+cd /opt/avorofin
+docker inspect avorofin-telegram-app --format 'name={{.Name}} image={{.Config.Image}} id={{.Image}} status={{.State.Status}} ports={{json .HostConfig.PortBindings}}' || true
+ss -lptn | grep -E '8091|8092|3001|443' || true
 EOF
   else
-    echo "TELEGRAM_SSH_UNAVAILABLE host=$host — writing offline plan from known provenance" | tee "$FA_STATE/telegram_ro_inspect.txt"
+    echo "TELEGRAM_SSH_UNAVAILABLE" | tee "$inspect"
   fi
   python3 - <<PY
-import json, pathlib
+import json, pathlib, re
 out=pathlib.Path(r"$out")
+inspect=pathlib.Path(r"$inspect").read_text(encoding="utf-8", errors="replace")
+m=re.search(r"image=(\\S+).*?id=(sha256:\\S+)", inspect)
+cur_image = m.group(1) if m else "avorofin-p0-cogs-telegram:20261014_tg_top_truth"
+cur_id = m.group(2) if m else "sha256:7f9fee6a7e5f5595d6895d892d37dd218e5e2cb62ebf86a5b048ee15a1132453"
+ssh_ok = "TELEGRAM_SSH_UNAVAILABLE" not in inspect
 plan={
   "productionChanged": False,
   "sendMessages": False,
+  "telegramReady": ssh_ok,
   "host": "$host",
   "sshUser": "$user",
-  "remoteRoot": "$remote_root",
-  "afterMainGate": "verify-week PASS on MAIN",
-  "imageProvenance": {
-    "prefer": "same APP image as MAIN switch (Telegram shares dailyReport from app bundle) OR dedicated telegram image built from scriptsCommit",
-    "imageStamp": "$IMAGE_STAMP",
-    "imageBuildCommit": "$IMAGE_BUILD_COMMIT",
-    "scriptsCommit": "$SCRIPTS_COMMIT",
-    "dailyReportSha_expected_R15": "9c800fcc2d9a75fc4940de03c2f87a511f78677210cd83793a33577cf9e58327"
+  "remoteRoot": "/opt/avorofin",
+  "afterMainGate": "MAIN verify-week PASS",
+  "observedRuntime": {
+    "container": "avorofin-telegram-app",
+    "image": cur_image,
+    "imageId": cur_id,
+    "hostPort": "127.0.0.1:3001->3000/tcp",
+    "listeners": "443 caddy; 8091 test; 8092 bridge; 3001 telegram app",
+    "composeManaged": False
   },
-  "steps": [
-    "1. After MAIN verify-week PASS, capture Telegram container image id + env keys (read-only)",
-    "2. Compare dailyReport.ts bytes/sha in Telegram runtime vs accepted R15/R16 APP snapshot",
-    "3. Pull/load matching image; docker compose up with prior env file preserved",
-    "4. Health: process up, / or bot getMe OK — DO NOT send owner report / op 572",
-    "5. Rollback: docker tag/start previous Telegram image from journal; restore prior compose file"
+  "dailyReportSha_expected_R15": "9c800fcc2d9a75fc4940de03c2f87a511f78677210cd83793a33577cf9e58327",
+  "commands_update_AFTER_MAIN_VERIFY": [
+    f"ssh {user}@{host} 'docker inspect avorofin-telegram-app -f \"{{{{range .Config.Env}}}}{{{{println .}}}}{{{{end}}}}\" > /var/lib/avorofin/tg_env_captured.env && chmod 600 /var/lib/avorofin/tg_env_captured.env'",
+    f"ssh {user}@{host} 'docker tag {cur_image} avorofin-p0-cogs-telegram:rollback_pre_r17 && echo {cur_id} > /var/lib/avorofin/tg_rollback_imageid.txt'",
+    f"ssh {user}@{host} 'docker stop avorofin-telegram-app && docker rm avorofin-telegram-app'",
+    f"ssh {user}@{host} 'docker run -d --name avorofin-telegram-app --restart unless-stopped --env-file /var/lib/avorofin/tg_env_captured.env -p 127.0.0.1:3001:3000 NEW_TELEGRAM_IMAGE_WITH_ACCEPTED_DAILYREPORT'",
+    f"ssh {user}@{host} 'curl -sf -o /dev/null -w \"%{{http_code}}\" http://127.0.0.1:3001/ || true'"
   ],
-  "rollback": {
-    "journal": "$JOURNAL_DIR/telegram_rollback.json",
-    "action": "retag previous image + compose up using saved env; no DB mutate"
-  },
-  "inspectNote": str(pathlib.Path(r"$FA_STATE/telegram_ro_inspect.txt"))
+  "commands_rollback": [
+    f"ssh {user}@{host} 'docker stop avorofin-telegram-app; docker rm avorofin-telegram-app'",
+    f"ssh {user}@{host} 'docker run -d --name avorofin-telegram-app --restart unless-stopped --env-file /var/lib/avorofin/tg_env_captured.env -p 127.0.0.1:3001:3000 avorofin-p0-cogs-telegram:rollback_pre_r17'"
+  ],
+  "forbidden": ["telegram send", "op 572", "test finance tx"],
+  "scriptsCommit": "$SCRIPTS_COMMIT",
+  "imageStampApp": "$IMAGE_STAMP"
 }
-out.write_text(json.dumps(plan, indent=2)+"\n", encoding="utf-8")
-print("TELEGRAM_PLAN_OK", out)
+out.write_text(json.dumps(plan, indent=2)+"\\n", encoding="utf-8")
+print("TELEGRAM_PLAN_OK" if ssh_ok else "TELEGRAM_PLAN_WRITTEN_SSH_BLOCKED", out)
 PY
-}
-
-stage_full_isolated() {
-  # Orchestrates non-production isolated sequence used by GHA/local harness.
-  die "use scripts/fin_accept/run_isolated_deploy_sequence_R16.sh for isolated full pass"
 }
 
 stage="${1:-}"
 case "$stage" in
   preflight-artifacts) stage_preflight_artifacts ;;
   capture-env) stage_capture_env ;;
+  load-runner-env) shift; stage_load_runner_env "$@" ;;
+  runtime-preflight) stage_runtime_preflight ;;
   compare-env) shift; stage_compare_env "$@" ;;
   backup-week) stage_backup_week ;;
   stop-claims) stage_stop_claims ;;
@@ -459,20 +572,21 @@ case "$stage" in
   telegram-plan) stage_telegram_plan ;;
   *)
     cat <<EOF
-DEPLOY_ENTRYPOINT_R16 stages (order):
+DEPLOY_ENTRYPOINT_R17 stages (order):
   preflight-artifacts
-  capture-env
-  compare-env <role> [captured.env] [expected.env]
-  backup-week              # real exporter → FA_STATE/backup_week + path file
-  stop-claims              # SIGTERM/stop + RUNNING=0; restore container on fail
+  capture-env                 # runtime container env (not image Config)
+  load-runner-env [role]      # export allowlisted keys for host runners
+  runtime-preflight           # node/tsx/prisma/db before stop
+  compare-env <role>
+  backup-week
+  stop-claims                 # restore ALL touched roles on any fail; container must stop
   switch
-  weekly                   # profit→wait→v6→wait→dashboard→wait→final
-  verify-week              # actual loadProfitReadModel HIT consumer
-  data-rollback            # uses backup path from backup-week
+  weekly
+  verify-week
+  data-rollback               # WEEK_BACKUP_DIR scoped PPM+SKU
   rollback
-  telegram-plan            # concrete TG steps; no send
-productionChanged must remain false until owner executes intentionally.
-IMAGE_STAMP default=$IMAGE_STAMP (R15 images) scriptsCommit separate when scripts-only.
+  telegram-plan               # concrete docker run/rollback on 64.188.63.133
+IMAGE_STAMP default=$IMAGE_STAMP (R15 images). productionChanged=false until owner OK.
 EOF
     exit 2
     ;;

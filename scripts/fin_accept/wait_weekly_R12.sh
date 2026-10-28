@@ -161,24 +161,54 @@ sql_bad() {
 check_ids_file() {
   [[ -f "$WEEKLY_JOB_IDS_FILE" ]] || { echo "WEEKLY_WAIT_MISSING_IDS_FILE path=$WEEKLY_JOB_IDS_FILE" >&2; exit 2; }
   local n=0
-  local id st formula
+  local id st formula scope df dt
+  local seen_file
+  seen_file="$(mktemp)"
+  local scopes_seen_file
+  scopes_seen_file="$(mktemp)"
+  # shellcheck disable=SC2064
+  trap 'rm -f "$seen_file" "$scopes_seen_file"' RETURN
   while IFS= read -r id || [[ -n "${id:-}" ]]; do
     [[ -z "${id:-}" ]] && continue
+    if grep -Fxq "$id" "$seen_file"; then
+      echo "WEEKLY_WAIT_ID_DUPLICATE id=$id" >&2
+      return 1
+    fi
+    echo "$id" >> "$seen_file"
     n=$((n+1))
-    # Prefer target URL for this stage
-    st="$(psql "$TARGET_URL" -Atc "SELECT status FROM \"DashboardPeriodSnapshotJob\" WHERE id='$(sql_escape "$id")';" | tr -d '[:space:]')"
-    if [[ -z "$st" ]]; then
-      # If final/all on same DB, also try (should be same). Miss = fail.
+    # Prefer target URL for this stage — require exact key match for current week
+    row="$(psql "$TARGET_URL" -Atc "SELECT status||'|'||\"formulaVersion\"||'|'||\"companyScope\"||'|'||to_char(\"dateFrom\"::date,'YYYY-MM-DD')||'|'||to_char(\"dateTo\"::date,'YYYY-MM-DD')||'|'||CASE WHEN \"finishedAt\" IS NULL THEN '0' ELSE '1' END FROM \"DashboardPeriodSnapshotJob\" WHERE id='$(sql_escape "$id")';")"
+    if [[ -z "$row" ]]; then
       echo "WEEKLY_WAIT_ID_MISS id=$id target_poll" >&2
       return 1
     fi
+    IFS='|' read -r st formula scope df dt finished <<<"$row"
     if [[ "$st" != "SUCCESS" ]]; then
       echo "WEEKLY_WAIT_ID_NOT_SUCCESS id=$id status=$st" >&2
       return 1
     fi
-    formula="$(psql "$TARGET_URL" -Atc "SELECT \"formulaVersion\" FROM \"DashboardPeriodSnapshotJob\" WHERE id='$(sql_escape "$id")';" | tr -d '[:space:]')"
     if ! formula_in_list "$formula"; then
       echo "WEEKLY_WAIT_ID_WRONG_STAGE id=$id formula=$formula stage=$STAGE" >&2
+      return 1
+    fi
+    if [[ "$df" != "$DATE_FROM" || "$dt" != "$DATE_TO" ]]; then
+      echo "WEEKLY_WAIT_ID_WRONG_DATES id=$id from=$df to=$dt" >&2
+      return 1
+    fi
+    if [[ "$scope" != "ALL" && "$scope" != "ИП Петров" && "$scope" != "ИП Лебедева" ]]; then
+      echo "WEEKLY_WAIT_ID_WRONG_SCOPE id=$id scope=$scope" >&2
+      return 1
+    fi
+    # Unique (scope,formula) among listed IDs
+    local key="${scope}|${formula}"
+    if grep -Fxq "$key" "$scopes_seen_file"; then
+      echo "WEEKLY_WAIT_KEY_DUPLICATE key=$key id=$id" >&2
+      return 1
+    fi
+    echo "$key" >> "$scopes_seen_file"
+    # finishedAt required as generation/completion evidence for SUCCESS
+    if [[ "${finished:-0}" != "1" ]]; then
+      echo "WEEKLY_WAIT_ID_NO_FINISHEDAT id=$id" >&2
       return 1
     fi
   done < "$WEEKLY_JOB_IDS_FILE"

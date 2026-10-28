@@ -37,7 +37,19 @@ import {
 
 const dateFrom = process.env.DATE_FROM || "2026-10-19";
 const dateTo = process.env.DATE_TO || "2026-10-25";
-const stage = (process.env.WEEKLY_STAGE || "all").toLowerCase();
+const stage = (process.env.WEEKLY_STAGE || "profit").toLowerCase();
+if (
+  stage === "all" &&
+  process.env.ALLOW_UNSAFE_WEEKLY_ALL !== "1"
+) {
+  console.error(
+    JSON.stringify({
+      error: "WEEKLY_STAGE_ALL_REJECTED",
+      note: "all enqueues without inter-stage wait; use entrypoint profit→wait→v6→wait→dashboard or set ALLOW_UNSAFE_WEEKLY_ALL=1",
+    }),
+  );
+  process.exit(6);
+}
 const outPath = process.argv[2] || "R16_weekly_enqueue_live.json";
 const idsDir =
   process.env.WEEKLY_JOB_IDS_DIR ||

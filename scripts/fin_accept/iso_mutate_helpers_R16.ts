@@ -88,6 +88,31 @@ async function main() {
     console.log("RESTORED_FINAL");
     return;
   }
+  if (op === "stale_fingerprint") {
+    const row = await prisma.profitPeriodMetric.findFirst({
+      where: {
+        companyScope: "ALL",
+        marketplace: "OZON",
+        formulaVersion: FINANCIAL_CORE_V6_PROFIT_OZON_READMODEL_V1,
+      },
+    });
+    if (!row) throw new Error("missing ALL OZON");
+    await prisma.profitPeriodMetric.update({
+      where: { id: row.id },
+      data: {
+        sourceFingerprint: "OLD_STALE",
+        meta: {
+          ...(row.meta as object),
+          sourceFingerprint: "OLD_STALE",
+          payloadChecksum: row.payloadChecksum,
+          companyScope: "ALL",
+          marketplace: "OZON",
+        } as never,
+      },
+    });
+    console.log("MUTATED_STALE_FINGERPRINT");
+    return;
+  }
   if (op === "mutate_after_backup") {
     const row = await prisma.profitPeriodMetric.findFirst({
       where: {

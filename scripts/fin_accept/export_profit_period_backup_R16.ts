@@ -157,12 +157,39 @@ async function main() {
   }
   assert.ok(ozonSnap.length > 0, "OZON backup empty — refuse silent empty backup");
 
+  // Full SKU payload for restored keys (scoped)
+  const skuRows = await client.profitSkuPeriodMetric.findMany({
+    where: {
+      dateFrom: new Date(`${dateFrom}T00:00:00.000Z`),
+      dateTo: new Date(`${dateTo}T00:00:00.000Z`),
+      marketplace: { in: ["OZON", "WB"] },
+      formulaVersion: {
+        in: [
+          FINANCIAL_CORE_V6_PROFIT_OZON_READMODEL_V1,
+          FINANCIAL_CORE_V6_PROFIT_WB_READMODEL_V1,
+        ],
+      },
+    },
+  });
+  const skuSnap = skuRows.map((s) => ({
+    companyScope: s.companyScope,
+    marketplace: s.marketplace,
+    dateFrom: isoDate(s.dateFrom),
+    dateTo: isoDate(s.dateTo),
+    formulaVersion: s.formulaVersion,
+    productKey: s.productKey,
+    payload: s.payload,
+    generatedAt: s.generatedAt.toISOString(),
+  }));
+
   const ozonPath = path.join(outDir, "ozon_profit_period_snapshot.json");
   const wbPath = path.join(outDir, "wb_profit_period_snapshot.json");
+  const skuPath = path.join(outDir, "sku_profit_period_snapshot.json");
   const invPath = path.join(outDir, "backup_inventory.json");
   const metaPath = path.join(outDir, "backup_meta.json");
   fs.writeFileSync(ozonPath, JSON.stringify(ozonSnap, null, 2) + "\n");
   fs.writeFileSync(wbPath, JSON.stringify(wbSnap, null, 2) + "\n");
+  fs.writeFileSync(skuPath, JSON.stringify(skuSnap, null, 2) + "\n");
   fs.writeFileSync(invPath, JSON.stringify(inventory, null, 2) + "\n");
   const meta = {
     dateFrom,
@@ -170,13 +197,15 @@ async function main() {
     exportedAt: new Date().toISOString(),
     ozonRows: ozonSnap.length,
     wbRows: wbSnap.length,
+    skuRows: skuSnap.length,
     ozonPath,
     wbPath,
+    skuPath,
     invPath,
-    restoreCommand: `OZON_PERIOD_SNAPSHOT_JSON=${ozonPath} bash scripts/fin_accept/deploy_entrypoint_R12.sh data-rollback`,
+    restoreCommand: `WEEK_BACKUP_DIR=${outDir} bash scripts/fin_accept/deploy_entrypoint_R12.sh data-rollback`,
     cogsFinanceUntouched: true,
     dependentRecordsNote:
-      "SKU counts inventoried; V6/dashboard snapshots are rebuilt after profit and are not part of Ozon PPM data-rollback",
+      "PPM+SKU restored; V6/Dashboard rebuilt by weekly after profit (not in PPM rollback). Inventory hadRow=false keys are deleted on restore.",
   };
   fs.writeFileSync(metaPath, JSON.stringify(meta, null, 2) + "\n");
   console.log(JSON.stringify(meta, null, 2));

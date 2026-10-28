@@ -3,6 +3,7 @@ import {
   FINANCIAL_CORE_V6_PROFIT_OZON_READMODEL_V1,
   FINANCIAL_CORE_V6_PROFIT_WB_READMODEL_V1,
 } from "@/lib/profitReadModel/contract";
+import { computeCheapProfitSourceVersion } from "@/lib/profitReadModel/sourceVersion";
 
 const dateFrom = new Date("2026-10-19T00:00:00.000Z");
 const dateTo = new Date("2026-10-25T00:00:00.000Z");
@@ -102,6 +103,52 @@ async function upsert(
   });
 }
 
+async function syncFingerprints() {
+  // Align stored fingerprints with computeCheapProfitSourceVersion so page-path
+  // freshness check returns HIT on this ephemeral fixture.
+  for (const scope of Object.keys(canon) as (keyof typeof canon)[]) {
+    for (const marketplace of ["OZON", "WB"] as const) {
+      const fv =
+        marketplace === "OZON"
+          ? FINANCIAL_CORE_V6_PROFIT_OZON_READMODEL_V1
+          : FINANCIAL_CORE_V6_PROFIT_WB_READMODEL_V1;
+      const fp = await computeCheapProfitSourceVersion({
+        prisma,
+        marketplace,
+        companyScope: scope,
+        dateFrom: "2026-10-19",
+        dateTo: "2026-10-25",
+      });
+      const row = await prisma.profitPeriodMetric.findUnique({
+        where: {
+          companyScope_marketplace_dateFrom_dateTo_formulaVersion: {
+            companyScope: scope,
+            marketplace,
+            dateFrom,
+            dateTo,
+            formulaVersion: fv,
+          },
+        },
+      });
+      if (!row) continue;
+      await prisma.profitPeriodMetric.update({
+        where: { id: row.id },
+        data: {
+          sourceFingerprint: fp,
+          meta: {
+            ...(row.meta as object),
+            sourceFingerprint: fp,
+            payloadChecksum: row.payloadChecksum,
+            companyScope: scope,
+            marketplace,
+          } as never,
+        },
+      });
+    }
+  }
+  console.log("SEED_FINGERPRINTS_SYNCED");
+}
+
 async function main() {
   for (const scope of Object.keys(canon) as (keyof typeof canon)[]) {
     await upsert(
@@ -117,6 +164,7 @@ async function main() {
       canon[scope].wb,
     );
   }
+  await syncFingerprints();
   console.log("SEED_METRICS_OK");
 }
 
