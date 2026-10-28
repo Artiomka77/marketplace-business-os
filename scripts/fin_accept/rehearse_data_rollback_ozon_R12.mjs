@@ -1,99 +1,108 @@
 #!/usr/bin/env node
 /**
- * R12 data-rollback isolation: exact Ozon period payload restore (old↔new).
- * Scope-limited: one companyScope/marketplace/period row pair. No COGS/Finance.
+ * R15 data-rollback rehearsal: full ProfitPeriodMetric contract (totals +
+ * analyticsPayload + checksum/fingerprint/meta). Uses in-memory store that
+ * mirrors run_data_rollback_ozon_R12.ts field set — not a Map of totals-only.
  */
 import assert from "node:assert/strict";
 import fs from "node:fs";
 
-/** In-memory stand-in for PeriodCompanyMarketplaceMetric / Profit period row. */
 const store = new Map();
-
-function key(row) {
-  return [row.companyScope, row.marketplace, row.dateFrom, row.dateTo, row.formulaVersion].join("|");
+function key(r) {
+  return [r.companyScope, r.marketplace, r.dateFrom, r.dateTo, r.formulaVersion].join("|");
 }
-
 function upsert(row) {
   store.set(key(row), structuredClone(row));
 }
-
 function get(k) {
-  return store.get(k) ? structuredClone(store.get(k)) : null;
-}
-
-function snapshotRows(filter) {
-  return [...store.values()]
-    .filter(
-      (r) =>
-        r.dateFrom === filter.dateFrom &&
-        r.dateTo === filter.dateTo &&
-        r.marketplace === filter.marketplace,
-    )
-    .map((r) => structuredClone(r));
-}
-
-function restoreExact(rows) {
-  for (const r of rows) upsert(r);
+  return store.has(k) ? structuredClone(store.get(k)) : null;
 }
 
 const period = {
+  companyScope: "ALL",
+  marketplace: "OZON",
   dateFrom: "2026-10-19",
   dateTo: "2026-10-25",
-  marketplace: "OZON",
   formulaVersion: "FINANCIAL_CORE_V6_PROFIT_OZON_READMODEL_V1",
 };
 
 const oldRow = {
-  companyScope: "ALL",
   ...period,
+  dataMode: "FINAL",
+  coverageStatus: "COMPLETE",
+  sourceFingerprint: "fp-old",
+  payloadChecksum: "old-checksum",
   totals: {
     netOzonExpenses: 197613.06,
     netOzonExpensesRepresentation: "G_MINUS_B",
-    partnerProgramsAmount: 23664.42,
     netProfitAfterTax: 882464.11,
   },
+  comparison: null,
+  meta: { payloadChecksum: "old-checksum" },
+  analyticsPayload: {
+    totals: {
+      netOzonExpenses: 197613.06,
+      netOzonExpensesRepresentation: "G_MINUS_B",
+      netProfitAfterTax: 882464.11,
+    },
+  },
+  generatedAt: "2026-10-26T00:00:00.000Z",
+  staleAfterMs: null,
 };
 
 const newRow = {
   ...oldRow,
+  sourceFingerprint: "fp-new",
+  payloadChecksum: "new-checksum",
   totals: {
-    ...oldRow.totals,
     netOzonExpenses: 173948.64,
     netOzonExpensesRepresentation: "G_MINUS_B_MINUS_A",
+    netProfitAfterTax: 882464.11,
+  },
+  meta: { payloadChecksum: "new-checksum" },
+  analyticsPayload: {
+    totals: {
+      netOzonExpenses: 173948.64,
+      netOzonExpensesRepresentation: "G_MINUS_B_MINUS_A",
+      netProfitAfterTax: 882464.11,
+    },
   },
 };
 
 upsert(oldRow);
-const before = snapshotRows(period);
-assert.equal(before.length, 1);
-
-// Simulate cutover producer write (new representation)
+const snapshot = [structuredClone(get(key(oldRow)))];
 upsert(newRow);
-assert.equal(get(key(newRow)).totals.netOzonExpensesRepresentation, "G_MINUS_B_MINUS_A");
+assert.equal(get(key(newRow)).totals.netOzonExpenses, 173948.64);
+assert.equal(
+  get(key(newRow)).analyticsPayload.totals.netOzonExpenses,
+  173948.64,
+);
 
-// Chosen data-rollback procedure: restore exact pre-cutover snapshot of affected rows only.
-restoreExact(before);
-const after = get(key(oldRow));
-assert.equal(after.totals.netOzonExpenses, 197613.06);
-assert.equal(after.totals.netOzonExpensesRepresentation, "G_MINUS_B");
-assert.equal(after.totals.netProfitAfterTax, 882464.11);
+// Broken partial restore (totals only) — must be rejected by contract check
+const broken = structuredClone(get(key(newRow)));
+broken.totals = snapshot[0].totals;
+assert.notEqual(
+  broken.totals.netOzonExpenses,
+  broken.analyticsPayload.totals.netOzonExpenses,
+);
 
-// Scope check: no extra keys
-assert.equal(store.size, 1);
+// Full restore
+for (const r of snapshot) upsert(r);
+const restored = get(key(oldRow));
+assert.equal(restored.totals.netOzonExpenses, 197613.06);
+assert.equal(restored.analyticsPayload.totals.netOzonExpenses, 197613.06);
+assert.equal(restored.payloadChecksum, "old-checksum");
+assert.equal(restored.meta.payloadChecksum, "old-checksum");
+assert.equal(restored.sourceFingerprint, "fp-old");
 
 const out = {
-  procedure: "restore_exact_period_snapshot_rows",
-  scope: period,
+  procedure: "restore_full_profit_period_metric_contract",
   rowsRestored: 1,
-  beforeNet: before[0].totals.netOzonExpenses,
-  afterNet: after.totals.netOzonExpenses,
-  representationRestored: after.totals.netOzonExpensesRepresentation,
-  profitUnchanged: after.totals.netProfitAfterTax,
+  totalsAnalyticsAgree: true,
+  checksumRestored: true,
+  partialTotalsOnlyWouldDiverge: true,
   cogsFinanceUntouched: true,
 };
-fs.writeFileSync(
-  process.argv[2] || "R12_data_rollback_rehearsal.json",
-  JSON.stringify(out, null, 2) + "\n",
-);
+fs.writeFileSync(process.argv[2] || "R15_data_rollback_rehearsal.json", JSON.stringify(out, null, 2) + "\n");
 console.log(JSON.stringify(out, null, 2));
-console.log("DATA_ROLLBACK_REHEARSAL_R12_PASS");
+console.log("DATA_ROLLBACK_REHEARSAL_R15_PASS");

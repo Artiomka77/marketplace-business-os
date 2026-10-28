@@ -174,29 +174,11 @@ async function processJob(
     prisma: computePrisma,
   });
 
-  // Forced stop mid-flight: do NOT invent SUCCESS. Leave RUNNING for stale reclaim.
-  if (stopping) {
-    await prisma.dashboardPeriodSnapshotJob.update({
-      where: { id: job.id },
-      data: {
-        status: "RUNNING",
-        lastError: "INTERRUPTED_BY_STOP",
-        updatedAt: new Date(),
-      },
-    });
-    console.log(
-      JSON.stringify({
-        event: "wave_b_profit_job_interrupted_by_stop",
-        jobId: job.id,
-        marketplace,
-        companyScope: job.companyScope,
-        dateFrom,
-        dateTo,
-      })
-    );
-    return;
-  }
-
+  // Producer already completed successfully. Persist SUCCESS even if SIGTERM
+  // arrived during produce — inventing INTERRUPTED/RUNNING would leave a lock
+  // that stop-claims waits forever (stopped worker cannot reclaim).
+  // Unfinished work that throws still goes through failJob / hard kill → RUNNING
+  // until stale reclaim by a later live worker.
   await prisma.dashboardPeriodSnapshotJob.update({
     where: { id: job.id },
     data: {
@@ -217,6 +199,7 @@ async function processJob(
       companyScope: job.companyScope,
       dateFrom,
       dateTo,
+      stopping,
       ...result,
       concurrency,
     })

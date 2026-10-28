@@ -153,6 +153,12 @@ export type DailyReport = {
     ownerWithdrawals: number;
   };
   warnings: string[];
+  /** True when any required company P&L component is non-finite / incomplete. */
+  hasIncompleteBusinessProfit?: boolean;
+  /** Companies excluded from confirmed business total (not treated as 0). */
+  incompleteCompanyScopes?: string[];
+  /** Confirmed sum of complete companies only; null when none complete. */
+  availableCompleteProfitImpact?: number | null;
   dataReadiness: DataReadinessSummary | null;
   comparison?: DailyReportComparison | null;
 };
@@ -2095,7 +2101,10 @@ function buildWarnings(report: DailyReport) {
     warnings.push(`отрицательный ДДС: ${formatMoney(report.totals.netCashFlow)}`);
   }
 
-  if (report.totals.netProfitImpact < 0) {
+  if (
+    Number.isFinite(report.totals.netProfitImpact) &&
+    report.totals.netProfitImpact < 0
+  ) {
     warnings.push(
       `${isPreliminaryFinancialResult(report) ? "отрицательная предварительная прибыль" : "отрицательная чистая прибыль"}: ${formatMoney(
         report.totals.netProfitImpact
@@ -2209,9 +2218,16 @@ export async function buildDailyReport(params?: {
       ownerWithdrawals: 0,
     },
     warnings: [],
+    hasIncompleteBusinessProfit: false,
+    incompleteCompanyScopes: [],
+    availableCompleteProfitImpact: 0,
     dataReadiness: null,
     comparison: null,
   };
+
+  let completeProfitSum = 0;
+  let completeCompanyCount = 0;
+  let anyIncompleteCompany = false;
 
   for (const company of companies) {
     const [wb, ozon, finance] = await Promise.all([
@@ -2234,10 +2250,15 @@ export async function buildDailyReport(params?: {
     const financeImpact = Number.isFinite(finance.netProfitImpact)
       ? finance.netProfitImpact
       : null;
-    const realNetProfit =
-      wbProfit == null || ozonProfit == null || financeImpact == null
-        ? Number.NaN
-        : wbProfit + ozonProfit + financeImpact;
+    const companyIncomplete =
+      wbProfit == null ||
+      ozonProfit == null ||
+      financeImpact == null ||
+      marketplaceHasIncompleteProfitSource(wb) ||
+      marketplaceHasIncompleteProfitSource(ozon);
+    const realNetProfit = companyIncomplete
+      ? Number.NaN
+      : (wbProfit as number) + (ozonProfit as number) + (financeImpact as number);
 
     const financeForReport = {
       ...finance,
@@ -2257,15 +2278,27 @@ export async function buildDailyReport(params?: {
     report.totals.cashIncome += finance.cashIncome;
     report.totals.cashOutflow += finance.cashOutflow;
     report.totals.netCashFlow += finance.netCashFlow;
-    if (Number.isFinite(realNetProfit)) {
-      report.totals.netProfitImpact += realNetProfit;
+    report.totals.ownerWithdrawals += finance.ownerWithdrawals;
+
+    if (!companyIncomplete && Number.isFinite(realNetProfit)) {
+      completeProfitSum += realNetProfit;
+      completeCompanyCount += 1;
     } else {
+      anyIncompleteCompany = true;
+      report.incompleteCompanyScopes!.push(company.name);
       report.warnings.push(
-        `${company.name}: прибыль периода н/д (неполные данные MP/Finance) — не включена в сумму сводки как 0`,
+        `${company.name}: прибыль периода н/д (неполные данные MP/Finance) — не включена в подтверждённую сумму как 0`,
       );
     }
-    report.totals.ownerWithdrawals += finance.ownerWithdrawals;
   }
+
+  report.hasIncompleteBusinessProfit = anyIncompleteCompany;
+  report.availableCompleteProfitImpact =
+    completeCompanyCount > 0 ? completeProfitSum : null;
+  // Confirmed business total requires every company; otherwise n/d (not partial as full).
+  report.totals.netProfitImpact = anyIncompleteCompany
+    ? Number.NaN
+    : completeProfitSum;
 
   report.totals.drrByOrders = calculateDrr(
     report.totals.adSpend,
@@ -2294,7 +2327,18 @@ export async function buildDailyReport(params?: {
   });
 
   report.dataReadiness = dataReadiness;
-  report.warnings = buildWarnings(report);
+  const incompletenessWarnings = [...report.warnings];
+  report.warnings = [...incompletenessWarnings, ...buildWarnings(report)];
+  if (report.hasIncompleteBusinessProfit) {
+    const scopes = (report.incompleteCompanyScopes ?? []).join(", ") || "часть компаний";
+    const available =
+      report.availableCompleteProfitImpact == null
+        ? "нет полных компаний"
+        : `доступно по полным: ${formatMoney(report.availableCompleteProfitImpact)}`;
+    report.warnings.push(
+      `Итог бизнеса н/д: неполный охват (${scopes}); ${available}; исключённые компании не считаются 0`,
+    );
+  }
 
   if (!params?.skipComparison) {
     const previousRange = getPreviousComparableRange(range);
@@ -2343,6 +2387,7 @@ export function formatRuDateShort(value: string | null | undefined) {
 }
 
 export function formatCompactMoney(value: number) {
+  if (!Number.isFinite(value)) return "н/д";
   const abs = Math.abs(value);
   const sign = value < 0 ? "−" : "";
 
@@ -2368,6 +2413,7 @@ export function formatCompactMoney(value: number) {
 }
 
 export function formatSignedMoney(value: number) {
+  if (!Number.isFinite(value)) return "н/д";
   if (value > 0) return `+${formatMoney(value)}`;
   if (value < 0) return formatMoney(value);
   return formatMoney(0);
@@ -2410,10 +2456,18 @@ function marketplaceHasIncompleteTaxableRevenueSource(
 }
 
 function marketplaceHasIncompleteProfitSource(metrics: MarketplaceDailyMetrics) {
+  if (!Number.isFinite(metrics.netProfitAfterTax)) return true;
   if (marketplaceHasIncompleteTaxableRevenueSource(metrics)) return true;
   if (metrics.marketplace === "OZON") {
     if (metrics.discountPointsCoverageComplete === false) return true;
     if (metrics.taxesEstimated === true) return true;
+    if (metrics.costCoverageIncomplete === true) return true;
+    if (
+      metrics.netOzonExpenses !== undefined &&
+      !Number.isFinite(metrics.netOzonExpenses)
+    ) {
+      return true;
+    }
   }
   return false;
 }
@@ -2427,10 +2481,19 @@ export function hasIncompleteTaxableRevenueSource(report: DailyReport) {
 }
 
 export function hasIncompleteProfitSource(report: DailyReport) {
+  if (report.hasIncompleteBusinessProfit === true) return true;
+  if ((report.incompleteCompanyScopes?.length ?? 0) > 0) return true;
+  if (
+    report.totals.netProfitImpact !== undefined &&
+    !Number.isFinite(report.totals.netProfitImpact)
+  ) {
+    return true;
+  }
   return report.companies.some(
     (company) =>
       marketplaceHasIncompleteProfitSource(company.wb) ||
-      marketplaceHasIncompleteProfitSource(company.ozon)
+      marketplaceHasIncompleteProfitSource(company.ozon) ||
+      !Number.isFinite(company.finance.netProfitImpact),
   );
 }
 
@@ -3160,9 +3223,10 @@ export function formatDailyReportForTelegram(report: DailyReport) {
     ? formatRuDate(report.comparison.dateLabel)
     : "";
   const marginPercent =
-    report.totals.economicTurnover > 0
+    report.totals.economicTurnover > 0 &&
+    Number.isFinite(report.totals.netProfitImpact)
       ? (report.totals.netProfitImpact / report.totals.economicTurnover) * 100
-      : 0;
+      : Number.NaN;
   const showCashFlowPercent = shouldShowCashFlowPercent({
     current: comparison?.netCashFlowCurrent ?? report.totals.netCashFlow,
     previous: comparison?.netCashFlowPrevious ?? 0,
@@ -3192,12 +3256,24 @@ export function formatDailyReportForTelegram(report: DailyReport) {
         : compactChangeSuffix(comparison?.taxableRevenuePercent ?? null)
     }`,
     `💰 ${
-      profitIncomplete
-        ? "Предварительная чистая прибыль после налогов"
-        : "Чистая прибыль после налогов"
-    }: ${formatCompactMoney(
-      report.totals.netProfitImpact
-    )} · маржа ${formatPercent(marginPercent)}`,
+      !Number.isFinite(report.totals.netProfitImpact)
+        ? "Чистая прибыль после налогов"
+        : profitIncomplete
+          ? "Предварительная чистая прибыль после налогов"
+          : "Чистая прибыль после налогов"
+    }: ${
+      !Number.isFinite(report.totals.netProfitImpact)
+        ? `н/д${
+            report.availableCompleteProfitImpact != null
+              ? ` (доступно по полным компаниям: ${formatCompactMoney(
+                  report.availableCompleteProfitImpact,
+                )}; исключено: ${(report.incompleteCompanyScopes ?? []).join(", ")})`
+              : ""
+          }`
+        : `${formatCompactMoney(report.totals.netProfitImpact)} · маржа ${formatPercent(
+            marginPercent,
+          )}`
+    }`,
     `📣 Реклама: ${formatCompactMoney(report.totals.adSpend)} · ДРР ${formatPercent(
       report.totals.drrByEconomicTurnover
     )}${compactPointSuffix(comparison?.drrByEconomicTurnoverPointDiff ?? null)}`,
@@ -3212,12 +3288,12 @@ export function formatDailyReportForTelegram(report: DailyReport) {
     }`,
     `💳 Вывод собственника: ${formatMoney(report.totals.ownerWithdrawals)}`,
     `💵 ${
-      profitIncomplete
-        ? "Предварительная чистая прибыль после вывода собственника"
-        : "Чистая прибыль после вывода собственника"
-    }: ${formatCompactMoney(
-      profitAfterOwnerWithdrawal
-    )}`,
+      !Number.isFinite(profitAfterOwnerWithdrawal)
+        ? "Чистая прибыль после вывода собственника"
+        : profitIncomplete
+          ? "Предварительная чистая прибыль после вывода собственника"
+          : "Чистая прибыль после вывода собственника"
+    }: ${formatCompactMoney(profitAfterOwnerWithdrawal)}`,
     `📦 Остатки: ${formatNumber(report.totals.stockQty)} шт`,
   ];
 
@@ -3229,22 +3305,35 @@ export function formatDailyReportForTelegram(report: DailyReport) {
   }
 
   for (const company of report.companies) {
-    const companyNetProfit =
-      company.wb.netProfitAfterTax +
-      company.ozon.netProfitAfterTax +
-      company.finance.netProfitImpact;
+    const wbOk = Number.isFinite(company.wb.netProfitAfterTax);
+    const ozOk = Number.isFinite(company.ozon.netProfitAfterTax);
+    const finOk = Number.isFinite(company.finance.netProfitImpact);
+    const companyIncomplete =
+      !wbOk ||
+      !ozOk ||
+      !finOk ||
+      marketplaceHasIncompleteProfitSource(company.wb) ||
+      marketplaceHasIncompleteProfitSource(company.ozon);
+    const companyNetProfit = companyIncomplete
+      ? Number.NaN
+      : company.wb.netProfitAfterTax +
+        company.ozon.netProfitAfterTax +
+        company.finance.netProfitImpact;
     const companyStock = company.wb.stockQty + company.ozon.stockQty;
-    const companyProfitAfterOwnerWithdrawal =
-      companyNetProfit - company.finance.ownerWithdrawals;
+    const companyProfitAfterOwnerWithdrawal = Number.isFinite(companyNetProfit)
+      ? companyNetProfit - company.finance.ownerWithdrawals
+      : Number.NaN;
 
     lines.push(
       "",
       "━━━━━━━━━━━━━━",
       `👤 ${company.companyName}`,
       "",
-      `Итого: ${companyNetProfit >= 0 ? "🟢" : "🔴"} ${formatSignedMoney(
-        companyNetProfit
-      )}`,
+      `Итого: ${
+        !Number.isFinite(companyNetProfit)
+          ? "н/д"
+          : `${companyNetProfit >= 0 ? "🟢" : "🔴"} ${formatSignedMoney(companyNetProfit)}`
+      }`,
       `Остатки: ${formatNumber(companyStock)} шт`,
       `ДДС: ${formatMoney(company.finance.netCashFlow)}`,
       "",

@@ -1,9 +1,6 @@
 #!/usr/bin/env bash
-# Local/safe COMPARE of non-secret MODE/formula/DB-target key NAMES and MATCH/MISMATCH
-# of secret values WITHOUT printing secrets. Inputs are env dumps from docker inspect
-# (KEY=VALUE lines). APP .env.production is NOT treated as equivalent to Config.Env.
-#
-#   bash scripts/fin_accept/compare_main_env_keys_R12.sh captured.env expected.env
+# Compare non-secret MODE/formula keys and secret presence/equality WITHOUT printing secrets.
+# Exit 1 on any MISMATCH / missing required key.
 set -euo pipefail
 CAP="${1:?captured.env}"
 EXP="${2:?expected.env}"
@@ -22,10 +19,10 @@ SECRET_KEYS=(
 
 get_val() {
   local file="$1" key="$2"
-  # strip KEY=
   grep -E "^${key}=" "$file" 2>/dev/null | head -n1 | sed "s/^${key}=//" || true
 }
 
+fail=0
 echo "NONSECRET_NAME_AND_VALUE_COMPARE"
 for k in "${NONSECRET_KEYS[@]}"; do
   cv="$(get_val "$CAP" "$k")"
@@ -33,13 +30,13 @@ for k in "${NONSECRET_KEYS[@]}"; do
   if [[ -z "$cv" && -z "$ev" ]]; then
     echo "$k ABSENT_BOTH"
   elif [[ -z "$cv" ]]; then
-    echo "$k MISSING_IN_CAPTURED"
+    echo "$k MISSING_IN_CAPTURED"; fail=1
   elif [[ -z "$ev" ]]; then
     echo "$k EXTRA_IN_CAPTURED value_present=yes"
   elif [[ "$cv" == "$ev" ]]; then
     echo "$k MATCH"
   else
-    echo "$k MISMATCH"
+    echo "$k MISMATCH"; fail=1
   fi
 done
 
@@ -50,12 +47,18 @@ for k in "${SECRET_KEYS[@]}"; do
   if [[ -z "$cv" && -z "$ev" ]]; then
     echo "$k ABSENT_BOTH"
   elif [[ -z "$cv" || -z "$ev" ]]; then
-    echo "$k MISMATCH_PRESENCE"
+    # Only fail when expected side requires the key
+    if [[ -n "$ev" ]]; then
+      echo "$k MISMATCH_PRESENCE"; fail=1
+    else
+      echo "$k EXTRA_IN_CAPTURED_SECRET"
+    fi
   elif [[ "$cv" == "$ev" ]]; then
     echo "$k MATCH"
   else
-    echo "$k MISMATCH"
+    echo "$k MISMATCH"; fail=1
   fi
 done
 echo "APP_ENV_FILE_NOT_EQUIVALENT_TO_CONFIG_ENV=true"
-echo "COMPARE_MAIN_ENV_KEYS_R12_DONE"
+echo "COMPARE_MAIN_ENV_KEYS_DONE fail=$fail"
+exit "$fail"

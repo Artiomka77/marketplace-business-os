@@ -4,7 +4,7 @@ name: fin-accept-images-build-only
 on:
   push:
     branches:
-      - "build/fin-accept-images-20261027_R12"
+      - "build/fin-accept-images-20261028_R15"
   workflow_dispatch:
 
 permissions:
@@ -12,7 +12,7 @@ permissions:
   actions: read
 
 concurrency:
-  group: fin-accept-images-build-only-20261027_R12
+  group: fin-accept-images-build-only-20261028_R15
   cancel-in-progress: true
 
 jobs:
@@ -36,7 +36,7 @@ jobs:
           --health-retries 20
     env:
       FINANCIAL_SOURCE_COMMIT: bf4f8b5690bdbe417afe7a95cc7beca16c043abc
-      STAMP: "20261027_R12"
+      STAMP: "20261028_R15"
       EXPECT_STOCK_ABC_SHA256: "982bab4f3d0b4e790fc889e7fa3c14dfc116345c4472310e97479cf7166db191"
       NEXT_PUBLIC_SITE_URL: http://72.56.4.62
       NEXT_PUBLIC_SUPABASE_URL: https://rezhzulsjtcvxqofhlyl.supabase.co
