@@ -114,7 +114,6 @@ ENV_FILE="$OUT/tg_env_captured.env"
 } > "$ENV_FILE"
 chmod 600 "$ENV_FILE"
 mkdir -p /var/lib/avorofin 2>/dev/null || mkdir -p "$OUT/varlib"
-# Isolation uses OUT/varlib mapped conceptually — write env where plan expects when isolation
 VARLIB="${TELEGRAM_VARLIB:-/var/lib/avorofin}"
 if [[ ! -w "$(dirname "$VARLIB")" ]]; then
   VARLIB="$OUT/varlib"

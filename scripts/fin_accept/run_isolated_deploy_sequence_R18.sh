@@ -846,8 +846,21 @@ if [[ -f "$OUT_DIR/telegram/REHEARSAL_SUMMARY.json" ]]; then
 fi
 [[ "$tg_stub" -eq 0 ]] || { echo "FAIL stub telegram image used"; exit 44; }
 if [[ -f "$FA_STATE/telegram_plan.json" ]]; then
-  grep -q 'NEW_TELEGRAM_IMAGE_WITH_ACCEPTED_DAILYREPORT\|c01_isolation_local\|telegram_health_stub' "$FA_STATE/telegram_plan.json" \
-    && { echo "FAIL placeholder/stub still in plan"; exit 44; } || true
+  # Reject executable placeholder image refs; ignore the forbidden[] documentation list.
+  python3 - <<'PY' "$FA_STATE/telegram_plan.json"
+import json,sys
+p=json.load(open(sys.argv[1],encoding="utf-8"))
+cmds="\n".join(
+  (p.get("commands_update_AFTER_MAIN_VERIFY") or [])
+  + (p.get("commands_rollback") or [])
+)
+bad=("NEW_TELEGRAM_IMAGE_WITH_ACCEPTED_DAILYREPORT","c01_isolation_local","telegram_health_stub")
+hit=[b for b in bad if b in cmds]
+img=(p.get("newRuntime") or {}).get("image") or ""
+if hit or any(b in img for b in bad):
+  raise SystemExit(f"FAIL placeholder/stub still in plan cmds/image: {hit or img}")
+print("TELEGRAM_PLAN_NO_PLACEHOLDER_OK")
+PY
   python3 - <<'PY' "$OUT_DIR/telegram/REHEARSAL_SUMMARY.json" "$FA_STATE/telegram_plan.json"
 import json,sys,pathlib
 sum_path, plan_path = sys.argv[1:3]

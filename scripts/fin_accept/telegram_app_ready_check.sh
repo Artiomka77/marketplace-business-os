@@ -9,9 +9,10 @@ base = "${BASE}".rstrip("/")
 
 def get(path, expect_json=True):
     last = None
-    for _ in range(45):
+    attempts = 90 if "daily-report" in path else 45
+    for _ in range(attempts):
         try:
-            with urllib.request.urlopen(base + path, timeout=8) as r:
+            with urllib.request.urlopen(base + path, timeout=30) as r:
                 body = r.read().decode("utf-8", "replace")
                 if expect_json:
                     return r.status, json.loads(body)
