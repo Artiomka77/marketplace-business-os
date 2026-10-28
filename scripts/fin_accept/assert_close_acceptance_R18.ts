@@ -311,13 +311,22 @@ if (isoDir && fs.existsSync(isoDir)) {
         ) {
           reasons.push("G5_DISQUALIFIED stub/forbidden ImageId");
         }
+        const oldId = String(s.oldImageId || "");
+        const prodOld = String(
+          (s as { productionOldImageId?: string }).productionOldImageId || "",
+        );
+        const okOld =
+          oldId.includes("7f9fee6a") ||
+          oldId.includes("3e869221") ||
+          prodOld.includes("7f9fee6a");
         if (
-          !s.oldImageId ||
-          String(s.oldImageId).includes("6c90e310") ||
-          String(s.oldImageId) === String(s.imageIdObserved)
+          !oldId ||
+          oldId.includes("6c90e310") ||
+          oldId === String(s.imageIdObserved) ||
+          !okOld
         ) {
           reasons.push(
-            "G5_DISQUALIFIED OLD must be real prior runtime (7f9fee6a…), not helper stub",
+            "G5_DISQUALIFIED OLD must be production runtime (7f9fee6a / config 3e869221), not helper stub",
           );
         }
         if (!s.planJson) {

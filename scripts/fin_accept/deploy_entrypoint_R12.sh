@@ -703,6 +703,7 @@ stage_telegram_plan() {
   local new_image="${TELEGRAM_NEW_IMAGE:-}"
   local new_image_id="${TELEGRAM_NEW_IMAGE_ID:-}"
   local old_image="${TELEGRAM_OLD_IMAGE:-avorofin-p0-cogs-telegram:20261014_tg_top_truth}"
+  # Prefer observed loaded Id (GHA may surface OCI config digest 3e869221… for same image).
   local old_image_id="${TELEGRAM_OLD_IMAGE_ID:-sha256:7f9fee6a7e5f5595d6895d892d37dd218e5e2cb62ebf86a5b048ee15a1132453}"
   local new_tar="${TELEGRAM_APP_TAR:-}"
   local new_tar_sha="${TELEGRAM_APP_TAR_SHA256:-cdfcbaa72017f5ed82e8659049faa39a0ded4a31d87cadd5989732cf080a5a7a}"

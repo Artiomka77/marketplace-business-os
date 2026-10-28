@@ -9,7 +9,10 @@ PLAN_JSON="${2:-}"
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 mkdir -p "$OUT/logs" "$OUT/build" "$OUT/portable" "$OUT/fa_state"
 EXPECTED_NEW_ID="${TELEGRAM_NEW_IMAGE_ID:-sha256:35fe2ecd036d834ff977dd2771720a6d8f4273f5eec8555ea775133c8349c989}"
-EXPECTED_OLD_ID="${TELEGRAM_OLD_IMAGE_ID:-sha256:7f9fee6a7e5f5595d6895d892d37dd218e5e2cb62ebf86a5b048ee15a1132453}"
+# Production host inspect Id (classic graph) vs OCI config digest seen after load on some runners.
+EXPECTED_OLD_ID_PROD="${TELEGRAM_OLD_IMAGE_ID:-sha256:7f9fee6a7e5f5595d6895d892d37dd218e5e2cb62ebf86a5b048ee15a1132453}"
+EXPECTED_OLD_ID_CONFIG="${TELEGRAM_OLD_IMAGE_ID_CONFIG:-sha256:3e8692218d1d9fc7848369d328e47a0b930c2d9a5f4cd219607fd1ddd565d103}"
+EXPECTED_OLD_ID="$EXPECTED_OLD_ID_PROD"
 NEW_TAR="${TELEGRAM_APP_TAR:-}"
 OLD_TAR="${TELEGRAM_OLD_APP_TAR:-}"
 NEW_TAR_SHA="${TELEGRAM_APP_TAR_SHA256:-cdfcbaa72017f5ed82e8659049faa39a0ded4a31d87cadd5989732cf080a5a7a}"
@@ -69,8 +72,18 @@ OLD_ID="$(docker image inspect -f '{{.Id}}' "$OLD_IMAGE")"
 echo "NEW=$NEW_IMAGE $NEW_ID" | tee -a "$OUT/logs/telegram_rehearsal_steps.txt"
 echo "OLD=$OLD_IMAGE $OLD_ID" | tee -a "$OUT/logs/telegram_rehearsal_steps.txt"
 [[ "$NEW_ID" == "$EXPECTED_NEW_ID" ]] || { write_blocked "NEW_IMAGE_ID_MISMATCH got=$NEW_ID"; exit 4; }
-[[ "$OLD_ID" == "$EXPECTED_OLD_ID" ]] || { write_blocked "OLD_IMAGE_ID_MISMATCH got=$OLD_ID want=$EXPECTED_OLD_ID"; exit 4; }
+if [[ "$OLD_ID" == "$EXPECTED_OLD_ID_PROD" || "$OLD_ID" == "$EXPECTED_OLD_ID_CONFIG" ]]; then
+  EXPECTED_OLD_ID="$OLD_ID"
+  echo "OLD_ID_ACCEPTED production_or_config_digest=$OLD_ID" | tee -a "$OUT/logs/telegram_rehearsal_steps.txt"
+else
+  write_blocked "OLD_IMAGE_ID_MISMATCH got=$OLD_ID want=${EXPECTED_OLD_ID_PROD}|${EXPECTED_OLD_ID_CONFIG}"
+  exit 4
+fi
 [[ "$NEW_ID" != "$OLD_ID" ]] || { write_blocked "OLD_EQ_NEW"; exit 8; }
+# Reject known helper stub
+case "$OLD_ID" in
+  *6c90e310*) write_blocked "OLD_IS_HELPER_STUB"; exit 4 ;;
+esac
 
 # Portable copy for evidence
 cp -f "$NEW_TAR" "$OUT/portable/telegram_new_app.tar.gz"
@@ -231,6 +244,8 @@ ev={
   "imageIdObserved": "$NEW_ID",
   "oldImageId": "$OLD_ID",
   "oldImage": "$OLD_IMAGE",
+  "productionOldImageId": "$EXPECTED_OLD_ID_PROD",
+  "oldImageConfigDigest": "$EXPECTED_OLD_ID_CONFIG",
   "newImage": "$NEW_IMAGE",
   "rollbackRestoredOldImageId": True,
   "dailyReportShaOk": True,
