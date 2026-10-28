@@ -294,13 +294,13 @@ writers_stopped=1
 run_step backup-week stage_backup_week
 '''), encoding='utf-8')
 r = subprocess.run(['bash', str(probe)], capture_output=True, text=True)
-out_log.write_text(r.stdout + r.stderr, encoding='utf-8')
-print(r.stdout + r.stderr)
 text = r.stdout + r.stderr
 assert r.returncode != 0, 'expected non-zero'
 assert 'BACKUP_COMMAND_FAILED' in text or 'RUN_ALL_STEP_FAIL' in text
 assert 'RECOVERY_CALLED' in text or 'RUN_ALL_RECOVER_OK' in text
-print('RUN_ALL_BACKUP_FAIL_RECOVERY_OK')
+text = text + '\nRUN_ALL_BACKUP_FAIL_RECOVERY_OK\n'
+out_log.write_text(text, encoding='utf-8')
+print(text)
 PY
 grep -q 'RUN_ALL_BACKUP_FAIL_RECOVERY_OK' "$OUT_DIR/logs/run_all_backup_fail.txt" \
   || { echo "FAIL run-all recovery probe"; cat "$OUT_DIR/logs/run_all_backup_fail.txt"; exit 36; }
