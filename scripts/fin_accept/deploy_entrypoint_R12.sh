@@ -161,7 +161,7 @@ stage_capture_env() {
   # Isolation disposable: seed cutover env from runner.env / DATABASE_URL (no live MAIN containers).
   if [[ "${RUN_ALL_ISOLATION:-0}" == "1" ]]; then
     local seed="${RUNNER_ENV_EXPORT_FILE:-$FA_STATE/runner.env}"
-    if [[ ! -f "$seed" || ! grep -q '^DATABASE_URL=.' "$seed" 2>/dev/null ]]; then
+    if [[ ! -f "$seed" ]] || ! grep -q '^DATABASE_URL=.' "$seed" 2>/dev/null; then
       [[ -n "${DATABASE_URL:-}" ]] || die "isolation capture-env needs DATABASE_URL or runner.env"
       printf 'DATABASE_URL=%s\nWAVE_B_PROFIT_TARGET_DATABASE_URL=%s\nV6_READMODEL_TARGET_DATABASE_URL=%s\nWAVE_B_TARGET_DB_MODE=SAME_PRODUCTION_DB\nWAVE_B_PROFIT_WORKER_MODE=queue\n' \
         "$DATABASE_URL" "${WAVE_B_PROFIT_TARGET_DATABASE_URL:-$DATABASE_URL}" "${V6_READMODEL_TARGET_DATABASE_URL:-$DATABASE_URL}" \
@@ -261,7 +261,7 @@ stage_load_runner_env() {
   mkdir -p "$FA_STATE"
   # Isolation: prefer already-prepared runner.env / captured profit env with DATABASE_URL
   if [[ "${RUN_ALL_ISOLATION:-0}" == "1" ]]; then
-    if [[ ! -f "$cap" || ! grep -q '^DATABASE_URL=.' "$cap" 2>/dev/null ]]; then
+    if [[ ! -f "$cap" ]] || ! grep -q '^DATABASE_URL=.' "$cap" 2>/dev/null; then
       if [[ -f "$out" ]] && grep -q '^DATABASE_URL=.' "$out" 2>/dev/null; then
         cap="$out"
       elif [[ -n "${DATABASE_URL:-}" ]]; then
