@@ -1,12 +1,15 @@
 /**
  * Scoped data rollback from export_profit_period_backup_R16 output.
  *
- * Usage:
  *   node --import tsx scripts/fin_accept/run_data_rollback_ozon_R12.ts <backup_dir|ozon.json>
  *
- * Restores Ozon+WB ProfitPeriodMetric full contract, removes in-scope rows that
- * were absent at backup (hadRow=false) but exist now, restores SKU rows when
- * present in backup, validates scope/formula/meta checksum, exact staleAfterMs.
+ * - Restores Ozon+WB ProfitPeriodMetric full contract
+ * - Deletes in-scope keys with inventory hadRow=false (allowed MP/formula only)
+ * - Empty sku_profit_period_snapshot.json [] clears SKUs in restored PPM scope
+ * - Missing required sku file (when backup_dir) → hard fail (≠ empty array)
+ * - Rejects corrupt backup: PPM row present in snapshot but inventory hadRow=false
+ * - Validates SKU scope/MP/formula/dates before write
+ * - Restores V6/Dashboard DashboardPeriodSnapshot when snapshot files present
  * Does NOT touch COGS/Finance/loans/primary marketplace tables.
  */
 import assert from "node:assert/strict";
@@ -33,6 +36,13 @@ if (!process.env.DATABASE_URL) {
 const ALLOWED_SCOPES = new Set<string>(CANONICAL_PROFIT_COMPANY_SCOPES);
 const DATE_FROM = "2026-10-19";
 const DATE_TO = "2026-10-25";
+const ALLOWED_PPM_FORMULAS = new Set([
+  FINANCIAL_CORE_V6_PROFIT_OZON_READMODEL_V1,
+  FINANCIAL_CORE_V6_PROFIT_WB_READMODEL_V1,
+]);
+const V6_FORMULA = "FINANCIAL_CORE_V6_PERIOD_READMODEL_V2";
+const DASH_FORMULA = "FINANCIAL_CORE_V4_PERIOD_SNAPSHOT_V1";
+const ALLOWED_DASH_FORMULAS = new Set([V6_FORMULA, DASH_FORMULA]);
 
 type SnapshotRow = {
   companyScope: string;
@@ -60,6 +70,20 @@ type InventoryRow = {
   hadRow: boolean;
 };
 
+type DashRow = {
+  companyScope: string;
+  dateFrom: string;
+  dateTo: string;
+  formulaVersion: string;
+  payload: unknown;
+  payloadChecksum: string;
+  sourceFingerprint: string;
+  coverageStatus: string;
+  rowsCount: number;
+  calculationMs: number;
+  generatedAt?: string;
+};
+
 function loadJson<T>(p: string): T {
   return JSON.parse(fs.readFileSync(p, "utf8")) as T;
 }
@@ -69,6 +93,9 @@ function resolveInputs(input: string): {
   wb: SnapshotRow[];
   inventory: InventoryRow[];
   sku: Array<Record<string, unknown>>;
+  skuFilePresent: boolean;
+  v6: DashRow[];
+  dashboard: DashRow[];
   backupDir: string | null;
 } {
   const st = fs.statSync(input);
@@ -83,16 +110,36 @@ function resolveInputs(input: string): {
       ? loadJson<InventoryRow[]>(invPath)
       : [];
     const skuPath = path.join(input, "sku_profit_period_snapshot.json");
-    const sku = fs.existsSync(skuPath)
-      ? loadJson<Array<Record<string, unknown>>>(skuPath)
-      : [];
-    return { ozon, wb, inventory, sku, backupDir: input };
+    if (!fs.existsSync(skuPath)) {
+      throw new Error(
+        "MISSING_SKU_SNAPSHOT_FILE — required in backup_dir (use [] for empty SKU set)",
+      );
+    }
+    const sku = loadJson<Array<Record<string, unknown>>>(skuPath);
+    assert.ok(Array.isArray(sku), "sku snapshot must be an array");
+    const v6Path = path.join(input, "v6_period_snapshot.json");
+    const dashPath = path.join(input, "dashboard_period_snapshot.json");
+    const v6 = fs.existsSync(v6Path) ? loadJson<DashRow[]>(v6Path) : [];
+    const dashboard = fs.existsSync(dashPath) ? loadJson<DashRow[]>(dashPath) : [];
+    return {
+      ozon,
+      wb,
+      inventory,
+      sku,
+      skuFilePresent: true,
+      v6,
+      dashboard,
+      backupDir: input,
+    };
   }
   return {
     ozon: loadJson<SnapshotRow[]>(input),
     wb: [],
     inventory: [],
     sku: [],
+    skuFilePresent: false,
+    v6: [],
+    dashboard: [],
     backupDir: null,
   };
 }
@@ -121,6 +168,84 @@ function validateRow(r: SnapshotRow, marketplace: "OZON" | "WB") {
   }
   if (r.meta.marketplace && r.meta.marketplace !== marketplace) {
     throw new Error(`meta.marketplace mismatch ${r.companyScope}`);
+  }
+}
+
+function validateInventory(inv: InventoryRow[]) {
+  for (const i of inv) {
+    assert.ok(ALLOWED_SCOPES.has(i.companyScope), `inv bad scope ${i.companyScope}`);
+    assert.ok(i.marketplace === "OZON" || i.marketplace === "WB", `inv bad mp ${i.marketplace}`);
+    assert.ok(
+      ALLOWED_PPM_FORMULAS.has(i.formulaVersion as never),
+      `inv bad formula ${i.formulaVersion}`,
+    );
+    const want =
+      i.marketplace === "OZON"
+        ? FINANCIAL_CORE_V6_PROFIT_OZON_READMODEL_V1
+        : FINANCIAL_CORE_V6_PROFIT_WB_READMODEL_V1;
+    assert.equal(
+      i.formulaVersion,
+      want,
+      `inv MP/formula mismatch ${i.companyScope}|${i.marketplace}|${i.formulaVersion}`,
+    );
+  }
+}
+
+function validateSku(s: Record<string, unknown>) {
+  const companyScope = String(s.companyScope ?? "");
+  const marketplace = String(s.marketplace ?? "");
+  const formulaVersion = String(s.formulaVersion ?? "");
+  const dateFrom = String(s.dateFrom ?? DATE_FROM);
+  const dateTo = String(s.dateTo ?? DATE_TO);
+  assert.ok(ALLOWED_SCOPES.has(companyScope), `sku bad scope ${companyScope}`);
+  assert.ok(marketplace === "OZON" || marketplace === "WB", `sku bad mp ${marketplace}`);
+  assert.ok(
+    ALLOWED_PPM_FORMULAS.has(formulaVersion as never),
+    `sku bad formula ${formulaVersion}`,
+  );
+  const want =
+    marketplace === "OZON"
+      ? FINANCIAL_CORE_V6_PROFIT_OZON_READMODEL_V1
+      : FINANCIAL_CORE_V6_PROFIT_WB_READMODEL_V1;
+  assert.equal(formulaVersion, want);
+  assert.equal(dateFrom, DATE_FROM);
+  assert.equal(dateTo, DATE_TO);
+  assert.ok(s.productKey, "sku productKey required");
+}
+
+function validateDash(r: DashRow, formula: string) {
+  assert.ok(ALLOWED_SCOPES.has(r.companyScope), `dash bad scope ${r.companyScope}`);
+  assert.equal(r.dateFrom, DATE_FROM);
+  assert.equal(r.dateTo, DATE_TO);
+  assert.equal(r.formulaVersion, formula);
+  assert.ok(ALLOWED_DASH_FORMULAS.has(r.formulaVersion));
+  assert.ok(r.payload != null);
+  assert.ok(r.payloadChecksum);
+  assert.ok(r.sourceFingerprint);
+}
+
+function assertNoCorruptInventory(
+  ozon: SnapshotRow[],
+  wb: SnapshotRow[],
+  inventory: InventoryRow[],
+) {
+  const present = new Set(
+    [...ozon, ...wb].map(
+      (r) => `${r.companyScope}|${r.marketplace}|${r.formulaVersion}`,
+    ),
+  );
+  for (const inv of inventory) {
+    const k = `${inv.companyScope}|${inv.marketplace}|${inv.formulaVersion}`;
+    if (!inv.hadRow && present.has(k)) {
+      throw new Error(
+        `CORRUPT_BACKUP inventory hadRow=false but PPM present for ${k}`,
+      );
+    }
+    if (inv.hadRow && !present.has(k)) {
+      throw new Error(
+        `CORRUPT_BACKUP inventory hadRow=true but PPM missing for ${k}`,
+      );
+    }
   }
 }
 
@@ -161,21 +286,89 @@ async function upsertPpm(
   });
 }
 
+async function upsertDash(
+  tx: Parameters<Parameters<typeof prisma.$transaction>[0]>[0],
+  r: DashRow,
+) {
+  const key = {
+    companyScope: r.companyScope,
+    dateFrom: new Date(`${r.dateFrom}T00:00:00.000Z`),
+    dateTo: new Date(`${r.dateTo}T00:00:00.000Z`),
+    formulaVersion: r.formulaVersion,
+  };
+  const existing = await tx.dashboardPeriodSnapshot.findUnique({
+    where: { companyScope_dateFrom_dateTo_formulaVersion: key },
+  });
+  const data = {
+    id: existing?.id ?? `restore-${r.formulaVersion}-${r.companyScope}`,
+    payload: r.payload as object,
+    payloadChecksum: r.payloadChecksum,
+    sourceFingerprint: r.sourceFingerprint,
+    coverageStatus: r.coverageStatus,
+    rowsCount: Number(r.rowsCount ?? 0),
+    calculationMs: Number(r.calculationMs ?? 0),
+    generatedAt: r.generatedAt ? new Date(r.generatedAt) : new Date(),
+    updatedAt: new Date(),
+  };
+  if (!existing) {
+    await tx.dashboardPeriodSnapshot.create({
+      data: { ...key, ...data } as never,
+    });
+  } else {
+    await tx.dashboardPeriodSnapshot.update({
+      where: { companyScope_dateFrom_dateTo_formulaVersion: key },
+      data: data as never,
+    });
+  }
+}
+
 async function main() {
-  const { ozon, wb, inventory, sku, backupDir } = resolveInputs(arg);
+  const {
+    ozon,
+    wb,
+    inventory,
+    sku,
+    skuFilePresent,
+    v6,
+    dashboard,
+    backupDir,
+  } = resolveInputs(arg);
   assert.ok(Array.isArray(ozon) && ozon.length > 0, "ozon snapshot required");
   for (const r of ozon) validateRow(r, "OZON");
   for (const r of wb) validateRow(r, "WB");
+  validateInventory(inventory);
+  assertNoCorruptInventory(ozon, wb, inventory);
+  for (const s of sku) validateSku(s);
+  for (const r of v6) validateDash(r, V6_FORMULA);
+  for (const r of dashboard) validateDash(r, DASH_FORMULA);
 
-  const client = createWaveBProfitTargetPrismaClient();
-  const deleted: string[] = [];
-  const restored: string[] = [];
-
+  // SKU must belong to a hadRow=true / restored PPM key
+  const restoredPpmKeys = new Set(
+    [...ozon, ...wb].map(
+      (r) => `${r.companyScope}|${r.marketplace}|${r.formulaVersion}`,
+    ),
+  );
   const absentKeys = new Set(
     inventory
       .filter((i) => !i.hadRow)
       .map((i) => `${i.companyScope}|${i.marketplace}|${i.formulaVersion}`),
   );
+  for (const s of sku) {
+    const k = `${s.companyScope}|${s.marketplace}|${s.formulaVersion}`;
+    if (absentKeys.has(k)) {
+      throw new Error(`SKU_FOR_ABSENT_KEY ${k}`);
+    }
+    if (!restoredPpmKeys.has(k)) {
+      throw new Error(`SKU_WITHOUT_PPM ${k}`);
+    }
+  }
+
+  const client = createWaveBProfitTargetPrismaClient();
+  const deleted: string[] = [];
+  const restored: string[] = [];
+  let skuDeleted = 0;
+  let skuCreated = 0;
+  let dashRestored = 0;
 
   await client.$transaction(async (tx) => {
     // 1) Delete in-scope rows that were absent at backup time
@@ -183,6 +376,13 @@ async function main() {
       if (inv.hadRow) continue;
       if (!ALLOWED_SCOPES.has(inv.companyScope)) continue;
       if (inv.marketplace !== "OZON" && inv.marketplace !== "WB") continue;
+      if (!ALLOWED_PPM_FORMULAS.has(inv.formulaVersion as never)) continue;
+      const want =
+        inv.marketplace === "OZON"
+          ? FINANCIAL_CORE_V6_PROFIT_OZON_READMODEL_V1
+          : FINANCIAL_CORE_V6_PROFIT_WB_READMODEL_V1;
+      if (inv.formulaVersion !== want) continue;
+
       const key = {
         companyScope: inv.companyScope,
         marketplace: inv.marketplace,
@@ -194,7 +394,7 @@ async function main() {
         where: { companyScope_marketplace_dateFrom_dateTo_formulaVersion: key },
       });
       if (existing) {
-        await tx.profitSkuPeriodMetric.deleteMany({
+        const dsku = await tx.profitSkuPeriodMetric.deleteMany({
           where: {
             companyScope: inv.companyScope,
             marketplace: inv.marketplace,
@@ -203,6 +403,7 @@ async function main() {
             formulaVersion: inv.formulaVersion,
           },
         });
+        skuDeleted += dsku.count;
         await tx.profitPeriodMetric.delete({
           where: { companyScope_marketplace_dateFrom_dateTo_formulaVersion: key },
         });
@@ -210,16 +411,12 @@ async function main() {
       }
     }
 
-    // 2) Restore snapshots (skip keys marked absent-at-backup even if present in array)
+    // 2) Restore PPM (skip absent keys)
     for (const r of [...ozon, ...wb]) {
       const k = `${r.companyScope}|${r.marketplace}|${r.formulaVersion}`;
-      if (absentKeys.has(k)) {
-        continue;
-      }
+      if (absentKeys.has(k)) continue;
       const updated = await upsertPpm(tx, r);
-      if (
-        updated.staleAfterMs !== (r.staleAfterMs ?? null)
-      ) {
+      if (updated.staleAfterMs !== (r.staleAfterMs ?? null)) {
         throw new Error(`staleAfterMs not exact ${r.companyScope}`);
       }
       const metaCs = (updated.meta as { payloadChecksum?: string } | null)
@@ -230,16 +427,12 @@ async function main() {
       restored.push(`${r.companyScope}|${r.marketplace}`);
     }
 
-    // 3) SKU: if snapshot provided, replace SKUs for restored keys; else leave
-    if (sku.length > 0) {
-      const keys = new Set(
-        [...ozon, ...wb].map(
-          (r) => `${r.companyScope}|${r.marketplace}|${r.formulaVersion}`,
-        ),
-      );
-      for (const key of keys) {
+    // 3) SKU: empty array with present file ⇒ clear scope; missing file already failed for dir
+    if (skuFilePresent || sku.length > 0) {
+      for (const key of restoredPpmKeys) {
+        if (absentKeys.has(key)) continue;
         const [companyScope, marketplace, formulaVersion] = key.split("|");
-        await tx.profitSkuPeriodMetric.deleteMany({
+        const d = await tx.profitSkuPeriodMetric.deleteMany({
           where: {
             companyScope,
             marketplace,
@@ -248,6 +441,7 @@ async function main() {
             formulaVersion,
           },
         });
+        skuDeleted += d.count;
       }
       for (const s of sku) {
         await tx.profitSkuPeriodMetric.create({
@@ -264,26 +458,37 @@ async function main() {
               : new Date(),
           } as never,
         });
+        skuCreated += 1;
       }
+    }
+
+    // 4) V6 / Dashboard dependent snapshots (exact scoped restore when present)
+    for (const r of [...v6, ...dashboard]) {
+      await upsertDash(tx, r);
+      dashRestored += 1;
     }
   });
 
   const out = {
-    procedure: "restore_scoped_profit_readmodels_R17",
+    procedure: "restore_scoped_profit_readmodels_R18",
     backupDir,
     rowsRestored: restored.length,
     restored,
     deletedAbsentAtBackup: deleted,
-    skuRows: sku.length,
+    skuFilePresent,
+    skuRowsInBackup: sku.length,
+    skuDeleted,
+    skuCreated,
+    dashRestored,
     cogsFinanceUntouched: true,
     staleAfterMsExact: true,
     scopeFormulaValidated: true,
     metaChecksumValidated: true,
-    v6DashboardNote:
-      "V6/Dashboard are rebuilt by weekly stages after profit; not mutated by this PPM rollback",
+    corruptBackupRejected: true,
+    emptySkuClearsScope: skuFilePresent && sku.length === 0,
   };
   console.log(JSON.stringify(out, null, 2));
-  console.log("DATA_ROLLBACK_LIVE_R17_OK");
+  console.log("DATA_ROLLBACK_LIVE_R18_OK");
 }
 
 main()

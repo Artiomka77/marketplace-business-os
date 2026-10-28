@@ -182,15 +182,61 @@ async function main() {
     generatedAt: s.generatedAt.toISOString(),
   }));
 
+  // Dependent V6 / Dashboard snapshots (exact scoped restore)
+  const V6_FV = "FINANCIAL_CORE_V6_PERIOD_READMODEL_V2";
+  const DASH_FV = "FINANCIAL_CORE_V4_PERIOD_SNAPSHOT_V1";
+  const dashRows = await client.dashboardPeriodSnapshot.findMany({
+    where: {
+      dateFrom: new Date(`${dateFrom}T00:00:00.000Z`),
+      dateTo: new Date(`${dateTo}T00:00:00.000Z`),
+      formulaVersion: { in: [V6_FV, DASH_FV] },
+      companyScope: { in: [...CANONICAL_PROFIT_COMPANY_SCOPES] },
+    },
+  });
+  const v6Snap = dashRows
+    .filter((r) => r.formulaVersion === V6_FV)
+    .map((r) => ({
+      companyScope: r.companyScope,
+      dateFrom: isoDate(r.dateFrom),
+      dateTo: isoDate(r.dateTo),
+      formulaVersion: r.formulaVersion,
+      payload: r.payload,
+      payloadChecksum: r.payloadChecksum,
+      sourceFingerprint: r.sourceFingerprint,
+      coverageStatus: r.coverageStatus,
+      rowsCount: r.rowsCount,
+      calculationMs: r.calculationMs,
+      generatedAt: r.generatedAt.toISOString(),
+    }));
+  const dashSnap = dashRows
+    .filter((r) => r.formulaVersion === DASH_FV)
+    .map((r) => ({
+      companyScope: r.companyScope,
+      dateFrom: isoDate(r.dateFrom),
+      dateTo: isoDate(r.dateTo),
+      formulaVersion: r.formulaVersion,
+      payload: r.payload,
+      payloadChecksum: r.payloadChecksum,
+      sourceFingerprint: r.sourceFingerprint,
+      coverageStatus: r.coverageStatus,
+      rowsCount: r.rowsCount,
+      calculationMs: r.calculationMs,
+      generatedAt: r.generatedAt.toISOString(),
+    }));
+
   const ozonPath = path.join(outDir, "ozon_profit_period_snapshot.json");
   const wbPath = path.join(outDir, "wb_profit_period_snapshot.json");
   const skuPath = path.join(outDir, "sku_profit_period_snapshot.json");
   const invPath = path.join(outDir, "backup_inventory.json");
+  const v6Path = path.join(outDir, "v6_period_snapshot.json");
+  const dashPath = path.join(outDir, "dashboard_period_snapshot.json");
   const metaPath = path.join(outDir, "backup_meta.json");
   fs.writeFileSync(ozonPath, JSON.stringify(ozonSnap, null, 2) + "\n");
   fs.writeFileSync(wbPath, JSON.stringify(wbSnap, null, 2) + "\n");
   fs.writeFileSync(skuPath, JSON.stringify(skuSnap, null, 2) + "\n");
   fs.writeFileSync(invPath, JSON.stringify(inventory, null, 2) + "\n");
+  fs.writeFileSync(v6Path, JSON.stringify(v6Snap, null, 2) + "\n");
+  fs.writeFileSync(dashPath, JSON.stringify(dashSnap, null, 2) + "\n");
   const meta = {
     dateFrom,
     dateTo,
@@ -198,14 +244,18 @@ async function main() {
     ozonRows: ozonSnap.length,
     wbRows: wbSnap.length,
     skuRows: skuSnap.length,
+    v6Rows: v6Snap.length,
+    dashboardRows: dashSnap.length,
     ozonPath,
     wbPath,
     skuPath,
     invPath,
+    v6Path,
+    dashPath,
     restoreCommand: `WEEK_BACKUP_DIR=${outDir} bash scripts/fin_accept/deploy_entrypoint_R12.sh data-rollback`,
     cogsFinanceUntouched: true,
     dependentRecordsNote:
-      "PPM+SKU restored; V6/Dashboard rebuilt by weekly after profit (not in PPM rollback). Inventory hadRow=false keys are deleted on restore.",
+      "PPM+SKU+V6+Dashboard exact scoped restore. Empty SKU[] clears SKUs in scope. Inventory hadRow=false keys deleted. Corrupt inventory/PPM contradiction rejected.",
   };
   fs.writeFileSync(metaPath, JSON.stringify(meta, null, 2) + "\n");
   console.log(JSON.stringify(meta, null, 2));
