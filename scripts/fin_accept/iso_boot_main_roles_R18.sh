@@ -19,6 +19,19 @@ PY
 
 find_tar() {
   local role="$1"
+  # Prefer explicit portable NEW app (accepted R15 Next) over artifact app.tar.gz
+  # which historically may be tagged as telegram:c01_new_r15.
+  if [[ "$role" == "app" ]]; then
+    for cand in \
+      "${TELEGRAM_APP_TAR:-}" \
+      "$TAR_ROOT/app_fin_accept_${STAMP}.tar.gz" \
+      "$TAR_ROOT/image-tarballs/app_fin_accept_${STAMP}.tar.gz" \
+      "$TAR_ROOT/image-tarballs/app.tar.gz" \
+      "$TAR_ROOT/app.tar.gz"; do
+      [[ -n "$cand" && -f "$cand" ]] && { echo "$cand"; return 0; }
+    done
+    return 1
+  fi
   if [[ -f "$TAR_ROOT/image-tarballs/${role}.tar.gz" ]]; then
     echo "$TAR_ROOT/image-tarballs/${role}.tar.gz"
   elif [[ -f "$TAR_ROOT/${role}.tar.gz" ]]; then
@@ -28,10 +41,28 @@ find_tar() {
   fi
 }
 
+retag_latest_to() {
+  local want="$1"
+  if docker image inspect "$want" >/dev/null 2>&1; then
+    return 0
+  fi
+  # Tag whatever was just loaded (last Loaded image line) to the expected role tag.
+  local loaded
+  loaded="$(awk '/Loaded image:/{print $3}' "$load_log" | tail -1)"
+  [[ -n "$loaded" ]] || return 1
+  docker tag "$loaded" "$want"
+  echo "RETAGGED $loaded -> $want"
+}
+
+load_log=/tmp/iso_boot_load_$$.txt
+: > "$load_log"
 for role in app profit v6 dashboard stock; do
   tar="$(find_tar "$role")" || { echo "missing tar for $role under $TAR_ROOT"; exit 2; }
   echo "LOAD $role from $tar"
-  gzip -dc "$tar" | docker load
+  gzip -dc "$tar" | docker load | tee -a "$load_log"
+  want="avorofin-p0-cogs-${role}:fin_accept_${STAMP}"
+  retag_latest_to "$want" || { echo "FAIL retag $role to $want"; exit 3; }
+  docker image inspect "$want" >/dev/null
 done
 
 ENVF=/tmp/iso_main_role.env

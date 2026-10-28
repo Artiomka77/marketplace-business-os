@@ -103,17 +103,17 @@ jobs:
             test -f "/tmp/r15_image_tarballs/image-tarballs/${role}.tar.gz" \
               || test -f "/tmp/r15_image_tarballs/${role}.tar.gz"
           done
-          # Portable NEW app (may already be in artifact as app.tar.gz)
-          if gh release download fin-close-c01-primary-stand \
+          # Portable NEW app (accepted Next ImageId 35fe2ecd) — required; do not use
+          # artifact image-tarballs/app.tar.gz which may be telegram:c01_new_r15.
+          if ! gh release download fin-close-c01-primary-stand \
               --pattern 'app_fin_accept_20261028_R15.tar.gz' \
               --dir /tmp/r15_image_tarballs 2>/tmp/app_tar_dl.err; then
-            cp -f /tmp/r15_image_tarballs/app_fin_accept_20261028_R15.tar.gz \
-              /tmp/r15_image_tarballs/image-tarballs/app.tar.gz
-            echo "APP_TAR_FROM_RELEASE"
-          else
+            echo "APP_TAR_RELEASE_MISSING"
             cat /tmp/app_tar_dl.err || true
-            echo "APP_TAR_FROM_R15_ARTIFACT"
+            exit 2
           fi
+          echo "APP_TAR_FROM_RELEASE"
+          sha256sum /tmp/r15_image_tarballs/app_fin_accept_20261028_R15.tar.gz
           # Production OLD telegram image (7f9fee6a)
           if gh release download fin-close-c01-primary-stand \
               --pattern 'telegram_old_7f9fee6a.tar.gz' \
@@ -125,8 +125,7 @@ jobs:
             exit 2
           fi
           find /tmp/r15_image_tarballs -name '*.tar.gz' -printf '%p %s\n' | head -40
-          APP_TAR="$(find /tmp/r15_image_tarballs -path '*image-tarballs/app.tar.gz' -o -name 'app_fin_accept_20261028_R15.tar.gz' | head -1)"
-          echo "TELEGRAM_APP_TAR=$APP_TAR" >> "$GITHUB_ENV"
+          echo "TELEGRAM_APP_TAR=/tmp/r15_image_tarballs/app_fin_accept_20261028_R15.tar.gz" >> "$GITHUB_ENV"
           echo "TELEGRAM_OLD_APP_TAR=/tmp/r15_image_tarballs/telegram_old_7f9fee6a.tar.gz" >> "$GITHUB_ENV"
       - name: Run isolated R18/C01 sequence
         env:
