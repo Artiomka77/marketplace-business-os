@@ -60,8 +60,8 @@ for (const r of rows) {
 }
 
 async function main() {
-  const before = [];
-  const after = [];
+  const before: Array<Record<string, unknown>> = [];
+  const after: Array<Record<string, unknown>> = [];
   await prisma.$transaction(async (tx) => {
     for (const r of rows) {
       const key = {

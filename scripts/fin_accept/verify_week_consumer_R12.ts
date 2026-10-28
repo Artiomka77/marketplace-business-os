@@ -132,7 +132,7 @@ async function loadFinanceImpact(companyScope: string): Promise<number> {
 }
 
 async function main() {
-  const cases = [];
+  const cases: Array<Record<string, unknown>> = [];
   const failures: string[] = [];
 
   for (const companyScope of Object.keys(EXPECT) as Array<keyof typeof EXPECT>) {
